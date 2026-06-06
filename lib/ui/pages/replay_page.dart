@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/engine/chan_config.dart';
 import '../../core/engine/chan_replay_engine.dart';
-import '../../core/models/raw_bar.dart';
 import '../../core/models/chan_snapshot.dart';
+import '../../core/models/raw_bar.dart';
 import '../../data/csv_loader.dart';
 import '../../data/eastmoney_kline_source.dart';
 import '../widgets/kline_chart.dart';
@@ -28,6 +28,8 @@ class _ReplayPageState extends State<ReplayPage> {
   ChanSnapshot _snapshot = ChanSnapshot.empty();
   int _cursor = 0;
   int _windowSize = 90;
+  int? _viewEndIndex;
+  int? _crosshairIndex;
   bool _playing = false;
   bool _showFx = true;
   bool _showBi = true;
@@ -125,18 +127,24 @@ class _ReplayPageState extends State<ReplayPage> {
     _allBars = bars;
     _cursor = math.min(120, bars.length);
     _dataSourceLabel = sourceLabel;
+    _viewEndIndex = null;
+    _crosshairIndex = null;
     _rebuildSnapshot();
   }
 
   void _rebuildSnapshot() {
     _engine.setConfig(_config);
     _snapshot = _engine.feedMany(_allBars.take(_cursor).toList());
+    _crosshairIndex = _crosshairIndex?.clamp(0, math.max(0, _snapshot.rawBars.length - 1));
+    _viewEndIndex = _viewEndIndex?.clamp(0, math.max(0, _snapshot.rawBars.length - 1));
   }
 
   void _reset() {
     setState(() {
       _stopPlay();
       _cursor = math.min(30, _allBars.length);
+      _viewEndIndex = null;
+      _crosshairIndex = null;
       _rebuildSnapshot();
     });
   }
@@ -157,12 +165,16 @@ class _ReplayPageState extends State<ReplayPage> {
     setState(() {
       _cursor -= 1;
       _snapshot = _engine.undo();
+      _crosshairIndex = _crosshairIndex?.clamp(0, math.max(0, _snapshot.rawBars.length - 1));
+      _viewEndIndex = _viewEndIndex?.clamp(0, math.max(0, _snapshot.rawBars.length - 1));
     });
   }
 
   void _jumpTo(int nextCursor) {
     setState(() {
       _cursor = nextCursor.clamp(0, _allBars.length);
+      _viewEndIndex = null;
+      _crosshairIndex = null;
       _rebuildSnapshot();
     });
   }
@@ -187,11 +199,42 @@ class _ReplayPageState extends State<ReplayPage> {
     _timer = null;
   }
 
+  void _panChartByBars(int bars) {
+    if (bars == 0 || _snapshot.rawBars.isEmpty) return;
+    final maxEnd = _snapshot.rawBars.length - 1;
+    final current = _viewEndIndex ?? maxEnd;
+    final next = (current + bars).clamp(0, maxEnd);
+    if (next == current) return;
+    setState(() => _viewEndIndex = next);
+  }
+
+  void _changeWindowSize(int next) {
+    final value = next.clamp(30, 260);
+    if (value == _windowSize) return;
+    setState(() => _windowSize = value);
+  }
+
+  void _goToLatest() {
+    setState(() {
+      _viewEndIndex = null;
+      _crosshairIndex = null;
+    });
+  }
+
+  RawBar? get _activeBar {
+    final bars = _snapshot.rawBars;
+    if (bars.isEmpty) return null;
+    final cross = _crosshairIndex;
+    if (cross != null && cross >= 0 && cross < bars.length) return bars[cross];
+    return bars.last;
+  }
+
   void _openDataSourcePanel() {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
+      backgroundColor: const Color(0xFF131722),
       builder: (context) {
         var market = _market;
         var period = _period;
@@ -316,7 +359,7 @@ class _ReplayPageState extends State<ReplayPage> {
                                 _loadSample();
                               },
                               icon: const Icon(Icons.dataset),
-                              label: const Text('恢复示例CSV'),
+                              label: const Text('示例CSV'),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -362,6 +405,7 @@ class _ReplayPageState extends State<ReplayPage> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      backgroundColor: const Color(0xFF131722),
       builder: (context) {
         var temp = _config;
         return StatefulBuilder(
@@ -436,127 +480,398 @@ class _ReplayPageState extends State<ReplayPage> {
 
   @override
   Widget build(BuildContext context) {
-    final subtitle = _allBars.isEmpty
-        ? '暂无数据'
-        : '$_dataSourceLabel  当前：$_cursor/${_allBars.length}  分型:${_snapshot.fxs.length}  笔:${_snapshot.bis.length}  中枢:${_snapshot.zss.length}';
-
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('缠论K线复盘'),
-            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-          ],
+      backgroundColor: const Color(0xFF0B0D10),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(52),
+        child: AppBar(
+          toolbarHeight: 52,
+          elevation: 0,
+          titleSpacing: 0,
+          backgroundColor: const Color(0xFF131722),
+          title: _buildTopToolbar(context),
         ),
-        actions: [
-          IconButton(
-            tooltip: '数据源',
-            onPressed: _openDataSourcePanel,
-            icon: const Icon(Icons.cloud_sync),
-          ),
-          IconButton(
-            tooltip: '导入CSV',
-            onPressed: _importCsv,
-            icon: const Icon(Icons.upload_file),
-          ),
-          IconButton(
-            tooltip: '引擎参数',
-            onPressed: _openSettings,
-            icon: const Icon(Icons.tune),
-          ),
-        ],
       ),
-      body: Column(
-        children: [
-          _buildTogglePanel(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0B0D10),
-                    border:
-                        Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: KlineChart(
-                    snapshot: _snapshot,
-                    showFx: _showFx,
-                    showBi: _showBi,
-                    showZs: _showZs,
-                    windowSize: _windowSize,
-                  ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final showRightPanel = constraints.maxWidth >= 760;
+          return Row(
+            children: [
+              _buildLeftToolbar(),
+              Expanded(
+                child: Column(
+                  children: [
+                    Expanded(child: _buildChartPanel()),
+                    ReplayControllerBar(
+                      playing: _playing,
+                      cursor: _cursor,
+                      total: _allBars.length,
+                      onReset: _reset,
+                      onStepBack: _stepBack,
+                      onStepForward: _stepForward,
+                      onTogglePlay: _togglePlay,
+                      onSliderChanged: (v) => _jumpTo(v.round()),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ),
-          _buildWindowSlider(),
-          ReplayControllerBar(
-            playing: _playing,
-            cursor: _cursor,
-            total: _allBars.length,
-            onReset: _reset,
-            onStepBack: _stepBack,
-            onStepForward: _stepForward,
-            onTogglePlay: _togglePlay,
-            onSliderChanged: (v) => _jumpTo(v.round()),
-          ),
-        ],
+              if (showRightPanel) _buildRightPanel(),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildTogglePanel() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 4,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          FilterChip(
-            label: const Text('分型'),
-            selected: _showFx,
-            onSelected: (v) => setState(() => _showFx = v),
-          ),
-          FilterChip(
-            label: const Text('笔'),
-            selected: _showBi,
-            onSelected: (v) => setState(() => _showBi = v),
-          ),
-          FilterChip(
-            label: const Text('中枢'),
-            selected: _showZs,
-            onSelected: (v) => setState(() => _showZs = v),
-          ),
-          const SizedBox(width: 6),
-          Text('窗口: $_windowSize根',
-              style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWindowSlider() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+  Widget _buildTopToolbar(BuildContext context) {
+    final code = _stockCodeController.text.trim().isEmpty
+        ? '000001'
+        : _stockCodeController.text.trim();
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          const Text('缩放'),
-          Expanded(
-            child: Slider(
-              min: 40,
-              max: 180,
-              divisions: 14,
-              value: _windowSize.toDouble().clamp(40, 180),
-              onChanged: (v) => setState(() => _windowSize = v.round()),
+          const SizedBox(width: 8),
+          _toolbarButton(
+            label: '$_market:$code',
+            icon: Icons.search,
+            selected: true,
+            onTap: _openDataSourcePanel,
+          ),
+          const SizedBox(width: 6),
+          for (final item in const ['MIN5', 'MIN30', 'DAILY', 'WEEKLY'])
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: _toolbarButton(
+                label: _periodLabel(item),
+                selected: _period == item,
+                onTap: () {
+                  setState(() => _period = item);
+                  _loadEastmoney();
+                },
+              ),
             ),
+          const SizedBox(width: 4),
+          _toolbarButton(
+            label: _adjustLabel(_adjust),
+            icon: Icons.tune,
+            onTap: _openDataSourcePanel,
+          ),
+          _toolbarButton(
+            label: '行情',
+            icon: Icons.cloud_download,
+            onTap: _openDataSourcePanel,
+          ),
+          _toolbarButton(
+            label: 'CSV',
+            icon: Icons.upload_file,
+            onTap: _importCsv,
+          ),
+          _toolbarButton(
+            label: '最新',
+            icon: Icons.keyboard_double_arrow_right,
+            onTap: _goToLatest,
+          ),
+          _toolbarButton(
+            label: '设置',
+            icon: Icons.settings,
+            onTap: _openSettings,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            _dataSourceLabel,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: Colors.white54),
           ),
         ],
       ),
     );
+  }
+
+  Widget _toolbarButton({
+    required String label,
+    IconData? icon,
+    bool selected = false,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: onTap,
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF2962FF) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 16, color: Colors.white70),
+              const SizedBox(width: 5),
+            ],
+            Text(label,
+                style: TextStyle(
+                    color: selected ? Colors.white : Colors.white70,
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLeftToolbar() {
+    return Container(
+      width: 48,
+      decoration: BoxDecoration(
+        color: const Color(0xFF131722),
+        border: Border(right: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            const SizedBox(height: 8),
+            _toolIcon(
+              tooltip: '十字光标',
+              icon: Icons.add,
+              selected: _crosshairIndex != null,
+              onPressed: () => setState(() => _crosshairIndex = null),
+            ),
+            _toolIcon(
+              tooltip: '显示分型',
+              icon: Icons.trip_origin,
+              selected: _showFx,
+              onPressed: () => setState(() => _showFx = !_showFx),
+            ),
+            _toolIcon(
+              tooltip: '显示笔',
+              icon: Icons.show_chart,
+              selected: _showBi,
+              onPressed: () => setState(() => _showBi = !_showBi),
+            ),
+            _toolIcon(
+              tooltip: '显示中枢',
+              icon: Icons.crop_square,
+              selected: _showZs,
+              onPressed: () => setState(() => _showZs = !_showZs),
+            ),
+            const Divider(height: 18, color: Colors.white12),
+            _toolIcon(
+              tooltip: '放大',
+              icon: Icons.zoom_in,
+              onPressed: () => _changeWindowSize(_windowSize - 15),
+            ),
+            _toolIcon(
+              tooltip: '缩小',
+              icon: Icons.zoom_out,
+              onPressed: () => _changeWindowSize(_windowSize + 15),
+            ),
+            _toolIcon(
+              tooltip: '回到最新K线',
+              icon: Icons.my_location,
+              onPressed: _goToLatest,
+            ),
+            const Spacer(),
+            _toolIcon(
+              tooltip: '引擎参数',
+              icon: Icons.tune,
+              onPressed: _openSettings,
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _toolIcon({
+    required String tooltip,
+    required IconData icon,
+    bool selected = false,
+    required VoidCallback onPressed,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Tooltip(
+        message: tooltip,
+        child: IconButton(
+          onPressed: onPressed,
+          icon: Icon(icon, size: 20),
+          color: selected ? Colors.white : Colors.white60,
+          style: IconButton.styleFrom(
+            backgroundColor:
+                selected ? const Color(0xFF2962FF) : Colors.transparent,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChartPanel() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0B0D10),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: KlineChart(
+            snapshot: _snapshot,
+            showFx: _showFx,
+            showBi: _showBi,
+            showZs: _showZs,
+            windowSize: _windowSize,
+            viewEndIndex: _viewEndIndex,
+            crosshairIndex: _crosshairIndex,
+            onCrosshairChanged: (i) => setState(() => _crosshairIndex = i),
+            onPanBars: _panChartByBars,
+            onWindowSizeChanged: _changeWindowSize,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRightPanel() {
+    final bar = _activeBar;
+    return Container(
+      width: 230,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131722),
+        border: Border(left: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('观察列表',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            _watchRow('$_market:${_stockCodeController.text.trim()}', _period,
+                selected: true),
+            _watchRow('SZ:000001', '日线'),
+            _watchRow('SH:600000', '日线'),
+            const SizedBox(height: 16),
+            const Text('缠论结构',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            _kv('K线', '${_snapshot.rawBars.length}/${_allBars.length}'),
+            _kv('合并K线', '${_snapshot.mergedBars.length}'),
+            _kv('分型', '${_snapshot.fxs.length}'),
+            _kv('笔', '${_snapshot.bis.length}'),
+            _kv('中枢', '${_snapshot.zss.length}'),
+            _kv('视窗', '$_windowSize 根'),
+            const SizedBox(height: 16),
+            const Text('OHLCV',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            if (bar == null)
+              const Text('暂无数据', style: TextStyle(color: Colors.white54))
+            else ...[
+              _kv('时间', _fmtDate(bar.time)),
+              _kv('开', bar.open.toStringAsFixed(2)),
+              _kv('高', bar.high.toStringAsFixed(2)),
+              _kv('低', bar.low.toStringAsFixed(2)),
+              _kv('收', bar.close.toStringAsFixed(2)),
+              _kv('量', bar.volume.toStringAsFixed(0)),
+            ],
+            const Spacer(),
+            Text(
+              _dataSourceLabel,
+              style: const TextStyle(color: Colors.white38, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _watchRow(String symbol, String sub, {bool selected = false}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xFF1E3A8A) : const Color(0xFF0B0D10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(symbol,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+          Text(sub, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+        ],
+      ),
+    );
+  }
+
+  Widget _kv(String key, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(
+              child: Text(key,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12))),
+          Text(value,
+              style: const TextStyle(color: Colors.white, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  String _periodLabel(String period) {
+    switch (period) {
+      case 'MIN1':
+        return '1m';
+      case 'MIN5':
+        return '5m';
+      case 'MIN15':
+        return '15m';
+      case 'MIN30':
+        return '30m';
+      case 'MIN60':
+        return '1h';
+      case 'DAILY':
+        return 'D';
+      case 'WEEKLY':
+        return 'W';
+      case 'MONTHLY':
+        return 'M';
+      default:
+        return period;
+    }
+  }
+
+  String _adjustLabel(String adjust) {
+    switch (adjust) {
+      case 'QFQ':
+        return '前复权';
+      case 'HFQ':
+        return '后复权';
+      case 'NONE':
+        return '不复权';
+      default:
+        return adjust;
+    }
+  }
+
+  String _fmtDate(DateTime d) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
   }
 }
