@@ -2,6 +2,7 @@ import 'raw_bar.dart';
 import 'merged_bar.dart';
 import 'fx.dart';
 import 'bi.dart';
+import 'seg.dart';
 import 'zs.dart';
 
 class ChanSnapshot {
@@ -9,6 +10,7 @@ class ChanSnapshot {
   final List<MergedBar> mergedBars;
   final List<FX> fxs;
   final List<BI> bis;
+  final List<SEG> segs;
   final List<ZS> zss;
 
   const ChanSnapshot({
@@ -16,6 +18,7 @@ class ChanSnapshot {
     required this.mergedBars,
     required this.fxs,
     required this.bis,
+    required this.segs,
     required this.zss,
   });
 
@@ -24,6 +27,7 @@ class ChanSnapshot {
         mergedBars: [],
         fxs: [],
         bis: [],
+        segs: [],
         zss: [],
       );
 }
