@@ -26,14 +26,16 @@ class TencentKlineSource {
     final symbol = '${_marketPrefix(market)}$normalizedCode';
     final periodValue = _periodValue(period);
     final normalizedAdjust = adjust.trim().toUpperCase();
-    final fq = _isMinutePeriod(periodValue) || normalizedAdjust == 'NONE'
-        ? ''
-        : ',${_fqValue(normalizedAdjust)}';
+    final isMinute = _isMinutePeriod(periodValue);
+    final fq = normalizedAdjust == 'NONE' ? '' : ',${_fqValue(normalizedAdjust)}';
+    final param = isMinute
+        ? '$symbol,$periodValue,,$count'
+        : '$symbol,$periodValue,,,$count$fq';
 
     final uri = Uri.https(
       'web.ifzq.gtimg.cn',
       '/appstock/app/fqkline/get',
-      {'param': '$symbol,$periodValue,,,$count$fq'},
+      {'param': param},
     );
 
     final response = await _client.get(
