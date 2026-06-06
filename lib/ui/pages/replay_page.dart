@@ -8,7 +8,7 @@ import '../../core/engine/chan_replay_engine.dart';
 import '../../core/models/raw_bar.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../data/csv_loader.dart';
-import '../../data/easy_tdx_proxy_source.dart';
+import '../../data/eastmoney_kline_source.dart';
 import '../widgets/kline_chart.dart';
 import '../widgets/replay_controller_bar.dart';
 
@@ -21,9 +21,7 @@ class ReplayPage extends StatefulWidget {
 
 class _ReplayPageState extends State<ReplayPage> {
   final ChanReplayEngine _engine = ChanReplayEngine();
-  final TextEditingController _tdxBaseUrlController =
-      TextEditingController(text: 'http://127.0.0.1:8765');
-  final TextEditingController _tdxCodeController =
+  final TextEditingController _stockCodeController =
       TextEditingController(text: '000001');
 
   List<RawBar> _allBars = [];
@@ -38,10 +36,10 @@ class _ReplayPageState extends State<ReplayPage> {
   Timer? _timer;
 
   ChanConfig _config = const ChanConfig();
-  String _tdxMarket = 'SZ';
-  String _tdxPeriod = 'DAILY';
-  String _tdxAdjust = 'QFQ';
-  int _tdxCount = 500;
+  String _market = 'SZ';
+  String _period = 'DAILY';
+  String _adjust = 'QFQ';
+  int _count = 500;
   String _dataSourceLabel = '示例CSV';
 
   @override
@@ -53,8 +51,7 @@ class _ReplayPageState extends State<ReplayPage> {
   @override
   void dispose() {
     _timer?.cancel();
-    _tdxBaseUrlController.dispose();
-    _tdxCodeController.dispose();
+    _stockCodeController.dispose();
     super.dispose();
   }
 
@@ -80,44 +77,42 @@ class _ReplayPageState extends State<ReplayPage> {
     });
   }
 
-  Future<void> _loadEasyTdx() async {
-    final baseUrl = _tdxBaseUrlController.text.trim();
-    final code = _tdxCodeController.text.trim();
-    if (baseUrl.isEmpty || code.isEmpty) {
+  Future<void> _loadEastmoney() async {
+    final code = _stockCodeController.text.trim();
+    if (code.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写 EasyTDX 服务地址和股票代码')),
+        const SnackBar(content: Text('请填写股票代码')),
       );
       return;
     }
 
     setState(() => _loadingRemote = true);
-    final source = EasyTdxProxySource(baseUrl: baseUrl);
+    final source = EastmoneyKlineSource();
     try {
       final bars = await source.loadKline(
-        market: _tdxMarket,
+        market: _market,
         code: code,
-        period: _tdxPeriod,
-        adjust: _tdxAdjust,
-        count: _tdxCount,
+        period: _period,
+        adjust: _adjust,
+        count: _count,
       );
       if (!mounted) return;
       if (bars.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('EasyTDX 未返回有效K线数据')),
+          const SnackBar(content: Text('未返回有效K线数据')),
         );
         return;
       }
       setState(() {
         _applyBars(
           bars,
-          sourceLabel:
-              'EasyTDX $_tdxMarket$code $_tdxPeriod $_tdxAdjust ${bars.length}根',
+          sourceLabel: '东方财富 $_market$code $_period $_adjust ${bars.length}根',
         );
       });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('EasyTDX 加载失败：$e')),
+        SnackBar(content: Text('行情加载失败：$e')),
       );
     } finally {
       source.close();
@@ -198,10 +193,10 @@ class _ReplayPageState extends State<ReplayPage> {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) {
-        var market = _tdxMarket;
-        var period = _tdxPeriod;
-        var adjust = _tdxAdjust;
-        var count = _tdxCount;
+        var market = _market;
+        var period = _period;
+        var adjust = _adjust;
+        var count = _count;
         return StatefulBuilder(
           builder: (context, setSheetState) {
             return SafeArea(
@@ -221,14 +216,7 @@ class _ReplayPageState extends State<ReplayPage> {
                           style: TextStyle(
                               fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
-                      TextField(
-                        controller: _tdxBaseUrlController,
-                        decoration: const InputDecoration(
-                          labelText: 'EasyTDX HTTP 服务地址',
-                          hintText: 'http://电脑IP:8765',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
+                      const Text('当前使用 App 内直连数据源：东方财富历史K线'),
                       const SizedBox(height: 10),
                       Row(
                         children: [
@@ -250,7 +238,7 @@ class _ReplayPageState extends State<ReplayPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: TextField(
-                              controller: _tdxCodeController,
+                              controller: _stockCodeController,
                               keyboardType: TextInputType.number,
                               decoration: const InputDecoration(
                                 labelText: '代码',
@@ -323,7 +311,10 @@ class _ReplayPageState extends State<ReplayPage> {
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: _loadSample,
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _loadSample();
+                              },
                               icon: const Icon(Icons.dataset),
                               label: const Text('恢复示例CSV'),
                             ),
@@ -336,12 +327,12 @@ class _ReplayPageState extends State<ReplayPage> {
                                   : () {
                                       Navigator.pop(context);
                                       setState(() {
-                                        _tdxMarket = market;
-                                        _tdxPeriod = period;
-                                        _tdxAdjust = adjust;
-                                        _tdxCount = count;
+                                        _market = market;
+                                        _period = period;
+                                        _adjust = adjust;
+                                        _count = count;
                                       });
-                                      _loadEasyTdx();
+                                      _loadEastmoney();
                                     },
                               icon: _loadingRemote
                                   ? const SizedBox(
@@ -351,7 +342,7 @@ class _ReplayPageState extends State<ReplayPage> {
                                           strokeWidth: 2),
                                     )
                                   : const Icon(Icons.cloud_download),
-                              label: const Text('加载EasyTDX'),
+                              label: const Text('加载行情'),
                             ),
                           ),
                         ],
