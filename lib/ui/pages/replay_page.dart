@@ -35,6 +35,7 @@ class _ReplayPageState extends State<ReplayPage> {
   bool _showFx = true;
   bool _showFxLine = true;
   bool _showBi = true;
+  bool _showSeg = true;
   bool _showZs = true;
   bool _toolbarExpanded = true;
   bool _loadingRemote = false;
@@ -682,6 +683,12 @@ class _ReplayPageState extends State<ReplayPage> {
                 onPressed: () => setState(() => _showBi = !_showBi),
               ),
               _toolIcon(
+                tooltip: '显示线段',
+                icon: Icons.multiline_chart,
+                selected: _showSeg,
+                onPressed: () => setState(() => _showSeg = !_showSeg),
+              ),
+              _toolIcon(
                 tooltip: '显示中枢',
                 icon: Icons.crop_square,
                 selected: _showZs,
@@ -793,6 +800,7 @@ class _ReplayPageState extends State<ReplayPage> {
             showFx: _showFx,
             showFxLine: _showFxLine,
             showBi: _showBi,
+            showSeg: _showSeg,
             showZs: _showZs,
             windowSize: _windowSize,
             priceScale: _priceScale,
