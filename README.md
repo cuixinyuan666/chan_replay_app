@@ -2,7 +2,7 @@
 
 这是第一版 Flutter 安卓 MVP：
 
-- App 内直连历史 K 线数据源
+- App 内直连腾讯行情历史 K 线数据源
 - 本地 CSV 导入
 - 示例 K 线数据
 - 逐 K 前进 / 后退 / 播放
@@ -39,10 +39,10 @@ time,open,high,low,close,volume
 
 ## App 内直连行情数据源
 
-当前已弃用外部 Python 代理数据源，App 直接通过 HTTPS 请求历史 K 线数据，并转换为统一的 `RawBar`：
+当前默认使用腾讯行情历史 K 线接口。App 直接通过 HTTPS 请求历史 K 线数据，并转换为统一的 `RawBar`：
 
 ```text
-HTTPS K线接口 -> Flutter -> RawBar -> 缠论引擎
+腾讯行情 HTTPS K线接口 -> Flutter -> RawBar -> 缠论引擎
 ```
 
 点击顶部云同步图标，填写：
@@ -57,9 +57,24 @@ HTTPS K线接口 -> Flutter -> RawBar -> 缠论引擎
 
 如果接口返回空数据，优先检查市场选择是否正确，例如 `000001` 应选择 `SZ`，`600000` 应选择 `SH`。
 
+## 腾讯行情周期映射
+
+```text
+MIN1    -> m1
+MIN5    -> m5
+MIN15   -> m15
+MIN30   -> m30
+MIN60   -> m60
+DAILY   -> day
+WEEKLY  -> week
+MONTHLY -> month
+```
+
 ## 当前版本边界
 
 这是 v0.1 原型，重点验证“逐 K 复盘 + 缠论结构引擎”。暂未接实时行情、选股、自动交易、复杂背驰、多级别联动。
+
+分钟线一般不使用前复权/后复权参数；当前腾讯适配器会自动对分钟周期忽略复权参数，只对日线、周线、月线发送 `qfq/hfq`。
 
 ## 核心引擎位置
 
@@ -81,5 +96,8 @@ RawBar -> 包含关系处理 -> MergedBar -> FX -> BI -> ZS -> ChanSnapshot -> K
 
 ```text
 lib/data/csv_loader.dart
+lib/data/tencent_kline_source.dart
 lib/data/eastmoney_kline_source.dart
 ```
+
+`eastmoney_kline_source.dart` 暂时保留为备用源，当前页面默认调用 `tencent_kline_source.dart`。
