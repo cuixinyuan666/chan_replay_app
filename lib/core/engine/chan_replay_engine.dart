@@ -15,7 +15,7 @@ class ChanReplayEngine {
   final BiEngine _biEngine = BiEngine();
   final ZsEngine _zsEngine = ZsEngine();
 
-  ChanReplayEngine({ChanConfig? config}) : config = config ?? const ChanConfig();
+  ChanReplayEngine({ChanConfig? config}) : config = config ?? ChanConfig.chanPyDefault();
 
   void reset() => _rawBars.clear();
 
@@ -45,8 +45,8 @@ class ChanReplayEngine {
     final raw = List<RawBar>.unmodifiable(_rawBars);
     final merged = _includeProcessor.process(raw, enabled: config.enableInclude);
     final fxs = _fxEngine.detect(merged, config);
-    final bis = _biEngine.build(fxs, config);
-    final zss = config.allowOneBiZs ? _zsEngine.build(bis) : _zsEngine.build(bis);
+    final bis = _biEngine.build(fxs, config, mergedBars: merged);
+    final zss = _zsEngine.build(bis, config);
 
     return ChanSnapshot(
       rawBars: raw,
