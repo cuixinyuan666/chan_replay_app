@@ -1,46 +1,310 @@
+enum BiAlgo { normal, fx }
+
+enum BiFxCheck { strict, loss, half, totally }
+
+enum SegAlgo { chan, onePlusOne, breakAlgo }
+
+enum LeftSegMethod { peak, all }
+
+enum ZsCombineMode { zs, peak }
+
+enum ZsAlgo { normal, overSeg, auto }
+
+class ChanBiConfig {
+  /// 对齐 chan.py 的 bi_algo。normal 需要满足成笔跨度；fx 只按分型成笔。
+  final BiAlgo biAlgo;
+
+  /// 对齐 chan.py 的 bi_strict。strict 默认成笔跨度 >= 4。
+  final bool isStrict;
+
+  /// 对齐 chan.py 的 bi_fx_check：strict/loss/half/totally。
+  final BiFxCheck fxCheck;
+
+  /// 对齐 chan.py 的 gap_as_kl。当前 Flutter 引擎尚未实现跳空计数，先保留配置位。
+  final bool gapAsKl;
+
+  /// 对齐 chan.py 的 bi_end_is_peak。
+  final bool endIsPeak;
+
+  /// 对齐 chan.py 的 bi_allow_sub_peak。当前 Flutter 引擎尚未实现次高低点更新，先保留配置位。
+  final bool allowSubPeak;
+
+  /// Flutter 端可调跨度；null 时完全按 chan.py：strict=4，非 strict=3。
+  final int? minKlcSpan;
+
+  const ChanBiConfig({
+    this.biAlgo = BiAlgo.normal,
+    this.isStrict = true,
+    this.fxCheck = BiFxCheck.strict,
+    this.gapAsKl = false,
+    this.endIsPeak = true,
+    this.allowSubPeak = true,
+    this.minKlcSpan,
+  });
+
+  int get effectiveMinKlcSpan => minKlcSpan ?? (isStrict ? 4 : 3);
+
+  ChanBiConfig copyWith({
+    BiAlgo? biAlgo,
+    bool? isStrict,
+    BiFxCheck? fxCheck,
+    bool? gapAsKl,
+    bool? endIsPeak,
+    bool? allowSubPeak,
+    int? minKlcSpan,
+    bool clearMinKlcSpan = false,
+  }) {
+    return ChanBiConfig(
+      biAlgo: biAlgo ?? this.biAlgo,
+      isStrict: isStrict ?? this.isStrict,
+      fxCheck: fxCheck ?? this.fxCheck,
+      gapAsKl: gapAsKl ?? this.gapAsKl,
+      endIsPeak: endIsPeak ?? this.endIsPeak,
+      allowSubPeak: allowSubPeak ?? this.allowSubPeak,
+      minKlcSpan: clearMinKlcSpan ? null : minKlcSpan ?? this.minKlcSpan,
+    );
+  }
+
+  factory ChanBiConfig.fromChanPyDefaults() => const ChanBiConfig(
+        biAlgo: BiAlgo.normal,
+        isStrict: true,
+        fxCheck: BiFxCheck.strict,
+        gapAsKl: false,
+        endIsPeak: true,
+        allowSubPeak: true,
+        minKlcSpan: null,
+      );
+}
+
+class ChanSegConfig {
+  /// 对齐 chan.py 的 seg_algo。当前 Flutter 引擎尚未实现线段模块，先作为配置入口。
+  final SegAlgo segAlgo;
+
+  /// 对齐 chan.py 的 left_seg_method。
+  final LeftSegMethod leftMethod;
+
+  const ChanSegConfig({
+    this.segAlgo = SegAlgo.chan,
+    this.leftMethod = LeftSegMethod.peak,
+  });
+
+  ChanSegConfig copyWith({
+    SegAlgo? segAlgo,
+    LeftSegMethod? leftMethod,
+  }) {
+    return ChanSegConfig(
+      segAlgo: segAlgo ?? this.segAlgo,
+      leftMethod: leftMethod ?? this.leftMethod,
+    );
+  }
+
+  factory ChanSegConfig.fromChanPyDefaults() => const ChanSegConfig(
+        segAlgo: SegAlgo.chan,
+        leftMethod: LeftSegMethod.peak,
+      );
+}
+
+class ChanZsConfig {
+  /// 对齐 chan.py 的 zs_combine。
+  final bool needCombine;
+
+  /// 对齐 chan.py 的 zs_combine_mode。
+  final ZsCombineMode combineMode;
+
+  /// 对齐 chan.py 的 one_bi_zs。
+  final bool oneBiZs;
+
+  /// 对齐 chan.py 的 zs_algo。
+  final ZsAlgo zsAlgo;
+
+  /// Flutter 绘图层配置：只绘制确认中枢。
+  final bool onlyConfirmed;
+
+  const ChanZsConfig({
+    this.needCombine = true,
+    this.combineMode = ZsCombineMode.zs,
+    this.oneBiZs = false,
+    this.zsAlgo = ZsAlgo.normal,
+    this.onlyConfirmed = true,
+  });
+
+  ChanZsConfig copyWith({
+    bool? needCombine,
+    ZsCombineMode? combineMode,
+    bool? oneBiZs,
+    ZsAlgo? zsAlgo,
+    bool? onlyConfirmed,
+  }) {
+    return ChanZsConfig(
+      needCombine: needCombine ?? this.needCombine,
+      combineMode: combineMode ?? this.combineMode,
+      oneBiZs: oneBiZs ?? this.oneBiZs,
+      zsAlgo: zsAlgo ?? this.zsAlgo,
+      onlyConfirmed: onlyConfirmed ?? this.onlyConfirmed,
+    );
+  }
+
+  factory ChanZsConfig.fromChanPyDefaults() => const ChanZsConfig(
+        needCombine: true,
+        combineMode: ZsCombineMode.zs,
+        oneBiZs: false,
+        zsAlgo: ZsAlgo.normal,
+        onlyConfirmed: true,
+      );
+}
+
 class ChanConfig {
-  /// 是否处理包含关系。
+  /// 是否处理包含关系。chan.py 的 KLine_List 默认会做合并处理。
   final bool enableInclude;
 
-  /// 严格分型：顶分型要求高点和低点都抬高；底分型反之。
-  final bool strictFx;
+  final ChanBiConfig bi;
+  final ChanSegConfig seg;
+  final ChanZsConfig zs;
 
-  /// 成笔最小合并K线间隔。常见取值 3 / 4 / 5。
-  final int minKCountForBi;
+  /// 对齐 chan.py CChanConfig 的回放/校验类配置。
+  final bool triggerStep;
+  final int skipStep;
+  final bool klDataCheck;
+  final int maxKlMisalignCnt;
+  final int maxKlInconsistentCnt;
+  final bool autoSkipIllegalSubLv;
+  final bool printWarning;
+  final bool printErrTime;
 
-  /// 是否允许单笔中枢。v0.1 默认关闭。
-  final bool allowOneBiZs;
-
-  /// 是否允许跨线段中枢。v0.1 暂不做线段，默认关闭。
-  final bool allowCrossSegZs;
-
-  /// 仅绘制已确认中枢。
-  final bool onlyConfirmedZs;
+  /// 指标配置入口；当前 Flutter 引擎暂不计算 MACD/BOLL/RSI/KDJ，仅保留配置结构。
+  final List<int> meanMetrics;
+  final List<int> trendMetrics;
+  final int bollN;
+  final bool calDemark;
+  final bool calRsi;
+  final bool calKdj;
+  final int rsiCycle;
+  final int kdjCycle;
 
   const ChanConfig({
     this.enableInclude = true,
-    this.strictFx = true,
-    this.minKCountForBi = 4,
-    this.allowOneBiZs = false,
-    this.allowCrossSegZs = false,
-    this.onlyConfirmedZs = true,
+    this.bi = const ChanBiConfig(),
+    this.seg = const ChanSegConfig(),
+    this.zs = const ChanZsConfig(),
+    this.triggerStep = false,
+    this.skipStep = 0,
+    this.klDataCheck = true,
+    this.maxKlMisalignCnt = 2,
+    this.maxKlInconsistentCnt = 5,
+    this.autoSkipIllegalSubLv = false,
+    this.printWarning = true,
+    this.printErrTime = true,
+    this.meanMetrics = const [],
+    this.trendMetrics = const [],
+    this.bollN = 20,
+    this.calDemark = false,
+    this.calRsi = false,
+    this.calKdj = false,
+    this.rsiCycle = 14,
+    this.kdjCycle = 9,
   });
+
+  factory ChanConfig.chanPyDefault() => ChanConfig(
+        enableInclude: true,
+        bi: ChanBiConfig.fromChanPyDefaults(),
+        seg: ChanSegConfig.fromChanPyDefaults(),
+        zs: ChanZsConfig.fromChanPyDefaults(),
+        triggerStep: false,
+        skipStep: 0,
+        klDataCheck: true,
+        maxKlMisalignCnt: 2,
+        maxKlInconsistentCnt: 5,
+        autoSkipIllegalSubLv: false,
+        printWarning: true,
+        printErrTime: true,
+        meanMetrics: const [],
+        trendMetrics: const [],
+        bollN: 20,
+        calDemark: false,
+        calRsi: false,
+        calKdj: false,
+        rsiCycle: 14,
+        kdjCycle: 9,
+      );
+
+  /// 兼容旧 UI 字段：严格分型/严格成笔。
+  bool get strictFx => bi.isStrict;
+
+  /// 兼容旧 UI 字段：成笔跨度。
+  int get minKCountForBi => bi.effectiveMinKlcSpan;
+
+  /// 兼容旧 UI 字段。
+  bool get allowOneBiZs => zs.oneBiZs;
+
+  /// 当前没有完整线段模块，跨段中枢先映射到 zs_algo != normal。
+  bool get allowCrossSegZs => zs.zsAlgo != ZsAlgo.normal;
+
+  /// 兼容旧 UI 字段。
+  bool get onlyConfirmedZs => zs.onlyConfirmed;
 
   ChanConfig copyWith({
     bool? enableInclude,
+    ChanBiConfig? bi,
+    ChanSegConfig? seg,
+    ChanZsConfig? zs,
+    bool? triggerStep,
+    int? skipStep,
+    bool? klDataCheck,
+    int? maxKlMisalignCnt,
+    int? maxKlInconsistentCnt,
+    bool? autoSkipIllegalSubLv,
+    bool? printWarning,
+    bool? printErrTime,
+    List<int>? meanMetrics,
+    List<int>? trendMetrics,
+    int? bollN,
+    bool? calDemark,
+    bool? calRsi,
+    bool? calKdj,
+    int? rsiCycle,
+    int? kdjCycle,
+
+    // 旧 UI 兼容参数。
     bool? strictFx,
     int? minKCountForBi,
     bool? allowOneBiZs,
     bool? allowCrossSegZs,
     bool? onlyConfirmedZs,
   }) {
+    var nextBi = bi ?? this.bi;
+    if (strictFx != null) nextBi = nextBi.copyWith(isStrict: strictFx);
+    if (minKCountForBi != null) {
+      nextBi = nextBi.copyWith(minKlcSpan: minKCountForBi);
+    }
+
+    var nextZs = zs ?? this.zs;
+    if (allowOneBiZs != null) nextZs = nextZs.copyWith(oneBiZs: allowOneBiZs);
+    if (onlyConfirmedZs != null) nextZs = nextZs.copyWith(onlyConfirmed: onlyConfirmedZs);
+    if (allowCrossSegZs != null) {
+      nextZs = nextZs.copyWith(zsAlgo: allowCrossSegZs ? ZsAlgo.overSeg : ZsAlgo.normal);
+    }
+
     return ChanConfig(
       enableInclude: enableInclude ?? this.enableInclude,
-      strictFx: strictFx ?? this.strictFx,
-      minKCountForBi: minKCountForBi ?? this.minKCountForBi,
-      allowOneBiZs: allowOneBiZs ?? this.allowOneBiZs,
-      allowCrossSegZs: allowCrossSegZs ?? this.allowCrossSegZs,
-      onlyConfirmedZs: onlyConfirmedZs ?? this.onlyConfirmedZs,
+      bi: nextBi,
+      seg: seg ?? this.seg,
+      zs: nextZs,
+      triggerStep: triggerStep ?? this.triggerStep,
+      skipStep: skipStep ?? this.skipStep,
+      klDataCheck: klDataCheck ?? this.klDataCheck,
+      maxKlMisalignCnt: maxKlMisalignCnt ?? this.maxKlMisalignCnt,
+      maxKlInconsistentCnt: maxKlInconsistentCnt ?? this.maxKlInconsistentCnt,
+      autoSkipIllegalSubLv: autoSkipIllegalSubLv ?? this.autoSkipIllegalSubLv,
+      printWarning: printWarning ?? this.printWarning,
+      printErrTime: printErrTime ?? this.printErrTime,
+      meanMetrics: meanMetrics ?? this.meanMetrics,
+      trendMetrics: trendMetrics ?? this.trendMetrics,
+      bollN: bollN ?? this.bollN,
+      calDemark: calDemark ?? this.calDemark,
+      calRsi: calRsi ?? this.calRsi,
+      calKdj: calKdj ?? this.calKdj,
+      rsiCycle: rsiCycle ?? this.rsiCycle,
+      kdjCycle: kdjCycle ?? this.kdjCycle,
     );
   }
 }
