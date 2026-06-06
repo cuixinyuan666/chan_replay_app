@@ -8,9 +8,10 @@ import '../../core/models/raw_bar.dart';
 class KlineChart extends StatefulWidget {
   final ChanSnapshot snapshot;
   final bool showFx;
-  final bool showBi;
-  final bool showZs;
   final bool showFxLine;
+  final bool showBi;
+  final bool showSeg;
+  final bool showZs;
   final int windowSize;
   final double priceScale;
   final int? viewEndIndex;
@@ -24,9 +25,10 @@ class KlineChart extends StatefulWidget {
     super.key,
     required this.snapshot,
     required this.showFx,
-    required this.showBi,
-    required this.showZs,
     this.showFxLine = true,
+    required this.showBi,
+    required this.showSeg,
+    required this.showZs,
     required this.windowSize,
     this.priceScale = 1.0,
     this.viewEndIndex,
@@ -74,10 +76,10 @@ class _KlineChartState extends State<KlineChart> {
               return;
             }
 
-            // 单指纵向拖动更接近 TradingView 价格轴缩放：上拖放大，下拖缩小。
             if (details.pointerCount == 1 && details.focalPointDelta.dy.abs() > 1.5) {
               final factor = 1 + (-details.focalPointDelta.dy / 240.0);
-              final nextPrice = (widget.priceScale * factor).clamp(0.35, 5.0).toDouble();
+              final nextPrice =
+                  (widget.priceScale * factor).clamp(0.35, 5.0).toDouble();
               widget.onPriceScaleChanged?.call(nextPrice);
             }
 
@@ -94,9 +96,10 @@ class _KlineChartState extends State<KlineChart> {
             painter: KlinePainter(
               snapshot: widget.snapshot,
               showFx: widget.showFx,
-              showBi: widget.showBi,
-              showZs: widget.showZs,
               showFxLine: widget.showFxLine,
+              showBi: widget.showBi,
+              showSeg: widget.showSeg,
+              showZs: widget.showZs,
               windowSize: widget.windowSize,
               priceScale: widget.priceScale,
               viewEndIndex: widget.viewEndIndex,
@@ -157,9 +160,10 @@ class _VisibleMeta {
 class KlinePainter extends CustomPainter {
   final ChanSnapshot snapshot;
   final bool showFx;
-  final bool showBi;
-  final bool showZs;
   final bool showFxLine;
+  final bool showBi;
+  final bool showSeg;
+  final bool showZs;
   final int windowSize;
   final double priceScale;
   final int? viewEndIndex;
@@ -168,9 +172,10 @@ class KlinePainter extends CustomPainter {
   KlinePainter({
     required this.snapshot,
     required this.showFx,
-    required this.showBi,
-    required this.showZs,
     required this.showFxLine,
+    required this.showBi,
+    required this.showSeg,
+    required this.showZs,
     required this.windowSize,
     required this.priceScale,
     this.viewEndIndex,
@@ -241,6 +246,9 @@ class KlinePainter extends CustomPainter {
     }
     if (showBi) {
       _drawBi(canvas, chartRect, startIndex, endIndex, rawToX, priceToY);
+    }
+    if (showSeg) {
+      _drawSeg(canvas, chartRect, startIndex, endIndex, rawToX, priceToY);
     }
     if (showFx) {
       _drawFx(canvas, chartRect, startIndex, endIndex, rawToX, priceToY);
@@ -408,7 +416,7 @@ class KlinePainter extends CustomPainter {
   ) {
     final paint = Paint()
       ..color = const Color(0xFFE53935)
-      ..strokeWidth = 1.8;
+      ..strokeWidth = 1.45;
     for (final bi in snapshot.bis) {
       if (bi.endRawIndex < startRaw || bi.startRawIndex > endRaw) continue;
       final x1 = rawToX(bi.startRawIndex).clamp(rect.left, rect.right).toDouble();
@@ -416,6 +424,39 @@ class KlinePainter extends CustomPainter {
       final y1 = priceToY(bi.startPrice).clamp(rect.top, rect.bottom).toDouble();
       final y2 = priceToY(bi.endPrice).clamp(rect.top, rect.bottom).toDouble();
       canvas.drawLine(Offset(x1, y1), Offset(x2, y2), paint);
+    }
+  }
+
+  void _drawSeg(
+    Canvas canvas,
+    Rect rect,
+    int startRaw,
+    int endRaw,
+    double Function(int) rawToX,
+    double Function(double) priceToY,
+  ) {
+    for (final seg in snapshot.segs) {
+      if (seg.endRawIndex < startRaw || seg.startRawIndex > endRaw) continue;
+      final paint = Paint()
+        ..color = (seg.isSure ? const Color(0xFF00E676) : const Color(0xFFB2FF59))
+            .withValues(alpha: seg.isSure ? 0.92 : 0.62)
+        ..strokeWidth = seg.isSure ? 2.6 : 1.6
+        ..style = PaintingStyle.stroke;
+      if (!seg.isSure) {
+        paint.strokeCap = StrokeCap.round;
+      }
+      final x1 = rawToX(seg.startRawIndex).clamp(rect.left, rect.right).toDouble();
+      final x2 = rawToX(seg.endRawIndex).clamp(rect.left, rect.right).toDouble();
+      final y1 = priceToY(seg.startPrice).clamp(rect.top, rect.bottom).toDouble();
+      final y2 = priceToY(seg.endPrice).clamp(rect.top, rect.bottom).toDouble();
+      canvas.drawLine(Offset(x1, y1), Offset(x2, y2), paint);
+      _drawText(
+        canvas,
+        'S${seg.index + 1}${seg.isSure ? '' : '?'}',
+        Offset(x2 - 14, y2 + (seg.isUp ? -20 : 8)),
+        10,
+        Colors.white70,
+      );
     }
   }
 
@@ -550,7 +591,7 @@ class KlinePainter extends CustomPainter {
   void _drawHeader(Canvas canvas, Size size, DateTime time, int count,
       ChanSnapshot snapshot) {
     final text =
-        'K:$count  合并:${snapshot.mergedBars.length}  分型:${snapshot.fxs.length}  笔:${snapshot.bis.length}  中枢:${snapshot.zss.length}  ${_fmtDate(time)}';
+        'K:$count  合并:${snapshot.mergedBars.length}  分型:${snapshot.fxs.length}  笔:${snapshot.bis.length}  段:${snapshot.segs.length}  中枢:${snapshot.zss.length}  ${_fmtDate(time)}';
     _drawText(canvas, text, const Offset(8, 4), 12, Colors.white70);
   }
 
@@ -573,9 +614,10 @@ class KlinePainter extends CustomPainter {
   bool shouldRepaint(covariant KlinePainter oldDelegate) {
     return oldDelegate.snapshot != snapshot ||
         oldDelegate.showFx != showFx ||
-        oldDelegate.showBi != showBi ||
-        oldDelegate.showZs != showZs ||
         oldDelegate.showFxLine != showFxLine ||
+        oldDelegate.showBi != showBi ||
+        oldDelegate.showSeg != showSeg ||
+        oldDelegate.showZs != showZs ||
         oldDelegate.windowSize != windowSize ||
         oldDelegate.priceScale != priceScale ||
         oldDelegate.viewEndIndex != viewEndIndex ||
