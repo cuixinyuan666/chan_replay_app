@@ -1,9 +1,10 @@
 import 'chan_config.dart';
-import '../models/fx.dart';
 import '../models/bi.dart';
+import '../models/fx.dart';
+import '../models/merged_bar.dart';
 
 class BiEngine {
-  List<BI> build(List<FX> fxs, ChanConfig config) {
+  List<BI> build(List<FX> fxs, ChanConfig config, {List<MergedBar> mergedBars = const []}) {
     if (fxs.length < 2) return [];
 
     final points = <FX>[];
@@ -15,15 +16,13 @@ class BiEngine {
 
       final last = points.last;
       if (last.type == fx.type) {
-        // 连续同类分型，保留更极端的那个。
+        // chan.py 中同向分型会更新笔尾，这里保留更极端的同类分型。
         final replace = fx.isTop ? fx.price >= last.price : fx.price <= last.price;
         if (replace) points[points.length - 1] = fx;
         continue;
       }
 
-      final enoughDistance = (fx.index - last.index).abs() >= config.minKCountForBi;
-      if (!enoughDistance) {
-        // 距离不足，不成笔；继续等待后续更合适的反向分型。
+      if (!_canMakeBi(last, fx, config, mergedBars)) {
         continue;
       }
 
@@ -42,4 +41,117 @@ class BiEngine {
     }
     return bis;
   }
+
+  bool _canMakeBi(FX start, FX end, ChanConfig config, List<MergedBar> mergedBars) {
+    final biConf = config.bi;
+
+    if (biConf.biAlgo != BiAlgo.fx) {
+      final span = (end.index - start.index).abs();
+      if (span < biConf.effectiveMinKlcSpan) return false;
+    }
+
+    if (!_checkFxValid(start, end, biConf.fxCheck)) return false;
+
+    if (biConf.endIsPeak && !_endIsPeak(start, end, mergedBars)) return false;
+
+    return true;
+  }
+
+  bool _checkFxValid(FX start, FX end, BiFxCheck method) {
+    if (start.isTop && end.isBottom) {
+      final item2High = _endHighForCheck(end, method);
+      final selfLow = _startLowForCheck(start, method);
+      if (method == BiFxCheck.totally) {
+        return start.center.low > item2High;
+      }
+      return start.center.high > item2High && end.center.low < selfLow;
+    }
+
+    if (start.isBottom && end.isTop) {
+      final item2Low = _endLowForCheck(end, method);
+      final selfHigh = _startHighForCheck(start, method);
+      if (method == BiFxCheck.totally) {
+        return start.center.high < item2Low;
+      }
+      return start.center.low < item2Low && end.center.high > selfHigh;
+    }
+
+    return false;
+  }
+
+  double _endHighForCheck(FX end, BiFxCheck method) {
+    switch (method) {
+      case BiFxCheck.loss:
+        return end.center.high;
+      case BiFxCheck.half:
+        return _max(end.left.high, end.center.high);
+      case BiFxCheck.strict:
+      case BiFxCheck.totally:
+        return _max(_max(end.left.high, end.center.high), end.right.high);
+    }
+  }
+
+  double _endLowForCheck(FX end, BiFxCheck method) {
+    switch (method) {
+      case BiFxCheck.loss:
+        return end.center.low;
+      case BiFxCheck.half:
+        return _min(end.left.low, end.center.low);
+      case BiFxCheck.strict:
+      case BiFxCheck.totally:
+        return _min(_min(end.left.low, end.center.low), end.right.low);
+    }
+  }
+
+  double _startLowForCheck(FX start, BiFxCheck method) {
+    switch (method) {
+      case BiFxCheck.loss:
+        return start.center.low;
+      case BiFxCheck.half:
+        return _min(start.center.low, start.right.low);
+      case BiFxCheck.strict:
+      case BiFxCheck.totally:
+        return _min(_min(start.left.low, start.center.low), start.right.low);
+    }
+  }
+
+  double _startHighForCheck(FX start, BiFxCheck method) {
+    switch (method) {
+      case BiFxCheck.loss:
+        return start.center.high;
+      case BiFxCheck.half:
+        return _max(start.center.high, start.right.high);
+      case BiFxCheck.strict:
+      case BiFxCheck.totally:
+        return _max(_max(start.left.high, start.center.high), start.right.high);
+    }
+  }
+
+  bool _endIsPeak(FX start, FX end, List<MergedBar> mergedBars) {
+    if (mergedBars.isEmpty) return true;
+    final from = start.index + 1;
+    final to = end.index - 1;
+    if (from > to) return true;
+
+    if (start.isBottom && end.isTop) {
+      for (final bar in mergedBars) {
+        if (bar.index < from || bar.index > to) continue;
+        if (bar.high > end.center.high) return false;
+      }
+      return true;
+    }
+
+    if (start.isTop && end.isBottom) {
+      for (final bar in mergedBars) {
+        if (bar.index < from || bar.index > to) continue;
+        if (bar.low < end.center.low) return false;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  double _max(double a, double b) => a >= b ? a : b;
+  double _min(double a, double b) => a <= b ? a : b;
 }
