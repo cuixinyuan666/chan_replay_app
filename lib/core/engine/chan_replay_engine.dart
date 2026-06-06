@@ -49,7 +49,7 @@ class ChanReplayEngine {
     final fxs = _fxEngine.detect(merged, config);
     final bis = _biEngine.build(fxs, config, mergedBars: merged);
     final segs = _segEngine.build(bis, config);
-    final zss = _zsEngine.build(bis, config);
+    final zss = _zsEngine.build(bis, config, segs: segs);
 
     return ChanSnapshot(
       rawBars: raw,
