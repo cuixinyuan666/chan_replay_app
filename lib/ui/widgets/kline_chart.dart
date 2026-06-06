@@ -59,7 +59,7 @@ class _KlineChartState extends State<KlineChart> {
             if (widget.snapshot.rawBars.isEmpty) return;
             if ((details.scale - 1).abs() > 0.03) {
               final base = _scaleStartWindow ?? widget.windowSize;
-              final next = (base / details.scale).round().clamp(30, 260);
+              final next = (base / details.scale).round().clamp(30, 260).toInt();
               if (next != widget.windowSize) {
                 widget.onWindowSizeChanged?.call(next);
               }
@@ -97,7 +97,9 @@ class _KlineChartState extends State<KlineChart> {
     if (meta == null) return;
     if (!meta.chartRect.contains(localPosition)) return;
     final local = ((localPosition.dx - meta.chartRect.left) / meta.step).floor();
-    final rawIndex = (meta.startIndex + local).clamp(meta.startIndex, meta.endIndex);
+    final rawIndex = (meta.startIndex + local)
+        .clamp(meta.startIndex, meta.endIndex)
+        .toInt();
     widget.onCrosshairChanged?.call(rawIndex);
   }
 
@@ -106,9 +108,11 @@ class _KlineChartState extends State<KlineChart> {
     if (bars.isEmpty || size.width <= 0 || size.height <= 0) return null;
 
     final chartRect = KlinePainter.chartRectFor(size);
-    final endIndex = (widget.viewEndIndex ?? bars.length - 1).clamp(0, bars.length - 1);
-    final startIndex = math.max(0, endIndex - widget.windowSize + 1);
-    final count = math.max(1, endIndex - startIndex + 1);
+    final endIndex = (widget.viewEndIndex ?? bars.length - 1)
+        .clamp(0, bars.length - 1)
+        .toInt();
+    final startIndex = math.max(0, endIndex - widget.windowSize + 1).toInt();
+    final count = math.max(1, endIndex - startIndex + 1).toInt();
     final step = chartRect.width / count;
     return _VisibleMeta(
       chartRect: chartRect,
@@ -161,8 +165,8 @@ class KlinePainter extends CustomPainter {
     return Rect.fromLTWH(
       _leftPad,
       _topPad,
-      math.max(0, size.width - _leftPad - _rightPad),
-      math.max(0, size.height - _topPad - _bottomPad),
+      math.max(0.0, size.width - _leftPad - _rightPad),
+      math.max(0.0, size.height - _topPad - _bottomPad),
     );
   }
 
@@ -174,8 +178,10 @@ class KlinePainter extends CustomPainter {
       return;
     }
 
-    final endIndex = (viewEndIndex ?? bars.length - 1).clamp(0, bars.length - 1);
-    final startIndex = math.max(0, endIndex - windowSize + 1);
+    final endIndex = (viewEndIndex ?? bars.length - 1)
+        .clamp(0, bars.length - 1)
+        .toInt();
+    final startIndex = math.max(0, endIndex - windowSize + 1).toInt();
     final visible = bars.sublist(startIndex, endIndex + 1);
     final chartRect = chartRectFor(size);
     if (chartRect.width <= 0 || chartRect.height <= 0) return;
@@ -193,7 +199,7 @@ class KlinePainter extends CustomPainter {
     }
 
     final count = visible.length;
-    final step = chartRect.width / math.max(1, count);
+    final step = chartRect.width / math.max(1, count).toDouble();
     double rawToX(int rawIndex) {
       final local = rawIndex - startIndex;
       return chartRect.left + (local + 0.5) * step;
@@ -338,12 +344,11 @@ class KlinePainter extends CustomPainter {
       ..strokeWidth = 1.8;
     for (final bi in snapshot.bis) {
       if (bi.endRawIndex < startRaw || bi.startRawIndex > endRaw) continue;
-      final x1 = rawToX(bi.startRawIndex).clamp(rect.left, rect.right);
-      final x2 = rawToX(bi.endRawIndex).clamp(rect.left, rect.right);
-      final y1 = priceToY(bi.startPrice).clamp(rect.top, rect.bottom);
-      final y2 = priceToY(bi.endPrice).clamp(rect.top, rect.bottom);
-      canvas.drawLine(Offset(x1.toDouble(), y1.toDouble()),
-          Offset(x2.toDouble(), y2.toDouble()), paint);
+      final x1 = rawToX(bi.startRawIndex).clamp(rect.left, rect.right).toDouble();
+      final x2 = rawToX(bi.endRawIndex).clamp(rect.left, rect.right).toDouble();
+      final y1 = priceToY(bi.startPrice).clamp(rect.top, rect.bottom).toDouble();
+      final y2 = priceToY(bi.endPrice).clamp(rect.top, rect.bottom).toDouble();
+      canvas.drawLine(Offset(x1, y1), Offset(x2, y2), paint);
     }
   }
 
@@ -365,10 +370,10 @@ class KlinePainter extends CustomPainter {
 
     for (final zs in snapshot.zss) {
       if (zs.endRawIndex < startRaw || zs.startRawIndex > endRaw) continue;
-      final left = rawToX(math.max(zs.startRawIndex, startRaw))
+      final left = rawToX(math.max(zs.startRawIndex, startRaw).toInt())
           .clamp(rect.left, rect.right)
           .toDouble();
-      final right = rawToX(math.min(zs.endRawIndex, endRaw))
+      final right = rawToX(math.min(zs.endRawIndex, endRaw).toInt())
           .clamp(rect.left, rect.right)
           .toDouble();
       final top = priceToY(zs.zg).clamp(rect.top, rect.bottom).toDouble();
@@ -408,7 +413,7 @@ class KlinePainter extends CustomPainter {
     final labelPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.10)
       ..strokeWidth = 1;
-    final n = math.min(4, visible.length - 1);
+    final n = math.min(4, visible.length - 1).toInt();
     if (n <= 0) return;
     for (var i = 0; i <= n; i++) {
       final idx = (i * (visible.length - 1) / n).round();
