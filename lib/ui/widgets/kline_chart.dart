@@ -43,7 +43,6 @@ class KlineChart extends StatefulWidget {
 
 class _KlineChartState extends State<KlineChart> {
   int? _scaleStartWindow;
-  double? _scaleStartPrice;
   double _panRemainder = 0;
 
   @override
@@ -60,7 +59,6 @@ class _KlineChartState extends State<KlineChart> {
               _updateCrosshair(details.localPosition, size),
           onScaleStart: (_) {
             _scaleStartWindow = widget.windowSize;
-            _scaleStartPrice = widget.priceScale;
             _panRemainder = 0;
           },
           onScaleUpdate: (details) {
@@ -78,9 +76,8 @@ class _KlineChartState extends State<KlineChart> {
 
             // 单指纵向拖动更接近 TradingView 价格轴缩放：上拖放大，下拖缩小。
             if (details.pointerCount == 1 && details.focalPointDelta.dy.abs() > 1.5) {
-              final basePrice = _scaleStartPrice ?? widget.priceScale;
               final factor = 1 + (-details.focalPointDelta.dy / 240.0);
-              final nextPrice = (basePrice * factor).clamp(0.35, 5.0).toDouble();
+              final nextPrice = (widget.priceScale * factor).clamp(0.35, 5.0).toDouble();
               widget.onPriceScaleChanged?.call(nextPrice);
             }
 
