@@ -3,7 +3,7 @@
 
     <application
         android:label="chan_replay_app"
-        android:name="\${applicationName}"
+        android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
