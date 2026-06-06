@@ -8,7 +8,7 @@ import '../../core/engine/chan_replay_engine.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../core/models/raw_bar.dart';
 import '../../data/csv_loader.dart';
-import '../../data/eastmoney_kline_source.dart';
+import '../../data/tencent_kline_source.dart';
 import '../widgets/kline_chart.dart';
 import '../widgets/replay_controller_bar.dart';
 
@@ -79,7 +79,7 @@ class _ReplayPageState extends State<ReplayPage> {
     });
   }
 
-  Future<void> _loadEastmoney() async {
+  Future<void> _loadTencent() async {
     final code = _stockCodeController.text.trim();
     if (code.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -89,7 +89,7 @@ class _ReplayPageState extends State<ReplayPage> {
     }
 
     setState(() => _loadingRemote = true);
-    final source = EastmoneyKlineSource();
+    final source = TencentKlineSource();
     try {
       final bars = await source.loadKline(
         market: _market,
@@ -101,20 +101,20 @@ class _ReplayPageState extends State<ReplayPage> {
       if (!mounted) return;
       if (bars.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('未返回有效K线数据')),
+          const SnackBar(content: Text('腾讯行情未返回有效K线数据')),
         );
         return;
       }
       setState(() {
         _applyBars(
           bars,
-          sourceLabel: '东方财富 $_market$code $_period $_adjust ${bars.length}根',
+          sourceLabel: '腾讯行情 $_market$code $_period $_adjust ${bars.length}根',
         );
       });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('行情加载失败：$e')),
+        SnackBar(content: Text('腾讯行情加载失败：$e')),
       );
     } finally {
       source.close();
@@ -269,7 +269,7 @@ class _ReplayPageState extends State<ReplayPage> {
                           style: TextStyle(
                               fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
-                      const Text('当前使用 App 内直连数据源：东方财富历史K线'),
+                      const Text('当前使用 App 内直连数据源：腾讯行情历史K线'),
                       const SizedBox(height: 10),
                       Row(
                         children: [
@@ -385,7 +385,7 @@ class _ReplayPageState extends State<ReplayPage> {
                                         _adjust = adjust;
                                         _count = count;
                                       });
-                                      _loadEastmoney();
+                                      _loadTencent();
                                     },
                               icon: _loadingRemote
                                   ? const SizedBox(
@@ -557,7 +557,7 @@ class _ReplayPageState extends State<ReplayPage> {
                 selected: _period == item,
                 onTap: () {
                   setState(() => _period = item);
-                  _loadEastmoney();
+                  _loadTencent();
                 },
               ),
             ),
