@@ -7,8 +7,8 @@
 - 示例 K 线数据
 - 逐 K 前进 / 后退 / 播放
 - 自绘 K 线图
-- 自动识别包含关系、分型、笔、中枢
-- 显示 / 隐藏分型、笔、中枢
+- 自动识别包含关系、分型、笔、线段、中枢
+- 显示 / 隐藏分型、分型连线、笔、线段、中枢
 - 配置层按 `Vespa314/chan.py` 的 `CChanConfig / CBiConfig / CSegConfig / CZSConfig` 结构对齐
 
 ## 运行方式
@@ -53,7 +53,7 @@ time,open,high,low,close,volume
 - 复权：`QFQ/HFQ/NONE`
 - K线数量：100 到 2000 根
 
-加载成功后，标题栏会显示当前数据源，并用同一套缠论引擎重新计算分型、笔、中枢。
+加载成功后，标题栏会显示当前数据源，并用同一套缠论引擎重新计算分型、笔、线段、中枢。
 
 如果接口返回空数据，优先检查市场选择是否正确，例如 `000001` 应选择 `SZ`，`600000` 应选择 `SH`。
 
@@ -112,6 +112,8 @@ bi.biAlgo
 bi.isStrict
 bi.fxCheck
 bi.endIsPeak
+seg.segAlgo
+seg.leftMethod
 zs.needCombine
 zs.combineMode
 zs.oneBiZs
@@ -119,13 +121,23 @@ zs.zsAlgo
 zs.onlyConfirmed
 ```
 
+线段模块当前实现状态：
+
+```text
+SEG model          已加入
+SegEngine          已加入
+ChanSnapshot.segs  已加入
+图表线段显示        已加入
+左工具栏线段开关    已加入
+```
+
 暂未完整实现但已保留配置位：
 
 ```text
 bi.gapAsKl
 bi.allowSubPeak
-seg.segAlgo
-seg.leftMethod
+chan.py 完整 EigenFX 特征序列分型
+线段内中枢 / 跨段中枢完整生命周期
 MACD / BOLL / Demark / RSI / KDJ 指标配置
 多级别联立
 买卖点 BSP
@@ -144,13 +156,14 @@ lib/core/engine/chan_replay_engine.dart
 lib/core/engine/include_processor.dart
 lib/core/engine/fx_engine.dart
 lib/core/engine/bi_engine.dart
+lib/core/engine/seg_engine.dart
 lib/core/engine/zs_engine.dart
 ```
 
 计算链路：
 
 ```text
-RawBar -> 包含关系处理 -> MergedBar -> FX -> BI -> ZS -> ChanSnapshot -> KlinePainter绘图
+RawBar -> 包含关系处理 -> MergedBar -> FX -> BI -> SEG -> ZS -> ChanSnapshot -> KlinePainter绘图
 ```
 
 ## 数据源适配位置
