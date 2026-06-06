@@ -10,12 +10,15 @@ class KlineChart extends StatefulWidget {
   final bool showFx;
   final bool showBi;
   final bool showZs;
+  final bool showFxLine;
   final int windowSize;
+  final double priceScale;
   final int? viewEndIndex;
   final int? crosshairIndex;
   final ValueChanged<int>? onCrosshairChanged;
   final ValueChanged<int>? onPanBars;
   final ValueChanged<int>? onWindowSizeChanged;
+  final ValueChanged<double>? onPriceScaleChanged;
 
   const KlineChart({
     super.key,
@@ -23,12 +26,15 @@ class KlineChart extends StatefulWidget {
     required this.showFx,
     required this.showBi,
     required this.showZs,
+    this.showFxLine = true,
     required this.windowSize,
+    this.priceScale = 1.0,
     this.viewEndIndex,
     this.crosshairIndex,
     this.onCrosshairChanged,
     this.onPanBars,
     this.onWindowSizeChanged,
+    this.onPriceScaleChanged,
   });
 
   @override
@@ -37,6 +43,7 @@ class KlineChart extends StatefulWidget {
 
 class _KlineChartState extends State<KlineChart> {
   int? _scaleStartWindow;
+  double? _scaleStartPrice;
   double _panRemainder = 0;
 
   @override
@@ -53,17 +60,28 @@ class _KlineChartState extends State<KlineChart> {
               _updateCrosshair(details.localPosition, size),
           onScaleStart: (_) {
             _scaleStartWindow = widget.windowSize;
+            _scaleStartPrice = widget.priceScale;
             _panRemainder = 0;
           },
           onScaleUpdate: (details) {
             if (widget.snapshot.rawBars.isEmpty) return;
+
             if ((details.scale - 1).abs() > 0.03) {
-              final base = _scaleStartWindow ?? widget.windowSize;
-              final next = (base / details.scale).round().clamp(30, 260).toInt();
-              if (next != widget.windowSize) {
-                widget.onWindowSizeChanged?.call(next);
+              final baseWindow = _scaleStartWindow ?? widget.windowSize;
+              final nextWindow =
+                  (baseWindow / details.scale).round().clamp(24, 360).toInt();
+              if (nextWindow != widget.windowSize) {
+                widget.onWindowSizeChanged?.call(nextWindow);
               }
               return;
+            }
+
+            // 单指纵向拖动更接近 TradingView 价格轴缩放：上拖放大，下拖缩小。
+            if (details.pointerCount == 1 && details.focalPointDelta.dy.abs() > 1.5) {
+              final basePrice = _scaleStartPrice ?? widget.priceScale;
+              final factor = 1 + (-details.focalPointDelta.dy / 240.0);
+              final nextPrice = (basePrice * factor).clamp(0.35, 5.0).toDouble();
+              widget.onPriceScaleChanged?.call(nextPrice);
             }
 
             final visible = _visibleMeta(size);
@@ -81,7 +99,9 @@ class _KlineChartState extends State<KlineChart> {
               showFx: widget.showFx,
               showBi: widget.showBi,
               showZs: widget.showZs,
+              showFxLine: widget.showFxLine,
               windowSize: widget.windowSize,
+              priceScale: widget.priceScale,
               viewEndIndex: widget.viewEndIndex,
               crosshairIndex: widget.crosshairIndex,
             ),
@@ -142,7 +162,9 @@ class KlinePainter extends CustomPainter {
   final bool showFx;
   final bool showBi;
   final bool showZs;
+  final bool showFxLine;
   final int windowSize;
+  final double priceScale;
   final int? viewEndIndex;
   final int? crosshairIndex;
 
@@ -151,15 +173,17 @@ class KlinePainter extends CustomPainter {
     required this.showFx,
     required this.showBi,
     required this.showZs,
+    required this.showFxLine,
     required this.windowSize,
+    required this.priceScale,
     this.viewEndIndex,
     this.crosshairIndex,
   });
 
-  static const double _topPad = 24;
-  static const double _bottomPad = 28;
-  static const double _leftPad = 8;
-  static const double _rightPad = 62;
+  static const double _topPad = 22;
+  static const double _bottomPad = 24;
+  static const double _leftPad = 4;
+  static const double _rightPad = 4;
 
   static Rect chartRectFor(Size size) {
     return Rect.fromLTWH(
@@ -188,9 +212,12 @@ class KlinePainter extends CustomPainter {
 
     final low = visible.map((e) => e.low).reduce(math.min);
     final high = visible.map((e) => e.high).reduce(math.max);
-    final padding = math.max((high - low) * 0.08, high.abs() * 0.001);
-    final minPrice = low - padding;
-    final maxPrice = high + padding;
+    final center = (high + low) / 2;
+    final rawRange = math.max(high - low, high.abs() * 0.002);
+    final scaledRange = rawRange / priceScale.clamp(0.35, 5.0).toDouble();
+    final padding = math.max(scaledRange * 0.08, high.abs() * 0.001);
+    final minPrice = center - scaledRange / 2 - padding;
+    final maxPrice = center + scaledRange / 2 + padding;
 
     double priceToY(double price) {
       if ((maxPrice - minPrice).abs() < 1e-9) return chartRect.center.dy;
@@ -211,6 +238,9 @@ class KlinePainter extends CustomPainter {
 
     if (showZs) {
       _drawZs(canvas, chartRect, startIndex, endIndex, rawToX, priceToY);
+    }
+    if (showFxLine) {
+      _drawFxConnectLine(canvas, chartRect, startIndex, endIndex, rawToX, priceToY);
     }
     if (showBi) {
       _drawBi(canvas, chartRect, startIndex, endIndex, rawToX, priceToY);
@@ -254,7 +284,7 @@ class KlinePainter extends CustomPainter {
       ..color = Colors.white.withValues(alpha: 0.07)
       ..strokeWidth = 1;
     final borderPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.13)
+      ..color = Colors.white.withValues(alpha: 0.10)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
     canvas.drawRect(rect, borderPaint);
@@ -263,8 +293,14 @@ class KlinePainter extends CustomPainter {
       final y = rect.top + rect.height / 5 * i;
       canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), gridPaint);
       final price = maxPrice - (maxPrice - minPrice) / 5 * i;
-      _drawText(canvas, price.toStringAsFixed(2), Offset(rect.right + 6, y - 8),
-          11, Colors.white54);
+      _drawPricePill(
+        canvas,
+        rect,
+        y,
+        price.toStringAsFixed(2),
+        background: const Color(0xAA0B0D10),
+        color: Colors.white54,
+      );
     }
 
     for (var i = 1; i < 5; i++) {
@@ -292,10 +328,10 @@ class KlinePainter extends CustomPainter {
       final paint = isUp ? upPaint : downPaint;
       wickPaint.color = paint.color;
 
-      final highY = priceToY(bar.high);
-      final lowY = priceToY(bar.low);
-      final openY = priceToY(bar.open);
-      final closeY = priceToY(bar.close);
+      final highY = priceToY(bar.high).clamp(rect.top, rect.bottom).toDouble();
+      final lowY = priceToY(bar.low).clamp(rect.top, rect.bottom).toDouble();
+      final openY = priceToY(bar.open).clamp(rect.top, rect.bottom).toDouble();
+      final closeY = priceToY(bar.close).clamp(rect.top, rect.bottom).toDouble();
       canvas.drawLine(Offset(x, highY), Offset(x, lowY), wickPaint);
 
       final top = math.min(openY, closeY);
@@ -310,6 +346,40 @@ class KlinePainter extends CustomPainter {
     }
   }
 
+  void _drawFxConnectLine(
+    Canvas canvas,
+    Rect rect,
+    int startRaw,
+    int endRaw,
+    double Function(int) rawToX,
+    double Function(double) priceToY,
+  ) {
+    final visibleFx = snapshot.fxs
+        .where((fx) => fx.rawIndex >= startRaw && fx.rawIndex <= endRaw)
+        .toList()
+      ..sort((a, b) => a.rawIndex.compareTo(b.rawIndex));
+    if (visibleFx.length < 2) return;
+
+    final paint = Paint()
+      ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.46)
+      ..strokeWidth = 1.15
+      ..style = PaintingStyle.stroke;
+
+    final path = Path();
+    var started = false;
+    for (final fx in visibleFx) {
+      final x = rawToX(fx.rawIndex).clamp(rect.left, rect.right).toDouble();
+      final y = priceToY(fx.price).clamp(rect.top, rect.bottom).toDouble();
+      if (!started) {
+        path.moveTo(x, y);
+        started = true;
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(path, paint);
+  }
+
   void _drawFx(
     Canvas canvas,
     Rect rect,
@@ -322,8 +392,8 @@ class KlinePainter extends CustomPainter {
     final bottomPaint = Paint()..color = const Color(0xFF42A5F5);
     for (final fx in snapshot.fxs) {
       if (fx.rawIndex < startRaw || fx.rawIndex > endRaw) continue;
-      final x = rawToX(fx.rawIndex);
-      final y = priceToY(fx.price);
+      final x = rawToX(fx.rawIndex).clamp(rect.left, rect.right).toDouble();
+      final y = priceToY(fx.price).clamp(rect.top, rect.bottom).toDouble();
       final paint = fx.type == FxType.top ? topPaint : bottomPaint;
       canvas.drawCircle(Offset(x, y), 4, paint);
       _drawText(canvas, fx.type == FxType.top ? '顶' : '底',
@@ -398,14 +468,38 @@ class KlinePainter extends CustomPainter {
       ..color = Colors.white.withValues(alpha: 0.22)
       ..strokeWidth = 1;
     canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), linePaint);
+    _drawPricePill(
+      canvas,
+      rect,
+      y,
+      close.toStringAsFixed(2),
+      background: const Color(0xFF2962FF),
+      color: Colors.white,
+    );
+  }
 
-    final labelRect = Rect.fromLTWH(rect.right + 2, y - 10, 56, 20);
+  void _drawPricePill(
+    Canvas canvas,
+    Rect rect,
+    double centerY,
+    String text, {
+    required Color background,
+    required Color color,
+  }) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: TextStyle(color: color, fontSize: 11)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final w = math.max(48.0, tp.width + 8);
+    final h = 18.0;
+    final left = rect.right - w - 2;
+    final top = (centerY - h / 2).clamp(rect.top + 1, rect.bottom - h - 1).toDouble();
+    final labelRect = Rect.fromLTWH(left, top, w, h);
     canvas.drawRRect(
       RRect.fromRectAndRadius(labelRect, const Radius.circular(3)),
-      Paint()..color = const Color(0xFF2962FF),
+      Paint()..color = background,
     );
-    _drawText(canvas, close.toStringAsFixed(2), Offset(labelRect.left + 4, y - 7),
-        11, Colors.white);
+    tp.paint(canvas, Offset(labelRect.left + 4, labelRect.top + 2.5));
   }
 
   void _drawTimeAxis(Canvas canvas, Rect rect, List<RawBar> visible, double step) {
@@ -460,7 +554,7 @@ class KlinePainter extends CustomPainter {
       ChanSnapshot snapshot) {
     final text =
         'K:$count  合并:${snapshot.mergedBars.length}  分型:${snapshot.fxs.length}  笔:${snapshot.bis.length}  中枢:${snapshot.zss.length}  ${_fmtDate(time)}';
-    _drawText(canvas, text, const Offset(10, 4), 12, Colors.white70);
+    _drawText(canvas, text, const Offset(8, 4), 12, Colors.white70);
   }
 
   void _drawText(
@@ -484,7 +578,9 @@ class KlinePainter extends CustomPainter {
         oldDelegate.showFx != showFx ||
         oldDelegate.showBi != showBi ||
         oldDelegate.showZs != showZs ||
+        oldDelegate.showFxLine != showFxLine ||
         oldDelegate.windowSize != windowSize ||
+        oldDelegate.priceScale != priceScale ||
         oldDelegate.viewEndIndex != viewEndIndex ||
         oldDelegate.crosshairIndex != crosshairIndex;
   }
