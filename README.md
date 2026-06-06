@@ -136,12 +136,23 @@ ChanSnapshot.segs  已加入
 左工具栏线段开关    已加入
 ```
 
+中枢模块当前实现状态：
+
+```text
+ZS model 线段字段         已加入
+ZsEngine 线段感知计算      已加入
+zs_algo = normal          按 SEG 内部 biList 计算，不默认跨段
+zs_algo = overSeg         按全局笔列表计算，允许跨段
+zs_algo = auto            优先线段内中枢，无结果时退回全局笔列表
+zs_combine_mode = zs/peak 已接入
+```
+
 暂未完整实现但已保留配置位：
 
 ```text
 bi.gapAsKl
 bi.allowSubPeak
-线段内中枢 / 跨段中枢完整生命周期
+线段中枢的完整生命周期回滚
 MACD / BOLL / Demark / RSI / KDJ 指标配置
 多级别联立
 买卖点 BSP
