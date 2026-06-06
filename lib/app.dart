@@ -11,8 +11,26 @@ class ChanReplayApp extends StatelessWidget {
       title: '缠论K线复盘',
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3367D6), brightness: Brightness.dark),
-        scaffoldBackgroundColor: const Color(0xFF101216),
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2962FF),
+          brightness: Brightness.dark,
+          surface: const Color(0xFF131722),
+        ),
+        scaffoldBackgroundColor: const Color(0xFF0B0D10),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF131722),
+          foregroundColor: Colors.white,
+        ),
+        sliderTheme: const SliderThemeData(
+          activeTrackColor: Color(0xFF2962FF),
+          thumbColor: Color(0xFF2962FF),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF0B0D10),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        ),
       ),
       home: const ReplayPage(),
     );
