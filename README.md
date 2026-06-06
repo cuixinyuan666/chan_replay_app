@@ -9,7 +9,7 @@
 - 自绘 K 线图
 - 自动识别包含关系、分型、笔、中枢
 - 显示 / 隐藏分型、笔、中枢
-- 可调整引擎参数：包含关系、严格分型、成笔最小K线间隔、单笔中枢开关
+- 配置层按 `Vespa314/chan.py` 的 `CChanConfig / CBiConfig / CSegConfig / CZSConfig` 结构对齐
 
 ## 运行方式
 
@@ -70,11 +70,72 @@ WEEKLY  -> week
 MONTHLY -> month
 ```
 
+## chan.py 兼容配置
+
+配置入口：
+
+```text
+lib/core/engine/chan_config.dart
+```
+
+当前配置结构：
+
+```text
+ChanConfig
+├── ChanBiConfig   -> 对齐 CBiConfig
+├── ChanSegConfig  -> 对齐 CSegConfig
+└── ChanZsConfig   -> 对齐 CZSConfig
+```
+
+默认值按 chan.py 的 `CChanConfig` 对齐：
+
+```text
+bi_algo           = normal
+bi_strict         = true
+bi_fx_check       = strict
+gap_as_kl         = false
+bi_end_is_peak    = true
+bi_allow_sub_peak = true
+seg_algo          = chan
+left_seg_method   = peak
+zs_combine        = true
+zs_combine_mode   = zs
+one_bi_zs         = false
+zs_algo           = normal
+```
+
+已接入当前 Flutter 引擎的配置：
+
+```text
+enableInclude
+bi.biAlgo
+bi.isStrict
+bi.fxCheck
+bi.endIsPeak
+zs.needCombine
+zs.combineMode
+zs.oneBiZs
+zs.zsAlgo
+zs.onlyConfirmed
+```
+
+暂未完整实现但已保留配置位：
+
+```text
+bi.gapAsKl
+bi.allowSubPeak
+seg.segAlgo
+seg.leftMethod
+MACD / BOLL / Demark / RSI / KDJ 指标配置
+多级别联立
+买卖点 BSP
+```
+
 ## 当前版本边界
 
 这是 v0.1 原型，重点验证“逐 K 复盘 + 缠论结构引擎”。暂未接实时行情、选股、自动交易、复杂背驰、多级别联动。
 
-分钟线一般不使用前复权/后复权参数；当前腾讯适配器会自动对分钟周期忽略复权参数，只对日线、周线、月线发送 `qfq/hfq`。
+分钟线一般不使用前复权/后复权参数；当前腾讯适配器会自动对分钟周期使用分钟线请求格式，只对日线、周线、月线发送 `qfq/hfq`。
 
 ## 核心引擎位置
 
