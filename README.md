@@ -126,6 +126,11 @@ zs.onlyConfirmed
 ```text
 SEG model          已加入
 SegEngine          已加入
+EigenFX 特征序列    已加入
+特征元素包含合并    已加入
+特征序列分型确认    已加入
+实际突破检查        已加入
+尾部未确认线段收集  已加入
 ChanSnapshot.segs  已加入
 图表线段显示        已加入
 左工具栏线段开关    已加入
@@ -136,7 +141,6 @@ ChanSnapshot.segs  已加入
 ```text
 bi.gapAsKl
 bi.allowSubPeak
-chan.py 完整 EigenFX 特征序列分型
 线段内中枢 / 跨段中枢完整生命周期
 MACD / BOLL / Demark / RSI / KDJ 指标配置
 多级别联立
