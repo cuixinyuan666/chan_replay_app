@@ -28,16 +28,19 @@ class _ReplayPageState extends State<ReplayPage> {
   ChanSnapshot _snapshot = ChanSnapshot.empty();
   int _cursor = 0;
   int _windowSize = 90;
+  double _priceScale = 1.0;
   int? _viewEndIndex;
   int? _crosshairIndex;
   bool _playing = false;
   bool _showFx = true;
+  bool _showFxLine = true;
   bool _showBi = true;
   bool _showZs = true;
+  bool _toolbarExpanded = true;
   bool _loadingRemote = false;
   Timer? _timer;
 
-  ChanConfig _config = const ChanConfig();
+  ChanConfig _config = ChanConfig.chanPyDefault();
   String _market = 'SZ';
   String _period = 'DAILY';
   String _adjust = 'QFQ';
@@ -129,6 +132,7 @@ class _ReplayPageState extends State<ReplayPage> {
     _dataSourceLabel = sourceLabel;
     _viewEndIndex = null;
     _crosshairIndex = null;
+    _priceScale = 1.0;
     _rebuildSnapshot();
   }
 
@@ -150,6 +154,7 @@ class _ReplayPageState extends State<ReplayPage> {
       _cursor = math.min(30, _allBars.length).toInt();
       _viewEndIndex = null;
       _crosshairIndex = null;
+      _priceScale = 1.0;
       _rebuildSnapshot();
     });
   }
@@ -219,9 +224,23 @@ class _ReplayPageState extends State<ReplayPage> {
   }
 
   void _changeWindowSize(int next) {
-    final value = next.clamp(30, 260).toInt();
+    final value = next.clamp(24, 360).toInt();
     if (value == _windowSize) return;
     setState(() => _windowSize = value);
+  }
+
+  void _changePriceScale(double next) {
+    final value = next.clamp(0.35, 5.0).toDouble();
+    if ((value - _priceScale).abs() < 0.001) return;
+    setState(() => _priceScale = value);
+  }
+
+  void _resetChartZoom() {
+    setState(() {
+      _windowSize = 90;
+      _priceScale = 1.0;
+      _viewEndIndex = null;
+    });
   }
 
   void _goToLatest() {
@@ -229,14 +248,6 @@ class _ReplayPageState extends State<ReplayPage> {
       _viewEndIndex = null;
       _crosshairIndex = null;
     });
-  }
-
-  RawBar? get _activeBar {
-    final bars = _snapshot.rawBars;
-    if (bars.isEmpty) return null;
-    final cross = _crosshairIndex;
-    if (cross != null && cross >= 0 && cross < bars.length) return bars[cross];
-    return bars.last;
   }
 
   void _openDataSourcePanel() {
@@ -436,8 +447,8 @@ class _ReplayPageState extends State<ReplayPage> {
                           () => temp = temp.copyWith(enableInclude: v)),
                     ),
                     SwitchListTile(
-                      title: const Text('严格分型'),
-                      subtitle: const Text('顶分型要求高点、低点同时抬高；底分型反之'),
+                      title: const Text('严格分型/严格成笔'),
+                      subtitle: const Text('映射到 chan.py bi_strict'),
                       value: temp.strictFx,
                       onChanged: (v) => setSheetState(
                           () => temp = temp.copyWith(strictFx: v)),
@@ -457,7 +468,7 @@ class _ReplayPageState extends State<ReplayPage> {
                     ),
                     SwitchListTile(
                       title: const Text('允许单笔中枢'),
-                      subtitle: const Text('建议关闭；第一版默认只显示三笔及以上重叠中枢'),
+                      subtitle: const Text('映射到 chan.py one_bi_zs'),
                       value: temp.allowOneBiZs,
                       onChanged: (v) => setSheetState(
                           () => temp = temp.copyWith(allowOneBiZs: v)),
@@ -502,33 +513,27 @@ class _ReplayPageState extends State<ReplayPage> {
           title: _buildTopToolbar(context),
         ),
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final showRightPanel = constraints.maxWidth >= 760;
-          return Row(
-            children: [
-              _buildLeftToolbar(),
-              Expanded(
-                child: Column(
-                  children: [
-                    Expanded(child: _buildChartPanel()),
-                    ReplayControllerBar(
-                      playing: _playing,
-                      cursor: _cursor,
-                      total: _allBars.length,
-                      onReset: _reset,
-                      onStepBack: _stepBack,
-                      onStepForward: _stepForward,
-                      onTogglePlay: _togglePlay,
-                      onSliderChanged: (v) => _jumpTo(v.round()),
-                    ),
-                  ],
+      body: Row(
+        children: [
+          _buildLeftToolbar(),
+          Expanded(
+            child: Column(
+              children: [
+                Expanded(child: _buildChartPanel()),
+                ReplayControllerBar(
+                  playing: _playing,
+                  cursor: _cursor,
+                  total: _allBars.length,
+                  onReset: _reset,
+                  onStepBack: _stepBack,
+                  onStepForward: _stepForward,
+                  onTogglePlay: _togglePlay,
+                  onSliderChanged: (v) => _jumpTo(v.round()),
                 ),
-              ),
-              if (showRightPanel) _buildRightPanel(),
-            ],
-          );
-        },
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -636,8 +641,10 @@ class _ReplayPageState extends State<ReplayPage> {
   }
 
   Widget _buildLeftToolbar() {
-    return Container(
-      width: 48,
+    final width = _toolbarExpanded ? 48.0 : 28.0;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      width: width,
       decoration: BoxDecoration(
         color: const Color(0xFF131722),
         border: Border(right: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
@@ -646,55 +653,101 @@ class _ReplayPageState extends State<ReplayPage> {
         top: false,
         child: Column(
           children: [
-            const SizedBox(height: 8),
-            _toolIcon(
-              tooltip: '十字光标',
-              icon: Icons.add,
-              selected: _crosshairIndex != null,
-              onPressed: () => setState(() => _crosshairIndex = null),
-            ),
-            _toolIcon(
-              tooltip: '显示分型',
-              icon: Icons.trip_origin,
-              selected: _showFx,
-              onPressed: () => setState(() => _showFx = !_showFx),
-            ),
-            _toolIcon(
-              tooltip: '显示笔',
-              icon: Icons.show_chart,
-              selected: _showBi,
-              onPressed: () => setState(() => _showBi = !_showBi),
-            ),
-            _toolIcon(
-              tooltip: '显示中枢',
-              icon: Icons.crop_square,
-              selected: _showZs,
-              onPressed: () => setState(() => _showZs = !_showZs),
-            ),
-            const Divider(height: 18, color: Colors.white12),
-            _toolIcon(
-              tooltip: '放大',
-              icon: Icons.zoom_in,
-              onPressed: () => _changeWindowSize(_windowSize - 15),
-            ),
-            _toolIcon(
-              tooltip: '缩小',
-              icon: Icons.zoom_out,
-              onPressed: () => _changeWindowSize(_windowSize + 15),
-            ),
-            _toolIcon(
-              tooltip: '回到最新K线',
-              icon: Icons.my_location,
-              onPressed: _goToLatest,
-            ),
-            const Spacer(),
-            _toolIcon(
-              tooltip: '引擎参数',
-              icon: Icons.tune,
-              onPressed: _openSettings,
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
+            _arrowToggle(),
+            if (_toolbarExpanded) ...[
+              const Divider(height: 12, color: Colors.white12),
+              _toolIcon(
+                tooltip: '十字光标',
+                icon: Icons.add,
+                selected: _crosshairIndex != null,
+                onPressed: () => setState(() => _crosshairIndex = null),
+              ),
+              _toolIcon(
+                tooltip: '显示分型顶底',
+                icon: Icons.trip_origin,
+                selected: _showFx,
+                onPressed: () => setState(() => _showFx = !_showFx),
+              ),
+              _toolIcon(
+                tooltip: '显示分型顶底连线',
+                icon: Icons.timeline,
+                selected: _showFxLine,
+                onPressed: () => setState(() => _showFxLine = !_showFxLine),
+              ),
+              _toolIcon(
+                tooltip: '显示笔',
+                icon: Icons.show_chart,
+                selected: _showBi,
+                onPressed: () => setState(() => _showBi = !_showBi),
+              ),
+              _toolIcon(
+                tooltip: '显示中枢',
+                icon: Icons.crop_square,
+                selected: _showZs,
+                onPressed: () => setState(() => _showZs = !_showZs),
+              ),
+              const Divider(height: 18, color: Colors.white12),
+              _toolIcon(
+                tooltip: '左右放大：减少可见K线数量',
+                icon: Icons.zoom_in,
+                onPressed: () => _changeWindowSize(_windowSize - 15),
+              ),
+              _toolIcon(
+                tooltip: '左右缩小：增加可见K线数量',
+                icon: Icons.zoom_out,
+                onPressed: () => _changeWindowSize(_windowSize + 15),
+              ),
+              _toolIcon(
+                tooltip: '上下放大：压缩价格区间',
+                icon: Icons.keyboard_arrow_up,
+                onPressed: () => _changePriceScale(_priceScale * 1.18),
+              ),
+              _toolIcon(
+                tooltip: '上下缩小：放大价格区间',
+                icon: Icons.keyboard_arrow_down,
+                onPressed: () => _changePriceScale(_priceScale / 1.18),
+              ),
+              _toolIcon(
+                tooltip: '重置缩放',
+                icon: Icons.center_focus_strong,
+                onPressed: _resetChartZoom,
+              ),
+              _toolIcon(
+                tooltip: '回到最新K线',
+                icon: Icons.my_location,
+                onPressed: _goToLatest,
+              ),
+              const Spacer(),
+              _toolIcon(
+                tooltip: '引擎参数',
+                icon: Icons.tune,
+                onPressed: _openSettings,
+              ),
+              const SizedBox(height: 8),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _arrowToggle() {
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: () => setState(() => _toolbarExpanded = !_toolbarExpanded),
+      child: SizedBox(
+        width: _toolbarExpanded ? 36 : 24,
+        height: 30,
+        child: Center(
+          child: Text(
+            _toolbarExpanded ? '<-' : '->',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
       ),
     );
@@ -726,7 +779,7 @@ class _ReplayPageState extends State<ReplayPage> {
 
   Widget _buildChartPanel() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: DecoratedBox(
@@ -738,108 +791,19 @@ class _ReplayPageState extends State<ReplayPage> {
           child: KlineChart(
             snapshot: _snapshot,
             showFx: _showFx,
+            showFxLine: _showFxLine,
             showBi: _showBi,
             showZs: _showZs,
             windowSize: _windowSize,
+            priceScale: _priceScale,
             viewEndIndex: _viewEndIndex,
             crosshairIndex: _crosshairIndex,
             onCrosshairChanged: (i) => setState(() => _crosshairIndex = i),
             onPanBars: _panChartByBars,
             onWindowSizeChanged: _changeWindowSize,
+            onPriceScaleChanged: _changePriceScale,
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildRightPanel() {
-    final bar = _activeBar;
-    return Container(
-      width: 230,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF131722),
-        border: Border(left: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('观察列表',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            _watchRow('$_market:${_stockCodeController.text.trim()}', _period,
-                selected: true),
-            _watchRow('SZ:000001', '日线'),
-            _watchRow('SH:600000', '日线'),
-            const SizedBox(height: 16),
-            const Text('缠论结构',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            _kv('K线', '${_snapshot.rawBars.length}/${_allBars.length}'),
-            _kv('合并K线', '${_snapshot.mergedBars.length}'),
-            _kv('分型', '${_snapshot.fxs.length}'),
-            _kv('笔', '${_snapshot.bis.length}'),
-            _kv('中枢', '${_snapshot.zss.length}'),
-            _kv('视窗', '$_windowSize 根'),
-            const SizedBox(height: 16),
-            const Text('OHLCV',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            if (bar == null)
-              const Text('暂无数据', style: TextStyle(color: Colors.white54))
-            else ...[
-              _kv('时间', _fmtDate(bar.time)),
-              _kv('开', bar.open.toStringAsFixed(2)),
-              _kv('高', bar.high.toStringAsFixed(2)),
-              _kv('低', bar.low.toStringAsFixed(2)),
-              _kv('收', bar.close.toStringAsFixed(2)),
-              _kv('量', bar.volume.toStringAsFixed(0)),
-            ],
-            const Spacer(),
-            Text(
-              _dataSourceLabel,
-              style: const TextStyle(color: Colors.white38, fontSize: 11),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _watchRow(String symbol, String sub, {bool selected = false}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: selected ? const Color(0xFF1E3A8A) : const Color(0xFF0B0D10),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(symbol,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-          ),
-          Text(sub, style: const TextStyle(fontSize: 11, color: Colors.white54)),
-        ],
-      ),
-    );
-  }
-
-  Widget _kv(String key, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: [
-          Expanded(
-              child: Text(key,
-                  style: const TextStyle(color: Colors.white54, fontSize: 12))),
-          Text(value,
-              style: const TextStyle(color: Colors.white, fontSize: 12)),
-        ],
       ),
     );
   }
@@ -878,10 +842,5 @@ class _ReplayPageState extends State<ReplayPage> {
       default:
         return adjust;
     }
-  }
-
-  String _fmtDate(DateTime d) {
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${d.year}-${two(d.month)}-${two(d.day)}';
   }
 }
