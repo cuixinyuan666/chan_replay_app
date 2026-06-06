@@ -10,25 +10,21 @@ class ZsEngine {
     switch (config.zs.zsAlgo) {
       case ZsAlgo.normal:
         if (segs.isNotEmpty) {
-          return _buildInsideSegs(segs, config, allowAcrossSeg: false);
+          return _buildInsideSegs(segs, config);
         }
         return _buildOnBis(bis, config, startSegIndex: null, endSegIndex: null);
       case ZsAlgo.overSeg:
         return _buildOnBis(bis, config, startSegIndex: null, endSegIndex: null);
       case ZsAlgo.auto:
         if (segs.isNotEmpty) {
-          final inSeg = _buildInsideSegs(segs, config, allowAcrossSeg: false);
+          final inSeg = _buildInsideSegs(segs, config);
           if (inSeg.isNotEmpty) return inSeg;
         }
         return _buildOnBis(bis, config, startSegIndex: null, endSegIndex: null);
     }
   }
 
-  List<ZS> _buildInsideSegs(
-    List<SEG> segs,
-    ChanConfig config, {
-    required bool allowAcrossSeg,
-  }) {
+  List<ZS> _buildInsideSegs(List<SEG> segs, ChanConfig config) {
     final all = <ZS>[];
     for (final seg in segs) {
       final bis = seg.biList;
