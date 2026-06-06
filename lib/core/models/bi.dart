@@ -22,4 +22,5 @@ class BI {
   double get high => startPrice > endPrice ? startPrice : endPrice;
   double get low => startPrice < endPrice ? startPrice : endPrice;
   bool get isUp => direction == BiDirection.up;
+  bool get isDown => direction == BiDirection.down;
 }
