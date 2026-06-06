@@ -1,15 +1,61 @@
 import 'chan_config.dart';
 import '../models/bi.dart';
+import '../models/seg.dart';
 import '../models/zs.dart';
 
 class ZsEngine {
-  List<ZS> build(List<BI> bis, ChanConfig config) {
+  List<ZS> build(List<BI> bis, ChanConfig config, {List<SEG> segs = const []}) {
     if (bis.isEmpty) return [];
 
-    final zss = <ZS>[];
+    switch (config.zs.zsAlgo) {
+      case ZsAlgo.normal:
+        if (segs.isNotEmpty) {
+          return _buildInsideSegs(segs, config, allowAcrossSeg: false);
+        }
+        return _buildOnBis(bis, config, startSegIndex: null, endSegIndex: null);
+      case ZsAlgo.overSeg:
+        return _buildOnBis(bis, config, startSegIndex: null, endSegIndex: null);
+      case ZsAlgo.auto:
+        if (segs.isNotEmpty) {
+          final inSeg = _buildInsideSegs(segs, config, allowAcrossSeg: false);
+          if (inSeg.isNotEmpty) return inSeg;
+        }
+        return _buildOnBis(bis, config, startSegIndex: null, endSegIndex: null);
+    }
+  }
+
+  List<ZS> _buildInsideSegs(
+    List<SEG> segs,
+    ChanConfig config, {
+    required bool allowAcrossSeg,
+  }) {
+    final all = <ZS>[];
+    for (final seg in segs) {
+      final bis = seg.biList;
+      if (bis.isEmpty) continue;
+      final zss = _buildOnBis(
+        bis,
+        config,
+        startSegIndex: seg.index,
+        endSegIndex: seg.index,
+        combineWithinWindow: config.zs.needCombine,
+      );
+      all.addAll(zss);
+    }
+    return _renumber(all);
+  }
+
+  List<ZS> _buildOnBis(
+    List<BI> bis,
+    ChanConfig config, {
+    required int? startSegIndex,
+    required int? endSegIndex,
+    bool? combineWithinWindow,
+  }) {
     final minCount = config.zs.oneBiZs ? 1 : 3;
     if (bis.length < minCount) return [];
 
+    final zss = <ZS>[];
     var i = 0;
     while (i <= bis.length - minCount) {
       final seed = bis.sublist(i, i + minCount);
@@ -25,7 +71,7 @@ class ZsEngine {
       var gg = base.gg;
       var dd = base.dd;
 
-      // 对齐 chan.py CZSList 的 normal 思路：中枢形成后，后续笔若仍在区间内则尝试延伸。
+      // 对齐 chan.py CZSList normal 思路：中枢形成后，后续笔若仍在区间内则尝试延伸。
       for (var j = end + 1; j < bis.length; j++) {
         final b = bis[j];
         final overlap = _hasOverlap(zg, zd, b.high, b.low, strict: true);
@@ -40,8 +86,8 @@ class ZsEngine {
 
       zss.add(ZS(
         index: zss.length,
-        startBiIndex: i,
-        endBiIndex: end,
+        startBiIndex: bis[i].index,
+        endBiIndex: bis[end].index,
         startRawIndex: bis[i].startRawIndex,
         endRawIndex: bis[end].endRawIndex,
         zg: zg,
@@ -49,12 +95,15 @@ class ZsEngine {
         gg: gg,
         dd: dd,
         confirmed: true,
+        startSegIndex: startSegIndex,
+        endSegIndex: endSegIndex,
       ));
 
       i = end + 1;
     }
 
-    if (!config.zs.needCombine) return zss;
+    final shouldCombine = combineWithinWindow ?? config.zs.needCombine;
+    if (!shouldCombine) return zss;
     return _combineZs(zss, config.zs.combineMode);
   }
 
@@ -104,23 +153,31 @@ class ZsEngine {
         gg: _max(last.gg, zs.gg),
         dd: _min(last.dd, zs.dd),
         confirmed: last.confirmed && zs.confirmed,
+        startSegIndex: last.startSegIndex,
+        endSegIndex: zs.endSegIndex,
       );
       result[result.length - 1] = merged;
     }
 
+    return _renumber(result);
+  }
+
+  List<ZS> _renumber(List<ZS> source) {
     return [
-      for (var i = 0; i < result.length; i++)
+      for (var i = 0; i < source.length; i++)
         ZS(
           index: i,
-          startBiIndex: result[i].startBiIndex,
-          endBiIndex: result[i].endBiIndex,
-          startRawIndex: result[i].startRawIndex,
-          endRawIndex: result[i].endRawIndex,
-          zg: result[i].zg,
-          zd: result[i].zd,
-          gg: result[i].gg,
-          dd: result[i].dd,
-          confirmed: result[i].confirmed,
+          startBiIndex: source[i].startBiIndex,
+          endBiIndex: source[i].endBiIndex,
+          startRawIndex: source[i].startRawIndex,
+          endRawIndex: source[i].endRawIndex,
+          zg: source[i].zg,
+          zd: source[i].zd,
+          gg: source[i].gg,
+          dd: source[i].dd,
+          confirmed: source[i].confirmed,
+          startSegIndex: source[i].startSegIndex,
+          endSegIndex: source[i].endSegIndex,
         ),
     ];
   }
