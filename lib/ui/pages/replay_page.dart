@@ -8,6 +8,7 @@ import '../../core/engine/chan_replay_engine.dart';
 import '../../core/models/raw_bar.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../data/csv_loader.dart';
+import '../../data/easy_tdx_proxy_source.dart';
 import '../widgets/kline_chart.dart';
 import '../widgets/replay_controller_bar.dart';
 
@@ -20,6 +21,11 @@ class ReplayPage extends StatefulWidget {
 
 class _ReplayPageState extends State<ReplayPage> {
   final ChanReplayEngine _engine = ChanReplayEngine();
+  final TextEditingController _tdxBaseUrlController =
+      TextEditingController(text: 'http://127.0.0.1:8765');
+  final TextEditingController _tdxCodeController =
+      TextEditingController(text: '000001');
+
   List<RawBar> _allBars = [];
   ChanSnapshot _snapshot = ChanSnapshot.empty();
   int _cursor = 0;
@@ -28,9 +34,15 @@ class _ReplayPageState extends State<ReplayPage> {
   bool _showFx = true;
   bool _showBi = true;
   bool _showZs = true;
+  bool _loadingRemote = false;
   Timer? _timer;
 
   ChanConfig _config = const ChanConfig();
+  String _tdxMarket = 'SZ';
+  String _tdxPeriod = 'DAILY';
+  String _tdxAdjust = 'QFQ';
+  int _tdxCount = 500;
+  String _dataSourceLabel = '示例CSV';
 
   @override
   void initState() {
@@ -41,6 +53,8 @@ class _ReplayPageState extends State<ReplayPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _tdxBaseUrlController.dispose();
+    _tdxCodeController.dispose();
     super.dispose();
   }
 
@@ -49,9 +63,7 @@ class _ReplayPageState extends State<ReplayPage> {
         await CsvLoader.loadFromAsset('assets/sample_data/000001_daily.csv');
     if (!mounted) return;
     setState(() {
-      _allBars = bars;
-      _cursor = math.min(120, bars.length);
-      _rebuildSnapshot();
+      _applyBars(bars, sourceLabel: '示例CSV');
     });
   }
 
@@ -64,11 +76,61 @@ class _ReplayPageState extends State<ReplayPage> {
       return;
     }
     setState(() {
-      _stopPlay();
-      _allBars = bars;
-      _cursor = math.min(120, bars.length);
-      _rebuildSnapshot();
+      _applyBars(bars, sourceLabel: '本地CSV');
     });
+  }
+
+  Future<void> _loadEasyTdx() async {
+    final baseUrl = _tdxBaseUrlController.text.trim();
+    final code = _tdxCodeController.text.trim();
+    if (baseUrl.isEmpty || code.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写 EasyTDX 服务地址和股票代码')),
+      );
+      return;
+    }
+
+    setState(() => _loadingRemote = true);
+    final source = EasyTdxProxySource(baseUrl: baseUrl);
+    try {
+      final bars = await source.loadKline(
+        market: _tdxMarket,
+        code: code,
+        period: _tdxPeriod,
+        adjust: _tdxAdjust,
+        count: _tdxCount,
+      );
+      if (!mounted) return;
+      if (bars.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('EasyTDX 未返回有效K线数据')),
+        );
+        return;
+      }
+      setState(() {
+        _applyBars(
+          bars,
+          sourceLabel:
+              'EasyTDX $_tdxMarket$code $_tdxPeriod $_tdxAdjust ${bars.length}根',
+        );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('EasyTDX 加载失败：$e')),
+      );
+    } finally {
+      source.close();
+      if (mounted) setState(() => _loadingRemote = false);
+    }
+  }
+
+  void _applyBars(List<RawBar> bars, {required String sourceLabel}) {
+    _stopPlay();
+    _allBars = bars;
+    _cursor = math.min(120, bars.length);
+    _dataSourceLabel = sourceLabel;
+    _rebuildSnapshot();
   }
 
   void _rebuildSnapshot() {
@@ -128,6 +190,181 @@ class _ReplayPageState extends State<ReplayPage> {
     _playing = false;
     _timer?.cancel();
     _timer = null;
+  }
+
+  void _openDataSourcePanel() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        var market = _tdxMarket;
+        var period = _tdxPeriod;
+        var adjust = _tdxAdjust;
+        var count = _tdxCount;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  16 + MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('数据源',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _tdxBaseUrlController,
+                        decoration: const InputDecoration(
+                          labelText: 'EasyTDX HTTP 服务地址',
+                          hintText: 'http://电脑IP:8765',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: market,
+                              decoration: const InputDecoration(
+                                labelText: '市场',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: const [
+                                DropdownMenuItem(value: 'SZ', child: Text('深市 SZ')),
+                                DropdownMenuItem(value: 'SH', child: Text('沪市 SH')),
+                              ],
+                              onChanged: (v) => setSheetState(
+                                  () => market = v ?? market),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: _tdxCodeController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: '代码',
+                                hintText: '000001',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: period,
+                              decoration: const InputDecoration(
+                                labelText: '周期',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: const [
+                                DropdownMenuItem(value: 'MIN1', child: Text('1分钟')),
+                                DropdownMenuItem(value: 'MIN5', child: Text('5分钟')),
+                                DropdownMenuItem(value: 'MIN15', child: Text('15分钟')),
+                                DropdownMenuItem(value: 'MIN30', child: Text('30分钟')),
+                                DropdownMenuItem(value: 'MIN60', child: Text('60分钟')),
+                                DropdownMenuItem(value: 'DAILY', child: Text('日线')),
+                                DropdownMenuItem(value: 'WEEKLY', child: Text('周线')),
+                                DropdownMenuItem(value: 'MONTHLY', child: Text('月线')),
+                              ],
+                              onChanged: (v) => setSheetState(
+                                  () => period = v ?? period),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: adjust,
+                              decoration: const InputDecoration(
+                                labelText: '复权',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: const [
+                                DropdownMenuItem(value: 'QFQ', child: Text('前复权')),
+                                DropdownMenuItem(value: 'HFQ', child: Text('后复权')),
+                                DropdownMenuItem(value: 'NONE', child: Text('不复权')),
+                              ],
+                              onChanged: (v) => setSheetState(
+                                  () => adjust = v ?? adjust),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('读取K线数量'),
+                        subtitle: Slider(
+                          min: 100,
+                          max: 2000,
+                          divisions: 19,
+                          label: '$count',
+                          value: count.toDouble().clamp(100, 2000),
+                          onChanged: (v) =>
+                              setSheetState(() => count = v.round()),
+                        ),
+                        trailing: Text('$count'),
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _loadSample,
+                              icon: const Icon(Icons.dataset),
+                              label: const Text('恢复示例CSV'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _loadingRemote
+                                  ? null
+                                  : () {
+                                      Navigator.pop(context);
+                                      setState(() {
+                                        _tdxMarket = market;
+                                        _tdxPeriod = period;
+                                        _tdxAdjust = adjust;
+                                        _tdxCount = count;
+                                      });
+                                      _loadEasyTdx();
+                                    },
+                              icon: _loadingRemote
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.cloud_download),
+                              label: const Text('加载EasyTDX'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _openSettings() {
@@ -210,7 +447,7 @@ class _ReplayPageState extends State<ReplayPage> {
   Widget build(BuildContext context) {
     final subtitle = _allBars.isEmpty
         ? '暂无数据'
-        : '当前：$_cursor/${_allBars.length}  分型:${_snapshot.fxs.length}  笔:${_snapshot.bis.length}  中枢:${_snapshot.zss.length}';
+        : '$_dataSourceLabel  当前：$_cursor/${_allBars.length}  分型:${_snapshot.fxs.length}  笔:${_snapshot.bis.length}  中枢:${_snapshot.zss.length}';
 
     return Scaffold(
       appBar: AppBar(
@@ -222,6 +459,11 @@ class _ReplayPageState extends State<ReplayPage> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: '数据源',
+            onPressed: _openDataSourcePanel,
+            icon: const Icon(Icons.cloud_sync),
+          ),
           IconButton(
             tooltip: '导入CSV',
             onPressed: _importCsv,
