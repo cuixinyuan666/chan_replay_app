@@ -6,17 +6,18 @@ class ChanReplayApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF2962FF),
+      brightness: Brightness.dark,
+    ).copyWith(surface: const Color(0xFF131722));
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '缠论K线复盘',
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2962FF),
-          brightness: Brightness.dark,
-          surface: const Color(0xFF131722),
-        ),
+        colorScheme: scheme,
         scaffoldBackgroundColor: const Color(0xFF0B0D10),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF131722),
