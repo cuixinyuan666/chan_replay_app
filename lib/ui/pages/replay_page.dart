@@ -125,7 +125,7 @@ class _ReplayPageState extends State<ReplayPage> {
   void _applyBars(List<RawBar> bars, {required String sourceLabel}) {
     _stopPlay();
     _allBars = bars;
-    _cursor = math.min(120, bars.length);
+    _cursor = math.min(120, bars.length).toInt();
     _dataSourceLabel = sourceLabel;
     _viewEndIndex = null;
     _crosshairIndex = null;
@@ -135,14 +135,19 @@ class _ReplayPageState extends State<ReplayPage> {
   void _rebuildSnapshot() {
     _engine.setConfig(_config);
     _snapshot = _engine.feedMany(_allBars.take(_cursor).toList());
-    _crosshairIndex = _crosshairIndex?.clamp(0, math.max(0, _snapshot.rawBars.length - 1));
-    _viewEndIndex = _viewEndIndex?.clamp(0, math.max(0, _snapshot.rawBars.length - 1));
+    final maxIndex = math.max(0, _snapshot.rawBars.length - 1).toInt();
+    _crosshairIndex = _crosshairIndex == null
+        ? null
+        : _crosshairIndex!.clamp(0, maxIndex).toInt();
+    _viewEndIndex = _viewEndIndex == null
+        ? null
+        : _viewEndIndex!.clamp(0, maxIndex).toInt();
   }
 
   void _reset() {
     setState(() {
       _stopPlay();
-      _cursor = math.min(30, _allBars.length);
+      _cursor = math.min(30, _allBars.length).toInt();
       _viewEndIndex = null;
       _crosshairIndex = null;
       _rebuildSnapshot();
@@ -165,14 +170,19 @@ class _ReplayPageState extends State<ReplayPage> {
     setState(() {
       _cursor -= 1;
       _snapshot = _engine.undo();
-      _crosshairIndex = _crosshairIndex?.clamp(0, math.max(0, _snapshot.rawBars.length - 1));
-      _viewEndIndex = _viewEndIndex?.clamp(0, math.max(0, _snapshot.rawBars.length - 1));
+      final maxIndex = math.max(0, _snapshot.rawBars.length - 1).toInt();
+      _crosshairIndex = _crosshairIndex == null
+          ? null
+          : _crosshairIndex!.clamp(0, maxIndex).toInt();
+      _viewEndIndex = _viewEndIndex == null
+          ? null
+          : _viewEndIndex!.clamp(0, maxIndex).toInt();
     });
   }
 
   void _jumpTo(int nextCursor) {
     setState(() {
-      _cursor = nextCursor.clamp(0, _allBars.length);
+      _cursor = nextCursor.clamp(0, _allBars.length).toInt();
       _viewEndIndex = null;
       _crosshairIndex = null;
       _rebuildSnapshot();
@@ -203,13 +213,13 @@ class _ReplayPageState extends State<ReplayPage> {
     if (bars == 0 || _snapshot.rawBars.isEmpty) return;
     final maxEnd = _snapshot.rawBars.length - 1;
     final current = _viewEndIndex ?? maxEnd;
-    final next = (current + bars).clamp(0, maxEnd);
+    final next = (current + bars).clamp(0, maxEnd).toInt();
     if (next == current) return;
     setState(() => _viewEndIndex = next);
   }
 
   void _changeWindowSize(int next) {
-    final value = next.clamp(30, 260);
+    final value = next.clamp(30, 260).toInt();
     if (value == _windowSize) return;
     setState(() => _windowSize = value);
   }
@@ -344,7 +354,7 @@ class _ReplayPageState extends State<ReplayPage> {
                           max: 2000,
                           divisions: 19,
                           label: '$count',
-                          value: count.toDouble().clamp(100, 2000),
+                          value: count.toDouble().clamp(100.0, 2000.0).toDouble(),
                           onChanged: (v) =>
                               setSheetState(() => count = v.round()),
                         ),
