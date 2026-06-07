@@ -5,20 +5,44 @@
 当前目标：
 
 ```text
-easy-tdx 获取 K线 -> Flutter RawBar -> Vespa/chan.py 风格 Dart 引擎 -> FX / BI / SEG / ZS -> KlineChart 显示
+内置 Python easy-tdx 获取 K线 -> Flutter RawBar -> Vespa/chan.py 风格 Dart 引擎 -> FX / BI / SEG / ZS -> KlineChart 显示
 ```
 
 ## 当前功能
 
+- Android App 内置 Python 解释器，直接安装并调用 `easy-tdx` 获取 K 线。
 - 本地复盘页支持一次性显示与逐 K 线回放。
 - 本地复盘页数据源支持：
-  - easy-tdx 后端
-  - 腾讯行情直连
+  - 内置 Python easy-tdx，Android 默认
+  - easy-tdx 后端备用，Windows/调试使用
+  - 腾讯行情直连备用
   - 示例 CSV / 本地 CSV
 - easy-tdx 后端只返回 K 线 `bars`，不再调用 CZSC。
 - Flutter 端继续使用项目内 Vespa/Dart 缠论引擎计算：包含关系、分型、笔、线段、中枢。
 - 支持设置标的、市场、周期、复权、K线数量、开始日期、结束日期。
 - 支持显示 / 隐藏分型、分型连线、笔、线段、中枢，以及分型/笔/线段端点文字。
+
+## Android 内置 Python 说明
+
+本分支使用 Chaquopy 把 CPython 和 `easy-tdx` 打进 APK：
+
+```text
+android/settings.gradle.kts             Chaquopy Gradle 插件
+android/app/build.gradle.kts            Python 3.11 + easy-tdx pip 依赖
+android/app/src/main/python/easy_tdx_runtime.py
+android/app/src/main/kotlin/.../MainActivity.kt
+lib/data/embedded_easy_tdx_source.dart
+```
+
+注意：
+
+```text
+1. Android minSdk 已提高到 24。
+2. 当前只打包 arm64-v8a 和 x86_64 两个 ABI。
+3. APK 体积会明显增加。
+4. 内置 Python easy-tdx 目前只支持 Android；Windows 请用 easy-tdx 后端备用模式。
+5. 如果 easy-tdx 或其依赖在 Chaquopy 环境中安装失败，需要改为纯 Python 依赖或继续使用后端备用模式。
+```
 
 ## Flutter 运行
 
@@ -35,7 +59,7 @@ flutter pub get
 flutter run
 ```
 
-## easy-tdx 后端运行
+## easy-tdx 后端备用运行
 
 ```bash
 cd backend
@@ -63,7 +87,7 @@ http://127.0.0.1:8000
 http://192.168.1.8:8000
 ```
 
-## 后端接口
+## 后端备用接口
 
 ```text
 GET /health
@@ -98,12 +122,15 @@ end     yyyy-MM-dd，可选
 ## 核心代码位置
 
 ```text
-backend/app/easy_tdx_provider.py   easy-tdx 获取与标准化 K线
-backend/app/main.py                FastAPI 原始 K线接口
-lib/data/easy_tdx_kline_source.dart Flutter easy-tdx 数据适配
-lib/ui/pages/replay_page.dart       本地复盘页与数据源选择
-lib/core/engine/*                  Vespa/chan.py 风格 Dart 引擎
-lib/core/models/*                  RawBar / FX / BI / SEG / ZS 模型
+android/app/src/main/python/easy_tdx_runtime.py       Android 内置 easy-tdx Python 调用
+android/app/src/main/kotlin/.../MainActivity.kt       Flutter MethodChannel -> Python
+lib/data/embedded_easy_tdx_source.dart                Flutter 内置 easy-tdx 数据适配
+backend/app/easy_tdx_provider.py                      后端备用 easy-tdx 获取与标准化 K线
+backend/app/main.py                                   FastAPI 原始 K线接口
+lib/data/easy_tdx_kline_source.dart                   Flutter 后端备用数据适配
+lib/ui/pages/replay_page.dart                         本地复盘页与数据源选择
+lib/core/engine/*                                     Vespa/chan.py 风格 Dart 引擎
+lib/core/models/*                                     RawBar / FX / BI / SEG / ZS 模型
 ```
 
 ## CZSC 移除说明
