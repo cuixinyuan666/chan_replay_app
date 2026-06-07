@@ -55,7 +55,7 @@ class EasyTdxKlineSource {
 
   Future<List<RawBar>> _loadViaAutoLocalBackend(Map<String, String> query) async {
     if (!Platform.isWindows) {
-      rethrow;
+      throw UnsupportedError('自动后台启动 easy-tdx 本地服务目前只支持 Windows');
     }
     _localProcess = await _LocalEasyTdxProcess.start();
     return _loadFromBase(_localProcess!.baseUrl, query);
