@@ -11,16 +11,30 @@ import '../core/models/seg.dart';
 import '../core/models/zs.dart';
 
 class CzscAnalyzeResult {
+  final String freq;
   final ChanSnapshot snapshot;
   final String sourceLabel;
   final Map<String, String> signals;
   final String? engineWarning;
 
   const CzscAnalyzeResult({
+    required this.freq,
     required this.snapshot,
     required this.sourceLabel,
     required this.signals,
     this.engineWarning,
+  });
+}
+
+class CzscMultiAnalyzeResult {
+  final String symbol;
+  final List<String> freqs;
+  final Map<String, CzscAnalyzeResult> results;
+
+  const CzscMultiAnalyzeResult({
+    required this.symbol,
+    required this.freqs,
+    required this.results,
   });
 }
 
@@ -51,8 +65,57 @@ class CzscEasyTdxSource {
         if (endDate != null) 'end': _fmtDate(endDate),
       },
     );
+    final json = await _getJson(uri);
+    return _parseResult(json, fallbackFreq: freq);
+  }
 
-    final response = await _client.get(uri).timeout(const Duration(seconds: 20));
+  Future<CzscMultiAnalyzeResult> analyzeMulti({
+    required String symbol,
+    required String market,
+    required List<String> freqs,
+    required String adjust,
+    required int count,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final normalizedFreqs = _uniqueFreqs(freqs);
+    final uri = Uri.parse(_join(baseUrl, '/api/czsc/multi')).replace(
+      queryParameters: {
+        'symbol': symbol.trim(),
+        'market': market,
+        'freqs': normalizedFreqs.join(','),
+        'adjust': adjust,
+        'count': '$count',
+        if (startDate != null) 'start': _fmtDate(startDate),
+        if (endDate != null) 'end': _fmtDate(endDate),
+      },
+    );
+    final json = await _getJson(uri);
+    final rawResults = json['results'];
+    final results = <String, CzscAnalyzeResult>{};
+    if (rawResults is Map) {
+      for (final entry in rawResults.entries) {
+        final freq = '${entry.key}'.toUpperCase();
+        final value = entry.value;
+        if (value is Map) {
+          results[freq] = _parseResult(
+            Map<String, dynamic>.from(value),
+            fallbackFreq: freq,
+          );
+        }
+      }
+    }
+    return CzscMultiAnalyzeResult(
+      symbol: '${json['symbol'] ?? symbol}',
+      freqs: normalizedFreqs.where(results.containsKey).toList(),
+      results: results,
+    );
+  }
+
+  void close() => _client.close();
+
+  Future<Map<String, dynamic>> _getJson(Uri uri) async {
+    final response = await _client.get(uri).timeout(const Duration(seconds: 30));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError('后端返回 ${response.statusCode}: ${response.body}');
     }
@@ -60,12 +123,13 @@ class CzscEasyTdxSource {
     if (json is! Map<String, dynamic>) {
       throw StateError('后端返回结构不是 JSON 对象');
     }
-    return _parseResult(json);
+    return json;
   }
 
-  void close() => _client.close();
-
-  CzscAnalyzeResult _parseResult(Map<String, dynamic> json) {
+  CzscAnalyzeResult _parseResult(
+    Map<String, dynamic> json, {
+    required String fallbackFreq,
+  }) {
     final rawBars = _parseBars(_list(json['bars']));
     final mergedBars = _rawToMerged(rawBars);
     final fxs = _parseFx(_list(json['fx']), rawBars, mergedBars);
@@ -81,11 +145,13 @@ class CzscEasyTdxSource {
     }
 
     final source = json['source'];
+    final freq = '${json['freq'] ?? fallbackFreq}'.toUpperCase();
     final sourceLabel = source is Map
-        ? '${source['name'] ?? 'easy-tdx'} ${source['symbol'] ?? json['symbol'] ?? ''} ${source['freq'] ?? json['freq'] ?? ''} ${source['count'] ?? rawBars.length}根'
-        : '${json['symbol'] ?? ''} ${json['freq'] ?? ''} ${rawBars.length}根';
+        ? '${source['name'] ?? 'easy-tdx'} ${source['symbol'] ?? json['symbol'] ?? ''} ${source['freq'] ?? freq} ${source['count'] ?? rawBars.length}根'
+        : '${json['symbol'] ?? ''} $freq ${rawBars.length}根';
 
     return CzscAnalyzeResult(
+      freq: freq,
       snapshot: ChanSnapshot(
         rawBars: rawBars,
         mergedBars: mergedBars,
@@ -155,8 +221,7 @@ class CzscEasyTdxSource {
       final left = mergedBars[(rawIndex - 1).clamp(0, mergedBars.length - 1).toInt()];
       final right = mergedBars[(rawIndex + 1).clamp(0, mergedBars.length - 1).toInt()];
       final typeText = '${row['type'] ?? row['mark']}'.toLowerCase();
-      final type = typeText.contains('top') || typeText.contains('顶') ||
-              typeText == 'g'
+      final type = typeText.contains('top') || typeText.contains('顶') || typeText == 'g'
           ? FxType.top
           : FxType.bottom;
       fxs.add(
@@ -165,8 +230,7 @@ class CzscEasyTdxSource {
           rawIndex: rawIndex,
           time: _dt(row['dt'] ?? bars[rawIndex].time),
           type: type,
-          price: _double(row['price'],
-              type == FxType.top ? bars[rawIndex].high : bars[rawIndex].low),
+          price: _double(row['price'], type == FxType.top ? bars[rawIndex].high : bars[rawIndex].low),
           left: left,
           center: center,
           right: right,
@@ -231,9 +295,7 @@ class CzscEasyTdxSource {
       final row = rows[i];
       if (row is! Map) continue;
       final startBiIndex = _int(row['start_bi_index'], 0).clamp(0, bis.length - 1).toInt();
-      final endBiIndex = _int(row['end_bi_index'], startBiIndex)
-          .clamp(startBiIndex, bis.length - 1)
-          .toInt();
+      final endBiIndex = _int(row['end_bi_index'], startBiIndex).clamp(startBiIndex, bis.length - 1).toInt();
       final directionText = '${row['direction']}'.toLowerCase();
       final direction = directionText.contains('up') || directionText.contains('向上')
           ? SegDirection.up
@@ -302,9 +364,7 @@ class CzscEasyTdxSource {
     var bestScore = double.infinity;
     for (final fx in fxs) {
       final typePenalty = fx.type == prefer ? 0.0 : 100000.0;
-      final score = (fx.rawIndex - rawIndex).abs() * 1000.0 +
-          (fx.price - price).abs() +
-          typePenalty;
+      final score = (fx.rawIndex - rawIndex).abs() * 1000.0 + (fx.price - price).abs() + typePenalty;
       if (score < bestScore) {
         best = fx;
         bestScore = score;
@@ -321,6 +381,15 @@ class CzscEasyTdxSource {
   String _fmtDate(DateTime d) {
     String two(int v) => v.toString().padLeft(2, '0');
     return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  List<String> _uniqueFreqs(List<String> freqs) {
+    final result = <String>[];
+    for (final freq in freqs) {
+      final text = freq.trim().toUpperCase();
+      if (text.isNotEmpty && !result.contains(text)) result.add(text);
+    }
+    return result.isEmpty ? ['DAILY'] : result;
   }
 
   List<dynamic> _list(Object? value) => value is List ? value : const [];
@@ -364,8 +433,6 @@ class CzscEasyTdxSource {
 
   BiDirection _direction(Object? value) {
     final text = '${value ?? ''}'.toLowerCase();
-    return text.contains('up') || text.contains('向上')
-        ? BiDirection.up
-        : BiDirection.down;
+    return text.contains('up') || text.contains('向上') ? BiDirection.up : BiDirection.down;
   }
 }
