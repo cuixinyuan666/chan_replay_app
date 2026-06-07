@@ -19,6 +19,7 @@
   - Android：内置 Python easy-tdx，Android 默认；Windows 不显示该选项
   - Windows：easy-tdx 后端备用，Windows 默认；可自动后台启动本机子进程
   - 本地 CSV
+- 新增“Vespa对齐”选项卡，用于展示 `tools/chanpy_compare` 基准测试入口。
 - easy-tdx 后端只返回 K 线 `bars`，不再调用 CZSC。
 - Flutter 端继续使用项目内 Vespa/Dart 缠论引擎计算：包含关系、分型、笔、线段、中枢。
 - 标的市场由代码自动推断，例如 `600000` 走 SH，`000001` 走 SZ；也支持 `SH600000`、`600000.SH`、`SZ000001`、`000001.SZ`。
@@ -35,6 +36,55 @@
 2. 当前状态下不可用的操作必须灰度不可点击，禁止“点了才报错”。
 3. Android 和 Windows 数据源必须用不同文案明确区分，避免误选。
 4. 缠论计算逻辑只能复刻 Vespa/chan.py；除前端显示、数据源适配、UI交互外，禁止自造缠论规则。
+```
+
+更完整的任务注意事项见：
+
+```text
+docs/task_execution_notes.md
+```
+
+## Vespa/chan.py 对齐基准
+
+新增工具目录：
+
+```text
+tools/chanpy_compare
+```
+
+用途：同一份 CSV K线数据分别输入 `Vespa314/chan.py` 和当前 Dart `ChanReplayEngine`，导出并比较：
+
+```text
+FX 列表
+BI 起止点
+SEG 起止点、方向、is_sure
+ZS 起止笔、ZG/ZD/GG/DD
+```
+
+运行：
+
+```bash
+git clone https://github.com/Vespa314/chan.py.git ../chan.py
+python tools/chanpy_compare/run_compare.py \
+  --csv assets/sample_data/000001_daily.csv \
+  --chanpy-path ../chan.py \
+  --out build/chanpy_compare
+```
+
+输出：
+
+```text
+build/chanpy_compare/chanpy.json
+build/chanpy_compare/chanpy_raw.json
+build/chanpy_compare/dart.json
+build/chanpy_compare/diff_report.json
+build/chanpy_compare/diff_report.md
+```
+
+后续算法修复顺序固定为：
+
+```text
+BI -> SEG -> ZS
 ```
 
 ## candlesticks 图表说明
@@ -186,9 +236,11 @@ lib/data/easy_tdx_kline_source.dart                   Flutter 后端备用 + Win
 backend/app/easy_tdx_provider.py                      后端备用 easy-tdx 获取与标准化 K线
 backend/app/main.py                                   FastAPI 原始 K线接口
 lib/ui/pages/replay_page.dart                         本地复盘页与数据源选择
+lib/ui/pages/chanpy_compare_page.dart                 Vespa 对齐基准说明页
 lib/ui/widgets/kline_chart.dart                       candlesticks + 缠论叠加层
 lib/core/engine/*                                     Vespa/chan.py 风格 Dart 引擎
 lib/core/models/*                                     RawBar / FX / BI / SEG / ZS 模型
+tools/chanpy_compare/*                                chan.py 与 Dart 输出对齐基准工具
 ```
 
 ## CZSC 移除说明
