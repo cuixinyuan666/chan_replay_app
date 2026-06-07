@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/chan_snapshot.dart';
@@ -30,7 +31,7 @@ class _CzscEasyTdxPageState extends State<CzscEasyTdxPage> {
   ];
 
   final TextEditingController _baseUrlController =
-      TextEditingController(text: 'http://10.0.2.2:8000');
+      TextEditingController(text: _defaultBackendBaseUrl);
   final TextEditingController _symbolController = TextEditingController(text: '000001');
   final TextEditingController _startDateController =
       TextEditingController(text: '2020-01-01');
@@ -60,6 +61,13 @@ class _CzscEasyTdxPageState extends State<CzscEasyTdxPage> {
   int? _crosshairIndex;
 
   BackendDisplayMode _displayMode = BackendDisplayMode.full;
+
+  static String get _defaultBackendBaseUrl {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:8000';
+    }
+    return 'http://127.0.0.1:8000';
+  }
   int _cursor = 0;
   bool _playing = false;
   Timer? _timer;
@@ -429,6 +437,7 @@ class _CzscEasyTdxPageState extends State<CzscEasyTdxPage> {
       body: Column(
         children: [
           _buildControlPanel(),
+          _buildFetchBar(),
           _buildMultiFreqBar(),
           _buildPresetBar(),
           _buildStatusBar(displaySnapshot),
@@ -518,26 +527,54 @@ class _CzscEasyTdxPageState extends State<CzscEasyTdxPage> {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: _loading ? null : _loadSingle,
-                icon: const Icon(Icons.cloud_download),
-                label: const Text('单级别'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.tonalIcon(
-                onPressed: _loading ? null : _loadMulti,
-                icon: const Icon(Icons.account_tree_outlined),
-                label: const Text('多级别'),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _rememberCurrentPreset,
-                icon: const Icon(Icons.star_border),
-                label: const Text('记住'),
-              ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFetchBar() {
+    return Material(
+      color: const Color(0xFF111821),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+        child: Row(
+          children: [
+            FilledButton.icon(
+              onPressed: _loading ? null : _loadSingle,
+              icon: _loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.cloud_download),
+              label: const Text('获取数据'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonalIcon(
+              onPressed: _loading ? null : _loadMulti,
+              icon: const Icon(Icons.account_tree_outlined),
+              label: const Text('获取多级别'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: _rememberCurrentPreset,
+              icon: const Icon(Icons.star_border),
+              label: const Text('记住参数'),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _totalBars == 0
+                    ? '填写或确认参数后点击“获取数据”'
+                    : '已获取 $_totalBars 根K线，当前显示 ${_displaySnapshot.rawBars.length} 根',
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white60, fontSize: 12),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -653,40 +690,43 @@ class _CzscEasyTdxPageState extends State<CzscEasyTdxPage> {
         bottom: false,
         child: SizedBox(
           height: 50,
-          child: Row(
-            children: [
-              const SizedBox(width: 8),
-              _toggle('FX', _showFx, () => setState(() => _showFx = !_showFx)),
-              _toggle('FX线', _showFxLine, () => setState(() => _showFxLine = !_showFxLine)),
-              _toggle('BI', _showBi, () => setState(() => _showBi = !_showBi)),
-              _toggle('SEG', _showSeg, () => setState(() => _showSeg = !_showSeg)),
-              _toggle('ZS', _showZs, () => setState(() => _showZs = !_showZs)),
-              const SizedBox(width: 8),
-              _toggle('一次性', _displayMode == BackendDisplayMode.full, () => _setDisplayMode(BackendDisplayMode.full)),
-              _toggle('逐K', _displayMode == BackendDisplayMode.step, () => _setDisplayMode(BackendDisplayMode.step)),
-              const Spacer(),
-              IconButton(
-                tooltip: '信号面板',
-                onPressed: _openSignalPanel,
-                icon: const Icon(Icons.analytics_outlined),
-              ),
-              IconButton(
-                tooltip: '左右放大',
-                onPressed: () => _changeWindowSize(_windowSize - 15),
-                icon: const Icon(Icons.zoom_in),
-              ),
-              IconButton(
-                tooltip: '左右缩小',
-                onPressed: () => _changeWindowSize(_windowSize + 15),
-                icon: const Icon(Icons.zoom_out),
-              ),
-              IconButton(
-                tooltip: '回到最新',
-                onPressed: _goToLatest,
-                icon: const Icon(Icons.keyboard_double_arrow_right),
-              ),
-              const SizedBox(width: 6),
-            ],
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                const SizedBox(width: 8),
+                _toggle('FX', _showFx, () => setState(() => _showFx = !_showFx)),
+                _toggle('FX线', _showFxLine, () => setState(() => _showFxLine = !_showFxLine)),
+                _toggle('BI', _showBi, () => setState(() => _showBi = !_showBi)),
+                _toggle('SEG', _showSeg, () => setState(() => _showSeg = !_showSeg)),
+                _toggle('ZS', _showZs, () => setState(() => _showZs = !_showZs)),
+                const SizedBox(width: 8),
+                _toggle('一次性', _displayMode == BackendDisplayMode.full, () => _setDisplayMode(BackendDisplayMode.full)),
+                _toggle('逐K', _displayMode == BackendDisplayMode.step, () => _setDisplayMode(BackendDisplayMode.step)),
+                const SizedBox(width: 12),
+                IconButton(
+                  tooltip: '信号面板',
+                  onPressed: _openSignalPanel,
+                  icon: const Icon(Icons.analytics_outlined),
+                ),
+                IconButton(
+                  tooltip: '左右放大',
+                  onPressed: () => _changeWindowSize(_windowSize - 15),
+                  icon: const Icon(Icons.zoom_in),
+                ),
+                IconButton(
+                  tooltip: '左右缩小',
+                  onPressed: () => _changeWindowSize(_windowSize + 15),
+                  icon: const Icon(Icons.zoom_out),
+                ),
+                IconButton(
+                  tooltip: '回到最新',
+                  onPressed: _goToLatest,
+                  icon: const Icon(Icons.keyboard_double_arrow_right),
+                ),
+                const SizedBox(width: 6),
+              ],
+            ),
           ),
         ),
       ),

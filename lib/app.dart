@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'ui/pages/root_page.dart';
 
 class ChanReplayApp extends StatelessWidget {
@@ -33,6 +34,13 @@ class ChanReplayApp extends StatelessWidget {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
+      builder: (context, child) {
+        final content = child ?? const SizedBox.shrink();
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+          return ExcludeSemantics(child: content);
+        }
+        return content;
+      },
       home: const RootPage(),
     );
   }

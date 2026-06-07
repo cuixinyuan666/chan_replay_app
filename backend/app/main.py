@@ -67,6 +67,22 @@ def health() -> dict[str, object]:
     return {'ok': True, 'backend': 'czsc_easy_tdx', 'version': '0.2.0'}
 
 
+@app.get('/')
+def root() -> dict[str, object]:
+    return {
+        'ok': True,
+        'backend': 'czsc_easy_tdx',
+        'version': '0.2.0',
+        'note': 'Use http://127.0.0.1:8000 locally; 0.0.0.0 is a bind address.',
+        'endpoints': [
+            '/health',
+            '/api/czsc/analyze',
+            '/api/czsc/multi',
+            '/docs',
+        ],
+    }
+
+
 @app.get('/api/czsc/analyze')
 def analyze(
     symbol: str = Query('000001', description='股票代码，支持 000001 或 000001.SZ'),
