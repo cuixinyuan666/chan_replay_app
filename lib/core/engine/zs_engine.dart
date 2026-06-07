@@ -9,36 +9,50 @@ class ZsEngine {
 
     switch (config.zs.zsAlgo) {
       case ZsAlgo.normal:
-        if (segs.isNotEmpty) {
-          return _buildInsideSegs(segs, config);
-        }
-        return _buildOnBis(bis, config, startSegIndex: null, endSegIndex: null);
+        // normal 模式必须服从线段边界；没有确认线段时不生成中枢，避免退回全局笔列表造成跨段显示。
+        return _buildInsideConfirmedSegs(segs, config);
       case ZsAlgo.overSeg:
+        // overSeg 才允许全局笔列表扫描，也就是允许跨段中枢。
         return _buildOnBis(bis, config, startSegIndex: null, endSegIndex: null);
       case ZsAlgo.auto:
-        if (segs.isNotEmpty) {
-          final inSeg = _buildInsideSegs(segs, config);
-          if (inSeg.isNotEmpty) return inSeg;
-        }
+        // auto 优先确认线段内中枢，无结果时再退回全局笔列表。
+        final inSeg = _buildInsideConfirmedSegs(segs, config);
+        if (inSeg.isNotEmpty) return inSeg;
         return _buildOnBis(bis, config, startSegIndex: null, endSegIndex: null);
     }
   }
 
-  List<ZS> _buildInsideSegs(List<SEG> segs, ChanConfig config) {
+  List<ZS> _buildInsideConfirmedSegs(List<SEG> segs, ChanConfig config) {
+    if (segs.isEmpty) return [];
+
+    final minCount = config.zs.oneBiZs ? 1 : 3;
+    final eligible = segs.where((seg) {
+      if (seg.biList.length < minCount) return false;
+      // 默认只使用确认线段。关闭 onlyConfirmed 后才允许尾部 S? 参与临时中枢。
+      if (config.zs.onlyConfirmed && !seg.isSure) return false;
+      return true;
+    }).toList();
+
     final all = <ZS>[];
-    for (final seg in segs) {
-      final bis = seg.biList;
-      if (bis.isEmpty) continue;
+    for (final seg in eligible) {
       final zss = _buildOnBis(
-        bis,
+        seg.biList,
         config,
         startSegIndex: seg.index,
         endSegIndex: seg.index,
         combineWithinWindow: config.zs.needCombine,
-      );
+      ).where((zs) => _zsInsideSeg(zs, seg)).toList();
       all.addAll(zss);
     }
     return _renumber(all);
+  }
+
+  bool _zsInsideSeg(ZS zs, SEG seg) {
+    return zs.startBiIndex >= seg.startBiIndex &&
+        zs.endBiIndex <= seg.endBiIndex &&
+        zs.startRawIndex >= seg.startRawIndex &&
+        zs.endRawIndex <= seg.endRawIndex &&
+        !zs.isCrossSeg;
   }
 
   List<ZS> _buildOnBis(
@@ -129,6 +143,14 @@ class ZsEngine {
       }
 
       final last = result.last;
+      // 不允许不同线段的中枢在 normal/线段内模式下被合并。
+      final sameSeg = last.startSegIndex == zs.startSegIndex &&
+          last.endSegIndex == zs.endSegIndex;
+      if (!sameSeg) {
+        result.add(zs);
+        continue;
+      }
+
       final shouldCombine = mode == ZsCombineMode.zs
           ? _hasOverlap(last.zg, last.zd, zs.zg, zs.zd, strict: false)
           : _hasOverlap(last.gg, last.dd, zs.gg, zs.dd, strict: false);
