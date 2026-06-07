@@ -75,13 +75,9 @@ def _find_bar_id(bars: list[dict[str, Any]], dt: Any, fallback: int = 0) -> int:
 
 
 def _freq_obj(freq: str) -> Any:
-    try:
-        from czsc import Freq
-    except Exception:
-        try:
-            from czsc.enum import Freq
-        except Exception:
-            return freq
+    """Resolve project period names to CZSC official Freq enum names."""
+    from czsc import Freq
+
     f = freq.upper()
     candidates = {
         '1M': ('F1', 'MIN1', 'M1'),
@@ -104,78 +100,48 @@ def _freq_obj(freq: str) -> Any:
     for name in candidates:
         if hasattr(Freq, name):
             return getattr(Freq, name)
-    return freq
+    return Freq.D
 
 
-def _raw_bar_obj(bar: dict[str, Any], freq_obj: Any, symbol: str) -> Any:
-    try:
-        from czsc import RawBar
-    except Exception:
-        from czsc.objects import RawBar
+def _bars_to_standard_df(bars: list[dict[str, Any]], symbol: str):
+    """Build the standard kline DataFrame required by czsc.format_standard_kline.
 
-    kwargs = {
-        'symbol': symbol,
-        'id': int(bar.get('id', 0)),
-        'freq': freq_obj,
-        'dt': _parse_dt(bar.get('dt')),
-        'open': float(bar['open']),
-        'close': float(bar['close']),
-        'high': float(bar['high']),
-        'low': float(bar['low']),
-        'vol': float(bar.get('vol', bar.get('volume', 0)) or 0),
-        'amount': float(bar.get('amount', 0) or 0),
-    }
-    try:
-        return RawBar(**kwargs)
-    except TypeError:
-        kwargs.pop('amount', None)
-        return RawBar(**kwargs)
+    CZSC official examples use:
+        bars = format_standard_kline(df, freq=Freq.F30)
+        c = CZSC(bars)
+
+    Therefore this adapter keeps the same path and only normalizes easy-tdx rows
+    into the required standard columns.
+    """
+    import pandas as pd
+
+    rows: list[dict[str, Any]] = []
+    for i, bar in enumerate(bars):
+        rows.append(
+            {
+                'symbol': bar.get('symbol') or symbol,
+                'dt': _parse_dt(bar.get('dt')),
+                'id': int(bar.get('id', i)),
+                'open': float(bar['open']),
+                'close': float(bar['close']),
+                'high': float(bar['high']),
+                'low': float(bar['low']),
+                'vol': float(bar.get('vol', bar.get('volume', 0)) or 0),
+                'amount': float(bar.get('amount', 0) or 0),
+            }
+        )
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values('dt').reset_index(drop=True)
+        df['id'] = range(len(df))
+    return df
 
 
-def analyze_with_czsc(
-    *,
-    bars: list[dict[str, Any]],
-    symbol: str,
-    freq: str,
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        'symbol': symbol,
-        'freq': freq,
-        'bars': bars,
-        'new_bars': [],
-        'fx': [],
-        'bi': [],
-        'seg': [],
-        'zs': [],
-        'signals': {},
-        'engine': 'czsc',
-        'engine_warning': None,
-    }
-    if len(bars) < 3:
-        payload['engine_warning'] = 'K线数量不足，CZSC 元素为空'
-        return payload
-
-    try:
-        from czsc import CZSC
-    except Exception:
-        try:
-            from czsc.analyze import CZSC
-        except Exception as exc:
-            payload['engine_warning'] = f'未能导入 CZSC: {exc}'
-            return payload
-
-    try:
-        freq_obj = _freq_obj(freq)
-        raw_bars = [_raw_bar_obj(bar, freq_obj, symbol) for bar in bars]
-        c = CZSC(raw_bars)
-    except Exception as exc:
-        payload['engine_warning'] = f'CZSC 初始化失败: {exc}'
-        return payload
-
-    # 去包含后的 K 线。字段名随 czsc 版本可能变化，所以这里做宽松提取。
+def _serialize_new_bars(c: Any, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
     for i, nb in enumerate(_get(c, 'bars_ubi', 'bars_nubi', 'new_bars', default=[]) or []):
         dt = _get(nb, 'dt')
-        payload['new_bars'].append(
+        items.append(
             {
                 'id': i,
                 'dt': dt.isoformat(sep=' ') if hasattr(dt, 'isoformat') else str(dt),
@@ -188,43 +154,51 @@ def analyze_with_czsc(
                 'end_bar_id': _find_bar_id(bars, _get(nb, 'edt', 'dt'), i),
             }
         )
+    return items
 
-    fx_list = _get(c, 'fx_list', 'fxs', default=[]) or []
+
+def _serialize_fx(c: Any, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    fx_list = _get(c, 'fx_list', default=[]) or []
     for i, fx in enumerate(fx_list):
-        mark = _get(fx, 'mark', 'type')
+        mark = _get(fx, 'mark')
         is_top = _is_top(mark)
         dt = _get(fx, 'dt')
         bar_id = _find_bar_id(bars, dt, i)
-        price = _get(fx, 'fx', 'price', default=None)
+        price = _get(fx, 'fx', default=None)
         if price is None:
             price = _get(fx, 'high' if is_top else 'low', default=bars[bar_id]['high' if is_top else 'low'])
-        payload['fx'].append(
+        items.append(
             {
                 'index': i,
                 'type': 'top' if is_top else 'bottom',
                 'bar_id': bar_id,
                 'dt': bars[bar_id]['dt'] if bars else str(dt),
                 'price': float(price),
-                'confirmed': bool(_get(fx, 'confirmed', 'is_sure', default=True)),
+                'confirmed': True,
             }
         )
+    return items
 
-    bi_list = _get(c, 'bi_list', 'bis', default=[]) or []
+
+def _serialize_bi(c: Any, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    bi_list = _get(c, 'bi_list', default=[]) or []
     for i, bi in enumerate(bi_list):
-        fx_a = _get(bi, 'fx_a', 'start', 'start_fx')
-        fx_b = _get(bi, 'fx_b', 'end', 'end_fx')
+        fx_a = _get(bi, 'fx_a')
+        fx_b = _get(bi, 'fx_b')
         start_dt = _get(bi, 'sdt', default=_get(fx_a, 'dt'))
         end_dt = _get(bi, 'edt', default=_get(fx_b, 'dt'))
         start_bar_id = _find_bar_id(bars, start_dt, 0)
         end_bar_id = _find_bar_id(bars, end_dt, start_bar_id)
-        direction = _direction(_get(bi, 'direction', 'dir'))
-        start_price = _get(fx_a, 'fx', 'price', default=None)
-        end_price = _get(fx_b, 'fx', 'price', default=None)
+        direction = _direction(_get(bi, 'direction'))
+        start_price = _get(fx_a, 'fx', default=None)
+        end_price = _get(fx_b, 'fx', default=None)
         if start_price is None:
             start_price = bars[start_bar_id]['low' if direction == 'up' else 'high']
         if end_price is None:
             end_price = bars[end_bar_id]['high' if direction == 'up' else 'low']
-        payload['bi'].append(
+        items.append(
             {
                 'index': i,
                 'start_bar_id': start_bar_id,
@@ -232,60 +206,140 @@ def analyze_with_czsc(
                 'start_price': float(start_price),
                 'end_price': float(end_price),
                 'direction': direction,
-                'is_sure': bool(_get(bi, 'is_sure', 'confirmed', default=True)),
+                'is_sure': True,
             }
         )
+    return items
 
-    seg_list = _get(c, 'seg_list', 'segs', default=[]) or []
-    for i, seg in enumerate(seg_list):
-        start_bi_index = int(_get(seg, 'start_bi_index', 'sbi', default=0) or 0)
-        end_bi_index = int(_get(seg, 'end_bi_index', 'ebi', default=start_bi_index) or start_bi_index)
-        if payload['bi'] and start_bi_index < len(payload['bi']) and end_bi_index < len(payload['bi']):
-            start_bar_id = payload['bi'][start_bi_index]['start_bar_id']
-            end_bar_id = payload['bi'][end_bi_index]['end_bar_id']
-            start_price = payload['bi'][start_bi_index]['start_price']
-            end_price = payload['bi'][end_bi_index]['end_price']
-        else:
-            start_bar_id = _find_bar_id(bars, _get(seg, 'sdt'), 0)
-            end_bar_id = _find_bar_id(bars, _get(seg, 'edt'), start_bar_id)
-            start_price = bars[start_bar_id]['close']
-            end_price = bars[end_bar_id]['close']
-        payload['seg'].append(
-            {
-                'index': i,
-                'start_bi_index': start_bi_index,
-                'end_bi_index': end_bi_index,
-                'start_bar_id': start_bar_id,
-                'end_bar_id': end_bar_id,
-                'start_price': float(start_price),
-                'end_price': float(end_price),
-                'direction': _direction(_get(seg, 'direction', 'dir')),
-                'is_sure': bool(_get(seg, 'is_sure', 'confirmed', default=True)),
-            }
-        )
 
-    zs_list = _get(c, 'zs_list', 'zss', default=[]) or []
-    for i, zs in enumerate(zs_list):
-        sdt = _get(zs, 'sdt', 'start_dt')
-        edt = _get(zs, 'edt', 'end_dt')
-        start_bar_id = _find_bar_id(bars, sdt, 0)
-        end_bar_id = _find_bar_id(bars, edt, start_bar_id)
-        payload['zs'].append(
-            {
-                'index': i,
-                'start_bar_id': start_bar_id,
-                'end_bar_id': end_bar_id,
-                'start_bi_index': int(_get(zs, 'start_bi_index', default=0) or 0),
-                'end_bi_index': int(_get(zs, 'end_bi_index', default=0) or 0),
-                'zg': float(_get(zs, 'zg', 'high', default=0) or 0),
-                'zd': float(_get(zs, 'zd', 'low', default=0) or 0),
-                'gg': float(_get(zs, 'gg', 'peak_high', default=_get(zs, 'zg', 'high', default=0)) or 0),
-                'dd': float(_get(zs, 'dd', 'peak_low', default=_get(zs, 'zd', 'low', default=0)) or 0),
-                'confirmed': bool(_get(zs, 'is_sure', 'confirmed', default=True)),
-            }
-        )
+def _serialize_recent_official_zs(c: Any, bars: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str | None]:
+    """Serialize the recent ZS exactly following CZSC official example usage.
 
-    signals = _get(c, 'signals', 's', default={}) or {}
+    CZSC docs/examples/02_chan_structures.py demonstrates:
+        recent = c.bi_list[-7:]
+        zs = ZS(recent)
+        if zs.is_valid(): ...
+
+    This adapter only uses that official path. It does not scan or invent a full
+    historical ZS list.
+    """
+    bi_list = _get(c, 'bi_list', default=[]) or []
+    if len(bi_list) < 3:
+        return [], 'CZSC 官方 ZS(bi_list) 调用需要至少 3 笔；当前笔数不足，中枢为空'
+
+    try:
+        from czsc import ZS
+    except Exception as exc:
+        return [], f'未能导入 CZSC 官方 ZS 对象: {exc}'
+
+    recent_start = max(0, len(bi_list) - 7)
+    recent = bi_list[recent_start:]
+    try:
+        zs = ZS(recent)
+        is_valid = zs.is_valid() if callable(getattr(zs, 'is_valid', None)) else bool(_get(zs, 'is_valid', default=False))
+    except Exception as exc:
+        return [], f'CZSC 官方 ZS(c.bi_list[-7:]) 构造失败: {exc}'
+
+    if not is_valid:
+        return [], 'CZSC 官方 ZS(c.bi_list[-7:]) 返回无效中枢；中枢为空'
+
+    sdt = _get(zs, 'sdt')
+    edt = _get(zs, 'edt')
+    start_bar_id = _find_bar_id(bars, sdt, _get(_get(recent[0], 'fx_a'), 'dt', default=0))
+    end_bar_id = _find_bar_id(bars, edt, start_bar_id)
+    return [
+        {
+            'index': 0,
+            'start_bar_id': start_bar_id,
+            'end_bar_id': end_bar_id,
+            'start_bi_index': recent_start,
+            'end_bi_index': len(bi_list) - 1,
+            'zg': float(_get(zs, 'zg', default=0) or 0),
+            'zd': float(_get(zs, 'zd', default=0) or 0),
+            'zz': float(_get(zs, 'zz', default=0) or 0),
+            'gg': float(_get(zs, 'gg', default=0) or 0),
+            'dd': float(_get(zs, 'dd', default=0) or 0),
+            'sdt': str(sdt),
+            'edt': str(edt),
+            'source': 'official: ZS(c.bi_list[-7:])',
+            'confirmed': True,
+        }
+    ], None
+
+
+def analyze_with_czsc(
+    *,
+    bars: list[dict[str, Any]],
+    symbol: str,
+    freq: str,
+) -> dict[str, Any]:
+    warnings: list[str] = []
+    payload: dict[str, Any] = {
+        'symbol': symbol,
+        'freq': freq,
+        'bars': bars,
+        'new_bars': [],
+        'fx': [],
+        'bi': [],
+        'seg': [],
+        'zs': [],
+        'signals': {},
+        'engine': 'czsc',
+        'engine_warning': None,
+        'meta': {
+            'official_path': 'format_standard_kline(df, freq) -> CZSC(bars) -> fx_list/bi_list -> ZS(c.bi_list[-7:])',
+            'seg_policy': 'CZSC 当前官方核心示例未暴露 seg_list；不自研线段，seg 保持为空',
+            'zs_policy': '按 CZSC 官方示例仅构造最近 7 笔中枢，不自研完整历史中枢列表',
+        },
+    }
+    if len(bars) < 3:
+        payload['engine_warning'] = 'K线数量不足，CZSC 元素为空'
+        return payload
+
+    try:
+        from czsc import CZSC, format_standard_kline
+    except Exception as exc:
+        payload['engine_warning'] = f'未能导入 CZSC / format_standard_kline: {exc}'
+        return payload
+
+    try:
+        freq_obj = _freq_obj(freq)
+        df = _bars_to_standard_df(bars, symbol)
+        raw_bars = format_standard_kline(df, freq=freq_obj)
+        c = CZSC(raw_bars)
+    except Exception as exc:
+        payload['engine_warning'] = f'CZSC 官方路径初始化失败: {exc}'
+        return payload
+
+    payload['new_bars'] = _serialize_new_bars(c, bars)
+    payload['fx'] = _serialize_fx(c, bars)
+    payload['bi'] = _serialize_bi(c, bars)
+
+    # CZSC 官方核心结构目前稳定暴露 fx_list / bi_list；未在官方示例中暴露 seg_list。
+    warnings.append('线段 SEG 未按自研逻辑生成：当前仅使用 CZSC 官方暴露结构，seg 保持为空')
+
+    payload['zs'], zs_warning = _serialize_recent_official_zs(c, bars)
+    if zs_warning:
+        warnings.append(zs_warning)
+
+    signals = _get(c, 'signals', default={}) or {}
     if isinstance(signals, dict):
         payload['signals'] = {str(k): str(v) for k, v in signals.items()}
+
+    payload['meta'].update(
+        {
+            'counts': {
+                'bars': len(bars),
+                'new_bars': len(payload['new_bars']),
+                'fx': len(payload['fx']),
+                'bi': len(payload['bi']),
+                'seg': len(payload['seg']),
+                'zs': len(payload['zs']),
+            },
+            'czsc_available_attrs': [
+                name for name in ('bars_raw', 'bars_ubi', 'fx_list', 'bi_list', 'signals', 'ubi', 'ubi_fxs', 'zs_list', 'seg_list') if hasattr(c, name)
+            ],
+        }
+    )
+    payload['engine_warning'] = '；'.join(warnings) if warnings else None
     return payload
