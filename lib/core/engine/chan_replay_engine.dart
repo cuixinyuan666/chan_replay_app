@@ -3,6 +3,7 @@ import 'include_processor.dart';
 import 'fx_engine.dart';
 import 'bi_engine.dart';
 import 'seg_engine.dart';
+import 'relation_linker.dart';
 import 'zs_engine.dart';
 import '../models/raw_bar.dart';
 import '../models/chan_snapshot.dart';
@@ -15,6 +16,7 @@ class ChanReplayEngine {
   final FxEngine _fxEngine = FxEngine();
   final BiEngine _biEngine = BiEngine();
   final SegEngine _segEngine = SegEngine();
+  final ChanRelationLinker _relationLinker = ChanRelationLinker();
   final ZsEngine _zsEngine = ZsEngine();
 
   ChanReplayEngine({ChanConfig? config}) : config = config ?? ChanConfig.chanPyDefault();
@@ -47,16 +49,17 @@ class ChanReplayEngine {
     final raw = List<RawBar>.unmodifiable(_rawBars);
     final merged = _includeProcessor.process(raw, enabled: config.enableInclude);
     final fxs = _fxEngine.detect(merged, config);
-    final bis = _biEngine.build(fxs, config, mergedBars: merged);
-    final segs = _segEngine.build(bis, config);
-    final zss = _zsEngine.build(bis, config, segs: segs);
+    final rawBis = _biEngine.build(fxs, config, mergedBars: merged);
+    final rawSegs = _segEngine.build(rawBis, config);
+    final linked = _relationLinker.link(rawBis, rawSegs);
+    final zss = _zsEngine.build(linked.bis, config, segs: linked.segs);
 
     return ChanSnapshot(
       rawBars: raw,
       mergedBars: List.unmodifiable(merged),
       fxs: List.unmodifiable(fxs),
-      bis: List.unmodifiable(bis),
-      segs: List.unmodifiable(segs),
+      bis: linked.bis,
+      segs: linked.segs,
       zss: List.unmodifiable(zss),
     );
   }
