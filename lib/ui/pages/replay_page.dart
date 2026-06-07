@@ -12,13 +12,12 @@ import '../../core/models/raw_bar.dart';
 import '../../data/csv_loader.dart';
 import '../../data/easy_tdx_kline_source.dart';
 import '../../data/embedded_easy_tdx_source.dart';
-import '../../data/tencent_kline_source.dart';
 import '../widgets/kline_chart.dart';
 import '../widgets/replay_controller_bar.dart';
 
 enum ReplayDisplayMode { full, step }
 
-enum MarketDataSourceKind { embeddedEasyTdx, easyTdxBackend, tencent, sampleCsv }
+enum MarketDataSourceKind { embeddedEasyTdx, easyTdxBackend, localCsv }
 
 class ReplayPage extends StatefulWidget {
   const ReplayPage({super.key});
@@ -29,11 +28,12 @@ class ReplayPage extends StatefulWidget {
 
 class _ReplayPageState extends State<ReplayPage> {
   static final Uri _candlesticksDocsUri = Uri.parse('https://pub.dev/packages/candlesticks');
+  static final DateTime _defaultStartDate = DateTime(2020, 1, 1);
+  static final DateTime _defaultEndDate = DateTime(2026, 6, 6);
+  static const int _hiddenMaxCount = 5000;
 
   final ChanReplayEngine _engine = ChanReplayEngine();
   final TextEditingController _stockCodeController = TextEditingController(text: '000001');
-  final TextEditingController _startDateController = TextEditingController(text: '2020-01-01');
-  final TextEditingController _endDateController = TextEditingController();
   final TextEditingController _easyTdxBaseUrlController = TextEditingController(text: _defaultBackendBaseUrl);
 
   List<RawBar> _allBars = [];
@@ -54,18 +54,19 @@ class _ReplayPageState extends State<ReplayPage> {
   bool _showZs = true;
   bool _toolbarExpanded = true;
   bool _loadingRemote = false;
-  ReplayDisplayMode _displayMode = ReplayDisplayMode.step;
+  ReplayDisplayMode _displayMode = ReplayDisplayMode.full;
   MarketDataSourceKind _dataSourceKind = _defaultSourceKind;
   Timer? _timer;
 
   ChanConfig _config = ChanConfig.chanPyDefault();
-  String _market = 'SZ';
   String _period = 'DAILY';
   String _adjust = 'QFQ';
-  int _count = 800;
-  String _dataSourceLabel = '未加载';
+  DateTime _startDate = _defaultStartDate;
+  DateTime _endDate = _defaultEndDate;
+  String _dataSourceLabel = '未获取数据源';
 
   static bool get _isAndroidApp => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  static bool get _isWindowsApp => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
   static MarketDataSourceKind get _defaultSourceKind {
     return _isAndroidApp ? MarketDataSourceKind.embeddedEasyTdx : MarketDataSourceKind.easyTdxBackend;
@@ -83,69 +84,59 @@ class _ReplayPageState extends State<ReplayPage> {
     return [
       if (_isAndroidApp) MarketDataSourceKind.embeddedEasyTdx,
       MarketDataSourceKind.easyTdxBackend,
-      MarketDataSourceKind.tencent,
-      MarketDataSourceKind.sampleCsv,
+      MarketDataSourceKind.localCsv,
     ];
   }
 
   @override
   void initState() {
     super.initState();
-    _loadSample();
+    // 默认保持空图。只有用户显式选择数据源并加载成功后才显示K线。
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _stockCodeController.dispose();
-    _startDateController.dispose();
-    _endDateController.dispose();
     _easyTdxBaseUrlController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadSample() async {
-    final bars = await CsvLoader.loadFromAsset('assets/sample_data/000001_daily.csv');
-    if (!mounted) return;
-    setState(() {
-      _dataSourceKind = MarketDataSourceKind.sampleCsv;
-      _applyBars(bars, sourceLabel: '示例CSV / Vespa本地引擎');
-    });
-  }
-
-  Future<void> _importCsv() async {
-    final bars = await CsvLoader.pickAndLoadCsv();
-    if (bars == null || bars.isEmpty) {
-      if (!mounted) return;
-      _showSnack('未读取到有效CSV数据');
-      return;
-    }
-    setState(() {
-      _dataSourceKind = MarketDataSourceKind.sampleCsv;
-      _applyBars(bars, sourceLabel: '本地CSV / Vespa本地引擎');
-    });
   }
 
   Future<void> _loadMarketData() async {
     if (_loadingRemote) return;
     switch (_dataSourceKind) {
-      case MarketDataSourceKind.sampleCsv:
-        await _loadSample();
-        return;
-      case MarketDataSourceKind.tencent:
-        await _loadTencent();
+      case MarketDataSourceKind.localCsv:
+        await _importCsv();
         return;
       case MarketDataSourceKind.easyTdxBackend:
         await _loadEasyTdxBackend();
         return;
       case MarketDataSourceKind.embeddedEasyTdx:
         if (!_isAndroidApp) {
-          _showSnack('内置 Python easy-tdx 仅支持 Android；Windows 请使用 easy-tdx 后端备用（可自动后台启动本机服务）');
+          _showLoadResult(ok: false, message: '× 内置 Python easy-tdx 仅支持 Android；Windows 请使用本机 easy-tdx 后端');
           return;
         }
         await _loadEmbeddedEasyTdx();
         return;
     }
+  }
+
+  Future<void> _importCsv() async {
+    final bars = await CsvLoader.pickAndLoadCsv();
+    if (bars == null || bars.isEmpty) {
+      if (!mounted) return;
+      _showLoadResult(ok: false, message: '× 本地CSV未读取到有效K线数据');
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _dataSourceKind = MarketDataSourceKind.localCsv;
+      _applyBars(bars, sourceLabel: '本地CSV / Vespa本地引擎');
+    });
+    _showLoadResult(
+      ok: true,
+      message: '√ 本地CSV获取${_targetDisplayName(_stockCodeController.text)}在${_barsRangeLabel(bars)}的CSV数据成功',
+    );
   }
 
   Future<void> _loadEmbeddedEasyTdx() async {
@@ -155,62 +146,27 @@ class _ReplayPageState extends State<ReplayPage> {
     final source = EmbeddedEasyTdxSource();
     try {
       final bars = await source.loadKline(
-        market: _market,
+        market: request.market,
         code: request.code,
         period: _period,
         adjust: _adjust,
-        count: _count,
-        startDate: request.startDate,
-        endDate: request.endDate,
+        count: _hiddenMaxCount,
+        startDate: _startDate,
+        endDate: _endDate,
       );
-      if (!mounted) return;
-      if (bars.isEmpty) {
-        _showSnack('内置 easy-tdx 未返回有效K线数据，请检查网络、市场、代码、起止时间和K线数量');
-        return;
-      }
-      setState(() {
-        _applyBars(
-          bars,
-          sourceLabel: 'Android内置easy-tdx $_market${request.code} $_period $_adjust ${bars.length}根${_dateRangeLabel(request.startDate, request.endDate)} / Vespa本地引擎',
-        );
-      });
-    } catch (e) {
-      if (mounted) _showSnack('内置 easy-tdx 加载失败：$e');
-    } finally {
-      if (mounted) setState(() => _loadingRemote = false);
-    }
-  }
-
-  Future<void> _loadTencent() async {
-    final request = _buildMarketRequest(requireBackend: false);
-    if (request == null) return;
-    setState(() => _loadingRemote = true);
-    final source = TencentKlineSource();
-    try {
-      final bars = await source.loadKline(
-        market: _market,
-        code: request.code,
-        period: _period,
-        adjust: _adjust,
-        count: _count,
-        startDate: request.startDate,
-        endDate: request.endDate,
+      _handleLoadedBars(
+        bars: bars,
+        request: request,
+        sourceName: _sourceLongLabel(MarketDataSourceKind.embeddedEasyTdx),
       );
-      if (!mounted) return;
-      if (bars.isEmpty) {
-        _showSnack('腾讯行情未返回有效K线数据，请检查市场、代码、起止时间和K线数量');
-        return;
-      }
-      setState(() {
-        _applyBars(
-          bars,
-          sourceLabel: '腾讯行情 $_market${request.code} $_period $_adjust ${bars.length}根${_dateRangeLabel(request.startDate, request.endDate)} / Vespa本地引擎',
-        );
-      });
     } catch (e) {
-      if (mounted) _showSnack('腾讯行情加载失败：$e');
+      if (mounted) {
+        _showLoadResult(
+          ok: false,
+          message: '× ${_sourceLongLabel(MarketDataSourceKind.embeddedEasyTdx)}获取${_targetDisplayName(request.code)}在${_dateRangeLabel(_startDate, _endDate)}的${_periodAdjustLabel}失败：$e',
+        );
+      }
     } finally {
-      source.close();
       if (mounted) setState(() => _loadingRemote = false);
     }
   }
@@ -222,59 +178,69 @@ class _ReplayPageState extends State<ReplayPage> {
     final source = EasyTdxKlineSource(baseUrl: request.baseUrl!);
     try {
       final bars = await source.loadKline(
-        market: _market,
+        market: request.market,
         code: request.code,
         period: _period,
         adjust: _adjust,
-        count: _count,
-        startDate: request.startDate,
-        endDate: request.endDate,
+        count: _hiddenMaxCount,
+        startDate: _startDate,
+        endDate: _endDate,
       );
-      if (!mounted) return;
-      if (bars.isEmpty) {
-        _showSnack('easy-tdx 后端未返回有效K线数据，请检查后端、市场、代码、起止时间和K线数量');
-        return;
-      }
-      setState(() {
-        _applyBars(
-          bars,
-          sourceLabel: '${_isAndroidApp ? 'Android调试后端' : 'Windows自动本机后端'} easy-tdx $_market${request.code} $_period $_adjust ${bars.length}根${_dateRangeLabel(request.startDate, request.endDate)} / Vespa本地引擎',
-        );
-      });
+      _handleLoadedBars(
+        bars: bars,
+        request: request,
+        sourceName: _sourceLongLabel(MarketDataSourceKind.easyTdxBackend),
+      );
     } catch (e) {
-      if (mounted) _showSnack('easy-tdx 后端加载失败：$e');
+      if (mounted) {
+        _showLoadResult(
+          ok: false,
+          message: '× ${_sourceLongLabel(MarketDataSourceKind.easyTdxBackend)}获取${_targetDisplayName(request.code)}在${_dateRangeLabel(_startDate, _endDate)}的${_periodAdjustLabel}失败：$e',
+        );
+      }
     } finally {
       source.close();
       if (mounted) setState(() => _loadingRemote = false);
     }
   }
 
+  void _handleLoadedBars({required List<RawBar> bars, required _MarketRequest request, required String sourceName}) {
+    if (!mounted) return;
+    if (bars.isEmpty) {
+      _showLoadResult(
+        ok: false,
+        message: '× $sourceName获取${_targetDisplayName(request.code)}在${_dateRangeLabel(_startDate, _endDate)}的${_periodAdjustLabel}失败：未返回有效K线',
+      );
+      return;
+    }
+    setState(() {
+      _applyBars(
+        bars,
+        sourceLabel: '$sourceName ${request.market}${request.code} ${_periodAdjustLabel} ${bars.length}根 / Vespa本地引擎',
+      );
+    });
+    _showLoadResult(
+      ok: true,
+      message: '√ $sourceName获取${_targetDisplayName(request.code)}在${_barsRangeLabel(bars)}的${_periodAdjustLabel}成功',
+    );
+  }
+
   _MarketRequest? _buildMarketRequest({required bool requireBackend}) {
-    final code = _stockCodeController.text.trim();
-    if (code.isEmpty) {
-      _showSnack('请填写股票代码');
+    final symbol = _parseSymbol(_stockCodeController.text);
+    if (symbol == null) {
+      _showLoadResult(ok: false, message: '× 代码格式错误：请输入6位A股代码，例如 000001 或 600000');
       return null;
     }
-    final startDate = _parseDateInput(_startDateController.text);
-    final endDate = _parseDateInput(_endDateController.text);
-    if (_startDateController.text.trim().isNotEmpty && startDate == null) {
-      _showSnack('开始日期格式应为 yyyy-MM-dd');
-      return null;
-    }
-    if (_endDateController.text.trim().isNotEmpty && endDate == null) {
-      _showSnack('结束日期格式应为 yyyy-MM-dd');
-      return null;
-    }
-    if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
-      _showSnack('开始日期不能晚于结束日期');
+    if (_startDate.isAfter(_endDate)) {
+      _showLoadResult(ok: false, message: '× 开始日期不能晚于结束日期');
       return null;
     }
     final baseUrl = _easyTdxBaseUrlController.text.trim();
     if (requireBackend && baseUrl.isEmpty) {
-      _showSnack('请填写 easy-tdx 后端地址');
+      _showLoadResult(ok: false, message: '× 请填写 easy-tdx 后端地址');
       return null;
     }
-    return _MarketRequest(code: code, startDate: startDate, endDate: endDate, baseUrl: requireBackend ? baseUrl : null);
+    return _MarketRequest(code: symbol.code, market: symbol.market, baseUrl: requireBackend ? baseUrl : null);
   }
 
   void _applyBars(List<RawBar> bars, {required String sourceLabel}) {
@@ -363,7 +329,7 @@ class _ReplayPageState extends State<ReplayPage> {
   }
 
   void _setDisplayMode(ReplayDisplayMode mode) {
-    if (_displayMode == mode) return;
+    if (!_hasBars || _displayMode == mode) return;
     setState(() {
       _stopPlay();
       _displayMode = mode;
@@ -418,6 +384,37 @@ class _ReplayPageState extends State<ReplayPage> {
     });
   }
 
+  Future<void> _pickStartDate() async {
+    final picked = await _pickDate(initialDate: _startDate);
+    if (picked == null) return;
+    setState(() {
+      _startDate = picked;
+      if (_startDate.isAfter(_endDate)) _endDate = picked;
+    });
+  }
+
+  Future<void> _pickEndDate() async {
+    final picked = await _pickDate(initialDate: _endDate);
+    if (picked == null) return;
+    setState(() {
+      _endDate = picked;
+      if (_startDate.isAfter(_endDate)) _startDate = picked;
+    });
+  }
+
+  Future<DateTime?> _pickDate({required DateTime initialDate}) {
+    return showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(1990, 1, 1),
+      lastDate: DateTime(2035, 12, 31),
+      initialEntryMode: DatePickerEntryMode.calendarOnly,
+      helpText: '选择日期',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+  }
+
   void _openDataSourcePanel() {
     showModalBottomSheet<void>(
       context: context,
@@ -426,17 +423,17 @@ class _ReplayPageState extends State<ReplayPage> {
       backgroundColor: const Color(0xFF131722),
       builder: (context) {
         var sourceKind = _availableSourceKinds.contains(_dataSourceKind) ? _dataSourceKind : _defaultSourceKind;
-        var market = _market;
         var period = _period;
         var adjust = _adjust;
-        var count = _count;
+        var start = _startDate;
+        var end = _endDate;
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            final isSample = sourceKind == MarketDataSourceKind.sampleCsv;
+            final isCsv = sourceKind == MarketDataSourceKind.localCsv;
             final usesBackend = sourceKind == MarketDataSourceKind.easyTdxBackend;
-            final sourceItems = _availableSourceKinds
-                .map((kind) => DropdownMenuItem(value: kind, child: Text(_sourceLongLabel(kind))))
-                .toList(growable: false);
+            final sourceItems = _availableSourceKinds.map((kind) {
+              return DropdownMenuItem(value: kind, child: Text(_sourceLongLabel(kind)));
+            }).toList(growable: false);
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
@@ -451,7 +448,7 @@ class _ReplayPageState extends State<ReplayPage> {
                       const SizedBox(height: 12),
                       DropdownButtonFormField<MarketDataSourceKind>(
                         initialValue: sourceKind,
-                        decoration: const InputDecoration(labelText: '数据源（唯一入口）', border: OutlineInputBorder()),
+                        decoration: const InputDecoration(labelText: '数据源', border: OutlineInputBorder()),
                         items: sourceItems,
                         onChanged: _loadingRemote ? null : (v) => setSheetState(() => sourceKind = v ?? sourceKind),
                       ),
@@ -466,29 +463,15 @@ class _ReplayPageState extends State<ReplayPage> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              initialValue: market,
-                              decoration: const InputDecoration(labelText: '市场', border: OutlineInputBorder()),
-                              items: const [
-                                DropdownMenuItem(value: 'SZ', child: Text('深市 SZ')),
-                                DropdownMenuItem(value: 'SH', child: Text('沪市 SH')),
-                              ],
-                              onChanged: isSample || _loadingRemote ? null : (v) => setSheetState(() => market = v ?? market),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: TextField(
-                              controller: _stockCodeController,
-                              enabled: !isSample && !_loadingRemote,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(labelText: '代码', hintText: '000001', border: OutlineInputBorder()),
-                            ),
-                          ),
-                        ],
+                      TextField(
+                        controller: _stockCodeController,
+                        enabled: !isCsv && !_loadingRemote,
+                        keyboardType: TextInputType.text,
+                        decoration: const InputDecoration(
+                          labelText: '代码（自动识别市场）',
+                          hintText: '000001 / 600000 / SZ000001 / 600000.SH',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                       const SizedBox(height: 10),
                       Row(
@@ -507,7 +490,7 @@ class _ReplayPageState extends State<ReplayPage> {
                                 DropdownMenuItem(value: 'WEEKLY', child: Text('周线')),
                                 DropdownMenuItem(value: 'MONTHLY', child: Text('月线')),
                               ],
-                              onChanged: isSample || _loadingRemote ? null : (v) => setSheetState(() => period = v ?? period),
+                              onChanged: isCsv || _loadingRemote ? null : (v) => setSheetState(() => period = v ?? period),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -520,7 +503,7 @@ class _ReplayPageState extends State<ReplayPage> {
                                 DropdownMenuItem(value: 'HFQ', child: Text('后复权')),
                                 DropdownMenuItem(value: 'NONE', child: Text('不复权')),
                               ],
-                              onChanged: isSample || _loadingRemote ? null : (v) => setSheetState(() => adjust = v ?? adjust),
+                              onChanged: isCsv || _loadingRemote ? null : (v) => setSheetState(() => adjust = v ?? adjust),
                             ),
                           ),
                         ],
@@ -529,39 +512,39 @@ class _ReplayPageState extends State<ReplayPage> {
                       Row(
                         children: [
                           Expanded(
-                            child: TextField(
-                              controller: _startDateController,
-                              enabled: !isSample && !_loadingRemote,
-                              keyboardType: TextInputType.datetime,
-                              decoration: const InputDecoration(labelText: '开始日期', hintText: 'yyyy-MM-dd', border: OutlineInputBorder()),
+                            child: _dateTile(
+                              title: '开始日期',
+                              value: start,
+                              enabled: !isCsv && !_loadingRemote,
+                              onTap: () async {
+                                final picked = await _pickDate(initialDate: start);
+                                if (picked == null) return;
+                                setSheetState(() {
+                                  start = picked;
+                                  if (start.isAfter(end)) end = picked;
+                                });
+                              },
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: TextField(
-                              controller: _endDateController,
-                              enabled: !isSample && !_loadingRemote,
-                              keyboardType: TextInputType.datetime,
-                              decoration: const InputDecoration(labelText: '结束日期', hintText: '留空为最新', border: OutlineInputBorder()),
+                            child: _dateTile(
+                              title: '结束日期',
+                              value: end,
+                              enabled: !isCsv && !_loadingRemote,
+                              onTap: () async {
+                                final picked = await _pickDate(initialDate: end);
+                                if (picked == null) return;
+                                setSheetState(() {
+                                  end = picked;
+                                  if (start.isAfter(end)) start = picked;
+                                });
+                              },
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      ListTile(
-                        enabled: !isSample && !_loadingRemote,
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('读取K线数量'),
-                        subtitle: Slider(
-                          min: 100,
-                          max: 5000,
-                          divisions: 49,
-                          label: '$count',
-                          value: count.toDouble().clamp(100.0, 5000.0).toDouble(),
-                          onChanged: isSample || _loadingRemote ? null : (v) => setSheetState(() => count = v.round()),
-                        ),
-                        trailing: Text('$count'),
-                      ),
+                      const SizedBox(height: 14),
                       Row(
                         children: [
                           Expanded(
@@ -570,10 +553,11 @@ class _ReplayPageState extends State<ReplayPage> {
                                   ? null
                                   : () {
                                       Navigator.pop(context);
-                                      _loadSample();
+                                      setState(() => _dataSourceKind = MarketDataSourceKind.localCsv);
+                                      _importCsv();
                                     },
-                              icon: const Icon(Icons.dataset),
-                              label: const Text('示例CSV'),
+                              icon: const Icon(Icons.upload_file),
+                              label: const Text('选择CSV'),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -585,17 +569,17 @@ class _ReplayPageState extends State<ReplayPage> {
                                       Navigator.pop(context);
                                       setState(() {
                                         _dataSourceKind = sourceKind;
-                                        _market = market;
                                         _period = period;
                                         _adjust = adjust;
-                                        _count = count;
+                                        _startDate = start;
+                                        _endDate = end;
                                       });
                                       _loadMarketData();
                                     },
                               icon: _loadingRemote
                                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                                   : const Icon(Icons.cloud_download),
-                              label: const Text('加载K线'),
+                              label: Text(isCsv ? '选择CSV' : '加载K线'),
                             ),
                           ),
                         ],
@@ -608,6 +592,20 @@ class _ReplayPageState extends State<ReplayPage> {
           },
         );
       },
+    );
+  }
+
+  Widget _dateTile({required String title, required DateTime value, required bool enabled, required VoidCallback onTap}) {
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.38,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(4),
+        child: InputDecorator(
+          decoration: InputDecoration(labelText: title, border: const OutlineInputBorder(), suffixIcon: const Icon(Icons.calendar_month)),
+          child: Text(_fmtDate(value), style: const TextStyle(fontSize: 14)),
+        ),
+      ),
     );
   }
 
@@ -695,22 +693,18 @@ class _ReplayPageState extends State<ReplayPage> {
 
   Future<void> _openCandlesticksDocs() async {
     final ok = await launchUrl(_candlesticksDocsUri, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) _showSnack('无法打开 candlesticks 文档：$_candlesticksDocsUri');
+    if (!ok && mounted) _showLoadResult(ok: false, message: '× 无法打开 candlesticks 文档：$_candlesticksDocsUri');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0B0D10),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(52),
-        child: AppBar(
-          toolbarHeight: 52,
-          elevation: 0,
-          titleSpacing: 0,
-          backgroundColor: const Color(0xFF131722),
-          title: _buildTopToolbar(context),
-        ),
+      appBar: AppBar(
+        toolbarHeight: 40,
+        elevation: 0,
+        backgroundColor: const Color(0xFF131722),
+        title: Text(_dataSourceLabel, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54)),
       ),
       body: SafeArea(
         top: false,
@@ -721,80 +715,22 @@ class _ReplayPageState extends State<ReplayPage> {
               child: Column(
                 children: [
                   Expanded(child: _buildChartPanel()),
-                  ReplayControllerBar(
-                    enabled: _isStepMode && _hasBars,
-                    playing: _playing,
-                    cursor: _effectiveCursor,
-                    total: _allBars.length,
-                    onReset: _reset,
-                    onStepBack: _stepBack,
-                    onStepForward: _stepForward,
-                    onTogglePlay: _togglePlay,
-                    onSliderChanged: (v) => _jumpTo(v.round()),
-                  ),
+                  if (_isStepMode)
+                    ReplayControllerBar(
+                      enabled: _hasBars,
+                      playing: _playing,
+                      cursor: _effectiveCursor,
+                      total: _allBars.length,
+                      onReset: _reset,
+                      onStepBack: _stepBack,
+                      onStepForward: _stepForward,
+                      onTogglePlay: _togglePlay,
+                      onSliderChanged: (v) => _jumpTo(v.round()),
+                    ),
                 ],
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopToolbar(BuildContext context) {
-    final code = _stockCodeController.text.trim().isEmpty ? '000001' : _stockCodeController.text.trim();
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          const SizedBox(width: 8),
-          _toolbarButton(label: '$_market:$code', icon: Icons.search, selected: true, onTap: _openDataSourcePanel),
-          const SizedBox(width: 6),
-          _toolbarButton(label: '一次性', selected: _displayMode == ReplayDisplayMode.full, onTap: () => _setDisplayMode(ReplayDisplayMode.full)),
-          _toolbarButton(label: '逐K', selected: _displayMode == ReplayDisplayMode.step, onTap: () => _setDisplayMode(ReplayDisplayMode.step)),
-          const SizedBox(width: 6),
-          _toolbarButton(label: _sourceShortLabel(_dataSourceKind), icon: Icons.storage, onTap: _openDataSourcePanel),
-          _toolbarButton(label: 'CSV', icon: Icons.upload_file, onTap: _loadingRemote ? null : _importCsv),
-          _toolbarButton(label: '最新', icon: Icons.keyboard_double_arrow_right, onTap: _hasBars ? _goToLatest : null),
-          _toolbarButton(label: '设置', icon: Icons.settings, onTap: _openSettings),
-          const SizedBox(width: 10),
-          Text(_dataSourceLabel, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54)),
-        ],
-      ),
-    );
-  }
-
-  Widget _toolbarButton({required String label, IconData? icon, bool selected = false, required VoidCallback? onTap}) {
-    final enabled = onTap != null;
-    return Padding(
-      padding: const EdgeInsets.only(right: 4),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: onTap,
-        child: Opacity(
-          opacity: enabled ? 1.0 : 0.38,
-          child: Container(
-            height: 34,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: selected ? const Color(0xFF2962FF) : Colors.transparent,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 16, color: Colors.white70),
-                  const SizedBox(width: 5),
-                ],
-                Text(
-                  label,
-                  style: TextStyle(color: selected ? Colors.white : Colors.white70, fontSize: 13, fontWeight: selected ? FontWeight.w600 : FontWeight.w400),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
@@ -819,15 +755,20 @@ class _ReplayPageState extends State<ReplayPage> {
               _arrowToggle(),
               if (_toolbarExpanded) ...[
                 const Divider(height: 12, color: Colors.white12),
+                _toolIcon(tooltip: '数据源/标的/周期/日期', icon: Icons.search, onPressed: _loadingRemote ? null : _openDataSourcePanel),
+                _toolIcon(tooltip: '一次性显示', icon: Icons.fullscreen, selected: _displayMode == ReplayDisplayMode.full, onPressed: _hasBars ? () => _setDisplayMode(ReplayDisplayMode.full) : null),
+                _toolIcon(tooltip: '逐K回放', icon: Icons.play_circle_outline, selected: _displayMode == ReplayDisplayMode.step, onPressed: _hasBars ? () => _setDisplayMode(ReplayDisplayMode.step) : null),
+                _toolIcon(tooltip: '引擎参数/帮助', icon: Icons.settings, onPressed: _openSettings),
+                const Divider(height: 18, color: Colors.white12),
                 _toolIcon(tooltip: '清除十字光标', icon: Icons.add, selected: _crosshairIndex != null, onPressed: _hasBars ? () => setState(() => _crosshairIndex = null) : null),
-                _toolIcon(tooltip: '显示分型顶底', icon: Icons.trip_origin, selected: _showFx, onPressed: () => setState(() => _showFx = !_showFx)),
-                _toolIcon(tooltip: '显示分型顶底文字', icon: Icons.title, selected: _showFxText, onPressed: _showFx ? () => setState(() => _showFxText = !_showFxText) : null),
-                _toolIcon(tooltip: '显示分型顶底连线', icon: Icons.timeline, selected: _showFxLine, onPressed: () => setState(() => _showFxLine = !_showFxLine)),
-                _toolIcon(tooltip: '显示笔', icon: Icons.show_chart, selected: _showBi, onPressed: () => setState(() => _showBi = !_showBi)),
-                _toolIcon(tooltip: '显示笔端点文字', icon: Icons.text_fields, selected: _showBiText, onPressed: _showBi ? () => setState(() => _showBiText = !_showBiText) : null),
-                _toolIcon(tooltip: '显示线段', icon: Icons.multiline_chart, selected: _showSeg, onPressed: () => setState(() => _showSeg = !_showSeg)),
-                _toolIcon(tooltip: '显示线段端点文字', icon: Icons.font_download_outlined, selected: _showSegText, onPressed: _showSeg ? () => setState(() => _showSegText = !_showSegText) : null),
-                _toolIcon(tooltip: '显示中枢', icon: Icons.crop_square, selected: _showZs, onPressed: () => setState(() => _showZs = !_showZs)),
+                _toolIcon(tooltip: '显示分型顶底', icon: Icons.trip_origin, selected: _showFx, onPressed: _hasBars ? () => setState(() => _showFx = !_showFx) : null),
+                _toolIcon(tooltip: '显示分型顶底文字', icon: Icons.title, selected: _showFxText, onPressed: _hasBars && _showFx ? () => setState(() => _showFxText = !_showFxText) : null),
+                _toolIcon(tooltip: '显示分型顶底连线', icon: Icons.timeline, selected: _showFxLine, onPressed: _hasBars ? () => setState(() => _showFxLine = !_showFxLine) : null),
+                _toolIcon(tooltip: '显示笔', icon: Icons.show_chart, selected: _showBi, onPressed: _hasBars ? () => setState(() => _showBi = !_showBi) : null),
+                _toolIcon(tooltip: '显示笔端点文字', icon: Icons.text_fields, selected: _showBiText, onPressed: _hasBars && _showBi ? () => setState(() => _showBiText = !_showBiText) : null),
+                _toolIcon(tooltip: '显示线段', icon: Icons.multiline_chart, selected: _showSeg, onPressed: _hasBars ? () => setState(() => _showSeg = !_showSeg) : null),
+                _toolIcon(tooltip: '显示线段端点文字', icon: Icons.font_download_outlined, selected: _showSegText, onPressed: _hasBars && _showSeg ? () => setState(() => _showSegText = !_showSegText) : null),
+                _toolIcon(tooltip: '显示中枢', icon: Icons.crop_square, selected: _showZs, onPressed: _hasBars ? () => setState(() => _showZs = !_showZs) : null),
                 const Divider(height: 18, color: Colors.white12),
                 _toolIcon(tooltip: '左右放大', icon: Icons.zoom_in, onPressed: _hasBars ? () => _changeWindowSize(_windowSize - 15) : null),
                 _toolIcon(tooltip: '左右缩小', icon: Icons.zoom_out, onPressed: _hasBars ? () => _changeWindowSize(_windowSize + 15) : null),
@@ -914,39 +855,39 @@ class _ReplayPageState extends State<ReplayPage> {
     );
   }
 
-  void _showSnack(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-
-  DateTime? _parseDateInput(String input) {
-    final text = input.trim();
-    if (text.isEmpty) return null;
-    final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(text);
-    if (match == null) return null;
-    final y = int.tryParse(match.group(1)!);
-    final m = int.tryParse(match.group(2)!);
-    final d = int.tryParse(match.group(3)!);
-    if (y == null || m == null || d == null) return null;
-    final parsed = DateTime(y, m, d);
-    if (parsed.year != y || parsed.month != m || parsed.day != d) return null;
-    return parsed;
+  void _showLoadResult({required bool ok, required String message}) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: ok ? const Color(0xFF1B5E20) : const Color(0xFFB71C1C),
+      ),
+    );
   }
 
-  String _dateRangeLabel(DateTime? start, DateTime? end) {
-    if (start == null && end == null) return '';
-    return ' ${_fmtDate(start) ?? '开始'}~${_fmtDate(end) ?? '最新'}';
+  String _dateRangeLabel(DateTime start, DateTime end) => '${_fmtDate(start)}~${_fmtDate(end)}';
+
+  String _barsRangeLabel(List<RawBar> bars) {
+    if (bars.isEmpty) return _dateRangeLabel(_startDate, _endDate);
+    return '${_fmtDate(bars.first.time)}~${_fmtDate(bars.last.time)}';
   }
 
-  String? _fmtDate(DateTime? dt) {
-    if (dt == null) return null;
+  String _fmtDate(DateTime dt) {
     return '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 
+  String get _periodAdjustLabel => '${_periodLabel(_period)}${_adjustLabel(_adjust)}';
+
   String _periodLabel(String value) {
     return switch (value) {
-      'MIN1' => '1分',
-      'MIN5' => '5分',
-      'MIN15' => '15分',
-      'MIN30' => '30分',
-      'MIN60' => '60分',
+      'MIN1' => '1分钟',
+      'MIN5' => '5分钟',
+      'MIN15' => '15分钟',
+      'MIN30' => '30分钟',
+      'MIN60' => '60分钟',
       'DAILY' => '日线',
       'WEEKLY' => '周线',
       'MONTHLY' => '月线',
@@ -954,42 +895,85 @@ class _ReplayPageState extends State<ReplayPage> {
     };
   }
 
-  String _sourceShortLabel(MarketDataSourceKind kind) {
-    return switch (kind) {
-      MarketDataSourceKind.embeddedEasyTdx => 'Android内置TDX',
-      MarketDataSourceKind.easyTdxBackend => defaultTargetPlatform == TargetPlatform.windows ? 'Windows本机TDX' : 'TDX后端',
-      MarketDataSourceKind.tencent => '腾讯',
-      MarketDataSourceKind.sampleCsv => 'CSV',
+  String _adjustLabel(String value) {
+    return switch (value) {
+      'QFQ' => '前复权',
+      'HFQ' => '后复权',
+      'NONE' => '不复权',
+      _ => value,
     };
   }
 
   String _sourceLongLabel(MarketDataSourceKind kind) {
     return switch (kind) {
-      MarketDataSourceKind.embeddedEasyTdx => 'Android：内置 Python easy-tdx（无需外部后端）',
-      MarketDataSourceKind.easyTdxBackend => defaultTargetPlatform == TargetPlatform.windows
-          ? 'Windows：本机 easy-tdx 后端（可自动后台启动）'
-          : 'easy-tdx 后端备用（Android模拟器/调试）',
-      MarketDataSourceKind.tencent => '腾讯行情直连（备用数据源）',
-      MarketDataSourceKind.sampleCsv => '示例CSV / 本地CSV（离线复盘）',
+      MarketDataSourceKind.embeddedEasyTdx => 'Android内置Python easy-tdx',
+      MarketDataSourceKind.easyTdxBackend => _isWindowsApp ? 'Windows本机TDX' : 'easy-tdx后端备用',
+      MarketDataSourceKind.localCsv => '本地CSV',
     };
   }
 
   String get _platformSourceHelp {
     if (_isAndroidApp) {
-      return 'Android 默认使用内置 Python easy-tdx；Windows 项不会显示该选项。所有数据源只提供K线，缠论结构统一由本地 Vespa/Dart 引擎计算。';
+      return 'Android 默认使用内置 Python easy-tdx。所有数据源只提供K线，缠论结构统一由本地 Vespa/Dart 引擎计算。';
     }
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    if (_isWindowsApp) {
       return 'Windows 使用本机 easy-tdx 后端。若 127.0.0.1:8000 无服务，程序会后台启动随机端口服务并在加载后释放。';
     }
-    return '当前平台不支持 Android 内置 Python；请使用 easy-tdx 后端、腾讯行情或CSV。';
+    return '当前平台不支持 Android 内置 Python；请使用 easy-tdx 后端或CSV。';
+  }
+
+  _SymbolSpec? _parseSymbol(String input) {
+    var text = input.trim().toUpperCase().replaceAll(' ', '');
+    if (text.isEmpty) return null;
+    String? market;
+    if (text.endsWith('.SH') || text.endsWith('.SS')) {
+      market = 'SH';
+      text = text.substring(0, text.length - 3);
+    } else if (text.endsWith('.SZ')) {
+      market = 'SZ';
+      text = text.substring(0, text.length - 3);
+    } else if (text.startsWith('SH')) {
+      market = 'SH';
+      text = text.substring(2);
+    } else if (text.startsWith('SZ')) {
+      market = 'SZ';
+      text = text.substring(2);
+    }
+    if (!RegExp(r'^\d{6}$').hasMatch(text)) return null;
+    market ??= _inferMarket(text);
+    return _SymbolSpec(code: text, market: market);
+  }
+
+  String _inferMarket(String code) {
+    if (code.startsWith('6') || code.startsWith('5') || code.startsWith('9')) return 'SH';
+    return 'SZ';
+  }
+
+  String _targetDisplayName(String codeInput) {
+    final parsed = _parseSymbol(codeInput);
+    final code = parsed?.code ?? codeInput.trim();
+    const known = {
+      '000001': '平安银行',
+      '000002': '万科A',
+      '600000': '浦发银行',
+      '600519': '贵州茅台',
+      '300750': '宁德时代',
+    };
+    return '${known[code] ?? 'A股标的'}$code';
   }
 }
 
 class _MarketRequest {
   final String code;
-  final DateTime? startDate;
-  final DateTime? endDate;
+  final String market;
   final String? baseUrl;
 
-  const _MarketRequest({required this.code, this.startDate, this.endDate, this.baseUrl});
+  const _MarketRequest({required this.code, required this.market, this.baseUrl});
+}
+
+class _SymbolSpec {
+  final String code;
+  final String market;
+
+  const _SymbolSpec({required this.code, required this.market});
 }
