@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'ui/pages/replay_page.dart';
+import 'ui/pages/root_page.dart';
 
 class ChanReplayApp extends StatelessWidget {
   const ChanReplayApp({super.key});
@@ -33,7 +33,7 @@ class ChanReplayApp extends StatelessWidget {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
-      home: const ReplayPage(),
+      home: const RootPage(),
     );
   }
 }
