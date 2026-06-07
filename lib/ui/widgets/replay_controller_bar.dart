@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 class ReplayControllerBar extends StatelessWidget {
   final bool playing;
+  final bool enabled;
   final int cursor;
   final int total;
   final VoidCallback onReset;
@@ -13,6 +14,7 @@ class ReplayControllerBar extends StatelessWidget {
   const ReplayControllerBar({
     super.key,
     required this.playing,
+    this.enabled = true,
     required this.cursor,
     required this.total,
     required this.onReset,
@@ -27,9 +29,9 @@ class ReplayControllerBar extends StatelessWidget {
     final max = total <= 0 ? 1.0 : total.toDouble();
     final value = cursor.clamp(0, total).toDouble();
     return Container(
-      height: 72,
-      margin: const EdgeInsets.fromLTRB(8, 2, 8, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      constraints: const BoxConstraints(minHeight: 58, maxHeight: 66),
+      margin: const EdgeInsets.fromLTRB(4, 2, 4, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: const Color(0xFF131722),
         borderRadius: BorderRadius.circular(8),
@@ -38,47 +40,56 @@ class ReplayControllerBar extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              _barIcon('重置', Icons.restart_alt, onReset),
-              _barIcon('后退一根K线', Icons.skip_previous, onStepBack),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: IconButton.filled(
-                  tooltip: playing ? '暂停' : '播放',
-                  onPressed: onTogglePlay,
-                  icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                  style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFF2962FF),
-                    foregroundColor: Colors.white,
+          SizedBox(
+            height: 34,
+            child: Row(
+              children: [
+                _barIcon('重置', Icons.restart_alt, enabled ? onReset : null),
+                _barIcon('后退一根K线', Icons.skip_previous, enabled ? onStepBack : null),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: IconButton.filled(
+                    tooltip: enabled ? (playing ? '暂停' : '播放') : '一次性显示模式',
+                    onPressed: enabled ? onTogglePlay : null,
+                    icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 20),
+                    style: IconButton.styleFrom(
+                      backgroundColor: const Color(0xFF2962FF),
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.white12,
+                      disabledForegroundColor: Colors.white30,
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ),
                 ),
-              ),
-              _barIcon('前进一根K线', Icons.skip_next, onStepForward),
-              const SizedBox(width: 8),
-              Text(
-                '$cursor / $total',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-              const Spacer(),
-              const Text(
-                'Bar Replay',
-                style: TextStyle(color: Colors.white38, fontSize: 12),
-              ),
-            ],
-          ),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 2,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                _barIcon('前进一根K线', Icons.skip_next, enabled ? onStepForward : null),
+                const SizedBox(width: 6),
+                Text(
+                  '$cursor / $total',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                const Spacer(),
+                Text(
+                  enabled ? 'Bar Replay' : 'Full View',
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ],
             ),
-            child: Slider(
-              min: 0,
-              max: max,
-              divisions: total > 0 ? total : null,
-              value: value.clamp(0.0, max).toDouble(),
-              onChanged: onSliderChanged,
+          ),
+          SizedBox(
+            height: 20,
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+              ),
+              child: Slider(
+                min: 0,
+                max: max,
+                divisions: total > 0 ? total : null,
+                value: value.clamp(0.0, max).toDouble(),
+                onChanged: enabled ? onSliderChanged : null,
+              ),
             ),
           ),
         ],
@@ -86,13 +97,16 @@ class ReplayControllerBar extends StatelessWidget {
     );
   }
 
-  Widget _barIcon(String tooltip, IconData icon, VoidCallback onPressed) {
+  Widget _barIcon(String tooltip, IconData icon, VoidCallback? onPressed) {
     return IconButton(
       tooltip: tooltip,
       onPressed: onPressed,
       icon: Icon(icon, size: 20),
       color: Colors.white70,
+      disabledColor: Colors.white24,
       visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 34, height: 34),
     );
   }
 }
