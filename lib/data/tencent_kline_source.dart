@@ -16,11 +16,16 @@ class TencentKlineSource {
     String period = 'DAILY',
     String adjust = 'QFQ',
     int count = 500,
+    DateTime? startDate,
+    DateTime? endDate,
     Duration timeout = const Duration(seconds: 15),
   }) async {
     final normalizedCode = code.trim();
     if (!RegExp(r'^\d{6}$').hasMatch(normalizedCode)) {
       throw const FormatException('股票代码必须是6位数字，例如 000001');
+    }
+    if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+      throw const FormatException('开始日期不能晚于结束日期');
     }
 
     final symbol = '${_marketPrefix(market)}$normalizedCode';
@@ -28,9 +33,11 @@ class TencentKlineSource {
     final normalizedAdjust = adjust.trim().toUpperCase();
     final isMinute = _isMinutePeriod(periodValue);
     final fq = normalizedAdjust == 'NONE' ? '' : ',${_fqValue(normalizedAdjust)}';
+    final startText = startDate == null ? '' : _formatDate(startDate);
+    final endText = endDate == null ? '' : _formatDate(endDate);
     final param = isMinute
         ? '$symbol,$periodValue,,$count'
-        : '$symbol,$periodValue,,,$count$fq';
+        : '$symbol,$periodValue,$startText,$endText,$count$fq';
 
     final uri = Uri.https(
       'web.ifzq.gtimg.cn',
@@ -76,7 +83,9 @@ class TencentKlineSource {
     final bars = <RawBar>[];
     for (final row in rows) {
       final bar = _parseRow(row, bars.length);
-      if (bar != null) bars.add(bar);
+      if (bar == null) continue;
+      if (!_inDateRange(bar.time, startDate, endDate)) continue;
+      bars.add(bar.copyWith(index: bars.length));
     }
 
     bars.sort((a, b) => a.time.compareTo(b.time));
@@ -129,6 +138,19 @@ class TencentKlineSource {
   }
 
   static bool _isMinutePeriod(String periodValue) => periodValue.startsWith('m');
+
+  static bool _inDateRange(DateTime time, DateTime? start, DateTime? end) {
+    final day = DateTime(time.year, time.month, time.day);
+    if (start != null) {
+      final s = DateTime(start.year, start.month, start.day);
+      if (day.isBefore(s)) return false;
+    }
+    if (end != null) {
+      final e = DateTime(end.year, end.month, end.day, 23, 59, 59);
+      if (time.isAfter(e)) return false;
+    }
+    return true;
+  }
 
   static List<dynamic> _extractRows(
     Map<String, dynamic> stockNode,
@@ -202,5 +224,10 @@ class TencentKlineSource {
     final text = value.toString().trim().replaceAll(',', '');
     if (text.isEmpty || text == '-' || text.toLowerCase() == 'nan') return null;
     return double.tryParse(text);
+  }
+
+  static String _formatDate(DateTime d) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
   }
 }
