@@ -259,7 +259,7 @@ class _CzscEasyTdxPageState extends State<CzscEasyTdxPage> {
         children: [
           Expanded(
             child: Text(
-              '$_label  K:${_snapshot.rawBars.length} FX:${_snapshot.fxs.length} BI:${_snapshot.bis.length} SEG:${_snapshot.segs.length} ZS:${_snapshot.zss.length}',
+              '$_label  K:${_snapshot.rawBars.length} FX:${_snapshot.fxs.length} BI:${_snapshot.bis.length} SEG:${_snapshot.segs.length} ZS:${_snapshot.zss.length} SIG:${_signals.length}',
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
@@ -323,7 +323,6 @@ class _CzscEasyTdxPageState extends State<CzscEasyTdxPage> {
   Widget _textField(TextEditingController controller, String label) {
     return TextField(
       controller: controller,
-      dense: true,
       style: const TextStyle(fontSize: 13),
       decoration: InputDecoration(
         isDense: true,
