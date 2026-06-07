@@ -11,17 +11,18 @@
 ## 当前功能
 
 - K线图底层使用 Flutter `candlesticks` 包渲染，缠论分型、笔、线段、中枢作为前端叠加层绘制。
+- 默认空图，只有显式加载数据源成功后才显示K线。
 - Android App 内置 Python 解释器，直接安装并调用 `easy-tdx` 获取 K 线。
 - Windows Flutter 使用 `easy-tdx 后端备用` 时，如果 `127.0.0.1:8000` 未启动，会自动后台启动本项目 `backend/app/main.py`，不显示 cmd 窗口，使用随机本机端口，请求结束后释放端口。
-- 本地复盘页支持一次性显示与逐 K 线回放。
+- 本地复盘页默认“一次性显示”；只有切换到“逐K回放”时才显示底部播放栏。
 - 本地复盘页数据源支持：
   - Android：内置 Python easy-tdx，Android 默认；Windows 不显示该选项
   - Windows：easy-tdx 后端备用，Windows 默认；可自动后台启动本机子进程
-  - 腾讯行情直连备用
-  - 示例 CSV / 本地 CSV
+  - 本地 CSV
 - easy-tdx 后端只返回 K 线 `bars`，不再调用 CZSC。
 - Flutter 端继续使用项目内 Vespa/Dart 缠论引擎计算：包含关系、分型、笔、线段、中枢。
-- 支持设置标的、市场、周期、复权、K线数量、开始日期、结束日期。
+- 标的市场由代码自动推断，例如 `600000` 走 SH，`000001` 走 SZ；也支持 `SH600000`、`600000.SH`、`SZ000001`、`000001.SZ`。
+- 远程取数使用开始日期和结束日期；结束日期默认 `2026-06-06`。
 - 支持显示 / 隐藏分型、分型连线、笔、线段、中枢，以及分型/笔/线段端点文字。
 
 ## 前端交互约束
@@ -30,7 +31,7 @@
 1. 每个设置项在整个前端只能有一个入口：
    - 数据源 / 标的 / 周期 / 复权 / 起止时间：只在“数据源”面板设置。
    - Vespa/chan.py 引擎参数：只在“设置”面板设置。
-   - 图层显隐和图表缩放：只在左侧工具栏操作。
+   - 一次性 / 逐K / 图层显隐 / 图表缩放：只在左侧工具栏操作。
 2. 当前状态下不可用的操作必须灰度不可点击，禁止“点了才报错”。
 3. Android 和 Windows 数据源必须用不同文案明确区分，避免误选。
 4. 缠论计算逻辑只能复刻 Vespa/chan.py；除前端显示、数据源适配、UI交互外，禁止自造缠论规则。
@@ -79,7 +80,7 @@ lib/data/embedded_easy_tdx_source.dart
 Windows 下选择：
 
 ```text
-本地复盘 -> 数据源 -> Windows：本机 easy-tdx 后端（可自动后台启动）
+本地复盘 -> 数据源 -> Windows本机TDX
 ```
 
 如果 `http://127.0.0.1:8000` 没有服务，Flutter 会自动：
@@ -149,7 +150,7 @@ http://192.168.1.8:8000
 
 ```text
 GET /health
-GET /api/tdx/kline?symbol=000001&market=SZ&freq=DAILY&adjust=QFQ&count=800&start=2020-01-01&end=2024-12-31
+GET /api/tdx/kline?symbol=000001&market=SZ&freq=DAILY&adjust=QFQ&start=2020-01-01&end=2026-06-06
 ```
 
 返回示例：
@@ -168,13 +169,11 @@ GET /api/tdx/kline?symbol=000001&market=SZ&freq=DAILY&adjust=QFQ&count=800&start
 ## 数据源参数
 
 ```text
-symbol  股票代码，例如 000001 或 600000
-market  SZ / SH，可留空自动推断
+symbol  股票代码，例如 000001、600000、SZ000001、600000.SH
 freq    MIN1 / MIN5 / MIN15 / MIN30 / MIN60 / DAILY / WEEKLY / MONTHLY
 adjust  QFQ / HFQ / NONE
-count   10~5000
-start   yyyy-MM-dd，可选
-end     yyyy-MM-dd，可选
+start   yyyy-MM-dd
+end     yyyy-MM-dd，默认 2026-06-06
 ```
 
 ## 核心代码位置
