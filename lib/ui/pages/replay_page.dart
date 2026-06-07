@@ -10,13 +10,14 @@ import '../../core/models/chan_snapshot.dart';
 import '../../core/models/raw_bar.dart';
 import '../../data/csv_loader.dart';
 import '../../data/easy_tdx_kline_source.dart';
+import '../../data/embedded_easy_tdx_source.dart';
 import '../../data/tencent_kline_source.dart';
 import '../widgets/kline_chart.dart';
 import '../widgets/replay_controller_bar.dart';
 
 enum ReplayDisplayMode { full, step }
 
-enum MarketDataSourceKind { sampleCsv, tencent, easyTdx }
+enum MarketDataSourceKind { embeddedEasyTdx, easyTdxBackend, tencent, sampleCsv }
 
 class ReplayPage extends StatefulWidget {
   const ReplayPage({super.key});
@@ -54,7 +55,7 @@ class _ReplayPageState extends State<ReplayPage> {
   bool _toolbarExpanded = true;
   bool _loadingRemote = false;
   ReplayDisplayMode _displayMode = ReplayDisplayMode.step;
-  MarketDataSourceKind _dataSourceKind = MarketDataSourceKind.easyTdx;
+  MarketDataSourceKind _dataSourceKind = _defaultSourceKind;
   Timer? _timer;
 
   ChanConfig _config = ChanConfig.chanPyDefault();
@@ -63,6 +64,13 @@ class _ReplayPageState extends State<ReplayPage> {
   String _adjust = 'QFQ';
   int _count = 800;
   String _dataSourceLabel = '未加载';
+
+  static MarketDataSourceKind get _defaultSourceKind {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return MarketDataSourceKind.embeddedEasyTdx;
+    }
+    return MarketDataSourceKind.easyTdxBackend;
+  }
 
   static String get _defaultBackendBaseUrl {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -121,9 +129,46 @@ class _ReplayPageState extends State<ReplayPage> {
       case MarketDataSourceKind.tencent:
         await _loadTencent();
         return;
-      case MarketDataSourceKind.easyTdx:
-        await _loadEasyTdx();
+      case MarketDataSourceKind.easyTdxBackend:
+        await _loadEasyTdxBackend();
         return;
+      case MarketDataSourceKind.embeddedEasyTdx:
+        await _loadEmbeddedEasyTdx();
+        return;
+    }
+  }
+
+  Future<void> _loadEmbeddedEasyTdx() async {
+    final request = _buildMarketRequest(requireBackend: false);
+    if (request == null) return;
+    setState(() => _loadingRemote = true);
+    final source = EmbeddedEasyTdxSource();
+    try {
+      final bars = await source.loadKline(
+        market: _market,
+        code: request.code,
+        period: _period,
+        adjust: _adjust,
+        count: _count,
+        startDate: request.startDate,
+        endDate: request.endDate,
+      );
+      if (!mounted) return;
+      if (bars.isEmpty) {
+        _showSnack('内置 easy-tdx 未返回有效K线数据，请检查网络、市场、代码、起止时间和K线数量');
+        return;
+      }
+      setState(() {
+        _applyBars(
+          bars,
+          sourceLabel:
+              '内置easy-tdx $_market${request.code} $_period $_adjust ${bars.length}根${_dateRangeLabel(request.startDate, request.endDate)} / Vespa本地引擎',
+        );
+      });
+    } catch (e) {
+      if (mounted) _showSnack('内置 easy-tdx 加载失败：$e');
+    } finally {
+      if (mounted) setState(() => _loadingRemote = false);
     }
   }
 
@@ -162,7 +207,7 @@ class _ReplayPageState extends State<ReplayPage> {
     }
   }
 
-  Future<void> _loadEasyTdx() async {
+  Future<void> _loadEasyTdxBackend() async {
     final request = _buildMarketRequest(requireBackend: true);
     if (request == null) return;
     setState(() => _loadingRemote = true);
@@ -179,18 +224,18 @@ class _ReplayPageState extends State<ReplayPage> {
       );
       if (!mounted) return;
       if (bars.isEmpty) {
-        _showSnack('easy-tdx 未返回有效K线数据，请检查后端、市场、代码、起止时间和K线数量');
+        _showSnack('easy-tdx 后端未返回有效K线数据，请检查后端、市场、代码、起止时间和K线数量');
         return;
       }
       setState(() {
         _applyBars(
           bars,
           sourceLabel:
-              'easy-tdx $_market${request.code} $_period $_adjust ${bars.length}根${_dateRangeLabel(request.startDate, request.endDate)} / Vespa本地引擎',
+              'easy-tdx后端 $_market${request.code} $_period $_adjust ${bars.length}根${_dateRangeLabel(request.startDate, request.endDate)} / Vespa本地引擎',
         );
       });
     } catch (e) {
-      if (mounted) _showSnack('easy-tdx 加载失败：$e');
+      if (mounted) _showSnack('easy-tdx 后端加载失败：$e');
     } finally {
       source.close();
       if (mounted) setState(() => _loadingRemote = false);
@@ -398,13 +443,14 @@ class _ReplayPageState extends State<ReplayPage> {
                     children: [
                       const Text('本地复盘数据源', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
-                      const Text('K线数据源可选 easy-tdx；缠论结构统一由 Flutter 内置 Vespa/Dart 引擎计算。'),
+                      const Text('优先使用内置 Python easy-tdx；缠论结构统一由 Flutter 内置 Vespa/Dart 引擎计算。'),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<MarketDataSourceKind>(
                         initialValue: sourceKind,
                         decoration: const InputDecoration(labelText: '数据源', border: OutlineInputBorder()),
                         items: const [
-                          DropdownMenuItem(value: MarketDataSourceKind.easyTdx, child: Text('easy-tdx 后端')),
+                          DropdownMenuItem(value: MarketDataSourceKind.embeddedEasyTdx, child: Text('内置 Python easy-tdx')),
+                          DropdownMenuItem(value: MarketDataSourceKind.easyTdxBackend, child: Text('easy-tdx 后端备用')),
                           DropdownMenuItem(value: MarketDataSourceKind.tencent, child: Text('腾讯行情直连')),
                           DropdownMenuItem(value: MarketDataSourceKind.sampleCsv, child: Text('示例CSV')),
                         ],
@@ -414,7 +460,7 @@ class _ReplayPageState extends State<ReplayPage> {
                       TextField(
                         controller: _easyTdxBaseUrlController,
                         decoration: const InputDecoration(
-                          labelText: 'easy-tdx 后端地址',
+                          labelText: 'easy-tdx 后端地址（仅后端备用模式使用）',
                           hintText: 'http://127.0.0.1:8000 或 http://10.0.2.2:8000',
                           border: OutlineInputBorder(),
                         ),
@@ -927,8 +973,10 @@ class _ReplayPageState extends State<ReplayPage> {
 
   String _sourceShortLabel(MarketDataSourceKind kind) {
     switch (kind) {
-      case MarketDataSourceKind.easyTdx:
-        return 'easy-tdx';
+      case MarketDataSourceKind.embeddedEasyTdx:
+        return '内置tdx';
+      case MarketDataSourceKind.easyTdxBackend:
+        return 'tdx后端';
       case MarketDataSourceKind.tencent:
         return '腾讯';
       case MarketDataSourceKind.sampleCsv:
