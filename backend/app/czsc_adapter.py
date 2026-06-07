@@ -68,10 +68,12 @@ def _dt_index_map(bars: list[dict[str, Any]]) -> dict[str, int]:
 
 def _find_bar_id(bars: list[dict[str, Any]], dt: Any, fallback: int = 0) -> int:
     parsed = _parse_dt(dt)
+    safe_fallback = fallback if isinstance(fallback, int) else 0
     if parsed is None:
-        return max(0, min(fallback, len(bars) - 1)) if bars else 0
+        return max(0, min(safe_fallback, len(bars) - 1)) if bars else 0
     keys = _dt_index_map(bars)
-    return keys.get(parsed.isoformat(sep=' '), keys.get(parsed.date().isoformat(), fallback))
+    found = keys.get(parsed.isoformat(sep=' '), keys.get(parsed.date().isoformat(), safe_fallback))
+    return max(0, min(int(found), len(bars) - 1)) if bars else 0
 
 
 def _freq_obj(freq: str) -> Any:
@@ -245,8 +247,10 @@ def _serialize_recent_official_zs(c: Any, bars: list[dict[str, Any]]) -> tuple[l
 
     sdt = _get(zs, 'sdt')
     edt = _get(zs, 'edt')
-    start_bar_id = _find_bar_id(bars, sdt, _get(_get(recent[0], 'fx_a'), 'dt', default=0))
-    end_bar_id = _find_bar_id(bars, edt, start_bar_id)
+    first_bi = recent[0]
+    last_bi = recent[-1]
+    start_bar_id = _find_bar_id(bars, sdt, _find_bar_id(bars, _get(first_bi, 'sdt', default=_get(_get(first_bi, 'fx_a'), 'dt')), 0))
+    end_bar_id = _find_bar_id(bars, edt, _find_bar_id(bars, _get(last_bi, 'edt', default=_get(_get(last_bi, 'fx_b'), 'dt')), start_bar_id))
     return [
         {
             'index': 0,
