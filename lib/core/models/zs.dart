@@ -4,13 +4,28 @@ class ZS {
   final int endBiIndex;
   final int startRawIndex;
   final int endRawIndex;
-  final double zg; // 中枢上沿：参与笔高点中的最低高点
-  final double zd; // 中枢下沿：参与笔低点中的最高低点
-  final double gg; // 参与笔最高点
-  final double dd; // 参与笔最低点
+
+  /// Vespa/chan.py CZS.high：中枢上沿，参与笔 high 的最小值。
+  final double zg;
+
+  /// Vespa/chan.py CZS.low：中枢下沿，参与笔 low 的最大值。
+  final double zd;
+
+  /// Vespa/chan.py CZS.peak_high：中枢所涉及笔的最高点。
+  final double gg;
+
+  /// Vespa/chan.py CZS.peak_low：中枢所涉及笔的最低点。
+  final double dd;
+
   final bool confirmed;
 
-  /// 线段感知字段。normal 模式下同一个中枢应当限制在同一线段内。
+  /// Vespa/chan.py 中枢进入笔 bi_in。
+  final int? biInIndex;
+
+  /// Vespa/chan.py 中枢离开笔 bi_out。
+  final int? biOutIndex;
+
+  /// normal 模式下同一个中枢应限制在同一线段内。
   final int? startSegIndex;
   final int? endSegIndex;
 
@@ -25,10 +40,14 @@ class ZS {
     required this.gg,
     required this.dd,
     this.confirmed = true,
+    this.biInIndex,
+    this.biOutIndex,
     this.startSegIndex,
     this.endSegIndex,
   });
 
   bool get isCrossSeg =>
       startSegIndex != null && endSegIndex != null && startSegIndex != endSegIndex;
+
+  bool get isOneBiZs => startBiIndex == endBiIndex;
 }
