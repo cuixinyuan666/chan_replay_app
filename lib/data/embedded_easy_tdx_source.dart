@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../core/models/raw_bar.dart';
@@ -17,7 +17,7 @@ class EmbeddedEasyTdxSource {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
-    if (!Platform.isAndroid) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       throw UnsupportedError('内置 Python easy-tdx 目前只支持 Android；Windows 请使用 easy-tdx 后端模式');
     }
 
