@@ -5,23 +5,54 @@
 当前目标：
 
 ```text
-内置/本地 easy-tdx 获取 K线 -> Flutter RawBar -> Vespa/chan.py 风格 Dart 引擎 -> FX / BI / SEG / ZS -> KlineChart 显示
+内置/本地 easy-tdx 获取 K线 -> Flutter RawBar -> Vespa/chan.py 风格 Dart 引擎 -> FX / BI / SEG / ZS -> candlesticks + 缠论叠加层显示
 ```
 
 ## 当前功能
 
+- K线图底层使用 Flutter `candlesticks` 包渲染，缠论分型、笔、线段、中枢作为前端叠加层绘制。
 - Android App 内置 Python 解释器，直接安装并调用 `easy-tdx` 获取 K 线。
 - Windows Flutter 使用 `easy-tdx 后端备用` 时，如果 `127.0.0.1:8000` 未启动，会自动后台启动本项目 `backend/app/main.py`，不显示 cmd 窗口，使用随机本机端口，请求结束后释放端口。
 - 本地复盘页支持一次性显示与逐 K 线回放。
 - 本地复盘页数据源支持：
-  - 内置 Python easy-tdx，Android 默认
-  - easy-tdx 后端备用，Windows 默认；可自动后台启动本机子进程
+  - Android：内置 Python easy-tdx，Android 默认；Windows 不显示该选项
+  - Windows：easy-tdx 后端备用，Windows 默认；可自动后台启动本机子进程
   - 腾讯行情直连备用
   - 示例 CSV / 本地 CSV
 - easy-tdx 后端只返回 K 线 `bars`，不再调用 CZSC。
 - Flutter 端继续使用项目内 Vespa/Dart 缠论引擎计算：包含关系、分型、笔、线段、中枢。
 - 支持设置标的、市场、周期、复权、K线数量、开始日期、结束日期。
 - 支持显示 / 隐藏分型、分型连线、笔、线段、中枢，以及分型/笔/线段端点文字。
+
+## 前端交互约束
+
+```text
+1. 每个设置项在整个前端只能有一个入口：
+   - 数据源 / 标的 / 周期 / 复权 / 起止时间：只在“数据源”面板设置。
+   - Vespa/chan.py 引擎参数：只在“设置”面板设置。
+   - 图层显隐和图表缩放：只在左侧工具栏操作。
+2. 当前状态下不可用的操作必须灰度不可点击，禁止“点了才报错”。
+3. Android 和 Windows 数据源必须用不同文案明确区分，避免误选。
+4. 缠论计算逻辑只能复刻 Vespa/chan.py；除前端显示、数据源适配、UI交互外，禁止自造缠论规则。
+```
+
+更详细规则见：`docs/frontend_interaction_rules.md`。
+
+## candlesticks 图表说明
+
+本分支使用：
+
+```yaml
+candlesticks: ^3.0.1
+```
+
+官方文档：
+
+```text
+https://pub.dev/packages/candlesticks
+```
+
+`candlesticks` 要求 `Candle` 列表按“最新在前、最旧在后”排序；当前项目内部 `RawBar` 仍保持按时间升序，进入图表时再反转为 `Candle`。
 
 ## Android 内置 Python 说明
 
@@ -50,7 +81,7 @@ lib/data/embedded_easy_tdx_source.dart
 Windows 下选择：
 
 ```text
-本地复盘 -> 数据源 -> easy-tdx 后端备用
+本地复盘 -> 数据源 -> Windows：本机 easy-tdx 后端（可自动后台启动）
 ```
 
 如果 `http://127.0.0.1:8000` 没有服务，Flutter 会自动：
@@ -158,6 +189,7 @@ lib/data/easy_tdx_kline_source.dart                   Flutter 后端备用 + Win
 backend/app/easy_tdx_provider.py                      后端备用 easy-tdx 获取与标准化 K线
 backend/app/main.py                                   FastAPI 原始 K线接口
 lib/ui/pages/replay_page.dart                         本地复盘页与数据源选择
+lib/ui/widgets/kline_chart.dart                       candlesticks + 缠论叠加层
 lib/core/engine/*                                     Vespa/chan.py 风格 Dart 引擎
 lib/core/models/*                                     RawBar / FX / BI / SEG / ZS 模型
 ```
