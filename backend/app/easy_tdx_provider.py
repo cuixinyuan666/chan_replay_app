@@ -88,8 +88,7 @@ def _row_get(row: Any, *keys: str, default: Any = None) -> Any:
         if hasattr(row, key):
             return getattr(row, key)
         try:
-            value = row[key]
-            return value
+            return row[key]
         except Exception:
             pass
     return default
@@ -99,6 +98,28 @@ def _iter_rows(df: Any):
     if hasattr(df, 'to_dict'):
         return df.to_dict('records')
     return df or []
+
+
+def _close_client(client: Any) -> None:
+    for name in ('close', 'disconnect'):
+        method = getattr(client, name, None)
+        if callable(method):
+            try:
+                method()
+            except Exception:
+                pass
+            return
+
+
+def _get_stock_kline(MacClient: Any, *args: Any, **kwargs: Any) -> Any:
+    client = MacClient.from_best_host()
+    try:
+        if hasattr(client, '__enter__') and hasattr(client, '__exit__'):
+            with client as c:
+                return c.get_stock_kline(*args, **kwargs)
+        return client.get_stock_kline(*args, **kwargs)
+    finally:
+        _close_client(client)
 
 
 def load_easy_tdx_bars(
@@ -123,30 +144,31 @@ def load_easy_tdx_bars(
     market_enum = _market_value(market_name, Market)
     period_enum = _period_value(period, Period)
     adjust_enum = _adjust_value(adjust, Adjust)
+    safe_count = max(1, min(int(count), 5000))
 
     try:
-        with MacClient.from_best_host() as client:
-            df = client.get_stock_kline(
-                market_enum,
-                code,
-                period=period_enum,
-                count=max(1, min(int(count), 5000)),
-                adjust=adjust_enum,
-            )
+        df = _get_stock_kline(
+            MacClient,
+            market_enum,
+            code,
+            period=period_enum,
+            count=safe_count,
+            adjust=adjust_enum,
+        )
     except TypeError:
-        with MacClient.from_best_host() as client:
-            df = client.get_stock_kline(
-                market_enum,
-                code,
-                period_enum,
-                max(1, min(int(count), 5000)),
-                adjust_enum,
-            )
+        df = _get_stock_kline(
+            MacClient,
+            market_enum,
+            code,
+            period_enum,
+            safe_count,
+            adjust_enum,
+        )
 
     start_dt = _parse_dt(start) if start else None
     end_dt = _parse_dt(end) if end else None
     bars: list[dict[str, Any]] = []
-    for i, row in enumerate(_iter_rows(df)):
+    for row in _iter_rows(df):
         dt = _parse_dt(_row_get(row, 'datetime', 'dt', 'date', 'time'))
         if start_dt and dt < start_dt:
             continue
