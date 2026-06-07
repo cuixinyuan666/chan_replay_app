@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Run the complete chan.py vs Dart alignment benchmark."""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+TOOL_DIR = Path(__file__).resolve().parent
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--csv", default="assets/sample_data/000001_daily.csv")
+    parser.add_argument("--chanpy-path", default="../chan.py")
+    parser.add_argument("--out", default="build/chanpy_compare")
+    parser.add_argument("--freq", default="DAY")
+    parser.add_argument("--adjust", default="QFQ")
+    parser.add_argument("--begin", default=None)
+    parser.add_argument("--end", default=None)
+    parser.add_argument("--skip-chanpy", action="store_true", help="Only run Dart export and diff existing chanpy.json.")
+    return parser.parse_args()
+
+
+def run(cmd: list[str]) -> None:
+    print("+", " ".join(cmd))
+    subprocess.run(cmd, cwd=ROOT, check=True)
+
+
+def main() -> None:
+    args = parse_args()
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    chanpy_json = out_dir / "chanpy.json"
+    dart_json = out_dir / "dart.json"
+    report_json = out_dir / "diff_report.json"
+    report_md = out_dir / "diff_report.md"
+
+    if not args.skip_chanpy:
+        cmd = [
+            sys.executable,
+            str(TOOL_DIR / "chanpy_export.py"),
+            "--csv",
+            args.csv,
+            "--chanpy-path",
+            args.chanpy_path,
+            "--freq",
+            args.freq,
+            "--adjust",
+            args.adjust,
+            "--out",
+            str(chanpy_json),
+        ]
+        if args.begin:
+            cmd += ["--begin", args.begin]
+        if args.end:
+            cmd += ["--end", args.end]
+        run(cmd)
+
+    run([
+        "dart",
+        "run",
+        "tools/chanpy_compare/dart_export.dart",
+        "--csv",
+        args.csv,
+        "--out",
+        str(dart_json),
+    ])
+
+    run([
+        sys.executable,
+        str(TOOL_DIR / "diff_chan_outputs.py"),
+        "--chanpy",
+        str(chanpy_json),
+        "--dart",
+        str(dart_json),
+        "--out-json",
+        str(report_json),
+        "--out-md",
+        str(report_md),
+    ])
+
+    print(f"\nDone. Open {report_md}")
+
+
+if __name__ == "__main__":
+    main()
