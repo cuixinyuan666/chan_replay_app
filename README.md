@@ -36,8 +36,6 @@
 4. 缠论计算逻辑只能复刻 Vespa/chan.py；除前端显示、数据源适配、UI交互外，禁止自造缠论规则。
 ```
 
-更详细规则见：`docs/frontend_interaction_rules.md`。
-
 ## candlesticks 图表说明
 
 本分支使用：
