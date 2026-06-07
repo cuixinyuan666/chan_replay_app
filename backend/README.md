@@ -3,7 +3,33 @@
 后端职责：
 
 ```text
-easy-tdx 获取 K线 -> CZSC 计算分型/笔/线段/中枢/信号 -> FastAPI 输出统一 JSON
+easy-tdx 获取 K线 -> 按 CZSC 官方路径计算分型/笔/中枢 -> FastAPI 输出统一 JSON
+```
+
+## CZSC 调用原则
+
+本项目后续所有缠论元素调用必须严格按 CZSC 官方文档、示例和源码暴露接口执行，不按字段名想当然猜测。
+
+当前官方对齐路径：
+
+```python
+from czsc import CZSC, ZS, Freq, format_standard_kline
+
+bars = format_standard_kline(df, freq=Freq.F30)
+c = CZSC(bars)
+fx_list = c.fx_list
+bi_list = c.bi_list
+zs = ZS(c.bi_list[-7:])
+```
+
+当前边界：
+
+```text
+1. FX 使用 c.fx_list
+2. BI 使用 c.bi_list
+3. ZS 按官方示例使用 ZS(c.bi_list[-7:]) 尝试构造最近中枢
+4. SEG 当前未在 CZSC 官方核心示例中作为 c.seg_list 暴露，不自研线段，seg 返回空数组
+5. 不再使用 c.zs_list / c.seg_list 的想当然读取方式
 ```
 
 ## 安装
@@ -67,6 +93,11 @@ end     yyyy-MM-dd，可选
   "seg": [],
   "zs": [],
   "signals": {},
+  "engine_warning": "线段 SEG 未按自研逻辑生成...",
+  "meta": {
+    "official_path": "format_standard_kline(df, freq) -> CZSC(bars) -> fx_list/bi_list -> ZS(c.bi_list[-7:])",
+    "counts": {}
+  },
   "source": {
     "name": "easy-tdx"
   }
