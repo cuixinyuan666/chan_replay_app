@@ -9,8 +9,11 @@ class KlineChart extends StatefulWidget {
   final ChanSnapshot snapshot;
   final bool showFx;
   final bool showFxLine;
+  final bool showFxText;
   final bool showBi;
+  final bool showBiText;
   final bool showSeg;
+  final bool showSegText;
   final bool showZs;
   final int windowSize;
   final double priceScale;
@@ -26,8 +29,11 @@ class KlineChart extends StatefulWidget {
     required this.snapshot,
     required this.showFx,
     this.showFxLine = true,
+    this.showFxText = true,
     required this.showBi,
+    this.showBiText = false,
     required this.showSeg,
+    this.showSegText = true,
     required this.showZs,
     required this.windowSize,
     this.priceScale = 1.0,
@@ -97,8 +103,11 @@ class _KlineChartState extends State<KlineChart> {
               snapshot: widget.snapshot,
               showFx: widget.showFx,
               showFxLine: widget.showFxLine,
+              showFxText: widget.showFxText,
               showBi: widget.showBi,
+              showBiText: widget.showBiText,
               showSeg: widget.showSeg,
+              showSegText: widget.showSegText,
               showZs: widget.showZs,
               windowSize: widget.windowSize,
               priceScale: widget.priceScale,
@@ -161,8 +170,11 @@ class KlinePainter extends CustomPainter {
   final ChanSnapshot snapshot;
   final bool showFx;
   final bool showFxLine;
+  final bool showFxText;
   final bool showBi;
+  final bool showBiText;
   final bool showSeg;
+  final bool showSegText;
   final bool showZs;
   final int windowSize;
   final double priceScale;
@@ -173,8 +185,11 @@ class KlinePainter extends CustomPainter {
     required this.snapshot,
     required this.showFx,
     required this.showFxLine,
+    required this.showFxText,
     required this.showBi,
+    required this.showBiText,
     required this.showSeg,
+    required this.showSegText,
     required this.showZs,
     required this.windowSize,
     required this.priceScale,
@@ -235,7 +250,7 @@ class KlinePainter extends CustomPainter {
     }
 
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF0B0D10));
-    _drawGrid(canvas, chartRect, minPrice, maxPrice, priceToY);
+    _drawGrid(canvas, chartRect, minPrice, maxPrice);
     _drawCandles(canvas, visible, chartRect, step, priceToY);
 
     if (showZs) {
@@ -256,7 +271,7 @@ class KlinePainter extends CustomPainter {
 
     _drawLastPrice(canvas, chartRect, visible.last.close, priceToY);
     _drawTimeAxis(canvas, chartRect, visible, step);
-    _drawHeader(canvas, size, visible.last.time, bars.length, snapshot);
+    _drawHeader(canvas, visible.last.time, bars.length, snapshot);
 
     final cross = crosshairIndex;
     if (cross != null && cross >= startIndex && cross <= endIndex) {
@@ -278,13 +293,7 @@ class KlinePainter extends CustomPainter {
             (size.height - painter.height) / 2));
   }
 
-  void _drawGrid(
-    Canvas canvas,
-    Rect rect,
-    double minPrice,
-    double maxPrice,
-    double Function(double) priceToY,
-  ) {
+  void _drawGrid(Canvas canvas, Rect rect, double minPrice, double maxPrice) {
     final gridPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.07)
       ..strokeWidth = 1;
@@ -401,8 +410,10 @@ class KlinePainter extends CustomPainter {
       final y = priceToY(fx.price).clamp(rect.top, rect.bottom).toDouble();
       final paint = fx.type == FxType.top ? topPaint : bottomPaint;
       canvas.drawCircle(Offset(x, y), 4, paint);
-      _drawText(canvas, fx.type == FxType.top ? '顶' : '底',
-          Offset(x - 6, y + (fx.isTop ? -20 : 8)), 11, paint.color);
+      if (showFxText) {
+        _drawText(canvas, fx.type == FxType.top ? '顶' : '底',
+            Offset(x - 6, y + (fx.isTop ? -20 : 8)), 11, paint.color);
+      }
     }
   }
 
@@ -424,6 +435,15 @@ class KlinePainter extends CustomPainter {
       final y1 = priceToY(bi.startPrice).clamp(rect.top, rect.bottom).toDouble();
       final y2 = priceToY(bi.endPrice).clamp(rect.top, rect.bottom).toDouble();
       canvas.drawLine(Offset(x1, y1), Offset(x2, y2), paint);
+      if (showBiText) {
+        _drawText(
+          canvas,
+          'B${bi.index + 1}',
+          Offset(x2 - 12, y2 + (bi.isUp ? -18 : 6)),
+          10,
+          const Color(0xFFFF8A80),
+        );
+      }
     }
   }
 
@@ -450,13 +470,15 @@ class KlinePainter extends CustomPainter {
       final y1 = priceToY(seg.startPrice).clamp(rect.top, rect.bottom).toDouble();
       final y2 = priceToY(seg.endPrice).clamp(rect.top, rect.bottom).toDouble();
       canvas.drawLine(Offset(x1, y1), Offset(x2, y2), paint);
-      _drawText(
-        canvas,
-        'S${seg.index + 1}${seg.isSure ? '' : '?'}',
-        Offset(x2 - 14, y2 + (seg.isUp ? -20 : 8)),
-        10,
-        Colors.white70,
-      );
+      if (showSegText) {
+        _drawText(
+          canvas,
+          'S${seg.index + 1}${seg.isSure ? '' : '?'}',
+          Offset(x2 - 14, y2 + (seg.isUp ? -20 : 8)),
+          10,
+          Colors.white70,
+        );
+      }
     }
   }
 
@@ -529,7 +551,7 @@ class KlinePainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     )..layout();
     final w = math.max(48.0, tp.width + 8);
-    final h = 18.0;
+    const h = 18.0;
     final left = rect.right - w - 2;
     final top = (centerY - h / 2).clamp(rect.top + 1, rect.bottom - h - 1).toDouble();
     final labelRect = Rect.fromLTWH(left, top, w, h);
@@ -588,8 +610,7 @@ class KlinePainter extends CustomPainter {
     tp.paint(canvas, Offset(box.left + 6, box.top + 5));
   }
 
-  void _drawHeader(Canvas canvas, Size size, DateTime time, int count,
-      ChanSnapshot snapshot) {
+  void _drawHeader(Canvas canvas, DateTime time, int count, ChanSnapshot snapshot) {
     final text =
         'K:$count  合并:${snapshot.mergedBars.length}  分型:${snapshot.fxs.length}  笔:${snapshot.bis.length}  段:${snapshot.segs.length}  中枢:${snapshot.zss.length}  ${_fmtDate(time)}';
     _drawText(canvas, text, const Offset(8, 4), 12, Colors.white70);
@@ -615,8 +636,11 @@ class KlinePainter extends CustomPainter {
     return oldDelegate.snapshot != snapshot ||
         oldDelegate.showFx != showFx ||
         oldDelegate.showFxLine != showFxLine ||
+        oldDelegate.showFxText != showFxText ||
         oldDelegate.showBi != showBi ||
+        oldDelegate.showBiText != showBiText ||
         oldDelegate.showSeg != showSeg ||
+        oldDelegate.showSegText != showSegText ||
         oldDelegate.showZs != showZs ||
         oldDelegate.windowSize != windowSize ||
         oldDelegate.priceScale != priceScale ||
