@@ -41,7 +41,6 @@ class _ZsBuildContext {
       _addZsFromBiRange(segBis, seg, seg.isSure);
     }
 
-    // Vespa：处理未生成新线段的部分。这里以最后一段结束笔之后的剩余 BI 作为未确认尾部。
     final lastSeg = segs.last;
     final tail = bis.where((bi) => bi.index > lastSeg.endBiIndex).toList();
     if (tail.isNotEmpty) {
@@ -56,7 +55,7 @@ class _ZsBuildContext {
     _clearFreeList();
     for (var i = 0; i < bis.length; i++) {
       final next = i + 1 < bis.length ? bis[i + 1] : null;
-      _updateOverSegZs(bis[i], next: next, isSure: true);
+      _updateOverSegZs(bis[i], next: next, isSure: bis[i].isSure);
     }
   }
 
@@ -105,7 +104,6 @@ class _ZsBuildContext {
     for (final bi in segBis) {
       if (_sameDir(bi, segDir)) continue;
       if (dealBiCnt < 1) {
-        // Vespa: 防止 try_add_to_end 执行到上一个线段的中枢里面去。
         _addToFreeList(bi, segIsSure, ZsAlgo.normal, segIndex: seg?.index);
         dealBiCnt += 1;
       } else {
@@ -142,7 +140,7 @@ class _ZsBuildContext {
         return;
       }
     }
-    _addToFreeList(bi, isSure, ZsAlgo.overSeg, segIndex: null);
+    _addToFreeList(bi, isSure, ZsAlgo.overSeg, segIndex: bi.parentSegIndex);
   }
 
   void _addToFreeList(BI item, bool isSure, ZsAlgo zsAlgo, {int? segIndex}) {
@@ -175,7 +173,10 @@ class _ZsBuildContext {
     } else if (zsAlgo == ZsAlgo.overSeg) {
       if (lst.length < 3) return null;
       lst = lst.sublist(lst.length - 3);
-      // Vespa 中这里还检查 parent_seg.dir；当前 Dart BI 不持有 parent_seg，因此交由 normal 模式严格按 SEG 处理。
+      final first = lst.first;
+      if (first.parentSegDirection != null && first.direction == first.parentSegDirection) {
+        return null;
+      }
     }
 
     final upper = lst.map((e) => e.high).reduce(_min);
@@ -292,7 +293,6 @@ class _WorkZs {
     }
     subZsList.add(zs2);
 
-    // Vespa CZS.do_combine：low 取更低，high 取更高，peak 同样扩展。
     low = _min(low, zs2.low);
     high = _max(high, zs2.high);
     peakLow = _min(peakLow, zs2.peakLow);
