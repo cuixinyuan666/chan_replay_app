@@ -5,16 +5,17 @@
 当前目标：
 
 ```text
-内置 Python easy-tdx 获取 K线 -> Flutter RawBar -> Vespa/chan.py 风格 Dart 引擎 -> FX / BI / SEG / ZS -> KlineChart 显示
+内置/本地 easy-tdx 获取 K线 -> Flutter RawBar -> Vespa/chan.py 风格 Dart 引擎 -> FX / BI / SEG / ZS -> KlineChart 显示
 ```
 
 ## 当前功能
 
 - Android App 内置 Python 解释器，直接安装并调用 `easy-tdx` 获取 K 线。
+- Windows Flutter 使用 `easy-tdx 后端备用` 时，如果 `127.0.0.1:8000` 未启动，会自动后台启动本项目 `backend/app/main.py`，不显示 cmd 窗口，使用随机本机端口，请求结束后释放端口。
 - 本地复盘页支持一次性显示与逐 K 线回放。
 - 本地复盘页数据源支持：
   - 内置 Python easy-tdx，Android 默认
-  - easy-tdx 后端备用，Windows/调试使用
+  - easy-tdx 后端备用，Windows 默认；可自动后台启动本机子进程
   - 腾讯行情直连备用
   - 示例 CSV / 本地 CSV
 - easy-tdx 后端只返回 K 线 `bars`，不再调用 CZSC。
@@ -44,6 +45,34 @@ lib/data/embedded_easy_tdx_source.dart
 5. 如果 easy-tdx 或其依赖在 Chaquopy 环境中安装失败，需要改为纯 Python 依赖或继续使用后端备用模式。
 ```
 
+## Windows 自动后台 easy-tdx 模式
+
+Windows 下选择：
+
+```text
+本地复盘 -> 数据源 -> easy-tdx 后端备用
+```
+
+如果 `http://127.0.0.1:8000` 没有服务，Flutter 会自动：
+
+```text
+1. 查找项目 backend/app/main.py；
+2. 优先使用 backend/.venv/Scripts/python.exe；
+3. 否则尝试 python 或 py -3；
+4. 后台执行 python -m uvicorn app.main:app --host 127.0.0.1 --port <随机端口>；
+5. 使用随机端口获取 K线；
+6. 请求结束后 kill 子进程并释放端口。
+```
+
+首次使用前仍建议安装依赖：
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
 ## Flutter 运行
 
 ```bash
@@ -59,7 +88,7 @@ flutter pub get
 flutter run
 ```
 
-## easy-tdx 后端备用运行
+## easy-tdx 后端备用手动运行
 
 ```bash
 cd backend
@@ -125,9 +154,9 @@ end     yyyy-MM-dd，可选
 android/app/src/main/python/easy_tdx_runtime.py       Android 内置 easy-tdx Python 调用
 android/app/src/main/kotlin/.../MainActivity.kt       Flutter MethodChannel -> Python
 lib/data/embedded_easy_tdx_source.dart                Flutter 内置 easy-tdx 数据适配
+lib/data/easy_tdx_kline_source.dart                   Flutter 后端备用 + Windows 自动子进程数据适配
 backend/app/easy_tdx_provider.py                      后端备用 easy-tdx 获取与标准化 K线
 backend/app/main.py                                   FastAPI 原始 K线接口
-lib/data/easy_tdx_kline_source.dart                   Flutter 后端备用数据适配
 lib/ui/pages/replay_page.dart                         本地复盘页与数据源选择
 lib/core/engine/*                                     Vespa/chan.py 风格 Dart 引擎
 lib/core/models/*                                     RawBar / FX / BI / SEG / ZS 模型
