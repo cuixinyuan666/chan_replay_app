@@ -154,14 +154,25 @@ ChanSnapshot.segs  已加入
 中枢模块当前实现状态：
 
 ```text
-ZS model 线段字段         已加入
-ZsEngine 线段感知计算      已加入
-zs_algo = normal          只按确认线段 seg.isSure 内部 biList 计算，不退回全局笔列表
-zs_algo = overSeg         按全局笔列表计算，允许跨段
-zs_algo = auto            优先确认线段内中枢，无结果时退回全局笔列表
-zs_combine_mode = zs/peak 已接入
-不同线段中枢不会被合并  已加入
-中枢边界二次校验        已加入
+ZS model 对齐 CZS.high/low/peak_high/peak_low 已加入
+ZsEngine 已按 CZSList 状态机重写
+normal 模式：按 SEG 内部、只处理与线段方向相反的 BI
+normal 非单笔中枢：按 Vespa 的最近两笔重叠构造
+one_bi_zs：按一笔构造，后续 try_add_to_end 扩展
+try_add_to_end：已加入
+try_construct_zs：已加入
+try_combine：已加入
+combine_mode = zs/peak：已加入
+CZS.do_combine 范围扩展方向：已修正
+尾部未确认部分处理：已加入
+```
+
+仍受当前 Flutter 模型影响的差异：
+
+```text
+BI 暂无 parent_seg / next / pre 完整引用，因此 over_seg 中 parent_seg.dir 的特殊过滤为近似实现
+bi_in / bi_out 字段已保留，但买卖点模块尚未接入，所以当前暂不驱动背驰判断
+线段中枢的完整增量回滚机制仍是“每次 snapshot 全量重算”实现
 ```
 
 暂未完整实现但已保留配置位：
@@ -169,7 +180,6 @@ zs_combine_mode = zs/peak 已接入
 ```text
 bi.gapAsKl
 bi.allowSubPeak
-线段中枢的完整生命周期回滚
 MACD / BOLL / Demark / RSI / KDJ 指标配置
 多级别联立
 买卖点 BSP
