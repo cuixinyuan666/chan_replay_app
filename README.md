@@ -141,10 +141,12 @@ ChanSnapshot.segs  已加入
 ```text
 ZS model 线段字段         已加入
 ZsEngine 线段感知计算      已加入
-zs_algo = normal          按 SEG 内部 biList 计算，不默认跨段
+zs_algo = normal          只按确认线段 seg.isSure 内部 biList 计算，不退回全局笔列表
 zs_algo = overSeg         按全局笔列表计算，允许跨段
-zs_algo = auto            优先线段内中枢，无结果时退回全局笔列表
+zs_algo = auto            优先确认线段内中枢，无结果时退回全局笔列表
 zs_combine_mode = zs/peak 已接入
+不同线段中枢不会被合并  已加入
+中枢边界二次校验        已加入
 ```
 
 暂未完整实现但已保留配置位：
