@@ -55,9 +55,8 @@ class _ZsBuildContext {
     assert(!config.zs.oneBiZs);
     _clearFreeList();
     for (var i = 0; i < bis.length; i++) {
-      final prev = i > 0 ? bis[i - 1] : null;
       final next = i + 1 < bis.length ? bis[i + 1] : null;
-      _updateOverSegZs(bis[i], prev: prev, next: next, isSure: true);
+      _updateOverSegZs(bis[i], next: next, isSure: true);
     }
   }
 
@@ -80,13 +79,15 @@ class _ZsBuildContext {
         _addZsFromBiRange(segBis, seg, seg.isSure);
       } else {
         _clearFreeList();
-        final start = seg.startBiIndex;
-        final tail = bis.where((bi) => bi.index >= start).toList();
+        final tail = bis.where((bi) => bi.index >= seg.startBiIndex).toList();
         for (var i = 0; i < tail.length; i++) {
           final globalIdx = bis.indexWhere((b) => b.index == tail[i].index);
-          final prev = globalIdx > 0 ? bis[globalIdx - 1] : null;
           final next = globalIdx + 1 < bis.length ? bis[globalIdx + 1] : null;
-          _updateOverSegZs(tail[i], prev: prev, next: next, isSure: tail[i].index <= seg.endBiIndex && seg.isSure);
+          _updateOverSegZs(
+            tail[i],
+            next: next,
+            isSure: tail[i].index <= seg.endBiIndex && seg.isSure,
+          );
         }
         break;
       }
@@ -123,7 +124,6 @@ class _ZsBuildContext {
 
   void _updateOverSegZs(
     BI bi, {
-    required BI? prev,
     required BI? next,
     required bool isSure,
   }) {
@@ -233,8 +233,8 @@ class _WorkZs {
   final List<_WorkZs> subZsList = [];
   final List<BI> biList = [];
 
-  _WorkZs(List<BI>? lst, {required this.isSure, required this.segIndex})
-      : beginBi = lst!.first,
+  _WorkZs(List<BI> lst, {required this.isSure, required this.segIndex})
+      : beginBi = lst.first,
         endBi = lst.first,
         low = 0,
         high = 0 {
@@ -242,7 +242,6 @@ class _WorkZs {
     for (final item in lst) {
       updateZsEnd(item);
     }
-    biList.addAll(lst);
   }
 
   bool get isOneBiZs => beginBi.index == endBi.index;
