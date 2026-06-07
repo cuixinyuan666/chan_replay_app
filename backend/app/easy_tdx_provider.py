@@ -1,0 +1,174 @@
+from __future__ import annotations
+
+from datetime import date, datetime
+from typing import Any
+
+
+class EasyTdxUnavailable(RuntimeError):
+    pass
+
+
+def infer_market(symbol: str) -> str:
+    code = symbol.strip().upper().replace('.SZ', '').replace('.SH', '')
+    if code.startswith(('5', '6', '9')):
+        return 'SH'
+    return 'SZ'
+
+
+def normalize_symbol(symbol: str) -> str:
+    return symbol.strip().upper().replace('.SZ', '').replace('.SH', '')
+
+
+def _enum_value(enum_cls: Any, *names: str) -> Any:
+    for name in names:
+        if hasattr(enum_cls, name):
+            return getattr(enum_cls, name)
+    raise EasyTdxUnavailable(f'easy-tdx 枚举缺少字段: {names}')
+
+
+def _period_value(period: str, Period: Any) -> Any:
+    p = period.upper()
+    mapping = {
+        '1M': ('MIN_1', 'MIN1', 'M1'),
+        'MIN1': ('MIN_1', 'MIN1', 'M1'),
+        '5M': ('MIN_5', 'MIN5', 'M5'),
+        'MIN5': ('MIN_5', 'MIN5', 'M5'),
+        '15M': ('MIN_15', 'MIN15', 'M15'),
+        'MIN15': ('MIN_15', 'MIN15', 'M15'),
+        '30M': ('MIN_30', 'MIN30', 'M30'),
+        'MIN30': ('MIN_30', 'MIN30', 'M30'),
+        '60M': ('MIN_60', 'MIN60', 'M60'),
+        'MIN60': ('MIN_60', 'MIN60', 'M60'),
+        'D': ('DAILY', 'DAY', 'D'),
+        'DAILY': ('DAILY', 'DAY', 'D'),
+        'W': ('WEEKLY', 'WEEK', 'W'),
+        'WEEKLY': ('WEEKLY', 'WEEK', 'W'),
+        'M': ('MONTHLY', 'MONTH', 'M'),
+        'MONTHLY': ('MONTHLY', 'MONTH', 'M'),
+    }
+    return _enum_value(Period, *mapping.get(p, ('DAILY', 'DAY', 'D')))
+
+
+def _adjust_value(adjust: str, Adjust: Any) -> Any:
+    a = adjust.upper()
+    mapping = {
+        'QFQ': ('QFQ', 'FRONT', 'FORWARD'),
+        'HFQ': ('HFQ', 'BACK', 'BACKWARD'),
+        'NONE': ('NONE', 'NO', 'RAW'),
+    }
+    return _enum_value(Adjust, *mapping.get(a, ('QFQ', 'FRONT', 'FORWARD')))
+
+
+def _market_value(market: str, Market: Any) -> Any:
+    m = market.upper()
+    return _enum_value(Market, 'SH') if m == 'SH' else _enum_value(Market, 'SZ')
+
+
+def _parse_dt(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day)
+    text = str(value).strip()
+    if not text:
+        raise ValueError('empty datetime value')
+    text = text.replace('/', '-').replace('T', ' ')
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(text[:19], fmt)
+        except ValueError:
+            pass
+    return datetime.fromisoformat(text)
+
+
+def _row_get(row: Any, *keys: str, default: Any = None) -> Any:
+    for key in keys:
+        if isinstance(row, dict) and key in row:
+            return row[key]
+        if hasattr(row, key):
+            return getattr(row, key)
+        try:
+            value = row[key]
+            return value
+        except Exception:
+            pass
+    return default
+
+
+def _iter_rows(df: Any):
+    if hasattr(df, 'to_dict'):
+        return df.to_dict('records')
+    return df or []
+
+
+def load_easy_tdx_bars(
+    *,
+    symbol: str,
+    market: str | None = None,
+    period: str = 'DAILY',
+    adjust: str = 'QFQ',
+    count: int = 800,
+    start: str | None = None,
+    end: str | None = None,
+) -> list[dict[str, Any]]:
+    try:
+        from easy_tdx import Adjust, MacClient, Market, Period
+    except Exception as exc:  # pragma: no cover - environment dependent
+        raise EasyTdxUnavailable(
+            '未安装 easy-tdx，或当前 Python 环境无法导入 easy_tdx / easy-tdx'
+        ) from exc
+
+    code = normalize_symbol(symbol)
+    market_name = (market or infer_market(code)).upper()
+    market_enum = _market_value(market_name, Market)
+    period_enum = _period_value(period, Period)
+    adjust_enum = _adjust_value(adjust, Adjust)
+
+    try:
+        with MacClient.from_best_host() as client:
+            df = client.get_stock_kline(
+                market_enum,
+                code,
+                period=period_enum,
+                count=max(1, min(int(count), 5000)),
+                adjust=adjust_enum,
+            )
+    except TypeError:
+        with MacClient.from_best_host() as client:
+            df = client.get_stock_kline(
+                market_enum,
+                code,
+                period_enum,
+                max(1, min(int(count), 5000)),
+                adjust_enum,
+            )
+
+    start_dt = _parse_dt(start) if start else None
+    end_dt = _parse_dt(end) if end else None
+    bars: list[dict[str, Any]] = []
+    for i, row in enumerate(_iter_rows(df)):
+        dt = _parse_dt(_row_get(row, 'datetime', 'dt', 'date', 'time'))
+        if start_dt and dt < start_dt:
+            continue
+        if end_dt and dt > end_dt:
+            continue
+        open_ = float(_row_get(row, 'open', 'o'))
+        high = float(_row_get(row, 'high', 'h'))
+        low = float(_row_get(row, 'low', 'l'))
+        close = float(_row_get(row, 'close', 'c'))
+        volume = float(_row_get(row, 'vol', 'volume', default=0) or 0)
+        amount = float(_row_get(row, 'amount', 'money', default=0) or 0)
+        bars.append(
+            {
+                'id': len(bars),
+                'dt': dt.isoformat(sep=' '),
+                'open': open_,
+                'high': high,
+                'low': low,
+                'close': close,
+                'vol': volume,
+                'amount': amount,
+                'symbol': f'{code}.{market_name}',
+            }
+        )
+    return bars
