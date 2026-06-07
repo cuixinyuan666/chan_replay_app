@@ -1,1 +1,1 @@
-"""FastAPI backend for CZSC + easy-tdx phase-one integration."""
+"""FastAPI backend for vespa_tdx easy-tdx raw K-line data."""
