@@ -151,6 +151,19 @@ ChanSnapshot.segs  已加入
 左工具栏线段开关    已加入
 ```
 
+底层引用关系当前实现状态：
+
+```text
+BI.prevIndex / nextIndex               已加入
+BI.parentSegIndex                      已加入
+BI.parentSegDirection                  已加入
+BI.parentSegIsSure                     已加入
+BI.parentSegStartBiIndex/EndBiIndex    已加入
+SEG.prevIndex / nextIndex              已加入
+ChanRelationLinker                     已加入
+ChanReplayEngine 生成 ZS 前统一建链    已加入
+```
+
 中枢模块当前实现状态：
 
 ```text
@@ -164,13 +177,14 @@ try_construct_zs：已加入
 try_combine：已加入
 combine_mode = zs/peak：已加入
 CZS.do_combine 范围扩展方向：已修正
+over_seg 的 parent_seg.dir 过滤：已接入 BI.parentSegDirection
 尾部未确认部分处理：已加入
 ```
 
 仍受当前 Flutter 模型影响的差异：
 
 ```text
-BI 暂无 parent_seg / next / pre 完整引用，因此 over_seg 中 parent_seg.dir 的特殊过滤为近似实现
+pre/next/parent_seg 当前使用索引式引用，不是 Python 对象引用
 bi_in / bi_out 字段已保留，但买卖点模块尚未接入，所以当前暂不驱动背驰判断
 线段中枢的完整增量回滚机制仍是“每次 snapshot 全量重算”实现
 ```
@@ -199,13 +213,14 @@ lib/core/engine/include_processor.dart
 lib/core/engine/fx_engine.dart
 lib/core/engine/bi_engine.dart
 lib/core/engine/seg_engine.dart
+lib/core/engine/relation_linker.dart
 lib/core/engine/zs_engine.dart
 ```
 
 计算链路：
 
 ```text
-RawBar -> 包含关系处理 -> MergedBar -> FX -> BI -> SEG -> ZS -> ChanSnapshot -> KlinePainter绘图
+RawBar -> 包含关系处理 -> MergedBar -> FX -> BI -> SEG -> 关系建链 -> ZS -> ChanSnapshot -> KlinePainter绘图
 ```
 
 ## 数据源适配位置
