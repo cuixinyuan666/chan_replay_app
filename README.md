@@ -12,6 +12,7 @@
 - 显示 / 隐藏分型、分型连线、笔、线段、中枢
 - 独立控制分型、笔、线段端点文字显示
 - 配置层按 `Vespa314/chan.py` 的 `CChanConfig / CBiConfig / CSegConfig / CZSConfig` 结构对齐
+- `czsc_easy_tdx` 分支新增 CZSC + easy-tdx 后端模式，用于直接显示 Python/CZSC 输出的分型、笔、线段、中枢
 
 ## 运行方式
 
@@ -71,6 +72,61 @@ time,open,high,low,close,volume
 加载成功后，标题栏会显示当前数据源，并用同一套缠论引擎重新计算分型、笔、线段、中枢。
 
 如果接口返回空数据，优先检查市场选择是否正确，例如 `000001` 应选择 `SZ`，`600000` 应选择 `SH`。如果指定了很早的开始日期但只读取 500 根，可能需要把 K 线数量拉高到 2000。
+
+## CZSC + easy-tdx 后端模式
+
+`czsc_easy_tdx` 分支新增第二个底部标签页：
+
+```text
+本地复盘     -> 原有 Flutter/Dart 本地引擎
+CZSC后端     -> Python FastAPI + easy-tdx + CZSC
+```
+
+第一阶段链路：
+
+```text
+easy-tdx -> FastAPI -> CZSC -> bars/fx/bi/seg/zs JSON -> Flutter KlineChart
+```
+
+后端启动：
+
+```bash
+cd backend
+python -m venv .venv
+. .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Flutter 端默认后端地址：
+
+```text
+http://10.0.2.2:8000
+```
+
+这个地址适合 Android 模拟器访问电脑本机。如果是真机，把页面里的“后端地址”改成电脑局域网 IP，例如：
+
+```text
+http://192.168.1.8:8000
+```
+
+后端接口：
+
+```text
+GET /health
+GET /api/czsc/analyze?symbol=000001&market=SZ&freq=DAILY&adjust=QFQ&count=800
+```
+
+Flutter 第一阶段已经接入并显示：
+
+```text
+K线 bars
+分型 fx
+笔 bi
+线段 seg
+中枢 zs
+信号数量 signals
+```
 
 ## 腾讯行情周期映射
 
@@ -205,6 +261,8 @@ MACD / BOLL / Demark / RSI / KDJ 指标配置
 
 分钟线一般不使用前复权/后复权参数；当前腾讯适配器会自动对分钟周期使用分钟线请求格式，并在 App 端根据输入的开始 / 结束日期做二次过滤。日线、周线、月线会在请求参数中携带起止日期，并同样做 App 端二次过滤。
 
+CZSC/easy-tdx 后端模式当前属于第一阶段联调入口：优先验证数据链路、CZSC 元素 JSON、Flutter 图层显示；实时推送、逐 K 后端增量回放、多级别 CZSC 联立和买卖点 BSP 放到后续阶段。
+
 ## 核心引擎位置
 
 ```text
@@ -229,6 +287,10 @@ RawBar -> 包含关系处理 -> MergedBar -> FX -> BI -> SEG -> 关系建链 -> 
 lib/data/csv_loader.dart
 lib/data/tencent_kline_source.dart
 lib/data/eastmoney_kline_source.dart
+lib/data/czsc_easy_tdx_source.dart
+backend/app/easy_tdx_provider.py
+backend/app/czsc_adapter.py
+backend/app/main.py
 ```
 
-`eastmoney_kline_source.dart` 暂时保留为备用源，当前页面默认调用 `tencent_kline_source.dart`。
+`eastmoney_kline_source.dart` 暂时保留为备用源，当前页面默认调用 `tencent_kline_source.dart`。`czsc_easy_tdx_source.dart` 只在 `CZSC后端` 标签页使用，用于连接 Python 后端。
