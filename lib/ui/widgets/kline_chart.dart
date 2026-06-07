@@ -68,9 +68,7 @@ class _KlineChartState extends State<KlineChart> {
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
         final meta = _visibleMeta(size);
-        if (meta == null) {
-          return const SizedBox.expand();
-        }
+        if (meta == null) return const SizedBox.expand();
         final visibleBars = bars.sublist(meta.startIndex, meta.endIndex + 1);
         final candles = visibleBars.reversed.map(_toCandle).toList(growable: false);
 
@@ -88,9 +86,7 @@ class _KlineChartState extends State<KlineChart> {
             if ((details.scale - 1).abs() > 0.03) {
               final baseWindow = _scaleStartWindow ?? widget.windowSize;
               final nextWindow = (baseWindow / details.scale).round().clamp(24, 360).toInt();
-              if (nextWindow != widget.windowSize) {
-                widget.onWindowSizeChanged?.call(nextWindow);
-              }
+              if (nextWindow != widget.windowSize) widget.onWindowSizeChanged?.call(nextWindow);
               return;
             }
             if (details.pointerCount == 1 && details.focalPointDelta.dy.abs() > 1.5) {
@@ -110,10 +106,12 @@ class _KlineChartState extends State<KlineChart> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Candlesticks(
-                candles: candles,
-                loadingWidget: const Center(
-                  child: Text('暂无K线数据', style: TextStyle(color: Colors.white70)),
+              IgnorePointer(
+                child: Candlesticks(
+                  candles: candles,
+                  loadingWidget: const Center(
+                    child: Text('暂无K线数据', style: TextStyle(color: Colors.white70)),
+                  ),
                 ),
               ),
               IgnorePointer(
@@ -155,8 +153,7 @@ class _KlineChartState extends State<KlineChart> {
 
   void _updateCrosshair(Offset localPosition, Size size) {
     final meta = _visibleMeta(size);
-    if (meta == null) return;
-    if (!meta.chartRect.contains(localPosition)) return;
+    if (meta == null || !meta.chartRect.contains(localPosition)) return;
     final local = ((localPosition.dx - meta.chartRect.left) / meta.step).floor();
     final rawIndex = (meta.startIndex + local).clamp(meta.startIndex, meta.endIndex).toInt();
     widget.onCrosshairChanged?.call(rawIndex);
@@ -169,8 +166,12 @@ class _KlineChartState extends State<KlineChart> {
     final endIndex = (widget.viewEndIndex ?? bars.length - 1).clamp(0, bars.length - 1).toInt();
     final startIndex = math.max(0, endIndex - widget.windowSize + 1).toInt();
     final count = math.max(1, endIndex - startIndex + 1).toInt();
-    final step = chartRect.width / count;
-    return _VisibleMeta(chartRect: chartRect, startIndex: startIndex, endIndex: endIndex, step: step);
+    return _VisibleMeta(
+      chartRect: chartRect,
+      startIndex: startIndex,
+      endIndex: endIndex,
+      step: chartRect.width / count,
+    );
   }
 }
 
@@ -180,12 +181,7 @@ class _VisibleMeta {
   final int endIndex;
   final double step;
 
-  const _VisibleMeta({
-    required this.chartRect,
-    required this.startIndex,
-    required this.endIndex,
-    required this.step,
-  });
+  const _VisibleMeta({required this.chartRect, required this.startIndex, required this.endIndex, required this.step});
 }
 
 class _ChanOverlayPainter extends CustomPainter {
@@ -219,10 +215,10 @@ class _ChanOverlayPainter extends CustomPainter {
     this.crosshairIndex,
   });
 
-  static const double _topPad = 20;
-  static const double _bottomPad = 26;
+  static const double _topPad = 32;
+  static const double _bottomPad = 28;
   static const double _leftPad = 4;
-  static const double _rightPad = 4;
+  static const double _rightPad = 58;
 
   static Rect chartRectFor(Size size) {
     return Rect.fromLTWH(
@@ -260,21 +256,19 @@ class _ChanOverlayPainter extends CustomPainter {
 
     final count = visible.length;
     final step = chartRect.width / math.max(1, count).toDouble();
-    double rawToX(int rawIndex) {
-      final local = rawIndex - startIndex;
-      return chartRect.left + (local + 0.5) * step;
-    }
+    double rawToX(int rawIndex) => chartRect.left + (rawIndex - startIndex + 0.5) * step;
 
     if (showZs) _drawZs(canvas, chartRect, startIndex, endIndex, rawToX, priceToY);
     if (showFxLine) _drawFxConnectLine(canvas, chartRect, startIndex, endIndex, rawToX, priceToY);
     if (showBi) _drawBi(canvas, chartRect, startIndex, endIndex, rawToX, priceToY);
     if (showSeg) _drawSeg(canvas, chartRect, startIndex, endIndex, rawToX, priceToY);
     if (showFx) _drawFx(canvas, chartRect, startIndex, endIndex, rawToX, priceToY);
-    _drawHeader(canvas, visible.last.time, bars.length, snapshot);
 
     final cross = crosshairIndex;
     if (cross != null && cross >= startIndex && cross <= endIndex) {
       _drawCrosshair(canvas, chartRect, bars[cross], rawToX, priceToY);
+    } else {
+      _drawHeader(canvas, visible.last.time, bars.length, snapshot);
     }
   }
 
@@ -373,7 +367,7 @@ class _ChanOverlayPainter extends CustomPainter {
   }
 
   void _drawHeader(Canvas canvas, DateTime latest, int total, ChanSnapshot snapshot) {
-    final text = 'Candlesticks  |  ${latest.toIso8601String().substring(0, 10)}  | K:$total FX:${snapshot.fxs.length} BI:${snapshot.bis.length} SEG:${snapshot.segs.length} ZS:${snapshot.zss.length}';
+    final text = 'Candlesticks ${latest.toIso8601String().substring(0, 10)} | K:$total FX:${snapshot.fxs.length} BI:${snapshot.bis.length} SEG:${snapshot.segs.length} ZS:${snapshot.zss.length}';
     _drawText(canvas, text, const Offset(8, 4), 11, Colors.white70);
   }
 
@@ -386,7 +380,7 @@ class _ChanOverlayPainter extends CustomPainter {
     canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), paint);
     canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
     final label = 'O:${bar.open.toStringAsFixed(2)} H:${bar.high.toStringAsFixed(2)} L:${bar.low.toStringAsFixed(2)} C:${bar.close.toStringAsFixed(2)} V:${bar.volume.toStringAsFixed(0)}';
-    _drawText(canvas, label, Offset(rect.left + 6, rect.top + 20), 11, Colors.white);
+    _drawText(canvas, label, Offset(rect.left + 6, rect.top - 20), 11, Colors.white);
   }
 
   void _drawText(Canvas canvas, String text, Offset offset, double fontSize, Color color) {
