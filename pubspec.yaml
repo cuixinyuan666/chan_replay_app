@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   file_picker: ^8.1.7
   http: ^1.2.2
+  candlesticks: ^3.0.1
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:
