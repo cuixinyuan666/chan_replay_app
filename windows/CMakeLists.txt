@@ -102,6 +102,20 @@ install(CODE "
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
+# Bundle the lightweight external easy-tdx FastAPI backend for Windows.
+# Python packages are intentionally not copied; the app will use
+# data/backend/.venv, global python, or py -3 if available.
+install(CODE "
+  file(REMOVE_RECURSE \"${INSTALL_BUNDLE_DATA_DIR}/backend\")
+  " COMPONENT Runtime)
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/../backend/app"
+  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}/backend"
+  COMPONENT Runtime
+  PATTERN "__pycache__" EXCLUDE
+  PATTERN "*.pyc" EXCLUDE)
+install(FILES "${CMAKE_SOURCE_DIR}/../backend/requirements.txt"
+  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}/backend" COMPONENT Runtime)
+
 # Install the AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release

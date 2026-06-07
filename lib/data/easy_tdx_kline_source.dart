@@ -43,6 +43,8 @@ class EasyTdxKlineSource {
 
     try {
       return await _loadFromBase(baseUrl, query);
+    } on _EasyTdxBackendMismatch catch (_) {
+      return _loadViaAutoLocalBackend(query);
     } on SocketException catch (_) {
       return _loadViaAutoLocalBackend(query);
     } on http.ClientException catch (e) {
@@ -53,7 +55,8 @@ class EasyTdxKlineSource {
     }
   }
 
-  Future<List<RawBar>> _loadViaAutoLocalBackend(Map<String, String> query) async {
+  Future<List<RawBar>> _loadViaAutoLocalBackend(
+      Map<String, String> query) async {
     if (!Platform.isWindows) {
       throw UnsupportedError('自动后台启动 easy-tdx 本地服务目前只支持 Windows');
     }
@@ -61,18 +64,30 @@ class EasyTdxKlineSource {
     return _loadFromBase(_localProcess!.baseUrl, query);
   }
 
-  Future<List<RawBar>> _loadFromBase(String sourceBaseUrl, Map<String, String> query) async {
+  Future<List<RawBar>> _loadFromBase(
+      String sourceBaseUrl, Map<String, String> query) async {
+    await _assertCompatibleBackend(sourceBaseUrl);
+
     final uri = Uri.parse(_join(sourceBaseUrl, '/api/tdx/kline')).replace(
       queryParameters: query,
     );
 
-    final response = await _client.get(uri).timeout(const Duration(seconds: 30));
+    final response =
+        await _client.get(uri).timeout(const Duration(seconds: 30));
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 404 && _canAutoFallback(sourceBaseUrl)) {
+        throw _EasyTdxBackendMismatch('localhost 服务不是当前 easy-tdx 后端: $body');
+      }
       throw Exception('easy-tdx 返回 ${response.statusCode}: $body');
     }
 
-    final decoded = jsonDecode(body);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(body);
+    } catch (_) {
+      throw _EasyTdxBackendMismatch('localhost /health 不是 JSON 对象: $body');
+    }
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('easy-tdx 返回结构不是 JSON 对象');
     }
@@ -107,6 +122,38 @@ class EasyTdxKlineSource {
         msg.contains('connection closed');
   }
 
+  Future<void> _assertCompatibleBackend(String sourceBaseUrl) async {
+    if (!_canAutoFallback(sourceBaseUrl)) return;
+
+    final uri = Uri.parse(_join(sourceBaseUrl, '/health'));
+    final response = await _client.get(uri).timeout(const Duration(seconds: 3));
+    final body = utf8.decode(response.bodyBytes);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw _EasyTdxBackendMismatch(
+          'localhost /health 返回 ${response.statusCode}: $body');
+    }
+
+    final decoded = jsonDecode(body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const _EasyTdxBackendMismatch('localhost /health 不是 JSON 对象');
+    }
+    if (decoded['backend'] != 'vespa_tdx' ||
+        decoded['data_source'] != 'easy-tdx') {
+      throw _EasyTdxBackendMismatch(
+          'localhost 服务不是 vespa_tdx easy-tdx 后端: $body');
+    }
+  }
+
+  bool _canAutoFallback(String sourceBaseUrl) {
+    if (!Platform.isWindows) return false;
+    final uri = Uri.tryParse(sourceBaseUrl);
+    if (uri == null) return false;
+    return uri.scheme == 'http' &&
+        (uri.host == '127.0.0.1' ||
+            uri.host == 'localhost' ||
+            uri.host == '::1');
+  }
+
   void close() {
     _client.close();
     _localProcess?.dispose();
@@ -114,14 +161,19 @@ class EasyTdxKlineSource {
   }
 
   RawBar? _parseBar(Map row, int index) {
-    final time = _parseTime(row['dt'] ?? row['datetime'] ?? row['date'] ?? row['time']);
+    final time =
+        _parseTime(row['dt'] ?? row['datetime'] ?? row['date'] ?? row['time']);
     final open = _parseDouble(row['open'] ?? row['o']);
     final high = _parseDouble(row['high'] ?? row['h']);
     final low = _parseDouble(row['low'] ?? row['l']);
     final close = _parseDouble(row['close'] ?? row['c']);
     final volume = _parseDouble(row['vol'] ?? row['volume'] ?? row['v']) ?? 0.0;
 
-    if (time == null || open == null || high == null || low == null || close == null) {
+    if (time == null ||
+        open == null ||
+        high == null ||
+        low == null ||
+        close == null) {
       return null;
     }
     return RawBar(
@@ -222,15 +274,30 @@ class _LocalEasyTdxProcess {
       var dir = start.absolute;
       for (var i = 0; i < 8; i++) {
         if (!checked.add(dir.path)) break;
-        final candidate = Directory('${dir.path}${Platform.pathSeparator}backend');
-        final mainPy = File('${candidate.path}${Platform.pathSeparator}app${Platform.pathSeparator}main.py');
-        if (await mainPy.exists()) return candidate;
+        for (final candidate in _backendCandidatesFrom(dir)) {
+          if (await _isBackendDir(candidate)) return candidate;
+        }
         final parent = dir.parent;
         if (parent.path == dir.path) break;
         dir = parent;
       }
     }
-    throw Exception('找不到 backend/app/main.py；请从项目根目录运行 Flutter，或把 backend 目录放到 exe 上级目录。');
+    throw Exception(
+        '找不到 backend/app/main.py；请从项目根目录运行 Flutter，或把 backend 目录放到 exe 同级目录、exe/data 目录或项目根目录。');
+  }
+
+  static List<Directory> _backendCandidatesFrom(Directory dir) {
+    final sep = Platform.pathSeparator;
+    return [
+      dir,
+      Directory('${dir.path}${sep}backend'),
+      Directory('${dir.path}${sep}data${sep}backend'),
+    ];
+  }
+
+  static Future<bool> _isBackendDir(Directory dir) {
+    final sep = Platform.pathSeparator;
+    return File('${dir.path}${sep}app${sep}main.py').exists();
   }
 
   static Future<int> _pickFreePort() async {
@@ -242,7 +309,8 @@ class _LocalEasyTdxProcess {
 
   static List<_PythonCandidate> _pythonCandidates(Directory backendDir) {
     final sep = Platform.pathSeparator;
-    final venvPython = File('${backendDir.path}$sep.venv${sep}Scripts${sep}python.exe');
+    final venvPython =
+        File('${backendDir.path}$sep.venv${sep}Scripts${sep}python.exe');
     final result = <_PythonCandidate>[];
     if (venvPython.existsSync()) {
       result.add(_PythonCandidate(venvPython.path));
@@ -262,7 +330,8 @@ class _LocalEasyTdxProcess {
       );
       final exitCode = await exitFuture;
       if (exitCode != -999999) {
-        throw Exception('easy-tdx 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
+        throw Exception(
+            'easy-tdx 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
       }
 
       try {
@@ -270,7 +339,8 @@ class _LocalEasyTdxProcess {
         final request = await client
             .getUrl(Uri.parse('$baseUrl/health'))
             .timeout(const Duration(milliseconds: 700));
-        final response = await request.close().timeout(const Duration(milliseconds: 700));
+        final response =
+            await request.close().timeout(const Duration(milliseconds: 700));
         client.close(force: true);
         if (response.statusCode >= 200 && response.statusCode < 300) return;
       } catch (e) {
@@ -279,7 +349,8 @@ class _LocalEasyTdxProcess {
       await Future<void>.delayed(const Duration(milliseconds: 300));
     }
     dispose();
-    throw Exception('easy-tdx 本地服务启动超时：$lastError，stderr=${_stderr.toString()}');
+    throw Exception(
+        'easy-tdx 本地服务启动超时：$lastError，stderr=${_stderr.toString()}');
   }
 
   void dispose() {
@@ -299,4 +370,13 @@ class _PythonCandidate {
   final List<String> prefixArgs;
 
   const _PythonCandidate(this.executable, [this.prefixArgs = const []]);
+}
+
+class _EasyTdxBackendMismatch implements Exception {
+  final String message;
+
+  const _EasyTdxBackendMismatch(this.message);
+
+  @override
+  String toString() => message;
 }
