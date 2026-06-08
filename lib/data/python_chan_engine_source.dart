@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/models/bi.dart';
@@ -13,6 +14,8 @@ import '../core/models/seg.dart';
 import '../core/models/zs.dart';
 
 class PythonChanEngineSource {
+  static const MethodChannel _androidChanChannel = MethodChannel('chan_replay_app/python_chan');
+
   final String baseUrl;
   final http.Client _client;
   _LocalPythonChanProcess? _localProcess;
@@ -30,17 +33,22 @@ class PythonChanEngineSource {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
-    final query = {
+    final payload = <String, dynamic>{
       'mode': mode,
       'symbol': code.trim(),
       'market': market.trim().toUpperCase(),
       'freq': period.trim().toUpperCase(),
       'adjust': adjust.trim().toUpperCase(),
-      'count': '$count',
+      'count': count,
       if (startDate != null) 'start': _fmtDate(startDate),
       if (endDate != null) 'end': _fmtDate(endDate),
     };
 
+    if (Platform.isAndroid) {
+      return _loadViaAndroidChannel(payload);
+    }
+
+    final query = payload.map((key, value) => MapEntry(key, '$value'));
     try {
       return await _loadFromBase(baseUrl, query);
     } on _PythonChanBackendMismatch catch (_) {
@@ -53,6 +61,24 @@ class PythonChanEngineSource {
     } on TimeoutException catch (_) {
       return _loadViaAutoLocalBackend(query);
     }
+  }
+
+  Future<ChanSnapshot> _loadViaAndroidChannel(Map<String, dynamic> payload) async {
+    final result = await _androidChanChannel.invokeMethod<String>(
+      'analyze',
+      {'payload': jsonEncode(payload)},
+    );
+    if (result == null || result.trim().isEmpty) {
+      throw Exception('Android Chaquopy chan.py 返回为空');
+    }
+    final decoded = jsonDecode(result);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Android Chaquopy chan.py 返回结构不是 JSON 对象');
+    }
+    if (decoded['ok'] == false) {
+      throw Exception(decoded['error'] ?? 'Android Chaquopy chan.py 计算失败');
+    }
+    return _parseSnapshot(decoded);
   }
 
   Future<ChanSnapshot> _loadViaAutoLocalBackend(Map<String, String> query) async {
@@ -136,8 +162,8 @@ class PythonChanEngineSource {
       }
     }
 
-    final mergedRows = data['merged_bars'] ?? data['mergedBars'];
     final mergedBars = <MergedBar>[];
+    final mergedRows = data['merged_bars'] ?? data['mergedBars'];
     if (mergedRows is List) {
       for (final row in mergedRows) {
         if (row is Map) {
