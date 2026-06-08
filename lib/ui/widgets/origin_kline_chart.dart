@@ -9,6 +9,8 @@ import '../../core/models/fx.dart';
 import '../../core/models/raw_bar.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/drawing_object_painter.dart';
+import '../drawing/tradingview_drawing_tool.dart';
+import '../drawing/tradingview_toolbox_host.dart';
 
 class OriginKlineChart extends StatefulWidget {
   final ChanSnapshot snapshot;
@@ -63,8 +65,36 @@ class OriginKlineChart extends StatefulWidget {
 }
 
 class _OriginKlineChartState extends State<OriginKlineChart> {
+  static const Set<TradingViewDrawingTool> _interactiveDrawingTools = {
+    TradingViewDrawingTool.trendLine,
+    TradingViewDrawingTool.infoLine,
+    TradingViewDrawingTool.arrow,
+    TradingViewDrawingTool.horizontalLine,
+    TradingViewDrawingTool.horizontalRay,
+    TradingViewDrawingTool.verticalLine,
+    TradingViewDrawingTool.rectangle,
+    TradingViewDrawingTool.text,
+    TradingViewDrawingTool.anchoredText,
+    TradingViewDrawingTool.note,
+    TradingViewDrawingTool.priceLabel,
+    TradingViewDrawingTool.priceNote,
+    TradingViewDrawingTool.ruler,
+    TradingViewDrawingTool.dateRange,
+    TradingViewDrawingTool.priceRange,
+    TradingViewDrawingTool.dateAndPriceRange,
+  };
+
   int? _scaleStartWindow;
   double _panRemainder = 0;
+  int _drawingSeq = 0;
+  TradingViewDrawingTool _selectedDrawingTool = TradingViewDrawingTool.cursor;
+  DrawingObjectCollection _drawings = const DrawingObjectCollection();
+  List<DrawingAnchor> _pendingAnchors = const [];
+
+  List<DrawingObject> get _effectiveDrawingObjects {
+    if (widget.drawingObjects.isEmpty) return _drawings.objects;
+    return [...widget.drawingObjects, ..._drawings.objects];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,47 +102,154 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     if (bars.isEmpty) {
       return const Center(child: Text('暂无K线数据', style: TextStyle(color: Colors.white70)));
     }
-    return LayoutBuilder(builder: (context, constraints) {
-      final size = Size(constraints.maxWidth, constraints.maxHeight);
-      return Listener(
-        onPointerSignal: (event) {
-          if (event is PointerScrollEvent) _handleWheel(event, size);
-        },
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (details) => _updateCrosshair(details.localPosition, size),
-          onLongPressStart: (details) => _updateCrosshair(details.localPosition, size),
-          onLongPressMoveUpdate: (details) => _updateCrosshair(details.localPosition, size),
-          onScaleStart: (_) {
-            _scaleStartWindow = widget.windowSize;
-            _panRemainder = 0;
+    return TradingViewToolboxHost(
+      hasBars: bars.isNotEmpty,
+      hasChanSnapshot: widget.snapshot.rawBars.isNotEmpty,
+      selectedTool: _selectedDrawingTool,
+      drawingCount: _drawings.objects.length,
+      onSelected: _selectDrawingTool,
+      onClearDrawings: _drawings.objects.isEmpty
+          ? null
+          : () {
+              setState(() {
+                _drawings = const DrawingObjectCollection();
+                _pendingAnchors = const [];
+              });
+              _showDrawMessage('已清空手动画线');
+            },
+      child: LayoutBuilder(builder: (context, constraints) {
+        final size = Size(constraints.maxWidth, constraints.maxHeight);
+        return Listener(
+          onPointerSignal: (event) {
+            if (event is PointerScrollEvent) _handleWheel(event, size);
           },
-          onScaleUpdate: (details) => _handleScale(details, size),
-          child: CustomPaint(
-            painter: _OriginChartPainter(
-              snapshot: widget.snapshot,
-              showFx: widget.showFx,
-              showFxLine: widget.showFxLine,
-              showFxText: widget.showFxText,
-              showBi: widget.showBi,
-              showBiText: widget.showBiText,
-              showSeg: widget.showSeg,
-              showSegText: widget.showSegText,
-              showZs: widget.showZs,
-              showBiBsp: widget.showBiBsp,
-              showSegBsp: widget.showSegBsp,
-              showMergedBars: widget.showMergedBars,
-              drawingObjects: widget.drawingObjects,
-              windowSize: widget.windowSize,
-              priceScale: widget.priceScale,
-              viewEndIndex: widget.viewEndIndex,
-              crosshairIndex: widget.crosshairIndex,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (details) => _handleTap(details.localPosition, size),
+            onLongPressStart: (details) => _updateCrosshair(details.localPosition, size),
+            onLongPressMoveUpdate: (details) => _updateCrosshair(details.localPosition, size),
+            onScaleStart: (_) {
+              _scaleStartWindow = widget.windowSize;
+              _panRemainder = 0;
+            },
+            onScaleUpdate: (details) => _handleScale(details, size),
+            child: CustomPaint(
+              painter: _OriginChartPainter(
+                snapshot: widget.snapshot,
+                showFx: widget.showFx,
+                showFxLine: widget.showFxLine,
+                showFxText: widget.showFxText,
+                showBi: widget.showBi,
+                showBiText: widget.showBiText,
+                showSeg: widget.showSeg,
+                showSegText: widget.showSegText,
+                showZs: widget.showZs,
+                showBiBsp: widget.showBiBsp,
+                showSegBsp: widget.showSegBsp,
+                showMergedBars: widget.showMergedBars,
+                drawingObjects: _effectiveDrawingObjects,
+                windowSize: widget.windowSize,
+                priceScale: widget.priceScale,
+                viewEndIndex: widget.viewEndIndex,
+                crosshairIndex: widget.crosshairIndex,
+              ),
+              size: Size.infinite,
             ),
-            size: Size.infinite,
           ),
-        ),
-      );
+        );
+      }),
+    );
+  }
+
+  void _selectDrawingTool(TradingViewDrawingTool tool) {
+    setState(() {
+      _selectedDrawingTool = tool;
+      _pendingAnchors = const [];
     });
+  }
+
+  void _handleTap(Offset p, Size size) {
+    if (!_interactiveDrawingTools.contains(_selectedDrawingTool)) {
+      _updateCrosshair(p, size);
+      return;
+    }
+    final anchor = _chartAnchorAt(p, size);
+    if (anchor == null) return;
+    final meta = TradingViewDrawingToolRegistry.metaOf(_selectedDrawingTool);
+    if (meta.requiresChanSnapshot || meta.minPoints <= 0) {
+      _updateCrosshair(p, size);
+      return;
+    }
+    final needed = math.max(1, meta.minPoints);
+    final anchors = [..._pendingAnchors, anchor];
+    if (anchors.length < needed) {
+      setState(() => _pendingAnchors = anchors);
+      _showDrawMessage('${meta.label}：已记录第 ${anchors.length}/$needed 个锚点，请继续点击');
+      return;
+    }
+
+    final now = DateTime.now();
+    final object = DrawingObject(
+      id: 'draw_${now.microsecondsSinceEpoch}_${_drawingSeq++}',
+      tool: _selectedDrawingTool,
+      anchors: anchors.take(needed).toList(growable: false),
+      style: _defaultStyleFor(_selectedDrawingTool),
+      text: _defaultTextFor(_selectedDrawingTool, anchor),
+      selected: true,
+      createdAt: now,
+      updatedAt: now,
+    );
+    setState(() {
+      _drawings = _drawings.clearSelection().upsert(object);
+      _pendingAnchors = const [];
+    });
+    _showDrawMessage('已创建：${meta.label}');
+  }
+
+  DrawingAnchor? _chartAnchorAt(Offset p, Size size) {
+    final meta = _visibleMeta(size);
+    if (meta == null || !meta.chartRect.contains(p)) return null;
+    final local = ((p.dx - meta.chartRect.left) / meta.step).floor();
+    final rawIndex = (meta.startIndex + local).clamp(meta.startIndex, meta.endIndex).toInt();
+    final price = meta.priceAtY(p.dy);
+    return DrawingAnchor.chart(rawIndex: rawIndex, price: price);
+  }
+
+  DrawingStyle _defaultStyleFor(TradingViewDrawingTool tool) {
+    final isMeasure = tool == TradingViewDrawingTool.ruler ||
+        tool == TradingViewDrawingTool.dateRange ||
+        tool == TradingViewDrawingTool.priceRange ||
+        tool == TradingViewDrawingTool.dateAndPriceRange;
+    return switch (tool) {
+      TradingViewDrawingTool.rectangle => const DrawingStyle(colorValue: 0xFF82B1FF, strokeWidth: 1.2, filled: true, fillColorValue: 0x332962FF, fillOpacity: 0.18),
+      TradingViewDrawingTool.horizontalLine || TradingViewDrawingTool.horizontalRay => const DrawingStyle(colorValue: 0xFFFFD54F, strokeWidth: 1.2, dashed: true),
+      TradingViewDrawingTool.verticalLine => const DrawingStyle(colorValue: 0xFFB0BEC5, strokeWidth: 1.1, dashed: true),
+      TradingViewDrawingTool.text || TradingViewDrawingTool.anchoredText || TradingViewDrawingTool.note || TradingViewDrawingTool.priceLabel || TradingViewDrawingTool.priceNote => const DrawingStyle(colorValue: 0xFFFFFFFF, fontSize: 12.5),
+      _ when isMeasure => const DrawingStyle(colorValue: 0xFF90CAF9, strokeWidth: 1.1, filled: true, fillColorValue: 0x2242A5F5, fillOpacity: 0.16, dashed: true),
+      _ => const DrawingStyle(colorValue: 0xFFFFFFFF, strokeWidth: 1.35),
+    };
+  }
+
+  String _defaultTextFor(TradingViewDrawingTool tool, DrawingAnchor anchor) {
+    return switch (tool) {
+      TradingViewDrawingTool.priceLabel || TradingViewDrawingTool.priceNote => anchor.price?.toStringAsFixed(2) ?? '价格',
+      TradingViewDrawingTool.text || TradingViewDrawingTool.anchoredText => '文本',
+      TradingViewDrawingTool.note => '备注',
+      _ => '',
+    };
+  }
+
+  void _showDrawMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF1E3A8A),
+      ),
+    );
   }
 
   void _handleWheel(PointerScrollEvent event, Size size) {
@@ -158,7 +295,16 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     final rect = _OriginChartPainter.chartRectFor(size);
     final end = (widget.viewEndIndex ?? bars.length - 1).clamp(0, bars.length - 1).toInt();
     final start = math.max(0, end - widget.windowSize + 1).toInt();
-    return _VisibleMeta(rect, start, end, rect.width / math.max(1, end - start + 1));
+    final visible = bars.sublist(start, end + 1);
+    final low = visible.map((e) => e.low).reduce(math.min);
+    final high = visible.map((e) => e.high).reduce(math.max);
+    final center = (high + low) / 2;
+    final rawRange = math.max(high - low, high.abs() * 0.002);
+    final scaledRange = rawRange / widget.priceScale.clamp(0.35, 5.0);
+    final padding = math.max(scaledRange * 0.08, high.abs() * 0.001);
+    final minPrice = center - scaledRange / 2 - padding;
+    final maxPrice = center + scaledRange / 2 + padding;
+    return _VisibleMeta(rect, start, end, rect.width / math.max(1, end - start + 1), minPrice, maxPrice);
   }
 }
 
@@ -167,7 +313,16 @@ class _VisibleMeta {
   final int startIndex;
   final int endIndex;
   final double step;
-  const _VisibleMeta(this.chartRect, this.startIndex, this.endIndex, this.step);
+  final double minPrice;
+  final double maxPrice;
+
+  const _VisibleMeta(this.chartRect, this.startIndex, this.endIndex, this.step, this.minPrice, this.maxPrice);
+
+  double priceAtY(double y) {
+    final clampedY = y.clamp(chartRect.top, chartRect.bottom).toDouble();
+    final range = math.max(maxPrice - minPrice, 0.0000001);
+    return minPrice + (chartRect.bottom - clampedY) / chartRect.height * range;
+  }
 }
 
 class _OriginChartPainter extends CustomPainter {
