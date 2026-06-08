@@ -31,10 +31,10 @@ class IncludeProcessor {
 
       // 对齐 Vespa/chan.py 包含处理语义：
       // 上升包含：高点取高，低点取高；下降包含：高点取低，低点取低。
-      // low peak 的同价选择按 Vespa get_low_peak_klu 的倒序查找语义取后出现的K线。
+      // get_high_peak_klu / get_low_peak_klu 都是倒序查找；同价 peak 取后出现的K线。
       final highChoice = up
-          ? _chooseHigher(last.high, last.highRawIndex, last.highTime, next.high, next.highRawIndex, next.highTime)
-          : _chooseLower(last.high, last.highRawIndex, last.highTime, next.high, next.highRawIndex, next.highTime);
+          ? _chooseHigherForHigh(last.high, last.highRawIndex, last.highTime, next.high, next.highRawIndex, next.highTime)
+          : _chooseLowerForHigh(last.high, last.highRawIndex, last.highTime, next.high, next.highRawIndex, next.highTime);
       final lowChoice = up
           ? _chooseHigherForLow(last.low, last.lowRawIndex, last.lowTime, next.low, next.lowRawIndex, next.lowTime)
           : _chooseLowerForLow(last.low, last.lowRawIndex, last.lowTime, next.low, next.lowRawIndex, next.lowTime);
@@ -93,7 +93,7 @@ class IncludeProcessor {
     return b.close >= a.close ? 1 : -1;
   }
 
-  _PeakChoice _chooseHigher(
+  _PeakChoice _chooseHigherForHigh(
     double a,
     int aRawIndex,
     DateTime aTime,
@@ -101,11 +101,11 @@ class IncludeProcessor {
     int bRawIndex,
     DateTime bTime,
   ) {
-    if (b > a) return _PeakChoice(price: b, rawIndex: bRawIndex, time: bTime);
+    if (b >= a) return _PeakChoice(price: b, rawIndex: bRawIndex, time: bTime);
     return _PeakChoice(price: a, rawIndex: aRawIndex, time: aTime);
   }
 
-  _PeakChoice _chooseLower(
+  _PeakChoice _chooseLowerForHigh(
     double a,
     int aRawIndex,
     DateTime aTime,
@@ -113,7 +113,7 @@ class IncludeProcessor {
     int bRawIndex,
     DateTime bTime,
   ) {
-    if (b < a) return _PeakChoice(price: b, rawIndex: bRawIndex, time: bTime);
+    if (b <= a) return _PeakChoice(price: b, rawIndex: bRawIndex, time: bTime);
     return _PeakChoice(price: a, rawIndex: aRawIndex, time: aTime);
   }
 
