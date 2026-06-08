@@ -23,6 +23,7 @@ class BspPoint {
     this.confirmed = true,
   });
 
-  bool get isBuy => type.toLowerCase().contains('buy') || type.contains('买') || type.startsWith('b');
-  bool get isSell => type.toLowerCase().contains('sell') || type.contains('卖') || type.startsWith('s');
+  String get _lowerType => type.toLowerCase();
+  bool get isBuy => _lowerType.contains('buy') || type.contains('买') || _lowerType.startsWith('b');
+  bool get isSell => _lowerType.contains('sell') || type.contains('卖') || _lowerType.startsWith('s');
 }
