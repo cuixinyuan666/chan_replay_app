@@ -3,9 +3,10 @@ from __future__ import annotations
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from .chanpy_engine import analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
-app = FastAPI(title='Chan Replay Vespa easy-tdx Backend', version='0.3.0')
+app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.4.0')
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,10 +21,10 @@ app.add_middleware(
 def health() -> dict[str, object]:
     return {
         'ok': True,
-        'backend': 'vespa_tdx',
+        'backend': 'origin_vespa_tdx',
         'data_source': 'easy-tdx',
-        'engine': 'flutter-vespa-dart',
-        'version': '0.3.0',
+        'engine': 'chan.py',
+        'version': '0.4.0',
     }
 
 
@@ -31,15 +32,32 @@ def health() -> dict[str, object]:
 def root() -> dict[str, object]:
     return {
         'ok': True,
-        'backend': 'vespa_tdx',
-        'version': '0.3.0',
-        'note': 'The backend only returns easy-tdx raw K lines. Chan/Vespa logic runs in Flutter.',
+        'backend': 'origin_vespa_tdx',
+        'version': '0.4.0',
+        'note': 'Python chan.py is the only Chan calculation source. Flutter only renders JSON results.',
         'endpoints': [
             '/health',
             '/api/tdx/kline',
+            '/api/chan/analyze',
             '/docs',
         ],
     }
+
+
+@app.get('/api/chan/analyze')
+def chan_analyze(
+    mode: str = Query('once', description='once / step'),
+    symbol: str = Query('000001', description='股票代码，支持 000001 或 000001.SZ'),
+    market: str | None = Query(None, description='SZ / SH；留空时按代码自动推断'),
+    freq: str = Query('DAILY', description='MIN1/MIN5/MIN15/MIN30/MIN60/DAILY/WEEKLY/MONTHLY'),
+    adjust: str = Query('QFQ', description='QFQ/HFQ/NONE'),
+    count: int = Query(5000, ge=10, le=5000),
+    start: str | None = Query(None, description='yyyy-MM-dd，可选'),
+    end: str | None = Query(None, description='yyyy-MM-dd，可选'),
+) -> dict[str, object]:
+    if mode.lower() == 'step':
+        return analyze_step(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count)
+    return analyze_once(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count)
 
 
 @app.get('/api/tdx/kline')
@@ -67,7 +85,7 @@ def kline(
     )
     return {
         'ok': True,
-        'engine': 'flutter-vespa-dart',
+        'engine': 'chan.py',
         'source': {
             'name': 'easy-tdx',
             'symbol': f'{code}.{market_name}',
