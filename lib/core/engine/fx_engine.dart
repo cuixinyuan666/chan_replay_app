@@ -35,8 +35,8 @@ class FxEngine {
       if (isTop) {
         fxs.add(FX(
           index: center.index,
-          rawIndex: center.endRawIndex,
-          time: center.time,
+          rawIndex: center.highRawIndex,
+          time: center.highTime,
           type: FxType.top,
           price: center.high,
           left: left,
@@ -46,8 +46,8 @@ class FxEngine {
       } else if (isBottom) {
         fxs.add(FX(
           index: center.index,
-          rawIndex: center.endRawIndex,
-          time: center.time,
+          rawIndex: center.lowRawIndex,
+          time: center.lowTime,
           type: FxType.bottom,
           price: center.low,
           left: left,
