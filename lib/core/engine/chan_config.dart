@@ -77,7 +77,7 @@ class ChanBiConfig {
 }
 
 class ChanSegConfig {
-  /// 对齐 chan.py 的 seg_algo。当前 Flutter 引擎尚未实现线段模块，先作为配置入口。
+  /// 对齐 chan.py 的 seg_algo。
   final SegAlgo segAlgo;
 
   /// 对齐 chan.py 的 left_seg_method。
@@ -117,7 +117,8 @@ class ChanZsConfig {
   /// 对齐 chan.py 的 zs_algo。
   final ZsAlgo zsAlgo;
 
-  /// Flutter 绘图层配置：只绘制确认中枢。
+  /// 前端显示过滤：true 时只输出确认中枢。
+  /// chan.py 默认不会在 zs_list 层过滤未确认中枢，因此 chanPyDefault 使用 false。
   final bool onlyConfirmed;
 
   const ChanZsConfig({
@@ -125,7 +126,7 @@ class ChanZsConfig {
     this.combineMode = ZsCombineMode.zs,
     this.oneBiZs = false,
     this.zsAlgo = ZsAlgo.normal,
-    this.onlyConfirmed = true,
+    this.onlyConfirmed = false,
   });
 
   ChanZsConfig copyWith({
@@ -149,7 +150,7 @@ class ChanZsConfig {
         combineMode: ZsCombineMode.zs,
         oneBiZs: false,
         zsAlgo: ZsAlgo.normal,
-        onlyConfirmed: true,
+        onlyConfirmed: false,
       );
 }
 
@@ -236,7 +237,7 @@ class ChanConfig {
   /// 兼容旧 UI 字段。
   bool get allowOneBiZs => zs.oneBiZs;
 
-  /// 当前没有完整线段模块，跨段中枢先映射到 zs_algo != normal。
+  /// 跨段中枢映射到 zs_algo != normal。
   bool get allowCrossSegZs => zs.zsAlgo != ZsAlgo.normal;
 
   /// 兼容旧 UI 字段。
@@ -263,32 +264,12 @@ class ChanConfig {
     bool? calKdj,
     int? rsiCycle,
     int? kdjCycle,
-
-    // 旧 UI 兼容参数。
-    bool? strictFx,
-    int? minKCountForBi,
-    bool? allowOneBiZs,
-    bool? allowCrossSegZs,
-    bool? onlyConfirmedZs,
   }) {
-    var nextBi = bi ?? this.bi;
-    if (strictFx != null) nextBi = nextBi.copyWith(isStrict: strictFx);
-    if (minKCountForBi != null) {
-      nextBi = nextBi.copyWith(minKlcSpan: minKCountForBi);
-    }
-
-    var nextZs = zs ?? this.zs;
-    if (allowOneBiZs != null) nextZs = nextZs.copyWith(oneBiZs: allowOneBiZs);
-    if (onlyConfirmedZs != null) nextZs = nextZs.copyWith(onlyConfirmed: onlyConfirmedZs);
-    if (allowCrossSegZs != null) {
-      nextZs = nextZs.copyWith(zsAlgo: allowCrossSegZs ? ZsAlgo.overSeg : ZsAlgo.normal);
-    }
-
     return ChanConfig(
       enableInclude: enableInclude ?? this.enableInclude,
-      bi: nextBi,
+      bi: bi ?? this.bi,
       seg: seg ?? this.seg,
-      zs: nextZs,
+      zs: zs ?? this.zs,
       triggerStep: triggerStep ?? this.triggerStep,
       skipStep: skipStep ?? this.skipStep,
       klDataCheck: klDataCheck ?? this.klDataCheck,
@@ -296,7 +277,7 @@ class ChanConfig {
       maxKlInconsistentCnt: maxKlInconsistentCnt ?? this.maxKlInconsistentCnt,
       autoSkipIllegalSubLv: autoSkipIllegalSubLv ?? this.autoSkipIllegalSubLv,
       printWarning: printWarning ?? this.printWarning,
-      printErrTime: printErrTime ?? this.printErrTime,
+      printErrTime: printWarning ?? this.printErrTime,
       meanMetrics: meanMetrics ?? this.meanMetrics,
       trendMetrics: trendMetrics ?? this.trendMetrics,
       bollN: bollN ?? this.bollN,
