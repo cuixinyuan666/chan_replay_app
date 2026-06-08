@@ -139,6 +139,18 @@ def _config(CChanConfig: Any, *, trigger_step: bool, config: dict[str, Any] | No
         'zs_combine': _bool(cfg.get('zs_combine'), True),
         'zs_combine_mode': str(cfg.get('zs_combine_mode') or 'zs'),
         'one_bi_zs': _bool(cfg.get('one_bi_zs'), False),
+        'bs_type': str(cfg.get('bs_type') or '1,1p,2,2s,3a,3b'),
+        'divergence_rate': float(cfg.get('divergence_rate') or float('inf')),
+        'min_zs_cnt': int(cfg.get('min_zs_cnt') or 1),
+        'max_bs2_rate': float(cfg.get('max_bs2_rate') or 0.9999),
+        'bs1_peak': _bool(cfg.get('bs1_peak'), True),
+        'bsp2_follow_1': _bool(cfg.get('bsp2_follow_1'), True),
+        'bsp3_follow_1': _bool(cfg.get('bsp3_follow_1'), True),
+        'bsp3_peak': _bool(cfg.get('bsp3_peak'), False),
+        'bsp2s_follow_2': _bool(cfg.get('bsp2s_follow_2'), False),
+        'strict_bsp3': _bool(cfg.get('strict_bsp3'), False),
+        'bsp3a_max_zs_cnt': int(cfg.get('bsp3a_max_zs_cnt') or 1),
+        'macd_algo': str(cfg.get('macd_algo') or 'peak'),
     }
     try:
         return CChanConfig(data)
@@ -344,16 +356,68 @@ def _export_zs(level: Any) -> list[dict[str, Any]]:
     return result
 
 
+def _bsp_container_items(container: Any) -> list[Any]:
+    if container is None:
+        return []
+    for method_name in ('getSortedBspList', 'get_latest_bsp', 'bsp_iter', 'bsp_iter_v2'):
+        method = getattr(container, method_name, None)
+        if not callable(method):
+            continue
+        try:
+            rows = method(0) if method_name == 'get_latest_bsp' else method()
+        except TypeError:
+            continue
+        rows = _as_list(rows)
+        if rows:
+            return rows
+    return _as_list(container)
+
+
+def _bsp_type_text(item: Any, is_buy: bool) -> str:
+    type2str = getattr(item, 'type2str', None)
+    if callable(type2str):
+        try:
+            text = str(type2str())
+        except TypeError:
+            text = ''
+    else:
+        raw = _attr(item, ('type', 'bsp_type', 'bs_type', 'name'), '')
+        text = ','.join(str(getattr(x, 'value', x)) for x in raw) if isinstance(raw, list) else str(getattr(raw, 'value', raw))
+    return f'{"B" if is_buy else "S"}{text or "SP"}'
+
+
+def _bsp_price(item: Any, klu: Any, bi: Any, is_buy: bool) -> Any:
+    direct = _to_float(_attr(item, ('price', 'val', 'value'), None))
+    if direct is not None:
+        return direct
+    bi_val = _to_float(_call_any(bi, ('get_end_val',), None)) if bi is not None else None
+    if bi_val is not None:
+        return bi_val
+    return _to_float(_attr(klu, ('low', 'close'), None)) if is_buy else _to_float(_attr(klu, ('high', 'close'), None))
+
+
 def _export_bsp(level: Any) -> list[dict[str, Any]]:
     result = []
-    for i, item in enumerate(_iter_list(level, 'bs_point_lst', 'bs_point_list', 'bsp_list', 'bsp_lst', 'bs_list', 'buy_sell_point_list')):
-        klu = _call_any(item, ('get_klu',), None) or _attr(item, ('klu', 'kl', 'point', 'kline'), None) or item
-        price = _to_float(_attr(item, ('price', 'val', 'value'), None)) or _to_float(_attr(klu, ('close', 'high', 'low'), None))
-        raw_index = _idx(klu)
-        if raw_index is None or price is None:
-            continue
-        result.append({'index': _idx(item) if _idx(item) is not None else i, 'raw_index': raw_index, 'time': _time(klu), 'price': price, 'type': str(_attr(item, ('type', 'bsp_type', 'bs_type', 'name'), 'BSP')), 'level': str(_attr(item, ('level', 'lv'), '')), 'bi_index': _idx(_attr(item, ('bi', 'relate_bi', 'related_bi'), None)), 'seg_index': _idx(_attr(item, ('seg', 'relate_seg', 'related_seg'), None)), 'zs_index': _idx(_attr(item, ('zs', 'relate_zs', 'related_zs'), None)), 'confirmed': bool(_attr(item, ('is_sure', 'confirmed'), True))})
-    return result
+    seen = set()
+    containers = [('bi', _attr(level, ('bs_point_lst', 'bs_point_list'), None)), ('seg', _attr(level, ('seg_bs_point_lst', 'seg_bs_point_list'), None))]
+    for level_name, container in containers:
+        for item in _bsp_container_items(container):
+            bi = _attr(item, ('bi', 'relate_bi', 'related_bi'), None)
+            klu = _attr(item, ('klu', 'kl', 'point', 'kline'), None) or _call_any(item, ('get_klu',), None)
+            if klu is None and bi is not None:
+                klu = _call_any(bi, ('get_end_klu',), None)
+            is_buy = bool(_attr(item, ('is_buy',), False))
+            raw_index = _idx(klu)
+            price = _bsp_price(item, klu, bi, is_buy)
+            if raw_index is None or price is None:
+                continue
+            type_text = _bsp_type_text(item, is_buy)
+            key = (raw_index, type_text, level_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append({'index': len(result), 'raw_index': raw_index, 'time': _time(klu), 'price': price, 'type': type_text, 'level': level_name, 'bi_index': _idx(bi), 'seg_index': _idx(bi) if level_name == 'seg' else None, 'zs_index': None, 'confirmed': bool(_attr(item, ('is_sure', 'confirmed'), True))})
+    return sorted(result, key=lambda row: (row['raw_index'], row['type']))
 
 
 def _snapshot(chan: Any, kl_type: Any) -> dict[str, Any]:
