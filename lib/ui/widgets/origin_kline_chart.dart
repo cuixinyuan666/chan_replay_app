@@ -7,6 +7,8 @@ import '../../core/models/bsp.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../core/models/fx.dart';
 import '../../core/models/raw_bar.dart';
+import '../drawing/drawing_object.dart';
+import '../drawing/drawing_object_painter.dart';
 
 class OriginKlineChart extends StatefulWidget {
   final ChanSnapshot snapshot;
@@ -21,6 +23,7 @@ class OriginKlineChart extends StatefulWidget {
   final bool showBiBsp;
   final bool showSegBsp;
   final bool showMergedBars;
+  final List<DrawingObject> drawingObjects;
   final int windowSize;
   final double priceScale;
   final int? viewEndIndex;
@@ -44,6 +47,7 @@ class OriginKlineChart extends StatefulWidget {
     required this.showBiBsp,
     required this.showSegBsp,
     this.showMergedBars = false,
+    this.drawingObjects = const [],
     required this.windowSize,
     this.priceScale = 1.0,
     this.viewEndIndex,
@@ -98,6 +102,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
               showBiBsp: widget.showBiBsp,
               showSegBsp: widget.showSegBsp,
               showMergedBars: widget.showMergedBars,
+              drawingObjects: widget.drawingObjects,
               windowSize: widget.windowSize,
               priceScale: widget.priceScale,
               viewEndIndex: widget.viewEndIndex,
@@ -183,6 +188,7 @@ class _OriginChartPainter extends CustomPainter {
   final bool showBiBsp;
   final bool showSegBsp;
   final bool showMergedBars;
+  final List<DrawingObject> drawingObjects;
   final int windowSize;
   final double priceScale;
   final int? viewEndIndex;
@@ -201,6 +207,7 @@ class _OriginChartPainter extends CustomPainter {
     required this.showBiBsp,
     required this.showSegBsp,
     required this.showMergedBars,
+    required this.drawingObjects,
     required this.windowSize,
     required this.priceScale,
     this.viewEndIndex,
@@ -239,6 +246,15 @@ class _OriginChartPainter extends CustomPainter {
     if (showSeg) _drawSeg(canvas, rect, start, end, rawToX, priceToY);
     if (showBiBsp || showSegBsp) _drawBsp(canvas, rect, start, end, rawToX, priceToY);
     if (showFx) _drawFx(canvas, rect, start, end, rawToX, priceToY);
+    DrawingObjectPainter.paintObjects(
+      canvas: canvas,
+      chartRect: rect,
+      objects: drawingObjects,
+      startRawIndex: start,
+      endRawIndex: end,
+      rawToX: rawToX,
+      priceToY: priceToY,
+    );
     final cross = crosshairIndex;
     if (cross != null && cross >= start && cross <= end) {
       _drawCrosshair(canvas, rect, bars[cross], rawToX, priceToY);
