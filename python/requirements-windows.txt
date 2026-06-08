@@ -1,0 +1,5 @@
+# Runtime dependencies for the Windows embedded Python runtime.
+# Keep this file small: the embedded runtime is packaged with the app.
+fastapi
+uvicorn[standard]
+easy-tdx>=0.0.13
