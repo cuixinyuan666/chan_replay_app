@@ -1,9 +1,353 @@
 from __future__ import annotations
 
+import csv
+import importlib
+import inspect
 import json
+import os
+import sys
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from easy_tdx_runtime import infer_market, load_kline_json, normalize_symbol
+
+
+class ChanPyRuntimeError(RuntimeError):
+    pass
+
+
+def _enum_value(enum_cls: Any, *names: str) -> Any:
+    for name in names:
+        if hasattr(enum_cls, name):
+            return getattr(enum_cls, name)
+    raise ChanPyRuntimeError(f'chan.py 枚举缺少字段: {names}')
+
+
+def _import_chanpy() -> dict[str, Any]:
+    try:
+        return {
+            'CChan': importlib.import_module('Chan').CChan,
+            'CChanConfig': importlib.import_module('ChanConfig').CChanConfig,
+            'AUTYPE': importlib.import_module('Common.CEnum').AUTYPE,
+            'DATA_SRC': importlib.import_module('Common.CEnum').DATA_SRC,
+            'KL_TYPE': importlib.import_module('Common.CEnum').KL_TYPE,
+        }
+    except Exception as exc:
+        raise ChanPyRuntimeError('APK 内无法导入 chan.py；请确认 python/chan.py 已被 Chaquopy 打包') from exc
+
+
+def _kl_type(freq: str, KL_TYPE: Any) -> Any:
+    f = freq.upper()
+    mapping = {
+        'DAY': ('K_DAY', 'DAY'),
+        'DAILY': ('K_DAY', 'DAY'),
+        'D': ('K_DAY', 'DAY'),
+        'WEEK': ('K_WEEK', 'WEEK'),
+        'WEEKLY': ('K_WEEK', 'WEEK'),
+        'W': ('K_WEEK', 'WEEK'),
+        'MONTH': ('K_MON', 'K_MONTH', 'MONTH'),
+        'MONTHLY': ('K_MON', 'K_MONTH', 'MONTH'),
+        'M': ('K_MON', 'K_MONTH', 'MONTH'),
+        'MIN1': ('K_1M', 'K_1MIN', 'MIN1'),
+        'MIN5': ('K_5M', 'K_5MIN', 'MIN5'),
+        'MIN15': ('K_15M', 'K_15MIN', 'MIN15'),
+        'MIN30': ('K_30M', 'K_30MIN', 'MIN30'),
+        'MIN60': ('K_60M', 'K_60MIN', 'MIN60'),
+    }
+    return _enum_value(KL_TYPE, *mapping.get(f, ('K_DAY', 'DAY')))
+
+
+def _autype(adjust: str, AUTYPE: Any) -> Any:
+    a = adjust.upper()
+    if a == 'QFQ':
+        return _enum_value(AUTYPE, 'QFQ', 'AUTYPE_QFQ')
+    if a == 'HFQ':
+        return _enum_value(AUTYPE, 'HFQ', 'AUTYPE_HFQ')
+    return _enum_value(AUTYPE, 'NONE', 'AUTYPE_NONE')
+
+
+def _freq_suffix(freq: str) -> str:
+    f = freq.upper()
+    if f in ('WEEK', 'WEEKLY', 'W'):
+        return 'week'
+    if f in ('MONTH', 'MONTHLY', 'M'):
+        return 'mon'
+    if f.startswith('MIN'):
+        return f.replace('MIN', '') + 'm'
+    return 'day'
+
+
+def _chanpy_root() -> Path:
+    chan_mod = importlib.import_module('Chan')
+    return Path(inspect.getfile(chan_mod)).resolve().parent
+
+
+def _write_csv_for_chanpy(bars: list[dict[str, Any]], code: str, freq: str) -> str:
+    suffix = _freq_suffix(freq)
+    safe_code = ''.join(ch if ch.isalnum() or ch == '_' else '_' for ch in f'android_{code}').strip('_')
+    file_name = f'{safe_code}_{suffix}.csv'
+    rows = []
+    for bar in bars:
+        open_ = float(bar['open'])
+        high = float(bar['high'])
+        low = float(bar['low'])
+        close = float(bar['close'])
+        rows.append({
+            'time_key': str(bar.get('dt') or bar.get('time') or bar.get('date')).replace('-', '/').split(' ')[0],
+            'open': open_,
+            'high': max(open_, high, low, close),
+            'low': min(open_, high, low, close),
+            'close': close,
+        })
+
+    targets = []
+    try:
+        targets.append(_chanpy_root() / file_name)
+    except Exception:
+        pass
+    targets.append(Path(tempfile.gettempdir()) / file_name)
+
+    last_error: Exception | None = None
+    for path in targets:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open('w', encoding='utf-8', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['time_key', 'open', 'high', 'low', 'close'])
+                writer.writeheader()
+                writer.writerows(rows)
+            return safe_code
+        except Exception as exc:
+            last_error = exc
+    raise ChanPyRuntimeError(f'无法写入 chan.py CSV 输入: {last_error}')
+
+
+def _config(CChanConfig: Any, *, trigger_step: bool) -> Any:
+    data = {
+        'trigger_step': trigger_step,
+        'skip_step': 0,
+        'seg_algo': 'chan',
+        'bi_algo': 'normal',
+        'bi_strict': True,
+        'zs_algo': 'normal',
+        'zs_combine': True,
+        'zs_combine_mode': 'zs',
+        'one_bi_zs': False,
+    }
+    try:
+        return CChanConfig(data)
+    except TypeError:
+        sig = inspect.signature(CChanConfig)
+        return CChanConfig(**{k: v for k, v in data.items() if k in sig.parameters})
+
+
+def _make_cchan(CChan: Any, params: dict[str, Any]) -> Any:
+    sig = inspect.signature(CChan)
+    return CChan(**{k: v for k, v in params.items() if k in sig.parameters})
+
+
+def _get_level(chan: Any, kl_type: Any) -> Any:
+    kl_datas = getattr(chan, 'kl_datas', None)
+    if isinstance(kl_datas, dict):
+        return kl_datas.get(kl_type) or next(iter(kl_datas.values()))
+    if isinstance(kl_datas, list) and kl_datas:
+        return kl_datas[0]
+    for name in ('kl_list', 'levels'):
+        value = getattr(chan, name, None)
+        if isinstance(value, list) and value:
+            return value[0]
+    raise ChanPyRuntimeError('无法读取 chan.py level 数据')
+
+
+def _call(obj: Any, name: str, *args: Any) -> Any:
+    method = getattr(obj, name, None)
+    if callable(method):
+        try:
+            return method(*args)
+        except TypeError:
+            return method()
+    return None
+
+
+def _idx(obj: Any) -> int | None:
+    for name in ('idx', 'klu_idx', 'index'):
+        value = getattr(obj, name, None)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _time(obj: Any) -> str | None:
+    value = getattr(obj, 'time', None) or getattr(obj, 'dt', None)
+    return None if value is None else str(value)
+
+
+def _dir_text(value: Any) -> str:
+    return str(value or '').lower()
+
+
+def _iter_list(obj: Any, *names: str) -> list[Any]:
+    for name in names:
+        value = getattr(obj, name, None)
+        if callable(value):
+            try:
+                value = value()
+            except TypeError:
+                continue
+        if isinstance(value, list):
+            return value
+    return []
+
+
+def _is_top_fx(fx: Any) -> bool:
+    text = str(getattr(fx, 'fx', getattr(fx, 'type', ''))).upper()
+    return 'TOP' in text
+
+
+def _price(obj: Any, is_top: bool) -> float | None:
+    for name in (('high', 'peak_high') if is_top else ('low', 'peak_low')):
+        value = getattr(obj, name, None)
+        if isinstance(value, (int, float)):
+            return float(value)
+    return None
+
+
+def _export_fx(level: Any) -> list[dict[str, Any]]:
+    result = []
+    for i, fx in enumerate(_iter_list(level, 'fx_list')):
+        is_top = _is_top_fx(fx)
+        peak = _call(fx, 'get_peak_klu', is_top) or _call(fx, 'get_peak_klu') or fx
+        result.append({
+            'index': i,
+            'raw_index': _idx(peak),
+            'time': _time(peak),
+            'type': 'top' if is_top else 'bottom',
+            'price': _price(peak, is_top),
+            'confirmed': True,
+        })
+    return result
+
+
+def _export_bi(level: Any) -> list[dict[str, Any]]:
+    result = []
+    for i, bi in enumerate(_iter_list(level, 'bi_list', 'bi_list_lst')):
+        begin = _call(bi, 'get_begin_klu') or getattr(bi, 'begin_klc', None) or getattr(bi, 'begin_klu', None)
+        end = _call(bi, 'get_end_klu') or getattr(bi, 'end_klc', None) or getattr(bi, 'end_klu', None)
+        begin_val = _call(bi, 'get_begin_val')
+        end_val = _call(bi, 'get_end_val')
+        direction = _dir_text(getattr(bi, 'dir', getattr(bi, 'direction', '')))
+        result.append({
+            'index': i,
+            'start_raw_index': _idx(begin),
+            'end_raw_index': _idx(end),
+            'start_time': _time(begin),
+            'end_time': _time(end),
+            'start_price': begin_val,
+            'end_price': end_val,
+            'direction': 'down' if 'down' in direction else 'up',
+            'is_sure': bool(getattr(bi, 'is_sure', True)),
+        })
+    return result
+
+
+def _export_seg(level: Any) -> list[dict[str, Any]]:
+    result = []
+    for i, seg in enumerate(_iter_list(level, 'seg_list')):
+        start_bi = getattr(seg, 'start_bi', None) or getattr(seg, 'begin_bi', None)
+        end_bi = getattr(seg, 'end_bi', None)
+        direction = _dir_text(getattr(seg, 'dir', getattr(seg, 'direction', '')))
+        result.append({
+            'index': i,
+            'start_bi_index': getattr(start_bi, 'idx', None),
+            'end_bi_index': getattr(end_bi, 'idx', None),
+            'direction': 'down' if 'down' in direction else 'up',
+            'is_sure': bool(getattr(seg, 'is_sure', False)),
+        })
+    return result
+
+
+def _export_zs(level: Any) -> list[dict[str, Any]]:
+    result = []
+    for i, zs in enumerate(_iter_list(level, 'zs_list')):
+        begin_bi = getattr(zs, 'begin_bi', None)
+        end_bi = getattr(zs, 'end_bi', None)
+        result.append({
+            'index': i,
+            'start_bi_index': getattr(begin_bi, 'idx', None),
+            'end_bi_index': getattr(end_bi, 'idx', None),
+            'zg': getattr(zs, 'high', None),
+            'zd': getattr(zs, 'low', None),
+            'gg': getattr(zs, 'peak_high', None),
+            'dd': getattr(zs, 'peak_low', None),
+            'confirmed': bool(getattr(zs, 'is_sure', False)),
+        })
+    return result
+
+
+def _snapshot(chan: Any, kl_type: Any) -> dict[str, Any]:
+    level = _get_level(chan, kl_type)
+    return {
+        'fx': _export_fx(level),
+        'bi': _export_bi(level),
+        'seg': _export_seg(level),
+        'zs': _export_zs(level),
+    }
+
+
+def _run_chanpy(bars: list[dict[str, Any]], code: str, freq: str, adjust: str, mode: str) -> dict[str, Any]:
+    lib = _import_chanpy()
+    kl_type = _kl_type(freq, lib['KL_TYPE'])
+    autype = _autype(adjust, lib['AUTYPE'])
+    prepared_code = _write_csv_for_chanpy(bars, code, freq)
+    trigger_step = mode == 'step'
+    chan = _make_cchan(lib['CChan'], {
+        'code': prepared_code,
+        'begin_time': None,
+        'end_time': None,
+        'data_src': lib['DATA_SRC'].CSV,
+        'lv_list': [kl_type],
+        'config': _config(lib['CChanConfig'], trigger_step=trigger_step),
+        'autype': autype,
+        'extra_kl': None,
+    })
+
+    if trigger_step and callable(getattr(chan, 'step_load', None)):
+        frames = []
+        latest = {'fx': [], 'bi': [], 'seg': [], 'zs': []}
+        for i, cur_chan in enumerate(chan.step_load()):
+            latest = _snapshot(cur_chan, kl_type)
+            frames.append({'bars': bars[: min(i + 1, len(bars))], **latest})
+        return {**latest, 'frames': frames}
+
+    return {**_snapshot(chan, kl_type), 'frames': []}
+
+
+def _result(ok: bool, *, bars: list[dict[str, Any]], code: str, market: str, freq: str, adjust: str, mode: str, warning: str | None = None, error: str | None = None, structures: dict[str, Any] | None = None) -> str:
+    structures = structures or {}
+    data = {
+        'ok': ok,
+        'bars': bars,
+        'fx': structures.get('fx', []),
+        'bi': structures.get('bi', []),
+        'seg': structures.get('seg', []),
+        'zs': structures.get('zs', []),
+        'bsp': structures.get('bsp', []),
+        'frames': structures.get('frames', []),
+        'meta': {
+            'engine': 'chan.py',
+            'platform': 'android-chaquopy',
+            'symbol': f'{code}.{market}',
+            'name': code,
+            'freq': freq,
+            'adjust': adjust,
+            'mode': mode,
+        },
+    }
+    if warning:
+        data['meta']['warning'] = warning
+    if error:
+        data['error'] = error
+    return json.dumps(data, ensure_ascii=False)
 
 
 def analyze_json(payload_json: str) -> str:
@@ -22,48 +366,10 @@ def analyze_json(payload_json: str) -> str:
     bars_result = json.loads(load_kline_json(json.dumps(kline_payload, ensure_ascii=False)))
     bars = bars_result.get('bars') or []
     if not bars_result.get('ok', False):
-        return json.dumps({
-            'ok': False,
-            'error': bars_result.get('error') or 'Android easy-tdx 获取K线失败',
-            'bars': [],
-            'fx': [],
-            'bi': [],
-            'seg': [],
-            'zs': [],
-            'bsp': [],
-            'frames': [],
-            'meta': {
-                'engine': 'chan.py',
-                'platform': 'android-chaquopy',
-                'mode': mode,
-            },
-        }, ensure_ascii=False)
+        return _result(False, bars=[], code=code, market=market, freq=freq, adjust=adjust, mode=mode, error=bars_result.get('error') or 'Android easy-tdx 获取K线失败')
 
     try:
-        # The actual chan.py runtime will be wired here after the chan.py package is bundled
-        # into the APK and its imports are verified under Chaquopy.
-        import Chan  # noqa: F401
-        warning = 'chan.py imported, but Android exporter is not wired yet'
+        structures = _run_chanpy(bars, code, freq, adjust, mode)
+        return _result(True, bars=bars, code=code, market=market, freq=freq, adjust=adjust, mode=mode, structures=structures)
     except Exception as exc:
-        warning = f'Android APK 尚未完成 chan.py 运行时打包或导出接线: {exc}'
-
-    return json.dumps({
-        'ok': True,
-        'bars': bars,
-        'fx': [],
-        'bi': [],
-        'seg': [],
-        'zs': [],
-        'bsp': [],
-        'frames': [],
-        'meta': {
-            'engine': 'chan.py',
-            'platform': 'android-chaquopy',
-            'symbol': f'{code}.{market}',
-            'name': code,
-            'freq': freq,
-            'adjust': adjust,
-            'mode': mode,
-            'warning': warning,
-        },
-    }, ensure_ascii=False)
+        return _result(True, bars=bars, code=code, market=market, freq=freq, adjust=adjust, mode=mode, warning=f'Android chan.py 导出失败，已降级仅显示K线: {exc}')
