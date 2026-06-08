@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +25,58 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--end", default=None)
     parser.add_argument("--skip-chanpy", action="store_true", help="Only run Dart export and diff existing chanpy.json.")
     return parser.parse_args()
+
+
+def resolve_command(candidates: list[str]) -> str | None:
+    for candidate in candidates:
+        found = shutil.which(candidate)
+        if found:
+            return found
+    return None
+
+
+def dart_export_command(csv_path: str, out_path: Path) -> list[str]:
+    # Windows subprocess with shell=False may not resolve bare `dart` to dart.bat
+    # in some Conda/PowerShell environments. Resolve the real executable/batch
+    # path explicitly, then fall back to Flutter.
+    if os.name == "nt":
+        dart = resolve_command(["dart.exe", "dart.bat", "dart.cmd", "dart"])
+        flutter = resolve_command(["flutter.bat", "flutter.cmd", "flutter.exe", "flutter"])
+    else:
+        dart = resolve_command(["dart"])
+        flutter = resolve_command(["flutter"])
+
+    if dart:
+        return [
+            dart,
+            "run",
+            "tools/chanpy_compare/dart_export.dart",
+            "--csv",
+            csv_path,
+            "--out",
+            str(out_path),
+        ]
+
+    if flutter:
+        return [
+            flutter,
+            "pub",
+            "run",
+            "tools/chanpy_compare/dart_export.dart",
+            "--csv",
+            csv_path,
+            "--out",
+            str(out_path),
+        ]
+
+    raise SystemExit(
+        "ERROR: Cannot find Dart or Flutter executable in PATH.\n"
+        "Fix one of these:\n"
+        "  1. Add Flutter SDK bin directory to PATH, for example C:\\src\\flutter\\bin\n"
+        "  2. Run Dart export manually in a shell where `dart --version` works:\n"
+        "     dart run tools/chanpy_compare/dart_export.dart --csv assets/sample_data/000001_daily.csv --out build/chanpy_compare/dart.json\n"
+        "  3. Then run diff_chan_outputs.py manually."
+    )
 
 
 def run(cmd: list[str]) -> None:
@@ -61,15 +115,7 @@ def main() -> None:
             cmd += ["--end", args.end]
         run(cmd)
 
-    run([
-        "dart",
-        "run",
-        "tools/chanpy_compare/dart_export.dart",
-        "--csv",
-        args.csv,
-        "--out",
-        str(dart_json),
-    ])
+    run(dart_export_command(args.csv, dart_json))
 
     run([
         sys.executable,
