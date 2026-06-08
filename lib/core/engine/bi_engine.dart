@@ -22,10 +22,7 @@ class BiEngine {
         continue;
       }
 
-      if (!_canMakeBi(last, fx, config, mergedBars)) {
-        continue;
-      }
-
+      if (!_canMakeBi(last, fx, config, mergedBars)) continue;
       points.add(fx);
     }
 
@@ -45,23 +42,22 @@ class BiEngine {
   }
 
   List<FX> _seedInitialFx(List<FX> fxs, ChanConfig config, List<MergedBar> mergedBars) {
-    if (fxs.isEmpty || mergedBars.isEmpty) return fxs;
+    if (fxs.isEmpty || mergedBars.length < 3) return fxs;
     final first = fxs.first;
 
-    // chan.py 的 CBiList.try_create_first_bi 会按 free_klc_lst 的插入顺序扫描，
-    // 遇到第一个能和当前 KLC 成笔的异向 KLC 就生成第一笔。
-    // 因此这里不能简单取前置最高/最低点，而要按时间顺序找第一个可成笔候选。
     if (first.isTop) {
-      for (final bar in mergedBars) {
-        if (bar.index >= first.index) break;
-        final seed = _fxFromLow(bar, confirmed: true);
+      for (var i = 1; i < mergedBars.length - 1; i++) {
+        final center = mergedBars[i];
+        if (center.index >= first.index) break;
+        final seed = _fxFromLowAt(mergedBars, i, confirmed: true);
         if (seed.rawIndex == first.rawIndex) continue;
         if (_canMakeBi(seed, first, config, mergedBars)) return [seed, ...fxs];
       }
     } else {
-      for (final bar in mergedBars) {
-        if (bar.index >= first.index) break;
-        final seed = _fxFromHigh(bar, confirmed: true);
+      for (var i = 1; i < mergedBars.length - 1; i++) {
+        final center = mergedBars[i];
+        if (center.index >= first.index) break;
+        final seed = _fxFromHighAt(mergedBars, i, confirmed: true);
         if (seed.rawIndex == first.rawIndex) continue;
         if (_canMakeBi(seed, first, config, mergedBars)) return [seed, ...fxs];
       }
@@ -103,46 +99,32 @@ class BiEngine {
     return _fxFromHigh(best, confirmed: false);
   }
 
+  FX _fxFromLowAt(List<MergedBar> bars, int index, {required bool confirmed}) {
+    final bar = bars[index];
+    return FX(index: bar.index, rawIndex: bar.lowRawIndex, time: bar.lowTime, type: FxType.bottom, price: bar.low, left: bars[index - 1], center: bar, right: bars[index + 1], confirmed: confirmed);
+  }
+
+  FX _fxFromHighAt(List<MergedBar> bars, int index, {required bool confirmed}) {
+    final bar = bars[index];
+    return FX(index: bar.index, rawIndex: bar.highRawIndex, time: bar.highTime, type: FxType.top, price: bar.high, left: bars[index - 1], center: bar, right: bars[index + 1], confirmed: confirmed);
+  }
+
   FX _fxFromLow(MergedBar bar, {required bool confirmed}) {
-    return FX(
-      index: bar.index,
-      rawIndex: bar.lowRawIndex,
-      time: bar.lowTime,
-      type: FxType.bottom,
-      price: bar.low,
-      left: bar,
-      center: bar,
-      right: bar,
-      confirmed: confirmed,
-    );
+    return FX(index: bar.index, rawIndex: bar.lowRawIndex, time: bar.lowTime, type: FxType.bottom, price: bar.low, left: bar, center: bar, right: bar, confirmed: confirmed);
   }
 
   FX _fxFromHigh(MergedBar bar, {required bool confirmed}) {
-    return FX(
-      index: bar.index,
-      rawIndex: bar.highRawIndex,
-      time: bar.highTime,
-      type: FxType.top,
-      price: bar.high,
-      left: bar,
-      center: bar,
-      right: bar,
-      confirmed: confirmed,
-    );
+    return FX(index: bar.index, rawIndex: bar.highRawIndex, time: bar.highTime, type: FxType.top, price: bar.high, left: bar, center: bar, right: bar, confirmed: confirmed);
   }
 
   bool _canMakeBi(FX start, FX end, ChanConfig config, List<MergedBar> mergedBars, {bool forVirtual = false}) {
     final biConf = config.bi;
-
     if (biConf.biAlgo != BiAlgo.fx) {
       final span = (end.index - start.index).abs();
       if (span < biConf.effectiveMinKlcSpan) return false;
     }
-
     if (!_checkFxValid(start, end, biConf.fxCheck, forVirtual: forVirtual)) return false;
-
     if (biConf.endIsPeak && !_endIsPeak(start, end, mergedBars)) return false;
-
     return true;
   }
 
@@ -151,9 +133,7 @@ class BiEngine {
       if (forVirtual) return start.center.high > end.center.low;
       final item2High = _endHighForCheck(end, method);
       final selfLow = _startLowForCheck(start, method);
-      if (method == BiFxCheck.totally) {
-        return start.center.low > item2High;
-      }
+      if (method == BiFxCheck.totally) return start.center.low > item2High;
       return start.center.high > item2High && end.center.low < selfLow;
     }
 
@@ -161,9 +141,7 @@ class BiEngine {
       if (forVirtual) return start.center.low < end.center.high;
       final item2Low = _endLowForCheck(end, method);
       final selfHigh = _startHighForCheck(start, method);
-      if (method == BiFxCheck.totally) {
-        return start.center.high < item2Low;
-      }
+      if (method == BiFxCheck.totally) return start.center.high < item2Low;
       return start.center.low < item2Low && end.center.high > selfHigh;
     }
 
