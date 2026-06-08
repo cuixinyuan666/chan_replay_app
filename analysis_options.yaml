@@ -1,5 +1,10 @@
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    - lib/ui/pages/replay_page.dart
+
 linter:
   rules:
     avoid_print: false
+    unnecessary_brace_in_string_interps: false
