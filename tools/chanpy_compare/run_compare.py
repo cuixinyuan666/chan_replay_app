@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import shutil
 import subprocess
@@ -33,6 +34,74 @@ def resolve_command(candidates: list[str]) -> str | None:
         if found:
             return found
     return None
+
+
+def normalize_csv_for_compare(csv_path: str, out_dir: Path) -> str:
+    """Create one sanitized CSV used by both chan.py and Dart exports.
+
+    Vespa rejects invalid OHLC rows, for example close < low. For comparison,
+    both engines must receive the exact same cleaned input. This function keeps
+    open/close unchanged and expands high/low to contain open/high/low/close.
+    """
+    source = (ROOT / csv_path).resolve() if not Path(csv_path).is_absolute() else Path(csv_path)
+    if not source.exists():
+        raise FileNotFoundError(f"CSV not found: {source}")
+    target = out_dir / "input_normalized.csv"
+    corrections = 0
+    rows = 0
+
+    with source.open("r", encoding="utf-8-sig", newline="") as fin, target.open("w", encoding="utf-8", newline="") as fout:
+        reader = csv.DictReader(fin)
+        if reader.fieldnames is None:
+            raise ValueError(f"CSV has no header: {source}")
+        field_map = {name.strip().lower(): name for name in reader.fieldnames}
+        time_col = field_map.get("time") or field_map.get("time_key") or field_map.get("dt") or field_map.get("date")
+        open_col = field_map.get("open")
+        high_col = field_map.get("high")
+        low_col = field_map.get("low")
+        close_col = field_map.get("close")
+        volume_col = field_map.get("volume") or field_map.get("vol")
+        missing = [
+            name
+            for name, col in {
+                "time/time_key/dt/date": time_col,
+                "open": open_col,
+                "high": high_col,
+                "low": low_col,
+                "close": close_col,
+            }.items()
+            if col is None
+        ]
+        if missing:
+            raise ValueError(f"CSV missing required columns: {', '.join(missing)}")
+
+        writer = csv.writer(fout)
+        writer.writerow(["time", "open", "high", "low", "close", "volume"])
+        for row in reader:
+            if not row:
+                continue
+            time_val = str(row[time_col]).strip()
+            open_val = float(str(row[open_col]).strip())
+            high_val = float(str(row[high_col]).strip())
+            low_val = float(str(row[low_col]).strip())
+            close_val = float(str(row[close_col]).strip())
+            fixed_high = max(open_val, high_val, low_val, close_val)
+            fixed_low = min(open_val, high_val, low_val, close_val)
+            if fixed_high != high_val or fixed_low != low_val:
+                corrections += 1
+            volume_val = str(row[volume_col]).strip() if volume_col is not None else "0"
+            writer.writerow([
+                time_val,
+                f"{open_val:.6f}".rstrip("0").rstrip("."),
+                f"{fixed_high:.6f}".rstrip("0").rstrip("."),
+                f"{fixed_low:.6f}".rstrip("0").rstrip("."),
+                f"{close_val:.6f}".rstrip("0").rstrip("."),
+                volume_val,
+            ])
+            rows += 1
+
+    print(f"Normalized CSV written: {target} rows={rows} ohlc_corrections={corrections}")
+    return str(target)
 
 
 def dart_export_command(csv_path: str, out_path: Path) -> list[str]:
@@ -88,6 +157,7 @@ def main() -> None:
     args = parse_args()
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
+    normalized_csv = normalize_csv_for_compare(args.csv, out_dir)
 
     chanpy_json = out_dir / "chanpy.json"
     dart_json = out_dir / "dart.json"
@@ -99,7 +169,7 @@ def main() -> None:
             sys.executable,
             str(TOOL_DIR / "chanpy_export.py"),
             "--csv",
-            args.csv,
+            normalized_csv,
             "--chanpy-path",
             args.chanpy_path,
             "--freq",
@@ -115,7 +185,7 @@ def main() -> None:
             cmd += ["--end", args.end]
         run(cmd)
 
-    run(dart_export_command(args.csv, dart_json))
+    run(dart_export_command(normalized_csv, dart_json))
 
     run([
         sys.executable,
