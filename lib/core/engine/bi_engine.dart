@@ -7,8 +7,9 @@ class BiEngine {
   List<BI> build(List<FX> fxs, ChanConfig config, {List<MergedBar> mergedBars = const []}) {
     if (fxs.length < 2) return [];
 
+    final inputFxs = _seedInitialFx(fxs, config, mergedBars);
     final points = <FX>[];
-    for (final fx in fxs) {
+    for (final fx in inputFxs) {
       if (points.isEmpty) {
         points.add(fx);
         continue;
@@ -41,6 +42,45 @@ class BiEngine {
 
     _addTailBi(bis, points.last, config, mergedBars);
     return bis;
+  }
+
+  List<FX> _seedInitialFx(List<FX> fxs, ChanConfig config, List<MergedBar> mergedBars) {
+    if (fxs.isEmpty || mergedBars.isEmpty) return fxs;
+    final first = fxs.first;
+
+    // chan.py 在第一笔生成前会缓存 free_klc_lst。若序列第一个可用分型是顶，
+    // 第一笔可以从该顶分型之前的最低 KLC 开始，形成初始上笔。
+    // 该起点不一定出现在最终 FX 列表中，因此 Dart 侧需要在 BI 层补 seed。
+    if (first.isTop) {
+      final seed = _lowestBefore(first, mergedBars);
+      if (seed != null && seed.rawIndex != first.rawIndex && _canMakeBi(seed, first, config, mergedBars)) {
+        return [seed, ...fxs];
+      }
+    }
+
+    return fxs;
+  }
+
+  FX? _lowestBefore(FX first, List<MergedBar> bars) {
+    MergedBar? best;
+    for (final bar in bars) {
+      if (bar.index >= first.index) break;
+      if (best == null || bar.low < best.low || (bar.low == best.low && bar.lowRawIndex > best.lowRawIndex)) {
+        best = bar;
+      }
+    }
+    if (best == null) return null;
+    return FX(
+      index: best.index,
+      rawIndex: best.lowRawIndex,
+      time: best.lowTime,
+      type: FxType.bottom,
+      price: best.low,
+      left: best,
+      center: best,
+      right: best,
+      confirmed: true,
+    );
   }
 
   void _addTailBi(List<BI> bis, FX lastPoint, ChanConfig config, List<MergedBar> mergedBars) {
