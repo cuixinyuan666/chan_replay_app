@@ -31,15 +31,15 @@
 
 ### 3. 手动画线数据模型
 
-新增前端绘图对象模型：
+状态：已完成。
 
-- 工具类型；
-- K线 rawIndex；
-- 价格 price；
-- 屏幕锚定类对象；
-- 样式；
-- 创建/更新时间；
-- 是否锁定、隐藏、选中。
+已新增 `lib/ui/drawing/drawing_object.dart`，包括：
+
+- `DrawingAnchorType`：区分 K线价格域锚点与屏幕锚点；
+- `DrawingAnchor`：保存 `rawIndex/price` 或 `dx/dy`；
+- `DrawingStyle`：保存颜色、线宽、透明度、虚线、填充、字体大小；
+- `DrawingObject`：保存工具类型、锚点、样式、文字、锁定、隐藏、选中、创建/更新时间；
+- `DrawingObjectCollection`：提供 upsert、remove、select、clearSelection、JSON 序列化/反序列化。
 
 ### 4. 最小可用绘制器
 
