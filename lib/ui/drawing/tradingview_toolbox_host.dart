@@ -6,12 +6,20 @@ class TradingViewToolboxHost extends StatefulWidget {
   final Widget child;
   final bool hasBars;
   final bool hasChanSnapshot;
+  final TradingViewDrawingTool? selectedTool;
+  final ValueChanged<TradingViewDrawingTool>? onSelected;
+  final VoidCallback? onClearDrawings;
+  final int drawingCount;
 
   const TradingViewToolboxHost({
     super.key,
     required this.child,
     this.hasBars = false,
     this.hasChanSnapshot = false,
+    this.selectedTool,
+    this.onSelected,
+    this.onClearDrawings,
+    this.drawingCount = 0,
   });
 
   @override
@@ -20,10 +28,13 @@ class TradingViewToolboxHost extends StatefulWidget {
 
 class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
   bool _open = false;
-  TradingViewDrawingTool _selectedTool = TradingViewDrawingTool.cursor;
+  TradingViewDrawingTool _localSelectedTool = TradingViewDrawingTool.cursor;
+
+  TradingViewDrawingTool get _effectiveSelectedTool => widget.selectedTool ?? _localSelectedTool;
 
   @override
   Widget build(BuildContext context) {
+    final selected = _effectiveSelectedTool;
     return Stack(
       children: [
         widget.child,
@@ -32,7 +43,8 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
           top: 48,
           child: _ToolboxButton(
             open: _open,
-            selectedLabel: TradingViewDrawingToolRegistry.metaOf(_selectedTool).label,
+            selectedLabel: TradingViewDrawingToolRegistry.metaOf(selected).label,
+            drawingCount: widget.drawingCount,
             onPressed: () => setState(() => _open = !_open),
           ),
         ),
@@ -43,16 +55,19 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
             bottom: 12,
             width: 336,
             child: _ToolboxPanel(
-              selectedTool: _selectedTool,
+              selectedTool: selected,
               hasBars: widget.hasBars,
               hasChanSnapshot: widget.hasChanSnapshot,
+              drawingCount: widget.drawingCount,
+              onClearDrawings: widget.onClearDrawings,
               onClose: () => setState(() => _open = false),
               onSelected: (tool) {
-                setState(() => _selectedTool = tool);
+                setState(() => _localSelectedTool = tool);
+                widget.onSelected?.call(tool);
                 final meta = TradingViewDrawingToolRegistry.metaOf(tool);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('已选择画线工具：${meta.label}。下一步将绑定到K线坐标和画线对象模型。'),
+                    content: Text(meta.minPoints > 0 ? '已选择：${meta.label}。请在K线图上点击放置锚点。' : '已选择：${meta.label}。'),
                     duration: const Duration(seconds: 2),
                     behavior: SnackBarBehavior.floating,
                     backgroundColor: const Color(0xFF1E3A8A),
@@ -69,24 +84,27 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
 class _ToolboxButton extends StatelessWidget {
   final bool open;
   final String selectedLabel;
+  final int drawingCount;
   final VoidCallback onPressed;
 
   const _ToolboxButton({
     required this.open,
     required this.selectedLabel,
+    required this.drawingCount,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
+    final suffix = drawingCount > 0 ? ' · $drawingCount' : '';
     return Material(
       color: Colors.transparent,
       child: Tooltip(
-        message: 'TradingView 工具箱：$selectedLabel',
+        message: 'TradingView 工具箱：$selectedLabel$suffix',
         child: FilledButton.tonalIcon(
           onPressed: onPressed,
           icon: Icon(open ? Icons.close : Icons.architecture, size: 18),
-          label: const Text('TV工具'),
+          label: Text('TV工具$suffix'),
           style: FilledButton.styleFrom(
             visualDensity: VisualDensity.compact,
             backgroundColor: const Color(0xDD1F2937),
@@ -103,6 +121,8 @@ class _ToolboxPanel extends StatelessWidget {
   final TradingViewDrawingTool selectedTool;
   final bool hasBars;
   final bool hasChanSnapshot;
+  final int drawingCount;
+  final VoidCallback? onClearDrawings;
   final VoidCallback onClose;
   final ValueChanged<TradingViewDrawingTool> onSelected;
 
@@ -110,6 +130,8 @@ class _ToolboxPanel extends StatelessWidget {
     required this.selectedTool,
     required this.hasBars,
     required this.hasChanSnapshot,
+    required this.drawingCount,
+    required this.onClearDrawings,
     required this.onClose,
     required this.onSelected,
   });
@@ -145,6 +167,14 @@ class _ToolboxPanel extends StatelessWidget {
                     ),
                   ),
                   IconButton(
+                    tooltip: drawingCount > 0 ? '清空手动画线' : '暂无手动画线',
+                    onPressed: drawingCount > 0 ? onClearDrawings : null,
+                    icon: const Icon(Icons.delete_sweep, size: 18),
+                    visualDensity: VisualDensity.compact,
+                    color: Colors.white70,
+                    disabledColor: Colors.white24,
+                  ),
+                  IconButton(
                     tooltip: '关闭工具箱',
                     onPressed: onClose,
                     icon: const Icon(Icons.close, size: 18),
@@ -157,7 +187,7 @@ class _ToolboxPanel extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: Text(
-                '当前阶段完成工具分类、统一入口和灰度不可用规则；缠论叠加只显示 Vespa/chan.py 或后端结果，不在前端重算。',
+                '选择工具后在K线图上点击创建锚点。缠论叠加只显示 Vespa/chan.py 或后端结果，不在前端重算。',
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.62), fontSize: 12, height: 1.35),
               ),
             ),
