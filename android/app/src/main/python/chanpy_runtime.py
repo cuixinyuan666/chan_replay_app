@@ -5,7 +5,7 @@ import inspect
 import json
 import sys
 import types
-from typing import Any
+from typing import Any, Iterable
 
 from easy_tdx_runtime import infer_market, load_kline_json, normalize_symbol
 
@@ -177,16 +177,61 @@ def _call(obj: Any, name: str, *args: Any) -> Any:
     return None
 
 
-def _idx(obj: Any) -> int | None:
-    for name in ('idx', 'klu_idx', 'index'):
-        value = getattr(obj, name, None)
-        if isinstance(value, int):
+def _attr(obj: Any, names: Iterable[str], default: Any = None) -> Any:
+    for name in names:
+        if hasattr(obj, name):
+            value = getattr(obj, name)
+            if callable(value) and name.startswith('get_'):
+                try:
+                    return value()
+                except TypeError:
+                    continue
             return value
+    return default
+
+
+def _call_any(obj: Any, names: Iterable[str], default: Any = None) -> Any:
+    for name in names:
+        value = getattr(obj, name, None)
+        if callable(value):
+            try:
+                return value()
+            except TypeError:
+                continue
+        if value is not None:
+            return value
+    return default
+
+
+def _as_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    try:
+        return list(value)
+    except TypeError:
+        return []
+
+
+def _to_float(value: Any) -> Any:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return value
+
+
+def _idx(obj: Any) -> int | None:
+    value = _attr(obj, ('idx', 'klu_idx', 'index', 'id'), None)
+    if isinstance(value, int):
+        return value
     return None
 
 
 def _time(obj: Any) -> str | None:
-    value = getattr(obj, 'time', None) or getattr(obj, 'dt', None)
+    value = _attr(obj, ('time', 'time_begin', 'date', 'dt'), None)
     return None if value is None else str(value)
 
 
@@ -202,14 +247,48 @@ def _iter_list(obj: Any, *names: str) -> list[Any]:
                 value = value()
             except TypeError:
                 continue
-        if isinstance(value, list):
-            return value
+        rows = _as_list(value)
+        if rows:
+            return rows
     return []
 
 
+def _is_top_text(text: str) -> bool:
+    lower = text.lower()
+    return 'top' in lower or 'ding' in lower or 'peak' in lower or 'fx_type.top' in lower
+
+
+def _is_bottom_text(text: str) -> bool:
+    lower = text.lower()
+    return 'bottom' in lower or 'di' in lower or 'fx_type.bottom' in lower
+
+
 def _is_top_fx(fx: Any) -> bool:
-    text = str(getattr(fx, 'fx', getattr(fx, 'type', ''))).upper()
-    return 'TOP' in text
+    text = str(_attr(fx, ('fx', 'fx_type', 'type'), '') or '')
+    return _is_top_text(text)
+
+
+def _is_valid_fx(fx: Any) -> bool:
+    text = str(_attr(fx, ('fx', 'fx_type', 'type'), '') or '')
+    lower = text.lower()
+    return (_is_top_text(text) or _is_bottom_text(text)) and 'unknown' not in lower and 'none' not in lower
+
+
+def _peak_klu(klc: Any, is_top: bool) -> Any:
+    if klc is None:
+        return None
+    method = getattr(klc, 'get_peak_klu', None)
+    if callable(method):
+        try:
+            return method(is_high=is_top)
+        except TypeError:
+            try:
+                return method(is_top)
+            except TypeError:
+                pass
+    if is_top:
+        return _call_any(klc, ('get_high_peak_klu',), None)
+    return _call_any(klc, ('get_low_peak_klu',), None)
 
 
 def _price(obj: Any, is_top: bool) -> float | None:
@@ -222,11 +301,14 @@ def _price(obj: Any, is_top: bool) -> float | None:
 
 def _export_fx(level: Any) -> list[dict[str, Any]]:
     result = []
-    for i, fx in enumerate(_iter_list(level, 'fx_list')):
+    source = _iter_list(level, 'fx_list', 'fx_lst')
+    if not source:
+        source = [item for item in _as_list(getattr(level, 'lst', None)) if _is_valid_fx(item)]
+    for i, fx in enumerate(source):
         is_top = _is_top_fx(fx)
-        peak = _call(fx, 'get_peak_klu', is_top) or _call(fx, 'get_peak_klu') or fx
+        peak = _peak_klu(fx, is_top) or fx
         result.append({
-            'index': i,
+            'index': _idx(fx) if _idx(fx) is not None else i,
             'raw_index': _idx(peak),
             'time': _time(peak),
             'type': 'top' if is_top else 'bottom',
@@ -238,20 +320,20 @@ def _export_fx(level: Any) -> list[dict[str, Any]]:
 
 def _export_bi(level: Any) -> list[dict[str, Any]]:
     result = []
-    for i, bi in enumerate(_iter_list(level, 'bi_list', 'bi_list_lst')):
-        begin = _call(bi, 'get_begin_klu') or getattr(bi, 'begin_klc', None) or getattr(bi, 'begin_klu', None)
-        end = _call(bi, 'get_end_klu') or getattr(bi, 'end_klc', None) or getattr(bi, 'end_klu', None)
-        begin_val = _call(bi, 'get_begin_val')
-        end_val = _call(bi, 'get_end_val')
-        direction = _dir_text(getattr(bi, 'dir', getattr(bi, 'direction', '')))
+    for i, bi in enumerate(_iter_list(level, 'bi_list', 'bi_list_lst', 'bi_lst')):
+        begin = _call_any(bi, ('get_begin_klu',), None) or _peak_klu(_attr(bi, ('begin_klc', 'start_klc', 'begin', 'start'), None), False) or _attr(bi, ('begin_klu',), None)
+        end = _call_any(bi, ('get_end_klu',), None) or _peak_klu(_attr(bi, ('end_klc', 'end'), None), True) or _attr(bi, ('end_klu',), None)
+        begin_val = _call_any(bi, ('get_begin_val',), None)
+        end_val = _call_any(bi, ('get_end_val',), None)
+        direction = _dir_text(_attr(bi, ('dir', 'direction', 'bi_dir'), ''))
         result.append({
-            'index': i,
+            'index': _idx(bi) if _idx(bi) is not None else i,
             'start_raw_index': _idx(begin),
             'end_raw_index': _idx(end),
             'start_time': _time(begin),
             'end_time': _time(end),
-            'start_price': begin_val,
-            'end_price': end_val,
+            'start_price': _to_float(begin_val),
+            'end_price': _to_float(end_val),
             'direction': 'down' if 'down' in direction else 'up',
             'is_sure': bool(getattr(bi, 'is_sure', True)),
         })
@@ -260,33 +342,41 @@ def _export_bi(level: Any) -> list[dict[str, Any]]:
 
 def _export_seg(level: Any) -> list[dict[str, Any]]:
     result = []
-    for i, seg in enumerate(_iter_list(level, 'seg_list')):
-        start_bi = getattr(seg, 'start_bi', None) or getattr(seg, 'begin_bi', None)
-        end_bi = getattr(seg, 'end_bi', None)
-        direction = _dir_text(getattr(seg, 'dir', getattr(seg, 'direction', '')))
+    for i, seg in enumerate(_iter_list(level, 'seg_list', 'seg_lst')):
+        start_bi = _attr(seg, ('start_bi', 'begin_bi', 'begin'), None)
+        end_bi = _attr(seg, ('end_bi', 'end'), None)
+        begin_klu = _call_any(seg, ('get_begin_klu',), None)
+        end_klu = _call_any(seg, ('get_end_klu',), None)
+        direction = _dir_text(_attr(seg, ('dir', 'direction', 'bi_dir'), ''))
         result.append({
-            'index': i,
+            'index': _idx(seg) if _idx(seg) is not None else i,
             'start_bi_index': getattr(start_bi, 'idx', None),
             'end_bi_index': getattr(end_bi, 'idx', None),
+            'start_raw_index': _idx(begin_klu),
+            'end_raw_index': _idx(end_klu),
+            'start_price': _to_float(_call_any(seg, ('get_begin_val',), None)),
+            'end_price': _to_float(_call_any(seg, ('get_end_val',), None)),
             'direction': 'down' if 'down' in direction else 'up',
-            'is_sure': bool(getattr(seg, 'is_sure', False)),
+            'is_sure': bool(getattr(seg, 'is_sure', True)),
         })
     return result
 
 
 def _export_zs(level: Any) -> list[dict[str, Any]]:
     result = []
-    for i, zs in enumerate(_iter_list(level, 'zs_list')):
-        begin_bi = getattr(zs, 'begin_bi', None)
-        end_bi = getattr(zs, 'end_bi', None)
+    for i, zs in enumerate(_iter_list(level, 'zs_list', 'zs_lst')):
+        begin_bi = _attr(zs, ('begin_bi', 'start_bi', 'bi_in'), None)
+        end_bi = _attr(zs, ('end_bi', 'bi_out'), None)
         result.append({
-            'index': i,
+            'index': _idx(zs) if _idx(zs) is not None else i,
             'start_bi_index': getattr(begin_bi, 'idx', None),
             'end_bi_index': getattr(end_bi, 'idx', None),
-            'zg': getattr(zs, 'high', None),
-            'zd': getattr(zs, 'low', None),
-            'gg': getattr(zs, 'peak_high', None),
-            'dd': getattr(zs, 'peak_low', None),
+            'start_raw_index': _idx(_attr(zs, ('begin',), None)),
+            'end_raw_index': _idx(_attr(zs, ('end',), None)),
+            'zg': _to_float(_attr(zs, ('high', 'zg'), None)),
+            'zd': _to_float(_attr(zs, ('low', 'zd'), None)),
+            'gg': _to_float(_attr(zs, ('peak_high', 'gg'), None)),
+            'dd': _to_float(_attr(zs, ('peak_low', 'dd'), None)),
             'confirmed': bool(getattr(zs, 'is_sure', False)),
         })
     return result
