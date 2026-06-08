@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import csv
 import importlib
 import inspect
 import json
-import os
 import sys
-import tempfile
-from pathlib import Path
+import types
 from typing import Any
 
 from easy_tdx_runtime import infer_market, load_kline_json, normalize_symbol
+
+
+_ANDROID_BARS: list[dict[str, Any]] = []
 
 
 class ChanPyRuntimeError(RuntimeError):
@@ -32,6 +32,10 @@ def _import_chanpy() -> dict[str, Any]:
             'AUTYPE': importlib.import_module('Common.CEnum').AUTYPE,
             'DATA_SRC': importlib.import_module('Common.CEnum').DATA_SRC,
             'KL_TYPE': importlib.import_module('Common.CEnum').KL_TYPE,
+            'DATA_FIELD': importlib.import_module('Common.CEnum').DATA_FIELD,
+            'CKLine_Unit': importlib.import_module('KLine.KLine_Unit').CKLine_Unit,
+            'CTime': importlib.import_module('Common.CTime').CTime,
+            'CCommonStockApi': importlib.import_module('DataAPI.CommonStockAPI').CCommonStockApi,
         }
     except Exception as exc:
         raise ChanPyRuntimeError('APK 内无法导入 chan.py；请确认 python/chan.py 已被 Chaquopy 打包') from exc
@@ -67,59 +71,63 @@ def _autype(adjust: str, AUTYPE: Any) -> Any:
     return _enum_value(AUTYPE, 'NONE', 'AUTYPE_NONE')
 
 
-def _freq_suffix(freq: str) -> str:
-    f = freq.upper()
-    if f in ('WEEK', 'WEEKLY', 'W'):
-        return 'week'
-    if f in ('MONTH', 'MONTHLY', 'M'):
-        return 'mon'
-    if f.startswith('MIN'):
-        return f.replace('MIN', '') + 'm'
-    return 'day'
+def _parse_time(value: Any, CTime: Any) -> Any:
+    text = str(value or '').replace('/', '-').strip()
+    if ' ' in text:
+        date_part, time_part = text.split(' ', 1)
+    elif 'T' in text:
+        date_part, time_part = text.split('T', 1)
+    else:
+        date_part, time_part = text, '00:00'
+    year, month, day = [int(x) for x in date_part[:10].split('-')]
+    hour = minute = 0
+    if time_part:
+        parts = time_part.split(':')
+        if len(parts) >= 2:
+            hour = int(parts[0])
+            minute = int(parts[1])
+    return CTime(year, month, day, hour, minute)
 
 
-def _chanpy_root() -> Path:
-    chan_mod = importlib.import_module('Chan')
-    return Path(inspect.getfile(chan_mod)).resolve().parent
+def _install_memory_data_api(lib: dict[str, Any]) -> str:
+    module_name = 'DataAPI.AndroidRuntimeAPI'
+    CCommonStockApi = lib['CCommonStockApi']
+    CKLine_Unit = lib['CKLine_Unit']
+    CTime = lib['CTime']
+    DATA_FIELD = lib['DATA_FIELD']
 
+    class AndroidRuntimeAPI(CCommonStockApi):  # type: ignore[misc]
+        def get_kl_data(self):
+            for bar in _ANDROID_BARS:
+                open_ = float(bar['open'])
+                high = float(bar['high'])
+                low = float(bar['low'])
+                close = float(bar['close'])
+                item = {
+                    DATA_FIELD.FIELD_TIME: _parse_time(bar.get('dt') or bar.get('time') or bar.get('date'), CTime),
+                    DATA_FIELD.FIELD_OPEN: open_,
+                    DATA_FIELD.FIELD_HIGH: max(open_, high, low, close),
+                    DATA_FIELD.FIELD_LOW: min(open_, high, low, close),
+                    DATA_FIELD.FIELD_CLOSE: close,
+                }
+                yield CKLine_Unit(item)
 
-def _write_csv_for_chanpy(bars: list[dict[str, Any]], code: str, freq: str) -> str:
-    suffix = _freq_suffix(freq)
-    safe_code = ''.join(ch if ch.isalnum() or ch == '_' else '_' for ch in f'android_{code}').strip('_')
-    file_name = f'{safe_code}_{suffix}.csv'
-    rows = []
-    for bar in bars:
-        open_ = float(bar['open'])
-        high = float(bar['high'])
-        low = float(bar['low'])
-        close = float(bar['close'])
-        rows.append({
-            'time_key': str(bar.get('dt') or bar.get('time') or bar.get('date')).replace('-', '/').split(' ')[0],
-            'open': open_,
-            'high': max(open_, high, low, close),
-            'low': min(open_, high, low, close),
-            'close': close,
-        })
+        def SetBasciInfo(self):
+            self.name = self.code
+            self.is_stock = True
 
-    targets = []
-    try:
-        targets.append(_chanpy_root() / file_name)
-    except Exception:
-        pass
-    targets.append(Path(tempfile.gettempdir()) / file_name)
+        @classmethod
+        def do_init(cls):
+            pass
 
-    last_error: Exception | None = None
-    for path in targets:
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open('w', encoding='utf-8', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['time_key', 'open', 'high', 'low', 'close'])
-                writer.writeheader()
-                writer.writerows(rows)
-            return safe_code
-        except Exception as exc:
-            last_error = exc
-    raise ChanPyRuntimeError(f'无法写入 chan.py CSV 输入: {last_error}')
+        @classmethod
+        def do_close(cls):
+            pass
+
+    module = types.ModuleType(module_name)
+    module.AndroidRuntimeAPI = AndroidRuntimeAPI
+    sys.modules[module_name] = module
+    return 'custom:AndroidRuntimeAPI.AndroidRuntimeAPI'
 
 
 def _config(CChanConfig: Any, *, trigger_step: bool) -> Any:
@@ -295,16 +303,18 @@ def _snapshot(chan: Any, kl_type: Any) -> dict[str, Any]:
 
 
 def _run_chanpy(bars: list[dict[str, Any]], code: str, freq: str, adjust: str, mode: str) -> dict[str, Any]:
+    global _ANDROID_BARS
+    _ANDROID_BARS = list(bars)
     lib = _import_chanpy()
     kl_type = _kl_type(freq, lib['KL_TYPE'])
     autype = _autype(adjust, lib['AUTYPE'])
-    prepared_code = _write_csv_for_chanpy(bars, code, freq)
+    data_src = _install_memory_data_api(lib)
     trigger_step = mode == 'step'
     chan = _make_cchan(lib['CChan'], {
-        'code': prepared_code,
+        'code': code,
         'begin_time': None,
         'end_time': None,
-        'data_src': lib['DATA_SRC'].CSV,
+        'data_src': data_src,
         'lv_list': [kl_type],
         'config': _config(lib['CChanConfig'], trigger_step=trigger_step),
         'autype': autype,
@@ -372,4 +382,4 @@ def analyze_json(payload_json: str) -> str:
         structures = _run_chanpy(bars, code, freq, adjust, mode)
         return _result(True, bars=bars, code=code, market=market, freq=freq, adjust=adjust, mode=mode, structures=structures)
     except Exception as exc:
-        return _result(True, bars=bars, code=code, market=market, freq=freq, adjust=adjust, mode=mode, warning=f'Android chan.py 导出失败，已降级仅显示K线: {exc}')
+        return _result(True, bars=bars, code=code, market=market, freq=freq, adjust=adjust, mode=mode, warning=f'Android chan.py 导出失败，已降级仅显示K线: {type(exc).__name__}: {exc}')
