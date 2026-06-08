@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/models/bsp.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../core/models/fx.dart';
 import '../../core/models/raw_bar.dart';
@@ -17,7 +18,8 @@ class OriginKlineChart extends StatefulWidget {
   final bool showSeg;
   final bool showSegText;
   final bool showZs;
-  final bool showBsp;
+  final bool showBiBsp;
+  final bool showSegBsp;
   final bool showMergedBars;
   final int windowSize;
   final double priceScale;
@@ -39,7 +41,8 @@ class OriginKlineChart extends StatefulWidget {
     required this.showSeg,
     this.showSegText = true,
     required this.showZs,
-    required this.showBsp,
+    required this.showBiBsp,
+    required this.showSegBsp,
     this.showMergedBars = false,
     required this.windowSize,
     this.priceScale = 1.0,
@@ -92,7 +95,8 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
               showSeg: widget.showSeg,
               showSegText: widget.showSegText,
               showZs: widget.showZs,
-              showBsp: widget.showBsp,
+              showBiBsp: widget.showBiBsp,
+              showSegBsp: widget.showSegBsp,
               showMergedBars: widget.showMergedBars,
               windowSize: widget.windowSize,
               priceScale: widget.priceScale,
@@ -176,7 +180,8 @@ class _OriginChartPainter extends CustomPainter {
   final bool showSeg;
   final bool showSegText;
   final bool showZs;
-  final bool showBsp;
+  final bool showBiBsp;
+  final bool showSegBsp;
   final bool showMergedBars;
   final int windowSize;
   final double priceScale;
@@ -193,7 +198,8 @@ class _OriginChartPainter extends CustomPainter {
     required this.showSeg,
     required this.showSegText,
     required this.showZs,
-    required this.showBsp,
+    required this.showBiBsp,
+    required this.showSegBsp,
     required this.showMergedBars,
     required this.windowSize,
     required this.priceScale,
@@ -231,13 +237,15 @@ class _OriginChartPainter extends CustomPainter {
     if (showFxLine) _drawFxLine(canvas, rect, start, end, rawToX, priceToY);
     if (showBi) _drawBi(canvas, rect, start, end, rawToX, priceToY);
     if (showSeg) _drawSeg(canvas, rect, start, end, rawToX, priceToY);
-    if (showBsp) _drawBsp(canvas, rect, start, end, rawToX, priceToY);
+    if (showBiBsp || showSegBsp) _drawBsp(canvas, rect, start, end, rawToX, priceToY);
     if (showFx) _drawFx(canvas, rect, start, end, rawToX, priceToY);
     final cross = crosshairIndex;
     if (cross != null && cross >= start && cross <= end) {
       _drawCrosshair(canvas, rect, bars[cross], rawToX, priceToY);
     } else {
-      _drawText(canvas, 'chan.py ${_fmtDate(visible.last.time)} | K:${bars.length} MB:${snapshot.mergedBars.length} FX:${snapshot.fxs.length} BI:${snapshot.bis.length} SEG:${snapshot.segs.length} ZS:${snapshot.zss.length} BSP:${snapshot.bsps.length}', const Offset(8, 4), 11, Colors.white70);
+      final biBspCnt = snapshot.bsps.where(_isBiBsp).length;
+      final segBspCnt = snapshot.bsps.where(_isSegBsp).length;
+      _drawText(canvas, 'chan.py ${_fmtDate(visible.last.time)} | K:${bars.length} MB:${snapshot.mergedBars.length} FX:${snapshot.fxs.length} BI:${snapshot.bis.length} SEG:${snapshot.segs.length} ZS:${snapshot.zss.length} BSP:${snapshot.bsps.length} 笔BSP:$biBspCnt 段BSP:$segBspCnt', const Offset(8, 4), 11, Colors.white70);
     }
   }
 
@@ -349,19 +357,36 @@ class _OriginChartPainter extends CustomPainter {
   void _drawBsp(Canvas canvas, Rect rect, int start, int end, double Function(int) rawToX, double Function(double) priceToY) {
     for (final bsp in snapshot.bsps) {
       if (bsp.rawIndex < start || bsp.rawIndex > end) continue;
+      final isSegLevel = _isSegBsp(bsp);
+      if (isSegLevel && !showSegBsp) continue;
+      if (!isSegLevel && !showBiBsp) continue;
       final color = bsp.isSell ? const Color(0xFFFF7043) : const Color(0xFF00E676);
       final x = rawToX(bsp.rawIndex).clamp(rect.left, rect.right).toDouble();
       final y = priceToY(bsp.price).clamp(rect.top, rect.bottom).toDouble();
+      final halfWidth = isSegLevel ? 8.0 : 6.0;
+      final tipOffset = isSegLevel ? 9.0 : 7.0;
+      final baseOffset = isSegLevel ? 6.0 : 5.0;
       final path = Path();
       if (bsp.isSell) {
-        path.moveTo(x, y - 7); path.lineTo(x - 6, y + 5); path.lineTo(x + 6, y + 5);
+        path.moveTo(x, y - tipOffset); path.lineTo(x - halfWidth, y + baseOffset); path.lineTo(x + halfWidth, y + baseOffset);
       } else {
-        path.moveTo(x, y + 7); path.lineTo(x - 6, y - 5); path.lineTo(x + 6, y - 5);
+        path.moveTo(x, y + tipOffset); path.lineTo(x - halfWidth, y - baseOffset); path.lineTo(x + halfWidth, y - baseOffset);
       }
       path.close();
       canvas.drawPath(path, Paint()..color = color);
-      _drawText(canvas, bsp.type, Offset(x + 5, y + (bsp.isSell ? -18 : 8)), 9, color);
+      final label = '${isSegLevel ? '段' : '笔'}${bsp.type}';
+      _drawText(canvas, label, Offset(x + 5, y + (bsp.isSell ? -20 : 8)), isSegLevel ? 10.5 : 9, color);
     }
+  }
+
+  bool _isSegBsp(BspPoint bsp) {
+    final level = bsp.level.trim().toLowerCase();
+    return level == 'seg' || level == 'segment' || level.contains('seg');
+  }
+
+  bool _isBiBsp(BspPoint bsp) {
+    final level = bsp.level.trim().toLowerCase();
+    return level.isEmpty || level == 'bi' || (!level.contains('seg') && level != 'segment');
   }
 
   void _drawCrosshair(Canvas canvas, Rect rect, RawBar bar, double Function(int) rawToX, double Function(double) priceToY) {
