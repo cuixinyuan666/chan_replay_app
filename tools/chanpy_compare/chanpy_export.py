@@ -13,6 +13,7 @@ uses multiple fallbacks and also writes raw JSON when CChan.toJson() is present.
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import sys
@@ -142,6 +143,36 @@ def get_level(chan: Any, kl_type: Any) -> Any:
     return chan
 
 
+def make_cchan(CChan: Any, kwargs: dict[str, Any]) -> Any:
+    """Construct CChan while tolerating signature drift across chan.py versions.
+
+    Some versions support extra_kl, some do not. Future versions may also rename
+    or remove optional arguments. We filter keyword arguments by the actual
+    runtime signature first, then fall back to removing unexpected keywords from
+    TypeError messages.
+    """
+    try:
+        signature = inspect.signature(CChan)
+        params = signature.parameters
+        accepts_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values())
+        filtered = dict(kwargs) if accepts_kwargs else {k: v for k, v in kwargs.items() if k in params}
+        return CChan(**filtered)
+    except (TypeError, ValueError) as first_error:
+        working = dict(kwargs)
+        for _ in range(len(working) + 1):
+            try:
+                return CChan(**working)
+            except TypeError as exc:
+                text = str(exc)
+                if "unexpected keyword argument" in text and "'" in text:
+                    unsupported = text.split("'")[1]
+                    if unsupported in working:
+                        working.pop(unsupported)
+                        continue
+                raise
+        raise first_error
+
+
 def export_fx(level: Any) -> list[dict[str, Any]]:
     direct = getattr_any(level, ["fx_list", "fx_lst"], None)
     if direct is not None:
@@ -253,16 +284,16 @@ def main() -> None:
     })
 
     code = args.code or str(Path(args.csv).resolve())
-    chan = CChan(
-        code=code,
-        begin_time=args.begin,
-        end_time=args.end,
-        data_src=DATA_SRC.CSV,
-        lv_list=[kl_type],
-        config=config,
-        autype=autype,
-        extra_kl=None,
-    )
+    chan = make_cchan(CChan, {
+        "code": code,
+        "begin_time": args.begin,
+        "end_time": args.end,
+        "data_src": DATA_SRC.CSV,
+        "lv_list": [kl_type],
+        "config": config,
+        "autype": autype,
+        "extra_kl": None,
+    })
 
     level = get_level(chan, kl_type)
     raw_json = None
