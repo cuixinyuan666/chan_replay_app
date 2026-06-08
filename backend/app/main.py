@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, Query
+from typing import Any
+
+from fastapi import Body, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from .chanpy_engine import analyze_once, analyze_step
+from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
 app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.4.0')
@@ -39,6 +41,7 @@ def root() -> dict[str, object]:
             '/health',
             '/api/tdx/kline',
             '/api/chan/analyze',
+            '/api/chan/analyze_bars',
             '/docs',
         ],
     }
@@ -58,6 +61,21 @@ def chan_analyze(
     if mode.lower() == 'step':
         return analyze_step(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count)
     return analyze_once(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count)
+
+
+@app.post('/api/chan/analyze_bars')
+def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
+    bars = payload.get('bars') or []
+    if not isinstance(bars, list):
+        return {'ok': False, 'error': 'bars 必须是数组', 'bars': [], 'fx': [], 'bi': [], 'seg': [], 'zs': [], 'bsp': [], 'frames': []}
+    return analyze_bars(
+        bars=bars,
+        symbol=str(payload.get('symbol') or 'local_csv'),
+        market=str(payload.get('market') or 'LOCAL'),
+        freq=str(payload.get('freq') or payload.get('period') or 'DAILY'),
+        adjust=str(payload.get('adjust') or 'QFQ'),
+        mode=str(payload.get('mode') or 'once'),
+    )
 
 
 @app.get('/api/tdx/kline')
