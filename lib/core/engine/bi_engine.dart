@@ -49,21 +49,66 @@ class BiEngine {
       for (var i = 1; i < mergedBars.length - 1; i++) {
         final center = mergedBars[i];
         if (center.index >= first.index) break;
+        if (!_isBottomShape(mergedBars, i, config.strictFx)) continue;
         final seed = _fxFromLowAt(mergedBars, i, confirmed: true);
         if (seed.rawIndex == first.rawIndex) continue;
-        if (_canMakeBi(seed, first, config, mergedBars)) return [seed, ...fxs];
+        if (_canMakeBi(seed, first, config, mergedBars) || _canMakeInitialSeedBi(seed, first, config, mergedBars)) {
+          return [seed, ...fxs];
+        }
       }
     } else {
       for (var i = 1; i < mergedBars.length - 1; i++) {
         final center = mergedBars[i];
         if (center.index >= first.index) break;
+        if (!_isTopShape(mergedBars, i, config.strictFx)) continue;
         final seed = _fxFromHighAt(mergedBars, i, confirmed: true);
         if (seed.rawIndex == first.rawIndex) continue;
-        if (_canMakeBi(seed, first, config, mergedBars)) return [seed, ...fxs];
+        if (_canMakeBi(seed, first, config, mergedBars) || _canMakeInitialSeedBi(seed, first, config, mergedBars)) {
+          return [seed, ...fxs];
+        }
       }
     }
 
     return fxs;
+  }
+
+  bool _canMakeInitialSeedBi(FX start, FX end, ChanConfig config, List<MergedBar> mergedBars) {
+    final biConf = config.bi;
+    if (biConf.biAlgo != BiAlgo.fx) {
+      final span = (end.index - start.index).abs();
+      if (span < biConf.effectiveMinKlcSpan) return false;
+    }
+    if (start.isBottom && end.isTop) {
+      if (start.price >= end.price) return false;
+      if (start.center.low >= end.center.low) return false;
+    } else if (start.isTop && end.isBottom) {
+      if (start.price <= end.price) return false;
+      if (start.center.high <= end.center.high) return false;
+    } else {
+      return false;
+    }
+    if (biConf.endIsPeak && !_endIsPeak(start, end, mergedBars)) return false;
+    return true;
+  }
+
+  bool _isBottomShape(List<MergedBar> bars, int index, bool strict) {
+    final left = bars[index - 1];
+    final center = bars[index];
+    final right = bars[index + 1];
+    if (strict) {
+      return center.low < left.low && center.low < right.low && center.high < left.high && center.high < right.high;
+    }
+    return center.low <= left.low && center.low <= right.low && center.high <= left.high && center.high <= right.high;
+  }
+
+  bool _isTopShape(List<MergedBar> bars, int index, bool strict) {
+    final left = bars[index - 1];
+    final center = bars[index];
+    final right = bars[index + 1];
+    if (strict) {
+      return center.high > left.high && center.high > right.high && center.low > left.low && center.low > right.low;
+    }
+    return center.high >= left.high && center.high >= right.high && center.low >= left.low && center.low >= right.low;
   }
 
   void _addTailBi(List<BI> bis, FX lastPoint, ChanConfig config, List<MergedBar> mergedBars) {
@@ -136,7 +181,6 @@ class BiEngine {
       if (method == BiFxCheck.totally) return start.center.low > item2High;
       return start.center.high > item2High && end.center.low < selfLow;
     }
-
     if (start.isBottom && end.isTop) {
       if (forVirtual) return start.center.low < end.center.high;
       final item2Low = _endLowForCheck(end, method);
@@ -144,7 +188,6 @@ class BiEngine {
       if (method == BiFxCheck.totally) return start.center.high < item2Low;
       return start.center.low < item2Low && end.center.high > selfHigh;
     }
-
     return false;
   }
 
@@ -201,7 +244,6 @@ class BiEngine {
     final from = start.index + 1;
     final to = end.index - 1;
     if (from > to) return true;
-
     if (start.isBottom && end.isTop) {
       for (final bar in mergedBars) {
         if (bar.index < from || bar.index > to) continue;
@@ -209,7 +251,6 @@ class BiEngine {
       }
       return true;
     }
-
     if (start.isTop && end.isBottom) {
       for (final bar in mergedBars) {
         if (bar.index < from || bar.index > to) continue;
@@ -217,7 +258,6 @@ class BiEngine {
       }
       return true;
     }
-
     return false;
   }
 
