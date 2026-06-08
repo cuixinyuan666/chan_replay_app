@@ -6,16 +6,20 @@ This tool intentionally stays outside app runtime. It is a benchmark harness:
 - Python side uses a local clone of Vespa314/chan.py.
 - Output schema matches dart_export.dart as closely as possible.
 
-Because chan.py versions may expose slightly different attributes, the script
-uses multiple fallbacks and also writes raw JSON when CChan.toJson() is present.
+Vespa's DATA_SRC.CSV does not read an arbitrary CSV path as ``code``. Its
+DataAPI/csvAPI.py expects a file in the chan.py repo root named
+``{code}_{k_type}.csv`` with columns ``time_key,open,high,low,close``. This
+script prepares that temporary CSV automatically.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import inspect
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Iterable
@@ -26,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--csv", default="assets/sample_data/000001_daily.csv")
     parser.add_argument("--out", default="build/chanpy_compare/chanpy.json")
     parser.add_argument("--chanpy-path", default=os.environ.get("CHANPY_PATH", "../chan.py"))
-    parser.add_argument("--code", default=None, help="chan.py code argument. Defaults to CSV path for DATA_SRC.CSV.")
+    parser.add_argument("--code", default=None, help="Temporary chan.py CSV code. Defaults to a safe name from CSV stem.")
     parser.add_argument("--begin", default=None)
     parser.add_argument("--end", default=None)
     parser.add_argument("--freq", default="DAY")
@@ -34,11 +38,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def add_chanpy_path(path: str) -> None:
+def add_chanpy_path(path: str) -> Path:
     root = Path(path).resolve()
     if not root.exists():
         raise FileNotFoundError(f"chan.py path not found: {root}")
     sys.path.insert(0, str(root))
+    return root
 
 
 def import_chanpy():
@@ -81,6 +86,80 @@ def pick_autype(AUTYPE: Any, adjust: str) -> Any:
     if key == "NONE":
         return getattr(AUTYPE, "NONE")
     return getattr(AUTYPE, "QFQ")
+
+
+def kl_suffix(kl_type: Any) -> str:
+    name = getattr(kl_type, "name", str(kl_type))
+    if name.startswith("K_"):
+        return name[2:].lower()
+    return str(name).lower().replace("kl_type.", "").replace("k_", "")
+
+
+def safe_code_from_csv(csv_path: Path) -> str:
+    stem = re.sub(r"[^0-9A-Za-z_]+", "_", csv_path.stem)
+    stem = stem.strip("_") or "sample"
+    return f"chanpy_compare_{stem}"
+
+
+def normalize_time_for_chanpy(value: str) -> str:
+    text = value.strip().strip('"').replace("T", " ")
+    if len(text) >= 19 and re.match(r"^\d{4}-\d{2}-\d{2} ", text):
+        return text[:19]
+    if len(text) >= 10 and re.match(r"^\d{4}-\d{2}-\d{2}", text):
+        return text[:10]
+    if len(text) >= 8 and re.match(r"^\d{8}", text):
+        raw = text[:8]
+        return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
+    return text
+
+
+def prepare_chanpy_csv(csv_path: str, chanpy_root: Path, kl_type: Any, code: str | None) -> str:
+    source = Path(csv_path).resolve()
+    if not source.exists():
+        raise FileNotFoundError(f"CSV not found: {source}")
+    tmp_code = code or safe_code_from_csv(source)
+    suffix = kl_suffix(kl_type)
+    target = chanpy_root / f"{tmp_code}_{suffix}.csv"
+
+    with source.open("r", encoding="utf-8-sig", newline="") as fin:
+        reader = csv.DictReader(fin)
+        if reader.fieldnames is None:
+            raise ValueError(f"CSV has no header: {source}")
+        field_map = {name.strip().lower(): name for name in reader.fieldnames}
+        time_col = field_map.get("time") or field_map.get("time_key") or field_map.get("dt") or field_map.get("date")
+        open_col = field_map.get("open")
+        high_col = field_map.get("high")
+        low_col = field_map.get("low")
+        close_col = field_map.get("close")
+        missing = [name for name, col in {
+            "time/time_key/dt/date": time_col,
+            "open": open_col,
+            "high": high_col,
+            "low": low_col,
+            "close": close_col,
+        }.items() if col is None]
+        if missing:
+            raise ValueError(f"CSV missing required columns: {', '.join(missing)}")
+
+        rows: list[list[str]] = []
+        for row in reader:
+            if not row:
+                continue
+            rows.append([
+                normalize_time_for_chanpy(row[time_col] or ""),
+                str(row[open_col]).strip(),
+                str(row[high_col]).strip(),
+                str(row[low_col]).strip(),
+                str(row[close_col]).strip(),
+            ])
+
+    with target.open("w", encoding="utf-8", newline="") as fout:
+        writer = csv.writer(fout)
+        writer.writerow(["time_key", "open", "high", "low", "close"])
+        writer.writerows(rows)
+
+    print(f"Prepared chan.py CSV: {target}")
+    return tmp_code
 
 
 def safe_json(value: Any) -> Any:
@@ -144,13 +223,7 @@ def get_level(chan: Any, kl_type: Any) -> Any:
 
 
 def make_cchan(CChan: Any, kwargs: dict[str, Any]) -> Any:
-    """Construct CChan while tolerating signature drift across chan.py versions.
-
-    Some versions support extra_kl, some do not. Future versions may also rename
-    or remove optional arguments. We filter keyword arguments by the actual
-    runtime signature first, then fall back to removing unexpected keywords from
-    TypeError messages.
-    """
+    """Construct CChan while tolerating signature drift across chan.py versions."""
     try:
         signature = inspect.signature(CChan)
         params = signature.parameters
@@ -266,7 +339,7 @@ def export_zs(level: Any) -> list[dict[str, Any]]:
 
 def main() -> None:
     args = parse_args()
-    add_chanpy_path(args.chanpy_path)
+    chanpy_root = add_chanpy_path(args.chanpy_path)
     CChan, CChanConfig, AUTYPE, DATA_SRC, KL_TYPE = import_chanpy()
     kl_type = pick_kl_type(KL_TYPE, args.freq)
     autype = pick_autype(AUTYPE, args.adjust)
@@ -283,7 +356,7 @@ def main() -> None:
         "one_bi_zs": False,
     })
 
-    code = args.code or str(Path(args.csv).resolve())
+    code = prepare_chanpy_csv(args.csv, chanpy_root, kl_type, args.code)
     chan = make_cchan(CChan, {
         "code": code,
         "begin_time": args.begin,
@@ -307,6 +380,8 @@ def main() -> None:
         "engine": "vespa_chanpy",
         "csv": args.csv,
         "chanpy_path": str(Path(args.chanpy_path).resolve()),
+        "prepared_code": code,
+        "prepared_csv": str(chanpy_root / f"{code}_{kl_suffix(kl_type)}.csv"),
         "fx": export_fx(level),
         "bi": export_bi(level),
         "seg": export_seg(level),
