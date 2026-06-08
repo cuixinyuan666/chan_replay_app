@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/models/bsp.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../core/models/raw_bar.dart';
 import '../../data/python_chan_analysis_source.dart';
@@ -48,7 +49,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   bool _showSeg = true;
   bool _showSegText = true;
   bool _showZs = true;
-  bool _showBsp = true;
+  bool _showBiBsp = true;
+  bool _showSegBsp = true;
   bool _showMergedBars = false;
   Timer? _timer;
 
@@ -86,6 +88,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   bool get _isStepMode => _mode == 'step';
   bool get _hasBars => _fullSnapshot.rawBars.isNotEmpty;
   int get _stepTotal => _frames.isNotEmpty ? _frames.length : _fullSnapshot.rawBars.length;
+  bool get _hasBiBsp => _fullSnapshot.bsps.any(_isBiBsp);
+  bool get _hasSegBsp => _fullSnapshot.bsps.any(_isSegBsp);
 
   Map<String, dynamic> get _chanConfig => {
         'bi_algo': _biAlgo,
@@ -172,7 +176,9 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         _crosshairIndex = null;
         _priceScale = 1.0;
         final name = _dataSource == 'csv' ? (_localCsvName.isEmpty ? '本地CSV' : _localCsvName) : '${symbol!.market}${symbol.code}';
-        _status = 'chan.py 获取$name $_periodAdjustLabel K:${_snapshot.rawBars.length} MB:${_snapshot.mergedBars.length} FX:${_snapshot.fxs.length} BI:${_snapshot.bis.length} SEG:${_snapshot.segs.length} ZS:${_snapshot.zss.length} BSP:${_snapshot.bsps.length}';
+        final biBspCnt = _snapshot.bsps.where(_isBiBsp).length;
+        final segBspCnt = _snapshot.bsps.where(_isSegBsp).length;
+        _status = 'chan.py 获取$name $_periodAdjustLabel K:${_snapshot.rawBars.length} MB:${_snapshot.mergedBars.length} FX:${_snapshot.fxs.length} BI:${_snapshot.bis.length} SEG:${_snapshot.segs.length} ZS:${_snapshot.zss.length} BSP:${_snapshot.bsps.length} 笔BSP:$biBspCnt 段BSP:$segBspCnt';
       });
       _showMessage('√ $_status');
     } catch (e) {
@@ -251,6 +257,16 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       zss: source.zss.where((e) => inCursor(e.endRawIndex)).toList(),
       bsps: source.bsps.where((e) => inCursor(e.rawIndex)).toList(),
     );
+  }
+
+  bool _isSegBsp(BspPoint bsp) {
+    final level = bsp.level.trim().toLowerCase();
+    return level == 'seg' || level == 'segment' || level.contains('seg');
+  }
+
+  bool _isBiBsp(BspPoint bsp) {
+    final level = bsp.level.trim().toLowerCase();
+    return level.isEmpty || level == 'bi' || (!level.contains('seg') && level != 'segment');
   }
 
   void _reset() {
@@ -520,7 +536,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         _toolIcon('显示线段', Icons.multiline_chart, _hasBars ? () => setState(() => _showSeg = !_showSeg) : null, selected: _showSeg),
         _toolIcon('显示线段端点文字', Icons.font_download_outlined, _hasBars && _showSeg ? () => setState(() => _showSegText = !_showSegText) : null, selected: _showSegText),
         _toolIcon('显示中枢', Icons.crop_square, _hasBars ? () => setState(() => _showZs = !_showZs) : null, selected: _showZs),
-        _toolIcon('显示买卖点BSP', Icons.change_circle, _hasBars ? () => setState(() => _showBsp = !_showBsp) : null, selected: _showBsp),
+        _toolIcon('显示笔买卖点', Icons.change_circle, _hasBars && _hasBiBsp ? () => setState(() => _showBiBsp = !_showBiBsp) : null, selected: _showBiBsp && _hasBiBsp),
+        _toolIcon('显示线段买卖点', Icons.timeline, _hasBars && _hasSegBsp ? () => setState(() => _showSegBsp = !_showSegBsp) : null, selected: _showSegBsp && _hasSegBsp),
         _toolIcon('显示合并K线', Icons.filter_none, _hasBars && _snapshot.mergedBars.isNotEmpty ? () => setState(() => _showMergedBars = !_showMergedBars) : null, selected: _showMergedBars && _snapshot.mergedBars.isNotEmpty),
         const Divider(height: 18, color: Colors.white12),
         _toolIcon('左右放大', Icons.zoom_in, _hasBars ? () => setState(() => _windowSize = (_windowSize - 15).clamp(24, 360).toInt()) : null),
@@ -534,7 +551,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
   Widget _toolIcon(String tooltip, IconData icon, VoidCallback? onPressed, {bool selected = false}) => Tooltip(message: onPressed == null ? '$tooltip（当前不可用）' : tooltip, child: IconButton(onPressed: onPressed, icon: Icon(icon, size: 19), color: selected ? Colors.white : Colors.white60, disabledColor: Colors.white24, style: IconButton.styleFrom(backgroundColor: selected ? const Color(0xFF2962FF) : Colors.transparent, visualDensity: VisualDensity.compact)));
 
-  Widget _buildChartPanel() => Padding(padding: const EdgeInsets.fromLTRB(4, 4, 4, 2), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: DecoratedBox(decoration: BoxDecoration(color: const Color(0xFF0B0D10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))), child: OriginKlineChart(snapshot: _snapshot, showFx: _showFx, showFxLine: _showFxLine, showFxText: _showFxText, showBi: _showBi, showBiText: _showBiText, showSeg: _showSeg, showSegText: _showSegText, showZs: _showZs, showBsp: _showBsp, showMergedBars: _showMergedBars, windowSize: _windowSize, priceScale: _priceScale, viewEndIndex: _viewEndIndex, crosshairIndex: _crosshairIndex, onCrosshairChanged: (i) => setState(() => _crosshairIndex = i), onPanBars: _panChartByBars, onWindowSizeChanged: (v) => setState(() => _windowSize = v), onPriceScaleChanged: (v) => setState(() => _priceScale = v)))));
+  Widget _buildChartPanel() => Padding(padding: const EdgeInsets.fromLTRB(4, 4, 4, 2), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: DecoratedBox(decoration: BoxDecoration(color: const Color(0xFF0B0D10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))), child: OriginKlineChart(snapshot: _snapshot, showFx: _showFx, showFxLine: _showFxLine, showFxText: _showFxText, showBi: _showBi, showBiText: _showBiText, showSeg: _showSeg, showSegText: _showSegText, showZs: _showZs, showBiBsp: _showBiBsp, showSegBsp: _showSegBsp, showMergedBars: _showMergedBars, windowSize: _windowSize, priceScale: _priceScale, viewEndIndex: _viewEndIndex, crosshairIndex: _crosshairIndex, onCrosshairChanged: (i) => setState(() => _crosshairIndex = i), onPanBars: _panChartByBars, onWindowSizeChanged: (v) => setState(() => _windowSize = v), onPriceScaleChanged: (v) => setState(() => _priceScale = v)))));
 
   _Symbol? _parseSymbol(String input) {
     var text = input.trim().toUpperCase();
