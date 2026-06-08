@@ -50,6 +50,12 @@ chaquopy {
             install("easy-tdx>=0.0.13")
         }
     }
+    sourceSets {
+        getByName("main") {
+            srcDir("src/main/python")
+            srcDir("../../python/chan.py")
+        }
+    }
 }
 
 flutter {
