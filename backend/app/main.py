@@ -19,6 +19,27 @@ app.add_middleware(
 )
 
 
+def _config_from_query(
+    *,
+    bi_algo: str,
+    bi_strict: bool,
+    seg_algo: str,
+    zs_algo: str,
+    zs_combine: bool,
+    zs_combine_mode: str,
+    one_bi_zs: bool,
+) -> dict[str, Any]:
+    return {
+        'bi_algo': bi_algo,
+        'bi_strict': bi_strict,
+        'seg_algo': seg_algo,
+        'zs_algo': zs_algo,
+        'zs_combine': zs_combine,
+        'zs_combine_mode': zs_combine_mode,
+        'one_bi_zs': one_bi_zs,
+    }
+
+
 @app.get('/health')
 def health() -> dict[str, object]:
     return {
@@ -57,17 +78,34 @@ def chan_analyze(
     count: int = Query(5000, ge=10, le=5000),
     start: str | None = Query(None, description='yyyy-MM-dd，可选'),
     end: str | None = Query(None, description='yyyy-MM-dd，可选'),
+    bi_algo: str = Query('normal', description='CChanConfig.bi_algo'),
+    bi_strict: bool = Query(True, description='CChanConfig.bi_strict'),
+    seg_algo: str = Query('chan', description='CChanConfig.seg_algo'),
+    zs_algo: str = Query('normal', description='CChanConfig.zs_algo'),
+    zs_combine: bool = Query(True, description='CChanConfig.zs_combine'),
+    zs_combine_mode: str = Query('zs', description='CChanConfig.zs_combine_mode'),
+    one_bi_zs: bool = Query(False, description='CChanConfig.one_bi_zs'),
 ) -> dict[str, object]:
+    config = _config_from_query(
+        bi_algo=bi_algo,
+        bi_strict=bi_strict,
+        seg_algo=seg_algo,
+        zs_algo=zs_algo,
+        zs_combine=zs_combine,
+        zs_combine_mode=zs_combine_mode,
+        one_bi_zs=one_bi_zs,
+    )
     if mode.lower() == 'step':
-        return analyze_step(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count)
-    return analyze_once(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count)
+        return analyze_step(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
+    return analyze_once(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
 
 
 @app.post('/api/chan/analyze_bars')
 def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
     bars = payload.get('bars') or []
     if not isinstance(bars, list):
-        return {'ok': False, 'error': 'bars 必须是数组', 'bars': [], 'fx': [], 'bi': [], 'seg': [], 'zs': [], 'bsp': [], 'frames': []}
+        return {'ok': False, 'error': 'bars 必须是数组', 'bars': [], 'merged_bars': [], 'fx': [], 'bi': [], 'seg': [], 'zs': [], 'bsp': [], 'frames': []}
+    config = payload.get('config') if isinstance(payload.get('config'), dict) else {}
     return analyze_bars(
         bars=bars,
         symbol=str(payload.get('symbol') or 'local_csv'),
@@ -75,6 +113,7 @@ def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
         freq=str(payload.get('freq') or payload.get('period') or 'DAILY'),
         adjust=str(payload.get('adjust') or 'QFQ'),
         mode=str(payload.get('mode') or 'once'),
+        config=config,
     )
 
 
