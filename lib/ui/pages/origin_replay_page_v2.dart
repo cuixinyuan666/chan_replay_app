@@ -49,6 +49,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   bool _showSegText = true;
   bool _showZs = true;
   bool _showBsp = true;
+  bool _showMergedBars = false;
   Timer? _timer;
 
   String _mode = 'once';
@@ -171,7 +172,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         _crosshairIndex = null;
         _priceScale = 1.0;
         final name = _dataSource == 'csv' ? (_localCsvName.isEmpty ? '本地CSV' : _localCsvName) : '${symbol!.market}${symbol.code}';
-        _status = 'chan.py 获取$name $_periodAdjustLabel K:${_snapshot.rawBars.length} FX:${_snapshot.fxs.length} BI:${_snapshot.bis.length} SEG:${_snapshot.segs.length} ZS:${_snapshot.zss.length} BSP:${_snapshot.bsps.length}';
+        _status = 'chan.py 获取$name $_periodAdjustLabel K:${_snapshot.rawBars.length} MB:${_snapshot.mergedBars.length} FX:${_snapshot.fxs.length} BI:${_snapshot.bis.length} SEG:${_snapshot.segs.length} ZS:${_snapshot.zss.length} BSP:${_snapshot.bsps.length}';
       });
       _showMessage('√ $_status');
     } catch (e) {
@@ -396,7 +397,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                       child: TabBarView(children: [
                         SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           const SizedBox(height: 12),
-                          DropdownButtonFormField<String>(initialValue: dataSource, decoration: const InputDecoration(labelText: '数据源', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'easy_tdx', child: Text('easy-tdx / Python chan.py')), DropdownMenuItem(value: 'csv', child: Text('本地 CSV / Python chan.py'))], onChanged: _loading ? null : (v) => setSheetState(() => dataSource = v ?? dataSource)),
+                          _dropdown('数据源', dataSource, const ['easy_tdx', 'csv'], (v) => setSheetState(() => dataSource = v ?? dataSource), labels: const {'easy_tdx': 'easy-tdx / Python chan.py', 'csv': '本地 CSV / Python chan.py'}),
                           const SizedBox(height: 10),
                           TextField(controller: _backendUrlController, enabled: !_loading && !_isAndroidApp, decoration: const InputDecoration(labelText: 'Windows Python chan.py 服务地址', border: OutlineInputBorder())),
                           const SizedBox(height: 10),
@@ -404,25 +405,33 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                           const SizedBox(height: 10),
                           OutlinedButton.icon(onPressed: _loading ? null : _pickCsv, icon: const Icon(Icons.upload_file), label: Text(_localCsvName.isEmpty ? '选择本地 CSV' : '已选 $_localCsvName')),
                           const SizedBox(height: 10),
-                          DropdownButtonFormField<String>(initialValue: mode, decoration: const InputDecoration(labelText: '模式', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'once', child: Text('一次性')), DropdownMenuItem(value: 'step', child: Text('严格逐K trigger_step / step_load'))], onChanged: _loading ? null : (v) => setSheetState(() => mode = v ?? mode)),
+                          _dropdown('模式', mode, const ['once', 'step'], (v) => setSheetState(() => mode = v ?? mode), labels: const {'once': '一次性', 'step': '严格逐K trigger_step / step_load'}),
                           const SizedBox(height: 10),
-                          Row(children: [Expanded(child: DropdownButtonFormField<String>(initialValue: period, decoration: const InputDecoration(labelText: '周期', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'MIN1', child: Text('1分钟')), DropdownMenuItem(value: 'MIN5', child: Text('5分钟')), DropdownMenuItem(value: 'MIN15', child: Text('15分钟')), DropdownMenuItem(value: 'MIN30', child: Text('30分钟')), DropdownMenuItem(value: 'MIN60', child: Text('60分钟')), DropdownMenuItem(value: 'DAILY', child: Text('日线')), DropdownMenuItem(value: 'WEEKLY', child: Text('周线')), DropdownMenuItem(value: 'MONTHLY', child: Text('月线'))], onChanged: _loading ? null : (v) => setSheetState(() => period = v ?? period))), const SizedBox(width: 10), Expanded(child: DropdownButtonFormField<String>(initialValue: adjust, decoration: const InputDecoration(labelText: '复权', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'QFQ', child: Text('前复权')), DropdownMenuItem(value: 'HFQ', child: Text('后复权')), DropdownMenuItem(value: 'NONE', child: Text('不复权'))], onChanged: _loading ? null : (v) => setSheetState(() => adjust = v ?? adjust)))]),
+                          Row(children: [
+                            Expanded(child: _dropdown('周期', period, const ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY', 'WEEKLY', 'MONTHLY'], (v) => setSheetState(() => period = v ?? period), labels: const {'MIN1': '1分钟', 'MIN5': '5分钟', 'MIN15': '15分钟', 'MIN30': '30分钟', 'MIN60': '60分钟', 'DAILY': '日线', 'WEEKLY': '周线', 'MONTHLY': '月线'})),
+                            const SizedBox(width: 10),
+                            Expanded(child: _dropdown('复权', adjust, const ['QFQ', 'HFQ', 'NONE'], (v) => setSheetState(() => adjust = v ?? adjust), labels: const {'QFQ': '前复权', 'HFQ': '后复权', 'NONE': '不复权'})),
+                          ]),
                           const SizedBox(height: 10),
-                          Row(children: [Expanded(child: _dateTile('开始日期', start, !_loading, () async { final picked = await _pickDate(start); if (picked != null) setSheetState(() => start = picked); })), const SizedBox(width: 10), Expanded(child: _dateTile('结束日期', end, !_loading, () async { final picked = await _pickDate(end); if (picked != null) setSheetState(() => end = picked); }))]),
+                          Row(children: [
+                            Expanded(child: _dateTile('开始日期', start, !_loading, () async { final picked = await _pickDate(start); if (picked != null) setSheetState(() => start = picked); })),
+                            const SizedBox(width: 10),
+                            Expanded(child: _dateTile('结束日期', end, !_loading, () async { final picked = await _pickDate(end); if (picked != null) setSheetState(() => end = picked); })),
+                          ]),
                         ])),
                         SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           const SizedBox(height: 12),
                           const Text('这些设置直接传给 Python CChanConfig；加载前或加载后修改都会重新请求 chan.py。', style: TextStyle(color: Colors.white70)),
                           const SizedBox(height: 12),
                           _sectionTitle('结构识别'),
-                          DropdownButtonFormField<String>(initialValue: biAlgo, decoration: const InputDecoration(labelText: 'bi_algo', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'normal', child: Text('normal')), DropdownMenuItem(value: 'fx', child: Text('fx'))], onChanged: _loading ? null : (v) => setSheetState(() => biAlgo = v ?? biAlgo)),
+                          _dropdown('bi_algo', biAlgo, const ['normal', 'fx'], (v) => setSheetState(() => biAlgo = v ?? biAlgo)),
                           SwitchListTile(value: biStrict, onChanged: _loading ? null : (v) => setSheetState(() => biStrict = v), title: const Text('bi_strict')),
-                          DropdownButtonFormField<String>(initialValue: segAlgo, decoration: const InputDecoration(labelText: 'seg_algo', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'chan', child: Text('chan')), DropdownMenuItem(value: '1+1', child: Text('1+1')), DropdownMenuItem(value: 'break', child: Text('break'))], onChanged: _loading ? null : (v) => setSheetState(() => segAlgo = v ?? segAlgo)),
+                          _dropdown('seg_algo', segAlgo, const ['chan', '1+1', 'break'], (v) => setSheetState(() => segAlgo = v ?? segAlgo)),
                           const SizedBox(height: 10),
                           _sectionTitle('中枢 ZS'),
-                          DropdownButtonFormField<String>(initialValue: zsAlgo, decoration: const InputDecoration(labelText: 'zs_algo', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'normal', child: Text('normal')), DropdownMenuItem(value: 'over_seg', child: Text('over_seg')), DropdownMenuItem(value: 'auto', child: Text('auto'))], onChanged: _loading ? null : (v) => setSheetState(() => zsAlgo = v ?? zsAlgo)),
+                          _dropdown('zs_algo', zsAlgo, const ['normal', 'over_seg', 'auto'], (v) => setSheetState(() => zsAlgo = v ?? zsAlgo)),
                           SwitchListTile(value: zsCombine, onChanged: _loading ? null : (v) => setSheetState(() => zsCombine = v), title: const Text('zs_combine')),
-                          DropdownButtonFormField<String>(initialValue: zsCombineMode, decoration: const InputDecoration(labelText: 'zs_combine_mode', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'zs', child: Text('zs')), DropdownMenuItem(value: 'peak', child: Text('peak'))], onChanged: _loading ? null : (v) => setSheetState(() => zsCombineMode = v ?? zsCombineMode)),
+                          _dropdown('zs_combine_mode', zsCombineMode, const ['zs', 'peak'], (v) => setSheetState(() => zsCombineMode = v ?? zsCombineMode)),
                           SwitchListTile(value: oneBiZs, onChanged: _loading ? null : (v) => setSheetState(() => oneBiZs = v), title: const Text('one_bi_zs')),
                           const SizedBox(height: 8),
                           _sectionTitle('买卖点 BSP'),
@@ -440,7 +449,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                             Expanded(child: TextFormField(initialValue: '$bsp3aMaxZsCnt', enabled: !_loading, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'bsp3a_max_zs_cnt', border: OutlineInputBorder()), onChanged: (v) => bsp3aMaxZsCnt = int.tryParse(v.trim()) ?? bsp3aMaxZsCnt)),
                           ]),
                           const SizedBox(height: 10),
-                          DropdownButtonFormField<String>(initialValue: macdAlgo, decoration: const InputDecoration(labelText: 'macd_algo', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'peak', child: Text('peak')), DropdownMenuItem(value: 'area', child: Text('area')), DropdownMenuItem(value: 'full_area', child: Text('full_area')), DropdownMenuItem(value: 'slope', child: Text('slope'))], onChanged: _loading ? null : (v) => setSheetState(() => macdAlgo = v ?? macdAlgo)),
+                          _dropdown('macd_algo', macdAlgo, const ['peak', 'area', 'full_area', 'slope'], (v) => setSheetState(() => macdAlgo = v ?? macdAlgo)),
                           SwitchListTile(value: bs1Peak, onChanged: _loading ? null : (v) => setSheetState(() => bs1Peak = v), title: const Text('bs1_peak')),
                           SwitchListTile(value: bsp2Follow1, onChanged: _loading ? null : (v) => setSheetState(() => bsp2Follow1 = v), title: const Text('bsp2_follow_1')),
                           SwitchListTile(value: bsp3Follow1, onChanged: _loading ? null : (v) => setSheetState(() => bsp3Follow1 = v), title: const Text('bsp3_follow_1')),
@@ -458,6 +467,15 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
           }),
         );
       },
+    );
+  }
+
+  Widget _dropdown(String label, String value, List<String> values, ValueChanged<String?>? onChanged, {Map<String, String> labels = const {}}) {
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+      items: values.map((v) => DropdownMenuItem(value: v, child: Text(labels[v] ?? v))).toList(),
+      onChanged: _loading ? null : onChanged,
     );
   }
 
@@ -503,6 +521,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         _toolIcon('显示线段端点文字', Icons.font_download_outlined, _hasBars && _showSeg ? () => setState(() => _showSegText = !_showSegText) : null, selected: _showSegText),
         _toolIcon('显示中枢', Icons.crop_square, _hasBars ? () => setState(() => _showZs = !_showZs) : null, selected: _showZs),
         _toolIcon('显示买卖点BSP', Icons.change_circle, _hasBars ? () => setState(() => _showBsp = !_showBsp) : null, selected: _showBsp),
+        _toolIcon('显示合并K线', Icons.filter_none, _hasBars && _snapshot.mergedBars.isNotEmpty ? () => setState(() => _showMergedBars = !_showMergedBars) : null, selected: _showMergedBars && _snapshot.mergedBars.isNotEmpty),
         const Divider(height: 18, color: Colors.white12),
         _toolIcon('左右放大', Icons.zoom_in, _hasBars ? () => setState(() => _windowSize = (_windowSize - 15).clamp(24, 360).toInt()) : null),
         _toolIcon('左右缩小', Icons.zoom_out, _hasBars ? () => setState(() => _windowSize = (_windowSize + 15).clamp(24, 360).toInt()) : null),
@@ -515,7 +534,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
   Widget _toolIcon(String tooltip, IconData icon, VoidCallback? onPressed, {bool selected = false}) => Tooltip(message: onPressed == null ? '$tooltip（当前不可用）' : tooltip, child: IconButton(onPressed: onPressed, icon: Icon(icon, size: 19), color: selected ? Colors.white : Colors.white60, disabledColor: Colors.white24, style: IconButton.styleFrom(backgroundColor: selected ? const Color(0xFF2962FF) : Colors.transparent, visualDensity: VisualDensity.compact)));
 
-  Widget _buildChartPanel() => Padding(padding: const EdgeInsets.fromLTRB(4, 4, 4, 2), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: DecoratedBox(decoration: BoxDecoration(color: const Color(0xFF0B0D10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))), child: OriginKlineChart(snapshot: _snapshot, showFx: _showFx, showFxLine: _showFxLine, showFxText: _showFxText, showBi: _showBi, showBiText: _showBiText, showSeg: _showSeg, showSegText: _showSegText, showZs: _showZs, showBsp: _showBsp, windowSize: _windowSize, priceScale: _priceScale, viewEndIndex: _viewEndIndex, crosshairIndex: _crosshairIndex, onCrosshairChanged: (i) => setState(() => _crosshairIndex = i), onPanBars: _panChartByBars, onWindowSizeChanged: (v) => setState(() => _windowSize = v), onPriceScaleChanged: (v) => setState(() => _priceScale = v)))));
+  Widget _buildChartPanel() => Padding(padding: const EdgeInsets.fromLTRB(4, 4, 4, 2), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: DecoratedBox(decoration: BoxDecoration(color: const Color(0xFF0B0D10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))), child: OriginKlineChart(snapshot: _snapshot, showFx: _showFx, showFxLine: _showFxLine, showFxText: _showFxText, showBi: _showBi, showBiText: _showBiText, showSeg: _showSeg, showSegText: _showSegText, showZs: _showZs, showBsp: _showBsp, showMergedBars: _showMergedBars, windowSize: _windowSize, priceScale: _priceScale, viewEndIndex: _viewEndIndex, crosshairIndex: _crosshairIndex, onCrosshairChanged: (i) => setState(() => _crosshairIndex = i), onPanBars: _panChartByBars, onWindowSizeChanged: (v) => setState(() => _windowSize = v), onPriceScaleChanged: (v) => setState(() => _priceScale = v)))));
 
   _Symbol? _parseSymbol(String input) {
     var text = input.trim().toUpperCase();
