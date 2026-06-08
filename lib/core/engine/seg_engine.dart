@@ -16,11 +16,6 @@ class SegEngine {
     }
   }
 
-  /// 更接近 chan.py CSegListChan 的线段确认流程：
-  /// 1. 上升线段用下降笔组成特征序列；下降线段用上升笔组成特征序列；
-  /// 2. 每个 CEigenFX 内维护 3 个特征元素，并按包含关系合并；
-  /// 3. 第二个特征元素形成顶/底分型后，取其峰值笔作为线段终点；
-  /// 4. 尾部未确认部分按 left_seg_method 收集为虚线段。
   List<SEG> _buildChanLike(List<BI> bis, ChanConfig config) {
     final result = <SEG>[];
 
@@ -28,8 +23,8 @@ class SegEngine {
       if (beginIdx < 0) beginIdx = 0;
       if (beginIdx >= bis.length) return;
 
-      final upEigen = _EigenFx(SegDirection.up); // 上升线段：收集下降笔
-      final downEigen = _EigenFx(SegDirection.down); // 下降线段：收集上升笔
+      final upEigen = _EigenFx(SegDirection.up);
+      final downEigen = _EigenFx(SegDirection.down);
       SegDirection? lastSegDir = result.isEmpty ? null : result.last.direction;
 
       for (var i = beginIdx; i < bis.length; i++) {
@@ -42,7 +37,6 @@ class SegEngine {
           if (downEigen.add(bi, bis)) fxEigen = downEigen;
         }
 
-        // 对齐 chan.py：第一段方向不要简单地由哪个特征分型先出现决定。
         if (result.isEmpty) {
           if (upEigen.hasSecondElement && bi.isDown) {
             lastSegDir = SegDirection.down;
@@ -52,13 +46,9 @@ class SegEngine {
             upEigen.clear();
           }
 
-          if (!upEigen.hasSecondElement &&
-              lastSegDir == SegDirection.down &&
-              bi.isDown) {
+          if (!upEigen.hasSecondElement && lastSegDir == SegDirection.down && bi.isDown) {
             lastSegDir = null;
-          } else if (!downEigen.hasSecondElement &&
-              lastSegDir == SegDirection.up &&
-              bi.isUp) {
+          } else if (!downEigen.hasSecondElement && lastSegDir == SegDirection.up && bi.isUp) {
             lastSegDir = null;
           }
         }
@@ -107,7 +97,6 @@ class SegEngine {
     calSegSure(retry > beginIdx ? retry : beginIdx + 1);
   }
 
-  /// 轻量版 1+1 / break：使用每 3 笔的突破方向形成段。
   List<SEG> _buildPivotBreak(
     List<BI> bis,
     ChanConfig config, {
@@ -152,7 +141,8 @@ class SegEngine {
   }) {
     if (endBiIdx < 0 || endBiIdx >= bis.length) return false;
     final startBiIdx = result.isEmpty ? 0 : result.last.endBiIndex + 1;
-    if (startBiIdx >= bis.length || endBiIdx <= startBiIdx) return false;
+    if (startBiIdx >= bis.length) return false;
+    if (isSure ? endBiIdx <= startBiIdx : endBiIdx < startBiIdx) return false;
 
     final direction = segDir ?? _directionFromBi(bis[endBiIdx]);
     if (isSure && !_endValueIsValid(bis, startBiIdx, endBiIdx, direction)) {
@@ -235,7 +225,7 @@ class SegEngine {
     final low = bis.map((e) => e.low).reduce((a, b) => a <= b ? a : b);
     final findHigh = (high - first).abs() >= (low - first).abs();
     final peak = _findPeakEnd(bis, 0, bis.length - 1, isHigh: findHigh);
-    final end = peak == null || peak <= 0 ? bis.length - 1 : peak;
+    final end = peak ?? bis.length - 1;
     _addNewSeg(
       result,
       bis,
@@ -384,7 +374,8 @@ class SegEngine {
     required bool isSure,
     required String reason,
   }) {
-    if (start < 0 || end >= bis.length || end <= start) return null;
+    if (start < 0 || end >= bis.length) return null;
+    if (isSure ? end <= start : end < start) return null;
     final list = List<BI>.unmodifiable(bis.sublist(start, end + 1));
     return SEG(
       index: index,
@@ -452,7 +443,6 @@ class _EigenElement {
     if (high > bi.high && low > bi.low) return _KlineDir.down;
     if (high < bi.high && low < bi.low) return _KlineDir.up;
 
-    // 实盘数据偶尔会出现高低交叉但非包含的异常形态，这里按当前中心方向兜底，避免直接中断复盘。
     return dir == _KlineDir.up ? _KlineDir.up : _KlineDir.down;
   }
 
