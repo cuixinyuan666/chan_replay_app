@@ -18,10 +18,7 @@ class MainActivity : FlutterActivity() {
                 "loadKline" -> {
                     val payload = call.argument<String>("payload") ?: "{}"
                     try {
-                        if (!Python.isStarted()) {
-                            Python.start(AndroidPlatform(this))
-                        }
-                        val py = Python.getInstance()
+                        val py = ensurePython()
                         val module = py.getModule("easy_tdx_runtime")
                         val response = module.callAttr("load_kline_json", payload).toString()
                         result.success(response)
@@ -32,5 +29,32 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "chan_replay_app/python_chan"
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "analyze" -> {
+                    val payload = call.argument<String>("payload") ?: "{}"
+                    try {
+                        val py = ensurePython()
+                        val module = py.getModule("chanpy_runtime")
+                        val response = module.callAttr("analyze_json", payload).toString()
+                        result.success(response)
+                    } catch (e: Exception) {
+                        result.error("PYTHON_CHAN_ERROR", e.message, e.stackTraceToString())
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun ensurePython(): Python {
+        if (!Python.isStarted()) {
+            Python.start(AndroidPlatform(this))
+        }
+        return Python.getInstance()
     }
 }
