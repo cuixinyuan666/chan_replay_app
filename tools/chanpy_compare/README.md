@@ -25,11 +25,19 @@ git clone https://github.com/Vespa314/chan.py.git ../chan.py
 
 ### 2. 准备 CSV
 
-默认使用项目已有 CSV：
+短样本：
 
 ```text
 assets/sample_data/000001_daily.csv
 ```
+
+长样本：
+
+```text
+assets/sample_data/000001_daily_long.csv
+```
+
+长样本用于第二轮压力检测，包含约 1200 根日线，时间范围 `2020-01-02` 至 `2024-08-05`。
 
 CSV 字段要求：
 
@@ -37,13 +45,22 @@ CSV 字段要求：
 time,open,high,low,close,volume
 ```
 
-### 3. 一键运行
+### 3. 一键运行短样本
 
 ```bash
 python tools/chanpy_compare/run_compare.py \
   --csv assets/sample_data/000001_daily.csv \
   --chanpy-path ../chan.py \
   --out build/chanpy_compare
+```
+
+### 4. 一键运行长样本
+
+```bash
+python tools/chanpy_compare/run_compare.py \
+  --csv assets/sample_data/000001_daily_long.csv \
+  --chanpy-path ../chan.py \
+  --out build/chanpy_compare_long
 ```
 
 该脚本会依次执行：
@@ -54,21 +71,21 @@ python tools/chanpy_compare/run_compare.py \
 3. diff_chan_outputs.py 生成 diff_report.json 和 diff_report.md
 ```
 
-### 4. 单独运行 Dart 侧
+### 5. 单独运行 Dart 侧
 
 ```bash
 dart run tools/chanpy_compare/dart_export.dart \
-  --csv assets/sample_data/000001_daily.csv \
-  --out build/chanpy_compare/dart.json
+  --csv assets/sample_data/000001_daily_long.csv \
+  --out build/chanpy_compare_long/dart.json
 ```
 
-### 5. 单独运行 Vespa/chan.py 侧
+### 6. 单独运行 Vespa/chan.py 侧
 
 ```bash
 python tools/chanpy_compare/chanpy_export.py \
-  --csv assets/sample_data/000001_daily.csv \
+  --csv assets/sample_data/000001_daily_long.csv \
   --chanpy-path ../chan.py \
-  --out build/chanpy_compare/chanpy.json
+  --out build/chanpy_compare_long/chanpy.json
 ```
 
 ## 输出说明
