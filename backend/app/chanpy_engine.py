@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -36,10 +37,15 @@ def _chanpy_path() -> str:
     return str(_project_root().parent / 'chan.py')
 
 
+def _safe_code(value: str) -> str:
+    text = re.sub(r'[^0-9A-Za-z_]+', '_', value.strip())
+    return text.strip('_') or 'local_csv'
+
+
 def _bars_to_csv(bars: list[dict[str, Any]], symbol: str) -> Path:
     root = Path(tempfile.gettempdir()) / 'chan_replay_app_origin'
     root.mkdir(parents=True, exist_ok=True)
-    path = root / f'{symbol}_input.csv'
+    path = root / f'{_safe_code(symbol)}_input.csv'
     with path.open('w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=['time', 'open', 'high', 'low', 'close', 'volume'])
         writer.writeheader()
@@ -89,7 +95,7 @@ def _prepare_chan(*, bars: list[dict[str, Any]], code: str, freq: str, adjust: s
     kl_type = exporter.pick_kl_type(KL_TYPE, freq)
     autype = exporter.pick_autype(AUTYPE, adjust)
     csv_path = _bars_to_csv(bars, code)
-    prepared_code = exporter.prepare_chanpy_csv(str(csv_path), chanpy_root, kl_type, f'origin_{code}')
+    prepared_code = exporter.prepare_chanpy_csv(str(csv_path), chanpy_root, kl_type, f'origin_{_safe_code(code)}')
     config = CChanConfig(_config_dict(trigger_step=trigger_step))
     chan = exporter.make_cchan(CChan, {
         'code': prepared_code,
@@ -171,23 +177,26 @@ def _result(*, bars: list[dict[str, Any]], structures: dict[str, Any], code: str
     }
 
 
+def analyze_bars(*, bars: list[dict[str, Any]], symbol: str = 'local_csv', market: str = 'LOCAL', freq: str = 'DAILY', adjust: str = 'QFQ', mode: str = 'once') -> dict[str, Any]:
+    code = _safe_code(symbol or 'local_csv')
+    market_name = (market or 'LOCAL').upper()
+    mode_name = (mode or 'once').lower()
+    try:
+        structures = _run_chanpy_step_export(bars=bars, code=code, freq=freq, adjust=adjust) if mode_name == 'step' else _run_chanpy_export(bars=bars, code=code, freq=freq, adjust=adjust)
+    except Exception as exc:
+        return _fallback_result(bars=bars, symbol=code, market=market_name, freq=freq, adjust=adjust, mode=mode_name, error=exc)
+    return _result(bars=bars, structures=structures, code=code, market=market_name, freq=freq, adjust=adjust, mode=mode_name)
+
+
 def analyze_once(*, symbol: str, market: str | None, freq: str, adjust: str, start: str | None, end: str | None, count: int = 5000) -> dict[str, Any]:
     code = normalize_symbol(symbol)
     market_name = (market or infer_market(code)).upper()
     bars = load_easy_tdx_bars(symbol=code, market=market_name, period=freq, adjust=adjust, count=count, start=start, end=end)
-    try:
-        structures = _run_chanpy_export(bars=bars, code=code, freq=freq, adjust=adjust)
-    except Exception as exc:
-        return _fallback_result(bars=bars, symbol=code, market=market_name, freq=freq, adjust=adjust, mode='once', error=exc)
-    return _result(bars=bars, structures=structures, code=code, market=market_name, freq=freq, adjust=adjust, mode='once')
+    return analyze_bars(bars=bars, symbol=code, market=market_name, freq=freq, adjust=adjust, mode='once')
 
 
 def analyze_step(*, symbol: str, market: str | None, freq: str, adjust: str, start: str | None, end: str | None, count: int = 5000) -> dict[str, Any]:
     code = normalize_symbol(symbol)
     market_name = (market or infer_market(code)).upper()
     bars = load_easy_tdx_bars(symbol=code, market=market_name, period=freq, adjust=adjust, count=count, start=start, end=end)
-    try:
-        structures = _run_chanpy_step_export(bars=bars, code=code, freq=freq, adjust=adjust)
-    except Exception as exc:
-        return _fallback_result(bars=bars, symbol=code, market=market_name, freq=freq, adjust=adjust, mode='step', error=exc)
-    return _result(bars=bars, structures=structures, code=code, market=market_name, freq=freq, adjust=adjust, mode='step')
+    return analyze_bars(bars=bars, symbol=code, market=market_name, freq=freq, adjust=adjust, mode='step')
