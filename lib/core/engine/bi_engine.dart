@@ -16,7 +16,6 @@ class BiEngine {
 
       final last = points.last;
       if (last.type == fx.type) {
-        // chan.py 中同向分型会更新笔尾，这里保留更极端的同类分型。
         final replace = fx.isTop ? fx.price >= last.price : fx.price <= last.price;
         if (replace) points[points.length - 1] = fx;
         continue;
@@ -39,10 +38,45 @@ class BiEngine {
       final direction = start.isBottom && end.isTop ? BiDirection.up : BiDirection.down;
       bis.add(BI(index: bis.length, start: start, end: end, direction: direction));
     }
+
+    _addTailBi(bis, points.last, config, mergedBars);
     return bis;
   }
 
-  bool _canMakeBi(FX start, FX end, ChanConfig config, List<MergedBar> mergedBars) {
+  void _addTailBi(List<BI> bis, FX lastPoint, ChanConfig config, List<MergedBar> mergedBars) {
+    if (bis.isEmpty || mergedBars.isEmpty) return;
+    if (lastPoint.isTop) {
+      final end = _lowestAfter(lastPoint, mergedBars);
+      if (end == null || !_canMakeBi(lastPoint, end, config, mergedBars, forVirtual: true)) return;
+      bis.add(BI(index: bis.length, start: lastPoint, end: end, direction: BiDirection.down, prevIndex: bis.last.index, isSure: false));
+    } else {
+      final end = _highestAfter(lastPoint, mergedBars);
+      if (end == null || !_canMakeBi(lastPoint, end, config, mergedBars, forVirtual: true)) return;
+      bis.add(BI(index: bis.length, start: lastPoint, end: end, direction: BiDirection.up, prevIndex: bis.last.index, isSure: false));
+    }
+  }
+
+  FX? _lowestAfter(FX start, List<MergedBar> bars) {
+    MergedBar? best;
+    for (final bar in bars) {
+      if (bar.index <= start.index) continue;
+      if (best == null || bar.low < best.low || (bar.low == best.low && bar.lowRawIndex > best.lowRawIndex)) best = bar;
+    }
+    if (best == null) return null;
+    return FX(index: best.index, rawIndex: best.lowRawIndex, time: best.lowTime, type: FxType.bottom, price: best.low, left: best, center: best, right: best, confirmed: false);
+  }
+
+  FX? _highestAfter(FX start, List<MergedBar> bars) {
+    MergedBar? best;
+    for (final bar in bars) {
+      if (bar.index <= start.index) continue;
+      if (best == null || bar.high > best.high || (bar.high == best.high && bar.highRawIndex > best.highRawIndex)) best = bar;
+    }
+    if (best == null) return null;
+    return FX(index: best.index, rawIndex: best.highRawIndex, time: best.highTime, type: FxType.top, price: best.high, left: best, center: best, right: best, confirmed: false);
+  }
+
+  bool _canMakeBi(FX start, FX end, ChanConfig config, List<MergedBar> mergedBars, {bool forVirtual = false}) {
     final biConf = config.bi;
 
     if (biConf.biAlgo != BiAlgo.fx) {
@@ -50,15 +84,16 @@ class BiEngine {
       if (span < biConf.effectiveMinKlcSpan) return false;
     }
 
-    if (!_checkFxValid(start, end, biConf.fxCheck)) return false;
+    if (!_checkFxValid(start, end, biConf.fxCheck, forVirtual: forVirtual)) return false;
 
     if (biConf.endIsPeak && !_endIsPeak(start, end, mergedBars)) return false;
 
     return true;
   }
 
-  bool _checkFxValid(FX start, FX end, BiFxCheck method) {
+  bool _checkFxValid(FX start, FX end, BiFxCheck method, {bool forVirtual = false}) {
     if (start.isTop && end.isBottom) {
+      if (forVirtual) return start.center.high > end.center.low;
       final item2High = _endHighForCheck(end, method);
       final selfLow = _startLowForCheck(start, method);
       if (method == BiFxCheck.totally) {
@@ -68,6 +103,7 @@ class BiEngine {
     }
 
     if (start.isBottom && end.isTop) {
+      if (forVirtual) return start.center.low < end.center.high;
       final item2Low = _endLowForCheck(end, method);
       final selfHigh = _startHighForCheck(start, method);
       if (method == BiFxCheck.totally) {
