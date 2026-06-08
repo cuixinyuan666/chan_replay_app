@@ -264,12 +264,31 @@ class ChanConfig {
     bool? calKdj,
     int? rsiCycle,
     int? kdjCycle,
+    bool? strictFx,
+    int? minKCountForBi,
+    bool? allowOneBiZs,
+    bool? allowCrossSegZs,
+    bool? onlyConfirmedZs,
   }) {
+    final nextBi = (bi ?? this.bi).copyWith(
+      isStrict: strictFx,
+      minKlcSpan: minKCountForBi,
+    );
+    final baseZs = zs ?? this.zs;
+    final nextZs = baseZs.copyWith(
+      oneBiZs: allowOneBiZs,
+      zsAlgo: allowCrossSegZs == null
+          ? baseZs.zsAlgo
+          : allowCrossSegZs
+              ? ZsAlgo.overSeg
+              : ZsAlgo.normal,
+      onlyConfirmed: onlyConfirmedZs,
+    );
     return ChanConfig(
       enableInclude: enableInclude ?? this.enableInclude,
-      bi: bi ?? this.bi,
+      bi: nextBi,
       seg: seg ?? this.seg,
-      zs: zs ?? this.zs,
+      zs: nextZs,
       triggerStep: triggerStep ?? this.triggerStep,
       skipStep: skipStep ?? this.skipStep,
       klDataCheck: klDataCheck ?? this.klDataCheck,
@@ -277,7 +296,7 @@ class ChanConfig {
       maxKlInconsistentCnt: maxKlInconsistentCnt ?? this.maxKlInconsistentCnt,
       autoSkipIllegalSubLv: autoSkipIllegalSubLv ?? this.autoSkipIllegalSubLv,
       printWarning: printWarning ?? this.printWarning,
-      printErrTime: printWarning ?? this.printErrTime,
+      printErrTime: printErrTime ?? this.printErrTime,
       meanMetrics: meanMetrics ?? this.meanMetrics,
       trendMetrics: trendMetrics ?? this.trendMetrics,
       bollN: bollN ?? this.bollN,
