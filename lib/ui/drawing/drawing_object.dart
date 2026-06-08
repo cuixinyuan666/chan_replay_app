@@ -16,15 +16,15 @@ class DrawingAnchor {
   final double? dy;
 
   const DrawingAnchor.chart({
-    required int this.rawIndex,
-    required double this.price,
+    required this.rawIndex,
+    required this.price,
   })  : type = DrawingAnchorType.chart,
         dx = null,
         dy = null;
 
   const DrawingAnchor.screen({
-    required double this.dx,
-    required double this.dy,
+    required this.dx,
+    required this.dy,
   })  : type = DrawingAnchorType.screen,
         rawIndex = null,
         price = null;
