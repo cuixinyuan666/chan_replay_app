@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/models/bsp.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../core/models/fx.dart';
 import '../../core/models/raw_bar.dart';
@@ -19,6 +18,7 @@ class OriginKlineChart extends StatefulWidget {
   final bool showSegText;
   final bool showZs;
   final bool showBsp;
+  final bool showMergedBars;
   final int windowSize;
   final double priceScale;
   final int? viewEndIndex;
@@ -40,6 +40,7 @@ class OriginKlineChart extends StatefulWidget {
     this.showSegText = true,
     required this.showZs,
     required this.showBsp,
+    this.showMergedBars = false,
     required this.windowSize,
     this.priceScale = 1.0,
     this.viewEndIndex,
@@ -92,6 +93,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
               showSegText: widget.showSegText,
               showZs: widget.showZs,
               showBsp: widget.showBsp,
+              showMergedBars: widget.showMergedBars,
               windowSize: widget.windowSize,
               priceScale: widget.priceScale,
               viewEndIndex: widget.viewEndIndex,
@@ -175,6 +177,7 @@ class _OriginChartPainter extends CustomPainter {
   final bool showSegText;
   final bool showZs;
   final bool showBsp;
+  final bool showMergedBars;
   final int windowSize;
   final double priceScale;
   final int? viewEndIndex;
@@ -191,13 +194,14 @@ class _OriginChartPainter extends CustomPainter {
     required this.showSegText,
     required this.showZs,
     required this.showBsp,
+    required this.showMergedBars,
     required this.windowSize,
     required this.priceScale,
     this.viewEndIndex,
     this.crosshairIndex,
   });
 
-  static Rect chartRectFor(Size size) => Rect.fromLTWH(_leftPad, _topPad, math.max(0, size.width - _leftPad - _rightPad), math.max(0, size.height - _topPad - _bottomPad));
+  static Rect chartRectFor(Size size) => Rect.fromLTWH(_leftPad, _topPad, math.max(0.0, size.width - _leftPad - _rightPad), math.max(0.0, size.height - _topPad - _bottomPad));
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -222,6 +226,7 @@ class _OriginChartPainter extends CustomPainter {
 
     _drawGrid(canvas, rect, minPrice, maxPrice, visible);
     _drawCandles(canvas, rect, visible, rawToX, priceToY, step);
+    if (showMergedBars) _drawMergedBars(canvas, rect, start, end, rawToX, priceToY, step);
     if (showZs) _drawZs(canvas, rect, start, end, rawToX, priceToY);
     if (showFxLine) _drawFxLine(canvas, rect, start, end, rawToX, priceToY);
     if (showBi) _drawBi(canvas, rect, start, end, rawToX, priceToY);
@@ -260,6 +265,25 @@ class _OriginChartPainter extends CustomPainter {
       final openY = priceToY(bar.open).clamp(rect.top, rect.bottom).toDouble();
       final closeY = priceToY(bar.close).clamp(rect.top, rect.bottom).toDouble();
       canvas.drawRect(Rect.fromLTRB(x - bodyWidth / 2, math.min(openY, closeY), x + bodyWidth / 2, math.max(math.min(openY, closeY) + 1, math.max(openY, closeY))), paint);
+    }
+  }
+
+  void _drawMergedBars(Canvas canvas, Rect rect, int start, int end, double Function(int) rawToX, double Function(double) priceToY, double step) {
+    final stroke = Paint()
+      ..color = const Color(0xFFFFD54F).withValues(alpha: 0.72)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(1.0, step * 0.05);
+    for (final merged in snapshot.mergedBars) {
+      if (merged.endRawIndex < start || merged.startRawIndex > end) continue;
+      final leftRaw = math.max(merged.startRawIndex, start);
+      final rightRaw = math.min(merged.endRawIndex, end);
+      final left = (rawToX(leftRaw) - step * 0.44).clamp(rect.left, rect.right).toDouble();
+      final right = (rawToX(rightRaw) + step * 0.44).clamp(rect.left, rect.right).toDouble();
+      if (right <= left) continue;
+      final top = priceToY(merged.high).clamp(rect.top, rect.bottom).toDouble();
+      final bottom = priceToY(merged.low).clamp(rect.top, rect.bottom).toDouble();
+      final area = Rect.fromLTRB(left, math.min(top, bottom), right, math.max(top, bottom));
+      canvas.drawRect(area, stroke);
     }
   }
 
@@ -357,5 +381,5 @@ class _OriginChartPainter extends CustomPainter {
   String _fmtDate(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   @override
-  bool shouldRepaint(covariant _OriginChartPainter old) => true;
+  bool shouldRepaint(covariant _OriginChartPainter oldDelegate) => true;
 }
