@@ -4,6 +4,7 @@ import 'fx.dart';
 import 'bi.dart';
 import 'seg.dart';
 import 'zs.dart';
+import 'bsp.dart';
 
 class ChanSnapshot {
   final List<RawBar> rawBars;
@@ -12,6 +13,7 @@ class ChanSnapshot {
   final List<BI> bis;
   final List<SEG> segs;
   final List<ZS> zss;
+  final List<BspPoint> bsps;
 
   const ChanSnapshot({
     required this.rawBars,
@@ -20,6 +22,7 @@ class ChanSnapshot {
     required this.bis,
     required this.segs,
     required this.zss,
+    this.bsps = const [],
   });
 
   factory ChanSnapshot.empty() => const ChanSnapshot(
@@ -29,5 +32,6 @@ class ChanSnapshot {
         bis: [],
         segs: [],
         zss: [],
+        bsps: [],
       );
 }
