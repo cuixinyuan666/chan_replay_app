@@ -48,39 +48,26 @@ class BiEngine {
     if (fxs.isEmpty || mergedBars.isEmpty) return fxs;
     final first = fxs.first;
 
-    // chan.py 在第一笔生成前会缓存 free_klc_lst。若序列第一个可用分型是顶，
-    // 第一笔可以从该顶分型之前的最低 KLC 开始，形成初始上笔。
-    // 该起点不一定出现在最终 FX 列表中，因此 Dart 侧需要在 BI 层补 seed。
+    // chan.py 的 CBiList.try_create_first_bi 会按 free_klc_lst 的插入顺序扫描，
+    // 遇到第一个能和当前 KLC 成笔的异向 KLC 就生成第一笔。
+    // 因此这里不能简单取前置最高/最低点，而要按时间顺序找第一个可成笔候选。
     if (first.isTop) {
-      final seed = _lowestBefore(first, mergedBars);
-      if (seed != null && seed.rawIndex != first.rawIndex && _canMakeBi(seed, first, config, mergedBars)) {
-        return [seed, ...fxs];
+      for (final bar in mergedBars) {
+        if (bar.index >= first.index) break;
+        final seed = _fxFromLow(bar, confirmed: true);
+        if (seed.rawIndex == first.rawIndex) continue;
+        if (_canMakeBi(seed, first, config, mergedBars)) return [seed, ...fxs];
+      }
+    } else {
+      for (final bar in mergedBars) {
+        if (bar.index >= first.index) break;
+        final seed = _fxFromHigh(bar, confirmed: true);
+        if (seed.rawIndex == first.rawIndex) continue;
+        if (_canMakeBi(seed, first, config, mergedBars)) return [seed, ...fxs];
       }
     }
 
     return fxs;
-  }
-
-  FX? _lowestBefore(FX first, List<MergedBar> bars) {
-    MergedBar? best;
-    for (final bar in bars) {
-      if (bar.index >= first.index) break;
-      if (best == null || bar.low < best.low || (bar.low == best.low && bar.lowRawIndex > best.lowRawIndex)) {
-        best = bar;
-      }
-    }
-    if (best == null) return null;
-    return FX(
-      index: best.index,
-      rawIndex: best.lowRawIndex,
-      time: best.lowTime,
-      type: FxType.bottom,
-      price: best.low,
-      left: best,
-      center: best,
-      right: best,
-      confirmed: true,
-    );
   }
 
   void _addTailBi(List<BI> bis, FX lastPoint, ChanConfig config, List<MergedBar> mergedBars) {
@@ -103,7 +90,7 @@ class BiEngine {
       if (best == null || bar.low < best.low || (bar.low == best.low && bar.lowRawIndex > best.lowRawIndex)) best = bar;
     }
     if (best == null) return null;
-    return FX(index: best.index, rawIndex: best.lowRawIndex, time: best.lowTime, type: FxType.bottom, price: best.low, left: best, center: best, right: best, confirmed: false);
+    return _fxFromLow(best, confirmed: false);
   }
 
   FX? _highestAfter(FX start, List<MergedBar> bars) {
@@ -113,7 +100,35 @@ class BiEngine {
       if (best == null || bar.high > best.high || (bar.high == best.high && bar.highRawIndex > best.highRawIndex)) best = bar;
     }
     if (best == null) return null;
-    return FX(index: best.index, rawIndex: best.highRawIndex, time: best.highTime, type: FxType.top, price: best.high, left: best, center: best, right: best, confirmed: false);
+    return _fxFromHigh(best, confirmed: false);
+  }
+
+  FX _fxFromLow(MergedBar bar, {required bool confirmed}) {
+    return FX(
+      index: bar.index,
+      rawIndex: bar.lowRawIndex,
+      time: bar.lowTime,
+      type: FxType.bottom,
+      price: bar.low,
+      left: bar,
+      center: bar,
+      right: bar,
+      confirmed: confirmed,
+    );
+  }
+
+  FX _fxFromHigh(MergedBar bar, {required bool confirmed}) {
+    return FX(
+      index: bar.index,
+      rawIndex: bar.highRawIndex,
+      time: bar.highTime,
+      type: FxType.top,
+      price: bar.high,
+      left: bar,
+      center: bar,
+      right: bar,
+      confirmed: confirmed,
+    );
   }
 
   bool _canMakeBi(FX start, FX end, ChanConfig config, List<MergedBar> mergedBars, {bool forVirtual = false}) {
