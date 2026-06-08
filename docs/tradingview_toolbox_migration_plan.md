@@ -20,11 +20,14 @@
 
 ### 2. 工具栏 UI 接入
 
-把注册表接入左侧/顶部工具栏：
+状态：已完成。
+
+已新增 `lib/ui/drawing/tradingview_toolbox_host.dart`，并在 `RootPage` 外层接入覆盖式 TradingView 工具箱入口：
 
 - 分组显示：光标测量、线类、音叉、斐波那契/江恩、几何、文字标注、形态、预测测量、图标、缠论叠加。
-- 灰度规则：无K线时禁用价格/时间锚定工具；无 `ChanSnapshot` 结果时禁用缠论叠加工具。
-- 当前选择工具统一入口，禁止散落状态。
+- 灰度规则已封装在 Host：无K线时禁用需要时间/价格锚点的工具；无 `ChanSnapshot` 时禁用缠论叠加工具。
+- 当前选择工具统一由 Host 保存，避免散落状态。
+- 当前接入点是根页面覆盖层，下一步会把 Host 移入 `OriginReplayPageV2` 状态层，以便直接读取 `_hasBars`、`_snapshot`、`_showBiBsp`、`_showSegBsp`、`_showMergedBars` 等动态状态。
 
 ### 3. 手动画线数据模型
 
