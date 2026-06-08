@@ -67,6 +67,19 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   String _zsCombineMode = 'zs';
   bool _oneBiZs = false;
 
+  String _bsType = '1,1p,2,2s,3a,3b';
+  String _divergenceRate = '1e18';
+  int _minZsCnt = 1;
+  String _maxBs2Rate = '0.9999';
+  bool _bs1Peak = true;
+  bool _bsp2Follow1 = true;
+  bool _bsp3Follow1 = true;
+  bool _bsp3Peak = false;
+  bool _bsp2sFollow2 = false;
+  bool _strictBsp3 = false;
+  int _bsp3aMaxZsCnt = 1;
+  String _macdAlgo = 'peak';
+
   static bool get _isAndroidApp => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   static String get _defaultBackendBaseUrl => _isAndroidApp ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
   bool get _isStepMode => _mode == 'step';
@@ -81,6 +94,18 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         'zs_combine': _zsCombine,
         'zs_combine_mode': _zsCombineMode,
         'one_bi_zs': _oneBiZs,
+        'bs_type': _bsType,
+        'divergence_rate': _divergenceRate,
+        'min_zs_cnt': _minZsCnt,
+        'max_bs2_rate': _maxBs2Rate,
+        'bs1_peak': _bs1Peak,
+        'bsp2_follow_1': _bsp2Follow1,
+        'bsp3_follow_1': _bsp3Follow1,
+        'bsp3_peak': _bsp3Peak,
+        'bsp2s_follow_2': _bsp2sFollow2,
+        'strict_bsp3': _strictBsp3,
+        'bsp3a_max_zs_cnt': _bsp3aMaxZsCnt,
+        'macd_algo': _macdAlgo,
       };
 
   @override
@@ -312,6 +337,18 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         var zsCombine = _zsCombine;
         var zsCombineMode = _zsCombineMode;
         var oneBiZs = _oneBiZs;
+        var bsType = _bsType;
+        var divergenceRate = _divergenceRate;
+        var minZsCnt = _minZsCnt;
+        var maxBs2Rate = _maxBs2Rate;
+        var bs1Peak = _bs1Peak;
+        var bsp2Follow1 = _bsp2Follow1;
+        var bsp3Follow1 = _bsp3Follow1;
+        var bsp3Peak = _bsp3Peak;
+        var bsp2sFollow2 = _bsp2sFollow2;
+        var strictBsp3 = _strictBsp3;
+        var bsp3aMaxZsCnt = _bsp3aMaxZsCnt;
+        var macdAlgo = _macdAlgo;
         return DefaultTabController(
           initialIndex: initialTab,
           length: 2,
@@ -332,6 +369,18 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                 _zsCombine = zsCombine;
                 _zsCombineMode = zsCombineMode;
                 _oneBiZs = oneBiZs;
+                _bsType = bsType;
+                _divergenceRate = divergenceRate;
+                _minZsCnt = minZsCnt;
+                _maxBs2Rate = maxBs2Rate;
+                _bs1Peak = bs1Peak;
+                _bsp2Follow1 = bsp2Follow1;
+                _bsp3Follow1 = bsp3Follow1;
+                _bsp3Peak = bsp3Peak;
+                _bsp2sFollow2 = bsp2sFollow2;
+                _strictBsp3 = strictBsp3;
+                _bsp3aMaxZsCnt = bsp3aMaxZsCnt;
+                _macdAlgo = macdAlgo;
               });
               _load();
             }
@@ -340,7 +389,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
               child: Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
                 child: SizedBox(
-                  height: MediaQuery.of(context).size.height * 0.78,
+                  height: MediaQuery.of(context).size.height * 0.80,
                   child: Column(children: [
                     const TabBar(tabs: [Tab(text: '数据'), Tab(text: 'CChanConfig')]),
                     Expanded(
@@ -365,14 +414,39 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                           const SizedBox(height: 12),
                           const Text('这些设置直接传给 Python CChanConfig；加载前或加载后修改都会重新请求 chan.py。', style: TextStyle(color: Colors.white70)),
                           const SizedBox(height: 12),
+                          _sectionTitle('结构识别'),
                           DropdownButtonFormField<String>(initialValue: biAlgo, decoration: const InputDecoration(labelText: 'bi_algo', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'normal', child: Text('normal')), DropdownMenuItem(value: 'fx', child: Text('fx'))], onChanged: _loading ? null : (v) => setSheetState(() => biAlgo = v ?? biAlgo)),
                           SwitchListTile(value: biStrict, onChanged: _loading ? null : (v) => setSheetState(() => biStrict = v), title: const Text('bi_strict')),
                           DropdownButtonFormField<String>(initialValue: segAlgo, decoration: const InputDecoration(labelText: 'seg_algo', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'chan', child: Text('chan')), DropdownMenuItem(value: '1+1', child: Text('1+1')), DropdownMenuItem(value: 'break', child: Text('break'))], onChanged: _loading ? null : (v) => setSheetState(() => segAlgo = v ?? segAlgo)),
                           const SizedBox(height: 10),
+                          _sectionTitle('中枢 ZS'),
                           DropdownButtonFormField<String>(initialValue: zsAlgo, decoration: const InputDecoration(labelText: 'zs_algo', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'normal', child: Text('normal')), DropdownMenuItem(value: 'over_seg', child: Text('over_seg')), DropdownMenuItem(value: 'auto', child: Text('auto'))], onChanged: _loading ? null : (v) => setSheetState(() => zsAlgo = v ?? zsAlgo)),
                           SwitchListTile(value: zsCombine, onChanged: _loading ? null : (v) => setSheetState(() => zsCombine = v), title: const Text('zs_combine')),
                           DropdownButtonFormField<String>(initialValue: zsCombineMode, decoration: const InputDecoration(labelText: 'zs_combine_mode', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'zs', child: Text('zs')), DropdownMenuItem(value: 'peak', child: Text('peak'))], onChanged: _loading ? null : (v) => setSheetState(() => zsCombineMode = v ?? zsCombineMode)),
                           SwitchListTile(value: oneBiZs, onChanged: _loading ? null : (v) => setSheetState(() => oneBiZs = v), title: const Text('one_bi_zs')),
+                          const SizedBox(height: 8),
+                          _sectionTitle('买卖点 BSP'),
+                          TextFormField(initialValue: bsType, enabled: !_loading, decoration: const InputDecoration(labelText: 'bs_type', helperText: '例如 1,1p,2,2s,3a,3b', border: OutlineInputBorder()), onChanged: (v) => bsType = v.trim()),
+                          const SizedBox(height: 10),
+                          Row(children: [
+                            Expanded(child: TextFormField(initialValue: divergenceRate, enabled: !_loading, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'divergence_rate', border: OutlineInputBorder()), onChanged: (v) => divergenceRate = v.trim())),
+                            const SizedBox(width: 10),
+                            Expanded(child: TextFormField(initialValue: maxBs2Rate, enabled: !_loading, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'max_bs2_rate', border: OutlineInputBorder()), onChanged: (v) => maxBs2Rate = v.trim())),
+                          ]),
+                          const SizedBox(height: 10),
+                          Row(children: [
+                            Expanded(child: TextFormField(initialValue: '$minZsCnt', enabled: !_loading, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'min_zs_cnt', border: OutlineInputBorder()), onChanged: (v) => minZsCnt = int.tryParse(v.trim()) ?? minZsCnt)),
+                            const SizedBox(width: 10),
+                            Expanded(child: TextFormField(initialValue: '$bsp3aMaxZsCnt', enabled: !_loading, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'bsp3a_max_zs_cnt', border: OutlineInputBorder()), onChanged: (v) => bsp3aMaxZsCnt = int.tryParse(v.trim()) ?? bsp3aMaxZsCnt)),
+                          ]),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<String>(initialValue: macdAlgo, decoration: const InputDecoration(labelText: 'macd_algo', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'peak', child: Text('peak')), DropdownMenuItem(value: 'area', child: Text('area')), DropdownMenuItem(value: 'full_area', child: Text('full_area')), DropdownMenuItem(value: 'slope', child: Text('slope'))], onChanged: _loading ? null : (v) => setSheetState(() => macdAlgo = v ?? macdAlgo)),
+                          SwitchListTile(value: bs1Peak, onChanged: _loading ? null : (v) => setSheetState(() => bs1Peak = v), title: const Text('bs1_peak')),
+                          SwitchListTile(value: bsp2Follow1, onChanged: _loading ? null : (v) => setSheetState(() => bsp2Follow1 = v), title: const Text('bsp2_follow_1')),
+                          SwitchListTile(value: bsp3Follow1, onChanged: _loading ? null : (v) => setSheetState(() => bsp3Follow1 = v), title: const Text('bsp3_follow_1')),
+                          SwitchListTile(value: bsp3Peak, onChanged: _loading ? null : (v) => setSheetState(() => bsp3Peak = v), title: const Text('bsp3_peak')),
+                          SwitchListTile(value: bsp2sFollow2, onChanged: _loading ? null : (v) => setSheetState(() => bsp2sFollow2 = v), title: const Text('bsp2s_follow_2')),
+                          SwitchListTile(value: strictBsp3, onChanged: _loading ? null : (v) => setSheetState(() => strictBsp3 = v), title: const Text('strict_bsp3')),
                         ])),
                       ]),
                     ),
@@ -386,6 +460,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       },
     );
   }
+
+  Widget _sectionTitle(String text) => Padding(padding: const EdgeInsets.only(top: 4, bottom: 8), child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)));
 
   Widget _dateTile(String title, DateTime value, bool enabled, VoidCallback onTap) => Opacity(opacity: enabled ? 1 : 0.38, child: InkWell(onTap: enabled ? onTap : null, child: InputDecorator(decoration: InputDecoration(labelText: title, border: const OutlineInputBorder(), suffixIcon: const Icon(Icons.calendar_month)), child: Text(_fmtDate(value)))));
 
