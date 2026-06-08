@@ -109,7 +109,7 @@ class DrawingObjectPainter {
     double Function(double price) priceToY, {
     required bool ray,
   }) {
-    final anchor = object.anchors.where((e) => e.isChart).firstOrNull;
+    final anchor = _firstChartAnchor(object);
     if (anchor == null || anchor.price == null) return;
     final y = priceToY(anchor.price!).clamp(chartRect.top, chartRect.bottom).toDouble();
     final startX = ray && anchor.rawIndex != null ? rawToX(anchor.rawIndex!).clamp(chartRect.left, chartRect.right).toDouble() : chartRect.left;
@@ -125,7 +125,7 @@ class DrawingObjectPainter {
     DrawingObject object,
     double Function(int rawIndex) rawToX,
   ) {
-    final anchor = object.anchors.where((e) => e.isChart).firstOrNull;
+    final anchor = _firstChartAnchor(object);
     if (anchor == null || anchor.rawIndex == null) return;
     final x = rawToX(anchor.rawIndex!).clamp(chartRect.left, chartRect.right).toDouble();
     final p1 = Offset(x, chartRect.top);
@@ -223,6 +223,13 @@ class DrawingObjectPainter {
   ) {
     final points = _chartPoints(object, rawToX, priceToY);
     return points.isEmpty ? null : points.first;
+  }
+
+  static DrawingAnchor? _firstChartAnchor(DrawingObject object) {
+    for (final anchor in object.anchors) {
+      if (anchor.isChart) return anchor;
+    }
+    return null;
   }
 
   static Paint _linePaint(DrawingObject object) {
