@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
 """Export Vespa314/chan.py structures to a normalized JSON file.
 
-This tool intentionally stays outside app runtime. It is a benchmark harness:
-- Same CSV input as Dart export.
-- Python side uses a local clone of Vespa314/chan.py.
-- Output schema matches dart_export.dart as closely as possible.
-
-Vespa's DATA_SRC.CSV does not read an arbitrary CSV path as ``code``. Its
-DataAPI/csvAPI.py expects a file in the chan.py repo root named
-``{code}_{k_type}.csv`` with columns ``time_key,open,high,low,close``. This
-script prepares that temporary CSV automatically.
+This is a benchmark harness, not app runtime code. It prepares a CSV file in the
+format expected by Vespa's DATA_SRC.CSV, runs CChan, and exports FX/BI/SEG/ZS in
+roughly the same schema as tools/chanpy_compare/dart_export.dart.
 """
 
 from __future__ import annotations
@@ -75,8 +69,7 @@ def pick_kl_type(KL_TYPE: Any, freq: str) -> Any:
         "MIN60": "K_60M",
         "60M": "K_60M",
     }
-    attr = mapping.get(key, "K_DAY")
-    return getattr(KL_TYPE, attr)
+    return getattr(KL_TYPE, mapping.get(key, "K_DAY"))
 
 
 def pick_autype(AUTYPE: Any, adjust: str) -> Any:
@@ -96,8 +89,7 @@ def kl_suffix(kl_type: Any) -> str:
 
 
 def safe_code_from_csv(csv_path: Path) -> str:
-    stem = re.sub(r"[^0-9A-Za-z_]+", "_", csv_path.stem)
-    stem = stem.strip("_") or "sample"
+    stem = re.sub(r"[^0-9A-Za-z_]+", "_", csv_path.stem).strip("_") or "sample"
     return f"chanpy_compare_{stem}"
 
 
@@ -118,8 +110,7 @@ def prepare_chanpy_csv(csv_path: str, chanpy_root: Path, kl_type: Any, code: str
     if not source.exists():
         raise FileNotFoundError(f"CSV not found: {source}")
     tmp_code = code or safe_code_from_csv(source)
-    suffix = kl_suffix(kl_type)
-    target = chanpy_root / f"{tmp_code}_{suffix}.csv"
+    target = chanpy_root / f"{tmp_code}_{kl_suffix(kl_type)}.csv"
 
     with source.open("r", encoding="utf-8-sig", newline="") as fin:
         reader = csv.DictReader(fin)
@@ -131,27 +122,30 @@ def prepare_chanpy_csv(csv_path: str, chanpy_root: Path, kl_type: Any, code: str
         high_col = field_map.get("high")
         low_col = field_map.get("low")
         close_col = field_map.get("close")
-        missing = [name for name, col in {
-            "time/time_key/dt/date": time_col,
-            "open": open_col,
-            "high": high_col,
-            "low": low_col,
-            "close": close_col,
-        }.items() if col is None]
+        missing = [
+            name
+            for name, col in {
+                "time/time_key/dt/date": time_col,
+                "open": open_col,
+                "high": high_col,
+                "low": low_col,
+                "close": close_col,
+            }.items()
+            if col is None
+        ]
         if missing:
             raise ValueError(f"CSV missing required columns: {', '.join(missing)}")
-
-        rows: list[list[str]] = []
-        for row in reader:
-            if not row:
-                continue
-            rows.append([
+        rows = [
+            [
                 normalize_time_for_chanpy(row[time_col] or ""),
                 str(row[open_col]).strip(),
                 str(row[high_col]).strip(),
                 str(row[low_col]).strip(),
                 str(row[close_col]).strip(),
-            ])
+            ]
+            for row in reader
+            if row
+        ]
 
     with target.open("w", encoding="utf-8", newline="") as fout:
         writer = csv.writer(fout)
@@ -180,6 +174,19 @@ def getattr_any(obj: Any, names: Iterable[str], default: Any = None) -> Any:
     return default
 
 
+def call_any(obj: Any, names: Iterable[str], default: Any = None) -> Any:
+    for name in names:
+        if hasattr(obj, name):
+            value = getattr(obj, name)
+            if callable(value):
+                try:
+                    return value()
+                except TypeError:
+                    continue
+            return value
+    return default
+
+
 def as_list(obj: Any) -> list[Any]:
     if obj is None:
         return []
@@ -193,21 +200,35 @@ def as_list(obj: Any) -> list[Any]:
         return []
 
 
+def to_float(value: Any) -> Any:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return value
+
+
 def obj_index(obj: Any) -> Any:
     return getattr_any(obj, ["idx", "index", "klu_idx", "id"], None)
 
 
 def obj_time(obj: Any) -> Any:
-    value = getattr_any(obj, ["time", "date", "dt"], None)
+    value = getattr_any(obj, ["time", "time_begin", "date", "dt"], None)
     return str(value) if value is not None else None
 
 
-def obj_price(obj: Any, names: Iterable[str]) -> Any:
-    value = getattr_any(obj, names, None)
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return value
+def get_peak_klu(klc: Any, is_high: bool) -> Any:
+    if klc is None:
+        return None
+    if hasattr(klc, "get_peak_klu"):
+        try:
+            return klc.get_peak_klu(is_high=is_high)
+        except TypeError:
+            pass
+    if is_high and hasattr(klc, "get_high_peak_klu"):
+        return klc.get_high_peak_klu()
+    if (not is_high) and hasattr(klc, "get_low_peak_klu"):
+        return klc.get_low_peak_klu()
+    return None
 
 
 def get_level(chan: Any, kl_type: Any) -> Any:
@@ -223,7 +244,6 @@ def get_level(chan: Any, kl_type: Any) -> Any:
 
 
 def make_cchan(CChan: Any, kwargs: dict[str, Any]) -> Any:
-    """Construct CChan while tolerating signature drift across chan.py versions."""
     try:
         signature = inspect.signature(CChan)
         params = signature.parameters
@@ -246,6 +266,16 @@ def make_cchan(CChan: Any, kwargs: dict[str, Any]) -> Any:
         raise first_error
 
 
+def is_top_fx_text(text: str) -> bool:
+    lower = text.lower()
+    return "top" in lower or "ding" in lower or "peak" in lower or "fx_type.top" in lower
+
+
+def is_bottom_fx_text(text: str) -> bool:
+    lower = text.lower()
+    return "bottom" in lower or "di" in lower or "fx_type.bottom" in lower
+
+
 def export_fx(level: Any) -> list[dict[str, Any]]:
     direct = getattr_any(level, ["fx_list", "fx_lst"], None)
     if direct is not None:
@@ -257,8 +287,9 @@ def export_fx(level: Any) -> list[dict[str, Any]]:
         fx = getattr_any(item, ["fx", "fx_type"], None)
         if fx is None:
             continue
-        fx_text = str(fx).lower()
-        if "unknown" in fx_text or "none" in fx_text:
+        fx_text = str(fx)
+        low = fx_text.lower()
+        if "unknown" in low or "none" in low:
             continue
         rows.append(normalize_fx(len(rows), item))
     return rows
@@ -266,34 +297,47 @@ def export_fx(level: Any) -> list[dict[str, Any]]:
 
 def normalize_fx(i: int, item: Any) -> dict[str, Any]:
     fx = getattr_any(item, ["fx", "fx_type", "type"], None)
-    text = str(fx).lower()
-    is_top = "top" in text or "ding" in text or "peak" in text
+    fx_text = str(fx)
+    is_top = is_top_fx_text(fx_text)
+    peak_klu = get_peak_klu(item, is_high=is_top)
     return {
         "index": obj_index(item) if obj_index(item) is not None else i,
-        "raw_index": getattr_any(item, ["raw_index", "klu_idx", "idx"], None),
-        "time": obj_time(item),
+        "raw_index": obj_index(peak_klu) if peak_klu is not None else obj_index(item),
+        "time": obj_time(peak_klu) if peak_klu is not None else obj_time(item),
         "type": "top" if is_top else "bottom",
-        "price": obj_price(item, ["high", "low", "fx", "price"]),
+        "price": to_float(getattr_any(item, ["high"], None) if is_top else getattr_any(item, ["low"], None)),
         "repr": repr(item),
     }
+
+
+def bi_begin_klu(bi: Any) -> Any:
+    return call_any(bi, ["get_begin_klu"], None) or get_peak_klu(getattr_any(bi, ["begin_klc", "start_klc", "begin", "start"], None), is_high=False)
+
+
+def bi_end_klu(bi: Any) -> Any:
+    return call_any(bi, ["get_end_klu"], None) or get_peak_klu(getattr_any(bi, ["end_klc", "end"], None), is_high=True)
+
+
+def bi_direction(bi: Any) -> str:
+    direction = str(getattr_any(bi, ["dir", "direction", "bi_dir"], "")).lower()
+    return "up" if "up" in direction else "down" if "down" in direction else direction
 
 
 def export_bi(level: Any) -> list[dict[str, Any]]:
     bi_list = getattr_any(level, ["bi_list", "bi_lst"], None)
     rows = []
     for i, bi in enumerate(as_list(bi_list)):
-        begin = getattr_any(bi, ["begin_klc", "start_klc", "begin", "start"], None)
-        end = getattr_any(bi, ["end_klc", "end"], None)
-        direction = str(getattr_any(bi, ["dir", "direction", "bi_dir"], "")).lower()
+        begin_klu = bi_begin_klu(bi)
+        end_klu = bi_end_klu(bi)
         rows.append({
             "index": getattr_any(bi, ["idx", "index"], i),
-            "start_raw_index": obj_index(begin),
-            "end_raw_index": obj_index(end),
-            "start_time": obj_time(begin),
-            "end_time": obj_time(end),
-            "start_price": obj_price(bi, ["begin_val", "start_price", "low", "high"]),
-            "end_price": obj_price(bi, ["end_val", "end_price", "high", "low"]),
-            "direction": "up" if "up" in direction else "down" if "down" in direction else direction,
+            "start_raw_index": obj_index(begin_klu),
+            "end_raw_index": obj_index(end_klu),
+            "start_time": obj_time(begin_klu),
+            "end_time": obj_time(end_klu),
+            "start_price": to_float(call_any(bi, ["get_begin_val"], None)),
+            "end_price": to_float(call_any(bi, ["get_end_val"], None)),
+            "direction": bi_direction(bi),
             "is_sure": bool(getattr_any(bi, ["is_sure"], True)),
             "repr": repr(bi),
         })
@@ -304,14 +348,19 @@ def export_seg(level: Any) -> list[dict[str, Any]]:
     seg_list = getattr_any(level, ["seg_list", "seg_lst"], None)
     rows = []
     for i, seg in enumerate(as_list(seg_list)):
-        begin_bi = getattr_any(seg, ["start_bi", "begin_bi", "begin"], None)
+        start_bi = getattr_any(seg, ["start_bi", "begin_bi", "begin"], None)
         end_bi = getattr_any(seg, ["end_bi", "end"], None)
-        direction = str(getattr_any(seg, ["dir", "direction"], "")).lower()
+        begin_klu = call_any(seg, ["get_begin_klu"], None)
+        end_klu = call_any(seg, ["get_end_klu"], None)
         rows.append({
             "index": getattr_any(seg, ["idx", "index"], i),
-            "start_bi_index": obj_index(begin_bi),
+            "start_bi_index": obj_index(start_bi),
             "end_bi_index": obj_index(end_bi),
-            "direction": "up" if "up" in direction else "down" if "down" in direction else direction,
+            "start_raw_index": obj_index(begin_klu),
+            "end_raw_index": obj_index(end_klu),
+            "start_price": to_float(call_any(seg, ["get_begin_val"], None)),
+            "end_price": to_float(call_any(seg, ["get_end_val"], None)),
+            "direction": bi_direction(seg),
             "is_sure": bool(getattr_any(seg, ["is_sure"], True)),
             "repr": repr(seg),
         })
@@ -328,10 +377,12 @@ def export_zs(level: Any) -> list[dict[str, Any]]:
             "index": getattr_any(zs, ["idx", "index"], i),
             "start_bi_index": obj_index(begin_bi),
             "end_bi_index": obj_index(end_bi),
-            "zg": obj_price(zs, ["high", "zg"]),
-            "zd": obj_price(zs, ["low", "zd"]),
-            "gg": obj_price(zs, ["peak_high", "gg"]),
-            "dd": obj_price(zs, ["peak_low", "dd"]),
+            "start_raw_index": obj_index(getattr_any(zs, ["begin"], None)),
+            "end_raw_index": obj_index(getattr_any(zs, ["end"], None)),
+            "zg": to_float(getattr_any(zs, ["high", "zg"], None)),
+            "zd": to_float(getattr_any(zs, ["low", "zd"], None)),
+            "gg": to_float(getattr_any(zs, ["peak_high", "gg"], None)),
+            "dd": to_float(getattr_any(zs, ["peak_low", "dd"], None)),
             "repr": repr(zs),
         })
     return rows
