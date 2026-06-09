@@ -33,6 +33,9 @@ jobs:
       - name: Test chart label layout
         run: flutter test test/chart_label_layout_test.dart
 
+      - name: Test BSP chart label adapter
+        run: flutter test test/bsp_chart_label_adapter_test.dart
+
       - name: Audit Dart algorithm boundary
         run: python tools/audit_dart_algorithm_usage.py
 
