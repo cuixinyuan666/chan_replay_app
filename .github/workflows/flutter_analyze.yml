@@ -46,7 +46,7 @@ jobs:
         run: python tools/patch_origin_kline_bsp_label_layout.py --check
 
       - name: Audit BSP label layout migration
-        run: python tools/audit_bsp_label_layout_usage.py
+        run: python tools/audit_bsp_label_layout_usage.py --strict
 
       - name: Validate easy-tdx indicator contract fixture
         run: python tools/validate_easy_tdx_indicator_contract.py test/fixtures/easy_tdx_indicator_contract_valid.json
