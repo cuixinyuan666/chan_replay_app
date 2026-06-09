@@ -327,7 +327,7 @@ IconData _groupIcon(TradingViewDrawingGroup group) {
     TradingViewDrawingGroup.geometricShapes => Icons.category,
     TradingViewDrawingGroup.annotation => Icons.text_fields,
     TradingViewDrawingGroup.patterns => Icons.polyline,
-    TradingViewDrawingGroup.predictionAndMeasurement => Icons.monitoring,
+    TradingViewDrawingGroup.predictionAndMeasurement => Icons.assessment,
     TradingViewDrawingGroup.icons => Icons.emoji_symbols,
     TradingViewDrawingGroup.chanOverlay => Icons.account_tree,
   };
