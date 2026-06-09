@@ -52,8 +52,11 @@ void main() {
     ]);
 
     expect(laidOut, hasLength(1));
-    expect(chartRect.contains(laidOut.single.rect.topLeft), isTrue);
-    expect(chartRect.contains(laidOut.single.rect.bottomRight), isTrue);
+    final rect = laidOut.single.rect;
+    expect(rect.left >= chartRect.left, isTrue);
+    expect(rect.top >= chartRect.top, isTrue);
+    expect(rect.right <= chartRect.right, isTrue);
+    expect(rect.bottom <= chartRect.bottom, isTrue);
   });
 
   test('filters low priority labels in dense windows', () {
