@@ -142,6 +142,8 @@ Vespa `CChanConfig.set_bsp_config()` 支持带后缀的 per-side / per-level 高
 
 Flutter 设置页已新增“BSP 高级覆盖”折叠区。输入格式为每行一个 `key-suffix=value`：
 
+设置页会同步显示“当前最终高级覆盖项”，用于确认“表单选择 → 自动生成专家文本 → `_chanConfig` → 后端”的链路没有断。
+
 ```text
 # 买点 1.2 背驰比例覆盖
 divergence_rate-buy=1.2

@@ -396,11 +396,14 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
             : '${symbol!.market}${symbol.code}';
         final biBspCnt = _snapshot.bsps.where(_isBiBsp).length;
         final segBspCnt = _snapshot.bsps.where(_isSegBsp).length;
+        final advancedOverrideCnt =
+            _parseBspAdvancedText(_bspAdvancedText).length;
         _status = 'chan.py 获取$name $_periodAdjustLabel '
             'K:${_snapshot.rawBars.length} MB:${_snapshot.mergedBars.length} '
             'FX:${_snapshot.fxs.length} BI:${_snapshot.bis.length} '
             'SEG:${_snapshot.segs.length} ZS:${_snapshot.zss.length} '
-            'BSP:${_snapshot.bsps.length} 笔BSP:$biBspCnt 段BSP:$segBspCnt';
+            'BSP:${_snapshot.bsps.length} 笔BSP:$biBspCnt 段BSP:$segBspCnt'
+            '${advancedOverrideCnt > 0 ? " ADV:$advancedOverrideCnt" : ""}';
       });
       _showMessage('√ $_status');
     } catch (e) {
@@ -972,6 +975,71 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                 );
               }
 
+              Widget advancedConfigPreview() {
+                final parsed = _parseBspAdvancedTextOrNull(bspAdvancedText);
+                final valid = parsed != null;
+                final keys = parsed == null ? <String>[] : parsed.keys.toList()
+                  ..sort(_compareBspAdvancedKeys);
+                final tone = !valid
+                    ? _SettingTone.invalid
+                    : keys.isEmpty
+                        ? _SettingTone.defaultValue
+                        : _SettingTone.changed;
+                final text = !valid
+                    ? '当前 BSP 高级覆盖非法，不会应用到后端。'
+                    : keys.isEmpty
+                        ? '当前无 BSP 高级覆盖项。'
+                        : keys.map((key) => '$key=${parsed[key]}').join('\n');
+
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: _toneColor(tone).withValues(alpha: 0.70)),
+                    color: _toneColor(tone).withValues(alpha: 0.08),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.route,
+                              size: 16,
+                              color: _toneColor(tone).withValues(alpha: 0.90)),
+                          const SizedBox(width: 6),
+                          Text(
+                            keys.isEmpty
+                                ? '当前最终高级覆盖项'
+                                : '当前最终高级覆盖项 · ${keys.length} 项',
+                            style: TextStyle(
+                              color: _toneColor(tone),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      SelectableText(
+                        text,
+                        style: TextStyle(
+                          color: tone == _SettingTone.invalid
+                              ? _toneColor(tone)
+                              : Colors.white70,
+                          fontSize: 12,
+                          height: 1.35,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
               void applyAndReload() {
                 Navigator.pop(context);
                 setState(() {
@@ -1431,6 +1499,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                                               color: Colors.white54,
                                               fontSize: 11)),
                                       children: [
+                                        advancedConfigPreview(),
                                         for (final suffix
                                             in _bspAdvancedSuffixes)
                                           advancedSuffixPanel(suffix),
@@ -1458,7 +1527,10 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                         SizedBox(
                             width: double.infinity,
                             child: FilledButton.icon(
-                                onPressed: _loading ? null : applyAndReload,
+                                onPressed: _loading ||
+                                        !_validBspAdvancedText(bspAdvancedText)
+                                    ? null
+                                    : applyAndReload,
                                 icon: _loading
                                     ? const SizedBox(
                                         width: 16,
