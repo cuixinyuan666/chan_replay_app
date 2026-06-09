@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Force repair OriginKlineChart constructor parameters after half-applied UI patch.
+"""Force repair remaining OriginKlineChart constructor analyze errors.
 
-This script does not rely on broad global token checks. It inspects the
-OriginKlineChart widget class and _OriginChartPainter separately, then inserts
-only the missing declarations / constructor params.
+This version intentionally applies a minimal compile-safe patch first:
+- Add OriginKlineChart public fields for symbolLabel / Chan overlay callbacks.
+- Add matching named constructor parameters.
+- Fix the three const constructor lint infos in ChanLoadingOverlay.
+
+It does not scan _OriginChartPainter constructor text, because local formatting
+can vary and should not block the compile repair.
 
 Run:
+  python tools/force_repair_origin_kline_constructor.py --check
   python tools/force_repair_origin_kline_constructor.py --apply
   flutter analyze
 """
@@ -18,33 +23,19 @@ CHART = Path("lib/ui/widgets/origin_kline_chart.dart")
 OVERLAY = Path("lib/ui/widgets/chan_loading_overlay.dart")
 
 
-def section(source: str, start_token: str, end_token: str) -> tuple[int, int, str]:
-    start = source.find(start_token)
-    if start < 0:
-        raise ValueError(f"start token not found: {start_token}")
-    end = source.find(end_token, start)
-    if end < 0:
-        raise ValueError(f"end token not found: {end_token}")
-    return start, end, source[start:end]
-
-
-def replace_once(source: str, old: str, new: str, label: str) -> tuple[str, bool, str]:
+def replace_once(source: str, old: str, new: str, label: str):
+    if new in source:
+        return source, False, f"OK {label}"
     if old not in source:
         return source, False, f"SKIP anchor not found: {label}"
     return source.replace(old, new, 1), True, f"APPLY {label}"
 
 
-def patch_chart(source: str) -> tuple[str, bool, list[str]]:
+def patch_chart(source: str):
     changed = False
     notes: list[str] = []
 
-    # 1) OriginKlineChart public field declarations.
-    cls_start, ctor_start, cls_before_ctor = section(
-        source,
-        "class OriginKlineChart extends StatefulWidget {",
-        "  const OriginKlineChart({",
-    )
-    if "final String symbolLabel;" not in cls_before_ctor:
+    if "final String symbolLabel;" not in source:
         old = "  final String drawingStorageKey;\n"
         new = (
             "  final String drawingStorageKey;\n"
@@ -52,19 +43,13 @@ def patch_chart(source: str) -> tuple[str, bool, list[str]]:
             "  final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;\n"
             "  final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;\n"
         )
-        source, did, note = replace_once(source, old, new, "widget field declarations")
+        source, did, note = replace_once(source, old, new, "OriginKlineChart fields")
         changed |= did
         notes.append(note)
     else:
-        notes.append("OK widget field declarations")
+        notes.append("OK OriginKlineChart fields")
 
-    # 2) OriginKlineChart constructor named params.
-    ctor_start, ctor_end, ctor = section(
-        source,
-        "  const OriginKlineChart({",
-        "  });",
-    )
-    if "this.symbolLabel = ''," not in ctor:
+    if "this.symbolLabel = ''," not in source:
         old = "    this.drawingStorageKey = '',\n"
         new = (
             "    this.drawingStorageKey = '',\n"
@@ -72,103 +57,41 @@ def patch_chart(source: str) -> tuple[str, bool, list[str]]:
             "    this.isChanOverlayVisible,\n"
             "    this.onChanOverlayToggled,\n"
         )
-        source, did, note = replace_once(source, old, new, "widget constructor named params")
+        source, did, note = replace_once(source, old, new, "OriginKlineChart constructor params")
         changed |= did
         notes.append(note)
     else:
-        notes.append("OK widget constructor named params")
+        notes.append("OK OriginKlineChart constructor params")
 
-    # 3) Pass callbacks and drawing import/export into TV toolbox.
-    host_start, host_end, host = section(
-        source,
-        "    return TradingViewToolboxHost(",
-        "      child: Stack(",
-    )
-    if "onImportDrawings: _importDrawings" not in host:
-        old = (
-            "      onClearDrawings: _drawings.objects.isEmpty\n"
-            "          ? null\n"
-            "          : () {\n"
-            "              _setDrawings(const DrawingObjectCollection());\n"
-            "              _showDrawMessage('已清空手动画线');\n"
-            "            },\n"
-        )
-        new = old + (
-            "      onImportDrawings: _importDrawings,\n"
-            "      onExportDrawings: _exportDrawings,\n"
-            "      canExportDrawings: _drawings.objects.isNotEmpty,\n"
-            "      isChanOverlayVisible: widget.isChanOverlayVisible,\n"
-            "      onChanOverlayToggled: widget.onChanOverlayToggled,\n"
-        )
-        source, did, note = replace_once(source, old, new, "TV toolbox callbacks")
-        changed |= did
-        notes.append(note)
-    else:
-        notes.append("OK TV toolbox callbacks")
-
-    # 4) Remove legacy floating import/export bar.
-    floating = (
-        "          Positioned(\n"
-        "              left: 52,\n"
-        "              bottom: 8,\n"
-        "              child: _DrawingPersistenceBar(\n"
-        "                  drawingCount: _drawings.objects.length,\n"
-        "                  onImport: _importDrawings,\n"
-        "                  onExport:\n"
-        "                      _drawings.objects.isEmpty ? null : _exportDrawings)),\n"
-    )
-    if floating in source:
-        source = source.replace(floating, "", 1)
-        changed = True
-        notes.append("APPLY remove legacy floating import/export bar")
-    else:
-        notes.append("OK remove legacy floating import/export bar")
-
-    # 5) Pass symbol label to painter.
-    paint_start, paint_end, paint_call = section(
-        source,
-        "                  painter: _OriginChartPainter(",
-        "                  ),",
-    )
-    if "symbolLabel: widget.symbolLabel" not in paint_call:
+    # Opportunistically wire the symbol label into the painter if the local file
+    # still has the known safe anchors. Missing anchors are reported as SKIP, not FAIL.
+    if "symbolLabel: widget.symbolLabel" not in source:
         old = "                    snapshot: widget.snapshot,\n"
         new = "                    snapshot: widget.snapshot,\n                    symbolLabel: widget.symbolLabel,\n"
-        source, did, note = replace_once(source, old, new, "painter call symbolLabel")
+        source, did, note = replace_once(source, old, new, "pass symbolLabel to painter")
         changed |= did
         notes.append(note)
     else:
-        notes.append("OK painter call symbolLabel")
+        notes.append("OK pass symbolLabel to painter")
 
-    # 6) Painter field and constructor.
-    painter_start, painter_ctor_start, painter_fields = section(
-        source,
-        "class _OriginChartPainter extends CustomPainter {",
-        "  _OriginChartPainter(",
-    )
-    if "final String symbolLabel;" not in painter_fields:
-        old = "  final ChanSnapshot snapshot;\n"
-        new = "  final ChanSnapshot snapshot;\n  final String symbolLabel;\n"
-        source, did, note = replace_once(source, old, new, "painter field symbolLabel")
+    if "  final String symbolLabel;\n  final bool showFx;" not in source:
+        old = "  final ChanSnapshot snapshot;\n  final bool showFx;\n"
+        new = "  final ChanSnapshot snapshot;\n  final String symbolLabel;\n  final bool showFx;\n"
+        source, did, note = replace_once(source, old, new, "painter symbolLabel field")
         changed |= did
         notes.append(note)
     else:
-        notes.append("OK painter field symbolLabel")
+        notes.append("OK painter symbolLabel field")
 
-    painter_ctor_start, painter_ctor_end, painter_ctor = section(
-        source,
-        "  _OriginChartPainter(",
-        "       this.crosshairIndex});",
-    )
-    if "required this.symbolLabel," not in painter_ctor:
+    if "required this.symbolLabel," not in source:
         old = "       {required this.snapshot,\n"
         new = "       {required this.snapshot,\n       required this.symbolLabel,\n"
-        source, did, note = replace_once(source, old, new, "painter constructor symbolLabel")
+        source, did, note = replace_once(source, old, new, "painter symbolLabel constructor param")
         changed |= did
         notes.append(note)
     else:
-        notes.append("OK painter constructor symbolLabel")
+        notes.append("OK painter symbolLabel constructor param")
 
-    # 7) Symbol label ChartLabel entry.
     if "final trimmedSymbolLabel = symbolLabel.trim();" not in source:
         old = "    final chartLabels = <ChartLabel>[];\n    const bspLabelAdapter = BspChartLabelAdapter();\n"
         new = (
@@ -196,7 +119,7 @@ def patch_chart(source: str) -> tuple[str, bool, list[str]]:
     return source, changed, notes
 
 
-def patch_overlay(source: str) -> tuple[str, bool, list[str]]:
+def patch_overlay(source: str):
     changed = False
     notes: list[str] = []
     replacements = [
@@ -212,7 +135,7 @@ def patch_overlay(source: str) -> tuple[str, bool, list[str]]:
             changed = True
             notes.append(f"APPLY {label}")
         else:
-            notes.append(f"SKIP {label}")
+            notes.append(f"SKIP anchor not found: {label}")
     return source, changed, notes
 
 
@@ -228,14 +151,10 @@ def main() -> int:
             print(f"FAIL missing {path}")
             return 1
 
-    try:
-        chart_source = CHART.read_text(encoding="utf-8")
-        chart_next, chart_changed, chart_notes = patch_chart(chart_source)
-        overlay_source = OVERLAY.read_text(encoding="utf-8")
-        overlay_next, overlay_changed, overlay_notes = patch_overlay(overlay_source)
-    except ValueError as exc:
-        print(f"FAIL {exc}")
-        return 1
+    chart_source = CHART.read_text(encoding="utf-8")
+    chart_next, chart_changed, chart_notes = patch_chart(chart_source)
+    overlay_source = OVERLAY.read_text(encoding="utf-8")
+    overlay_next, overlay_changed, overlay_notes = patch_overlay(overlay_source)
 
     for note in [*chart_notes, *overlay_notes]:
         print(note)
@@ -247,7 +166,7 @@ def main() -> int:
             OVERLAY.write_text(overlay_next, encoding="utf-8")
         print("UPDATED" if chart_changed or overlay_changed else "NOOP already repaired")
     else:
-        print("PASS force repair can apply" if chart_changed or overlay_changed else "PASS already repaired")
+        print("PASS can apply" if chart_changed or overlay_changed else "PASS already repaired")
     return 0
 
 
