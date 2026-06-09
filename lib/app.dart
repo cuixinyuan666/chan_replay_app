@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+
 import 'ui/pages/root_page.dart';
+import 'ui/widgets/windows_hover_title_bar.dart';
 
 class ChanReplayApp extends StatelessWidget {
   const ChanReplayApp({super.key});
@@ -37,7 +39,7 @@ class ChanReplayApp extends StatelessWidget {
       builder: (context, child) {
         final content = child ?? const SizedBox.shrink();
         if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
-          return ExcludeSemantics(child: content);
+          return WindowsHoverTitleBar(child: ExcludeSemantics(child: content));
         }
         return content;
       },
