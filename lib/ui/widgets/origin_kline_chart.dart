@@ -117,6 +117,39 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     return null;
   }
 
+  bool _isToolAvailable(TradingViewDrawingTool tool) {
+    return switch (tool) {
+      TradingViewDrawingTool.chanFx => widget.snapshot.fxs.isNotEmpty,
+      TradingViewDrawingTool.chanFxLine => widget.snapshot.fxs.length >= 2,
+      TradingViewDrawingTool.chanBi ||
+      TradingViewDrawingTool.chanBiText =>
+        widget.snapshot.bis.isNotEmpty,
+      TradingViewDrawingTool.chanSeg ||
+      TradingViewDrawingTool.chanSegText =>
+        widget.snapshot.segs.isNotEmpty,
+      TradingViewDrawingTool.chanZs => widget.snapshot.zss.isNotEmpty,
+      TradingViewDrawingTool.chanBiBsp =>
+        widget.snapshot.bsps.any(_isBiBspLevel),
+      TradingViewDrawingTool.chanSegBsp =>
+        widget.snapshot.bsps.any(_isSegBspLevel),
+      TradingViewDrawingTool.chanMergedBars =>
+        widget.snapshot.mergedBars.isNotEmpty,
+      _ => true,
+    };
+  }
+
+  bool _isSegBspLevel(BspPoint bsp) {
+    final level = bsp.level.trim().toLowerCase();
+    return level == 'seg' || level == 'segment' || level.contains('seg');
+  }
+
+  bool _isBiBspLevel(BspPoint bsp) {
+    final level = bsp.level.trim().toLowerCase();
+    return level.isEmpty ||
+        level == 'bi' ||
+        (!level.contains('seg') && level != 'segment');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -140,6 +173,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     return TradingViewToolboxHost(
       hasBars: bars.isNotEmpty,
       hasChanSnapshot: widget.snapshot.rawBars.isNotEmpty,
+      isToolAvailable: _isToolAvailable,
       selectedTool: _selectedDrawingTool,
       drawingCount: _drawings.objects.length,
       onSelected: _selectDrawingTool,

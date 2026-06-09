@@ -6,6 +6,7 @@ class TradingViewToolboxHost extends StatefulWidget {
   final Widget child;
   final bool hasBars;
   final bool hasChanSnapshot;
+  final bool Function(TradingViewDrawingTool tool)? isToolAvailable;
   final TradingViewDrawingTool? selectedTool;
   final ValueChanged<TradingViewDrawingTool>? onSelected;
   final VoidCallback? onClearDrawings;
@@ -16,6 +17,7 @@ class TradingViewToolboxHost extends StatefulWidget {
     required this.child,
     this.hasBars = false,
     this.hasChanSnapshot = false,
+    this.isToolAvailable,
     this.selectedTool,
     this.onSelected,
     this.onClearDrawings,
@@ -60,6 +62,7 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
               selectedTool: selected,
               hasBars: widget.hasBars,
               hasChanSnapshot: widget.hasChanSnapshot,
+              isToolAvailable: widget.isToolAvailable,
               drawingCount: widget.drawingCount,
               onClearDrawings: widget.onClearDrawings,
               onClose: () => setState(() => _open = false),
@@ -125,6 +128,7 @@ class _ToolboxPanel extends StatelessWidget {
   final TradingViewDrawingTool selectedTool;
   final bool hasBars;
   final bool hasChanSnapshot;
+  final bool Function(TradingViewDrawingTool tool)? isToolAvailable;
   final int drawingCount;
   final VoidCallback? onClearDrawings;
   final VoidCallback onClose;
@@ -134,6 +138,7 @@ class _ToolboxPanel extends StatelessWidget {
     required this.selectedTool,
     required this.hasBars,
     required this.hasChanSnapshot,
+    required this.isToolAvailable,
     required this.drawingCount,
     required this.onClearDrawings,
     required this.onClose,
@@ -215,6 +220,7 @@ class _ToolboxPanel extends StatelessWidget {
                       selectedTool: selectedTool,
                       hasBars: hasBars,
                       hasChanSnapshot: hasChanSnapshot,
+                      isToolAvailable: isToolAvailable,
                       onSelected: onSelected,
                     ),
                 ],
@@ -233,6 +239,7 @@ class _ToolGroupTile extends StatelessWidget {
   final TradingViewDrawingTool selectedTool;
   final bool hasBars;
   final bool hasChanSnapshot;
+  final bool Function(TradingViewDrawingTool tool)? isToolAvailable;
   final ValueChanged<TradingViewDrawingTool> onSelected;
 
   const _ToolGroupTile({
@@ -241,6 +248,7 @@ class _ToolGroupTile extends StatelessWidget {
     required this.selectedTool,
     required this.hasBars,
     required this.hasChanSnapshot,
+    required this.isToolAvailable,
     required this.onSelected,
   });
 
@@ -277,6 +285,10 @@ class _ToolGroupTile extends StatelessWidget {
     }
     if (meta.minPoints > 0 && !hasBars) {
       return '需要先加载K线后才能绑定时间/价格坐标';
+    }
+    final isAvailable = isToolAvailable?.call(meta.tool) ?? true;
+    if (!isAvailable) {
+      return '当前后端快照未返回${meta.label}数据';
     }
     return null;
   }
