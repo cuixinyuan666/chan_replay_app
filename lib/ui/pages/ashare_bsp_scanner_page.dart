@@ -1,14 +1,13 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 import '../../core/models/bsp.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../data/python_chan_analysis_source.dart';
+import '../../data/scanner_backend_client.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import '../widgets/origin_kline_chart.dart';
@@ -85,41 +84,24 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       _results.clear();
       _logs
         ..clear()
+        ..add('正在启动/连接 Python chan.py 后端...')
         ..add('正在获取股票列表...');
       _selectedResult = null;
-      _status = '正在获取股票列表...';
+      _status = '正在启动/连接 Python chan.py 后端...';
     });
 
+    final client = ScannerBackendClient(
+      baseUrl: _backendUrlController.text.trim(),
+    );
     try {
-      final uri = Uri.parse(
-        _join(_backendUrlController.text.trim(), '/api/scanner/bsp/scan'),
+      final decoded = await client.scanBsp(
+        days: 365,
+        recentDays: 3,
+        limit: int.tryParse(_limitController.text.trim()) ?? 300,
+        biStrict: _biStrict,
+        config: _scannerConfig,
       );
-      final response = await http
-          .post(
-            uri,
-            headers: const {'content-type': 'application/json'},
-            body: jsonEncode(<String, dynamic>{
-              'days': 365,
-              'recent_days': 3,
-              'limit': int.tryParse(_limitController.text.trim()) ?? 300,
-              'bi_strict': _biStrict,
-              'config': _scannerConfig,
-            }),
-          )
-          .timeout(const Duration(minutes: 8));
       if (serial != _scanSerial) return;
-
-      final body = utf8.decode(response.bodyBytes);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('扫描器后端返回 ${response.statusCode}: $body');
-      }
-      final decoded = jsonDecode(body);
-      if (decoded is! Map<String, dynamic>) {
-        throw const FormatException('扫描器后端返回结构不是 JSON 对象');
-      }
-      if (decoded['ok'] == false) {
-        throw Exception(decoded['error'] ?? '扫描器后端执行失败');
-      }
 
       final rows = decoded['results'];
       final logRows = decoded['logs'];
@@ -145,6 +127,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         _status = '扫描失败: $e';
       });
     } finally {
+      client.close();
       if (mounted && serial == _scanSerial) {
         setState(() => _scanning = false);
       }
@@ -492,7 +475,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     return _section(
       '扫描日志',
       trailing: TextButton.icon(
-        onPressed: _logs.isEmpty ? null : () => setState(_logs.clear),
+        onPressed: _logs.isEmpty ? null : () => setState(() => _logs.clear()),
         icon: const Icon(Icons.delete_outline, size: 16),
         label: const Text('清空日志'),
       ),
@@ -697,9 +680,6 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       ),
     );
   }
-
-  static String _join(String base, String path) =>
-      '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}$path';
 
   static String? _normalizeCode(String value) {
     final code = value
