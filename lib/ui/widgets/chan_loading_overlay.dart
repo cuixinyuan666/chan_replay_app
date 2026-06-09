@@ -138,12 +138,13 @@ class _ChanLoadingPainter extends CustomPainter {
     final split = state == ChanLoadVisualState.loading
         ? 0.0
         : Curves.easeInOutCubic.transform(progress).clamp(0.0, 1.0);
-    final phase = state == ChanLoadVisualState.loading ? progress * math.pi * 2 : 0.0;
+    final phase =
+        state == ChanLoadVisualState.loading ? progress * math.pi * 2 : 0.0;
 
     final paths = <_LineSpec>[
-      _LineSpec(const Color(0xFF64B5F6), 0.0),
-      _LineSpec(const Color(0xFFFFD54F), math.pi * 0.62),
-      _LineSpec(const Color(0xFFAB47BC), math.pi * 1.25),
+      const _LineSpec(Color(0xFF64B5F6), 0.0),
+      const _LineSpec(Color(0xFFFFD54F), math.pi * 0.62),
+      const _LineSpec(Color(0xFFAB47BC), math.pi * 1.25),
     ];
 
     for (final spec in paths) {
@@ -174,7 +175,8 @@ class _ChanLoadingPainter extends CustomPainter {
     }
 
     final dotPaint = Paint()..color = Colors.white.withValues(alpha: 0.52);
-    canvas.drawCircle(center, 3.2 + math.sin(progress * math.pi * 2).abs() * 1.4, dotPaint);
+    canvas.drawCircle(
+        center, 3.2 + math.sin(progress * math.pi * 2).abs() * 1.4, dotPaint);
   }
 
   Path _halfPath({

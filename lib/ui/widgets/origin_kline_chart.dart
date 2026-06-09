@@ -31,6 +31,9 @@ class OriginKlineChart extends StatefulWidget {
   final bool showMergedBars;
   final List<DrawingObject> drawingObjects;
   final String drawingStorageKey;
+  final String symbolLabel;
+  final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
+  final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
   final int windowSize;
   final double priceScale;
   final int? viewEndIndex;
@@ -56,6 +59,9 @@ class OriginKlineChart extends StatefulWidget {
     this.showMergedBars = false,
     this.drawingObjects = const [],
     this.drawingStorageKey = '',
+    this.symbolLabel = '',
+    this.isChanOverlayVisible,
+    this.onChanOverlayToggled,
     required this.windowSize,
     this.priceScale = 1.0,
     this.viewEndIndex,
@@ -213,6 +219,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
                 child: CustomPaint(
                   painter: _OriginChartPainter(
                     snapshot: widget.snapshot,
+                    symbolLabel: widget.symbolLabel,
                     showFx: widget.showFx,
                     showFxLine: widget.showFxLine,
                     showFxText: widget.showFxText,
@@ -819,6 +826,7 @@ class _OriginChartPainter extends CustomPainter {
   static const double _rightPad = 58;
 
   final ChanSnapshot snapshot;
+  final String symbolLabel;
   final bool showFx;
   final bool showFxLine;
   final bool showFxText;
@@ -838,6 +846,7 @@ class _OriginChartPainter extends CustomPainter {
 
   _OriginChartPainter(
       {required this.snapshot,
+      required this.symbolLabel,
       required this.showFx,
       required this.showFxLine,
       required this.showFxText,
@@ -886,6 +895,18 @@ class _OriginChartPainter extends CustomPainter {
 
     final chartLabels = <ChartLabel>[];
     const bspLabelAdapter = BspChartLabelAdapter();
+    final trimmedSymbolLabel = symbolLabel.trim();
+    if (trimmedSymbolLabel.isNotEmpty) {
+      chartLabels.add(ChartLabel(
+        text: trimmedSymbolLabel,
+        anchor: Offset(rect.left + 12, rect.top + 18),
+        side: ChartLabelSide.inside,
+        priority: ChartLabelPriority.grid,
+        color: Colors.white70,
+        fontSize: 12,
+        forceVisible: true,
+      ));
+    }
 
     _drawGrid(canvas, rect, minPrice, maxPrice, visible);
     _drawCandles(canvas, rect, visible, rawToX, priceToY, step);
@@ -893,12 +914,15 @@ class _OriginChartPainter extends CustomPainter {
       _drawMergedBars(canvas, rect, start, end, rawToX, priceToY, step);
     if (showZs) _drawZs(canvas, rect, start, end, rawToX, priceToY);
     if (showFxLine) _drawFxLine(canvas, rect, start, end, rawToX, priceToY);
-    if (showBi) _drawBi(canvas, rect, start, end, rawToX, priceToY, chartLabels);
-    if (showSeg) _drawSeg(canvas, rect, start, end, rawToX, priceToY, chartLabels);
+    if (showBi)
+      _drawBi(canvas, rect, start, end, rawToX, priceToY, chartLabels);
+    if (showSeg)
+      _drawSeg(canvas, rect, start, end, rawToX, priceToY, chartLabels);
     if (showBiBsp || showSegBsp)
-      _drawBsp(canvas, rect, start, end, rawToX, priceToY,
-          chartLabels, bspLabelAdapter);
-    if (showFx) _drawFx(canvas, rect, start, end, rawToX, priceToY, chartLabels);
+      _drawBsp(canvas, rect, start, end, rawToX, priceToY, chartLabels,
+          bspLabelAdapter);
+    if (showFx)
+      _drawFx(canvas, rect, start, end, rawToX, priceToY, chartLabels);
     DrawingObjectPainter.paintObjects(
         canvas: canvas,
         chartRect: rect,
@@ -1039,8 +1063,13 @@ class _OriginChartPainter extends CustomPainter {
           ..style = PaintingStyle.stroke);
   }
 
-  void _drawFx(Canvas canvas, Rect rect, int start, int end,
-      double Function(int) rawToX, double Function(double) priceToY,
+  void _drawFx(
+      Canvas canvas,
+      Rect rect,
+      int start,
+      int end,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
       List<ChartLabel> chartLabels) {
     for (final fx in snapshot.fxs) {
       if (fx.rawIndex < start || fx.rawIndex > end) continue;
@@ -1066,8 +1095,13 @@ class _OriginChartPainter extends CustomPainter {
     }
   }
 
-  void _drawBi(Canvas canvas, Rect rect, int start, int end,
-      double Function(int) rawToX, double Function(double) priceToY,
+  void _drawBi(
+      Canvas canvas,
+      Rect rect,
+      int start,
+      int end,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
       List<ChartLabel> chartLabels) {
     final paint = Paint()
       ..color = const Color(0xFFE53935)
@@ -1096,8 +1130,13 @@ class _OriginChartPainter extends CustomPainter {
     }
   }
 
-  void _drawSeg(Canvas canvas, Rect rect, int start, int end,
-      double Function(int) rawToX, double Function(double) priceToY,
+  void _drawSeg(
+      Canvas canvas,
+      Rect rect,
+      int start,
+      int end,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
       List<ChartLabel> chartLabels) {
     for (final seg in snapshot.segs) {
       if (seg.endRawIndex < start || seg.startRawIndex > end) continue;
