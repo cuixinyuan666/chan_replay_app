@@ -5,10 +5,11 @@ from typing import Any
 from fastapi import Body, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from .a_bsp_scanner import scan_bsp
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
-app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.4.0')
+app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.5.0')
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,7 +18,6 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
-
 
 _BSP_ADVANCED_QUERY_KEYS = {
     'divergence_rate',
@@ -159,6 +159,30 @@ def _config_from_query(
     }
 
 
+def _payload_int(payload: dict[str, Any], key: str, default: int, *, minimum: int, maximum: int) -> int:
+    try:
+        value = int(payload.get(key, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _payload_bool(payload: dict[str, Any], key: str, default: bool) -> bool:
+    value = payload.get(key, default)
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+
+
+def _payload_symbols(value: Any) -> list[Any] | None:
+    if isinstance(value, str):
+        rows = [part.strip() for part in value.replace('，', ',').split(',') if part.strip()]
+        return rows or None
+    if isinstance(value, list):
+        return value
+    return None
+
+
 @app.get('/health')
 def health() -> dict[str, object]:
     return {
@@ -166,7 +190,7 @@ def health() -> dict[str, object]:
         'backend': 'origin_vespa_tdx',
         'data_source': 'easy-tdx',
         'engine': 'chan.py',
-        'version': '0.4.0',
+        'version': '0.5.0',
     }
 
 
@@ -175,13 +199,14 @@ def root() -> dict[str, object]:
     return {
         'ok': True,
         'backend': 'origin_vespa_tdx',
-        'version': '0.4.0',
+        'version': '0.5.0',
         'note': 'Python chan.py is the only Chan calculation source. Flutter only renders JSON results.',
         'endpoints': [
             '/health',
             '/api/tdx/kline',
             '/api/chan/analyze',
             '/api/chan/analyze_bars',
+            '/api/scanner/bsp/scan',
             '/docs',
         ],
     }
@@ -322,6 +347,20 @@ def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
         freq=str(payload.get('freq') or payload.get('period') or 'DAILY'),
         adjust=str(payload.get('adjust') or 'QFQ'),
         mode=str(payload.get('mode') or 'once'),
+        config=config,
+    )
+
+
+@app.post('/api/scanner/bsp/scan')
+def scanner_bsp_scan(payload: dict[str, Any] | None = Body(None)) -> dict[str, object]:
+    body = payload or {}
+    config = body.get('config') if isinstance(body.get('config'), dict) else {}
+    return scan_bsp(
+        limit=_payload_int(body, 'limit', 300, minimum=1, maximum=5000),
+        days=_payload_int(body, 'days', 365, minimum=30, maximum=5000),
+        recent_days=_payload_int(body, 'recent_days', 3, minimum=1, maximum=120),
+        bi_strict=_payload_bool(body, 'bi_strict', True),
+        symbols=_payload_symbols(body.get('symbols')),
         config=config,
     )
 
