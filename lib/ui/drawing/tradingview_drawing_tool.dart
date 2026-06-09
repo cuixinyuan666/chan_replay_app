@@ -121,6 +121,7 @@ enum TradingViewDrawingTool {
   // not independent Chan calculators.
   chanFx,
   chanFxLine,
+  chanFxText,
   chanBi,
   chanBiText,
   chanSeg,
@@ -757,6 +758,15 @@ class TradingViewDrawingToolRegistry {
         group: TradingViewDrawingGroup.chanOverlay,
         label: '分型连线',
         description: '显示分型连接辅助线，不参与计算',
+        minPoints: 0,
+        maxPoints: 0,
+        canPersist: false,
+        requiresChanSnapshot: true),
+    TradingViewDrawingToolMeta(
+        tool: TradingViewDrawingTool.chanFxText,
+        group: TradingViewDrawingGroup.chanOverlay,
+        label: '分型文字',
+        description: '显示分型顶/底文字',
         minPoints: 0,
         maxPoints: 0,
         canPersist: false,

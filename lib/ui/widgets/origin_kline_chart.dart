@@ -129,6 +129,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     return switch (tool) {
       TradingViewDrawingTool.chanFx => widget.snapshot.fxs.isNotEmpty,
       TradingViewDrawingTool.chanFxLine => widget.snapshot.fxs.length >= 2,
+      TradingViewDrawingTool.chanFxText => widget.snapshot.fxs.isNotEmpty,
       TradingViewDrawingTool.chanBi ||
       TradingViewDrawingTool.chanBiText =>
         widget.snapshot.bis.isNotEmpty,
@@ -191,6 +192,11 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
               _setDrawings(const DrawingObjectCollection());
               _showDrawMessage('已清空手动画线');
             },
+      onImportDrawings: _importDrawings,
+      onExportDrawings: _exportDrawings,
+      canExportDrawings: _drawings.objects.isNotEmpty,
+      isChanOverlayVisible: widget.isChanOverlayVisible,
+      onChanOverlayToggled: widget.onChanOverlayToggled,
       child: Stack(
         children: [
           LayoutBuilder(builder: (context, constraints) {
@@ -242,14 +248,6 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
               ),
             );
           }),
-          Positioned(
-              left: 52,
-              bottom: 8,
-              child: _DrawingPersistenceBar(
-                  drawingCount: _drawings.objects.length,
-                  onImport: _importDrawings,
-                  onExport:
-                      _drawings.objects.isEmpty ? null : _exportDrawings)),
           if (selectedDrawing != null)
             Positioned(
                 right: 68,
@@ -695,42 +693,6 @@ class _DrawingDragState {
       required this.mode,
       required this.startPointerAnchor,
       this.anchorIndex});
-}
-
-class _DrawingPersistenceBar extends StatelessWidget {
-  final int drawingCount;
-  final VoidCallback onImport;
-  final VoidCallback? onExport;
-  const _DrawingPersistenceBar(
-      {required this.drawingCount,
-      required this.onImport,
-      required this.onExport});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0xCC1F2937),
-      borderRadius: BorderRadius.circular(8),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        _miniButton('导入画线 JSON', Icons.file_open, onImport),
-        _miniButton(drawingCount > 0 ? '导出画线 JSON' : '暂无画线可导出', Icons.ios_share,
-            onExport),
-      ]),
-    );
-  }
-
-  Widget _miniButton(String tooltip, IconData icon, VoidCallback? onPressed) =>
-      Tooltip(
-          message: tooltip,
-          child: IconButton(
-              onPressed: onPressed,
-              icon: Icon(icon, size: 16),
-              color: Colors.white70,
-              disabledColor: Colors.white24,
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              constraints:
-                  const BoxConstraints.tightFor(width: 30, height: 30)));
 }
 
 class _SelectedDrawingBar extends StatelessWidget {
