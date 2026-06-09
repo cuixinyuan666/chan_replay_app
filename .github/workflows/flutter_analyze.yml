@@ -42,6 +42,9 @@ jobs:
       - name: Check chan.py placement guardrails
         run: python tools/check_chanpy_guardrails.py
 
+      - name: Check BSP label layout patch anchors
+        run: python tools/patch_origin_kline_bsp_label_layout.py --check
+
       - name: Audit BSP label layout migration
         run: python tools/audit_bsp_label_layout_usage.py
 
