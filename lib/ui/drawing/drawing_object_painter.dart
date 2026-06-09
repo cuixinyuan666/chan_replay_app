@@ -65,6 +65,12 @@ class DrawingObjectPainter {
       case TradingViewDrawingTool.rectangle:
         _drawRectangle(canvas, chartRect, object, rawToX, priceToY);
         return;
+      case TradingViewDrawingTool.ellipse:
+        _drawEllipse(canvas, chartRect, object, rawToX, priceToY, forceCircle: false);
+        return;
+      case TradingViewDrawingTool.circle:
+        _drawEllipse(canvas, chartRect, object, rawToX, priceToY, forceCircle: true);
+        return;
       case TradingViewDrawingTool.text:
       case TradingViewDrawingTool.anchoredText:
       case TradingViewDrawingTool.note:
@@ -148,6 +154,28 @@ class DrawingObjectPainter {
     final rect = Rect.fromPoints(p1, p2);
     if (object.style.filled) canvas.drawRect(rect, Paint()..color = object.style.fillColor..style = PaintingStyle.fill);
     canvas.drawRect(rect, _linePaint(object)..style = PaintingStyle.stroke);
+    if (object.selected) _drawHandles(canvas, [p1, p2]);
+  }
+
+  static void _drawEllipse(
+    Canvas canvas,
+    Rect chartRect,
+    DrawingObject object,
+    double Function(int rawIndex) rawToX,
+    double Function(double price) priceToY, {
+    required bool forceCircle,
+  }) {
+    final points = _chartPoints(object, rawToX, priceToY);
+    if (points.length < 2) return;
+    final p1 = _clamp(points[0], chartRect);
+    final p2 = _clamp(points[1], chartRect);
+    var rect = Rect.fromPoints(p1, p2);
+    if (forceCircle) {
+      final radius = math.min(rect.width.abs(), rect.height.abs()) / 2;
+      rect = Rect.fromCircle(center: rect.center, radius: math.max(2.0, radius));
+    }
+    if (object.style.filled) canvas.drawOval(rect, Paint()..color = object.style.fillColor..style = PaintingStyle.fill);
+    canvas.drawOval(rect, _linePaint(object)..style = PaintingStyle.stroke);
     if (object.selected) _drawHandles(canvas, [p1, p2]);
   }
 
