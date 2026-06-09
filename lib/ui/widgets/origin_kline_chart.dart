@@ -13,6 +13,8 @@ import '../drawing/drawing_object_painter.dart';
 import '../drawing/drawing_object_persistence.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import '../drawing/tradingview_toolbox_host.dart';
+import 'bsp_chart_label_adapter.dart';
+import 'chart_label_layout.dart';
 
 class OriginKlineChart extends StatefulWidget {
   final ChanSnapshot snapshot;
@@ -882,6 +884,9 @@ class _OriginChartPainter extends CustomPainter {
     final step = rect.width / math.max(1, visible.length);
     double rawToX(int rawIndex) => rect.left + (rawIndex - start + 0.5) * step;
 
+    final chartLabels = <ChartLabel>[];
+    const bspLabelAdapter = BspChartLabelAdapter();
+
     _drawGrid(canvas, rect, minPrice, maxPrice, visible);
     _drawCandles(canvas, rect, visible, rawToX, priceToY, step);
     if (showMergedBars)
@@ -891,7 +896,8 @@ class _OriginChartPainter extends CustomPainter {
     if (showBi) _drawBi(canvas, rect, start, end, rawToX, priceToY);
     if (showSeg) _drawSeg(canvas, rect, start, end, rawToX, priceToY);
     if (showBiBsp || showSegBsp)
-      _drawBsp(canvas, rect, start, end, rawToX, priceToY);
+      _drawBsp(canvas, rect, start, end, rawToX, priceToY,
+          chartLabels, bspLabelAdapter);
     if (showFx) _drawFx(canvas, rect, start, end, rawToX, priceToY);
     DrawingObjectPainter.paintObjects(
         canvas: canvas,
@@ -901,6 +907,12 @@ class _OriginChartPainter extends CustomPainter {
         endRawIndex: end,
         rawToX: rawToX,
         priceToY: priceToY);
+    final laidOutLabels = ChartLabelLayout(
+      chartRect: rect,
+      visibleCount: visible.length,
+      reserved: const [Rect.fromLTWH(0, 0, 520, 28)],
+    ).layout(chartLabels);
+    paintLaidOutChartLabels(canvas, laidOutLabels);
     final cross = crosshairIndex;
     if (cross != null && cross >= start && cross <= end) {
       _drawCrosshair(canvas, rect, bars[cross], rawToX, priceToY);
@@ -1120,8 +1132,15 @@ class _OriginChartPainter extends CustomPainter {
     }
   }
 
-  void _drawBsp(Canvas canvas, Rect rect, int start, int end,
-      double Function(int) rawToX, double Function(double) priceToY) {
+  void _drawBsp(
+      Canvas canvas,
+      Rect rect,
+      int start,
+      int end,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
+      List<ChartLabel> chartLabels,
+      BspChartLabelAdapter bspLabelAdapter) {
     for (final bsp in snapshot.bsps) {
       if (bsp.rawIndex < start || bsp.rawIndex > end) continue;
       final isSegLevel = _isSegBsp(bsp);
@@ -1146,12 +1165,13 @@ class _OriginChartPainter extends CustomPainter {
       }
       path.close();
       canvas.drawPath(path, Paint()..color = color);
-      _drawText(
-          canvas,
-          '${isSegLevel ? '段' : '笔'}${bsp.type}',
-          Offset(x + 5, y + (bsp.isSell ? -20 : 8)),
-          isSegLevel ? 10.5 : 9,
-          color);
+      chartLabels.add(bspLabelAdapter.buildLabel(
+        bsp: bsp,
+        anchor: Offset(x, y),
+        isSegLevel: isSegLevel,
+        color: color,
+        visibleWhenWindowLe: windowSize,
+      ));
     }
   }
 
