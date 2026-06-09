@@ -32,7 +32,16 @@ def _iter_rows(data: Any) -> list[Any]:
         except Exception:
             pass
     if isinstance(data, dict):
-        return list(data.values())
+        rows: list[Any] = []
+        for key, value in data.items():
+            if isinstance(value, dict):
+                row = dict(value)
+                if not any(k in row for k in ('代码', 'code', 'symbol', 'sec_code', 'stock_code', '证券代码')):
+                    row['code'] = key
+                rows.append(row)
+            else:
+                rows.append({'code': key, 'name': value})
+        return rows
     try:
         return list(data)
     except TypeError:
@@ -67,14 +76,6 @@ def _parse_dt(value: Any) -> datetime | None:
         return None
 
 
-def _bool(value: Any, default: bool = False) -> bool:
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
-
-
 def _market_enum(Market: Any, market: str) -> Any:
     name = 'SH' if market.upper() == 'SH' else 'SZ'
     if hasattr(Market, name):
@@ -101,9 +102,9 @@ def _call_stock_list(client: Any, method_name: str, market_value: Any, market_na
     rows: list[Any] = []
     # pytdx-style APIs usually page by offset. easy-tdx wrappers may also expose
     # a one-shot stock list method. Try both shapes without changing Chan logic.
-    if method_name in {'get_security_list', 'get_security_bars'}:
+    if method_name in {'get_security_list', 'get_stock_list'}:
         for offset in range(0, 100000, 1000):
-            page = []
+            page: list[Any] = []
             for args in ((market_value, offset), (market_name, offset)):
                 try:
                     page = _iter_rows(method(*args))
@@ -118,7 +119,8 @@ def _call_stock_list(client: Any, method_name: str, market_value: Any, market_na
             rows.extend(page)
             if len(page) < 800:
                 break
-        return rows
+        if rows:
+            return rows
 
     for args in ((market_value,), (market_name,), tuple()):
         try:
@@ -150,6 +152,7 @@ def _load_easy_tdx_stock_rows(limit: int) -> list[dict[str, Any]]:
                 'get_all_stocks',
                 'stock_list',
                 'stocks',
+                'securities',
             ):
                 rows = _call_stock_list(client, method_name, market_value, market_name)
                 if rows:
@@ -165,20 +168,71 @@ def _load_easy_tdx_stock_rows(limit: int) -> list[dict[str, Any]]:
                 result.append(normalized)
                 if len(result) >= limit:
                     return result
-        return result
+        if result:
+            return result
+        # Some easy-tdx builds expose K-line APIs but do not expose a security-list
+        # API. In that case scanner must not silently return an empty universe.
+        # Fall back to a deterministic A-share candidate pool; every candidate is
+        # still validated by easy-tdx K-line loading inside analyze_once().
+        return _fallback_candidate_stock_rows(limit)
     finally:
         _close_client(client)
 
 
+def _fallback_candidate_stock_rows(limit: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    ranges = (
+        ('SZ', 1, 999),        # 000001-000999 主板
+        ('SH', 600000, 600999),
+        ('SZ', 1000, 1999),    # 001000-001999
+        ('SH', 601000, 601999),
+        ('SZ', 2000, 2999),    # 002000-002999 中小板历史代码段
+        ('SH', 603000, 603999),
+        ('SZ', 300000, 300999),
+        ('SH', 605000, 605999),
+        ('SZ', 301000, 301999),
+        ('SZ', 3000, 3999),    # 003000-003999
+    )
+    max_span = max(end - start for _, start, end in ranges)
+    for offset in range(max_span + 1):
+        for market, start, end in ranges:
+            code_num = start + offset
+            if code_num > end:
+                continue
+            code = f'{code_num:06d}'
+            key = f'{code}.{market}'
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append({
+                'code': code,
+                'market': market,
+                'name': code,
+                'price': None,
+                'change': None,
+                'volume': None,
+                '_source': 'candidate_pool',
+            })
+            if len(rows) >= limit:
+                return rows
+    return rows
+
+
 def _normalize_stock_row(row: Any, market_name: str) -> dict[str, Any] | None:
     raw_code = _row_get(row, '代码', 'code', 'symbol', 'sec_code', 'stock_code', '证券代码')
+    if raw_code is None and isinstance(row, (list, tuple)) and row:
+        raw_code = row[0]
     if raw_code is None:
         return None
     code = normalize_symbol(str(raw_code))
     code = ''.join(ch for ch in code if ch.isdigit())[-6:]
     if len(code) != 6:
         return None
-    name = str(_row_get(row, '名称', 'name', 'stock_name', 'sec_name', '证券简称', default=code) or code)
+    raw_name = _row_get(row, '名称', 'name', 'stock_name', 'sec_name', '证券简称', default=None)
+    if raw_name is None and isinstance(row, (list, tuple)) and len(row) > 1:
+        raw_name = row[1]
+    name = str(raw_name or code)
     return {
         'code': code,
         'market': market_name,
@@ -186,6 +240,7 @@ def _normalize_stock_row(row: Any, market_name: str) -> dict[str, Any] | None:
         'price': _to_float(_row_get(row, '最新价', 'price', 'last', 'close', default=None)),
         'change': _to_float(_row_get(row, '涨跌幅', 'change', 'pct_chg', 'percent', default=None)),
         'volume': _to_float(_row_get(row, '成交量', 'vol', 'volume', default=None)),
+        '_source': 'easy_tdx_list',
     }
 
 
@@ -318,7 +373,12 @@ def scan_bsp(
             'found_count': 0,
         }
 
-    logs.append(f'获取到 {len(stock_list)} 只可交易股票，开始扫描...')
+    source_hint = '候选代码池 + easy-tdx K线验证' if any(
+        row.get('_source') == 'candidate_pool' for row in stock_list
+    ) else 'easy-tdx股票列表'
+    logs.append(f'获取到 {len(stock_list)} 只可交易股票（{source_hint}），开始扫描...')
+    if not stock_list:
+        logs.append('⚠️ 股票列表为空：当前 easy-tdx 版本可能未暴露证券列表接口。')
     success_count = 0
     fail_count = 0
     results: list[dict[str, Any]] = []
