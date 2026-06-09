@@ -893,12 +893,12 @@ class _OriginChartPainter extends CustomPainter {
       _drawMergedBars(canvas, rect, start, end, rawToX, priceToY, step);
     if (showZs) _drawZs(canvas, rect, start, end, rawToX, priceToY);
     if (showFxLine) _drawFxLine(canvas, rect, start, end, rawToX, priceToY);
-    if (showBi) _drawBi(canvas, rect, start, end, rawToX, priceToY);
-    if (showSeg) _drawSeg(canvas, rect, start, end, rawToX, priceToY);
+    if (showBi) _drawBi(canvas, rect, start, end, rawToX, priceToY, chartLabels);
+    if (showSeg) _drawSeg(canvas, rect, start, end, rawToX, priceToY, chartLabels);
     if (showBiBsp || showSegBsp)
       _drawBsp(canvas, rect, start, end, rawToX, priceToY,
           chartLabels, bspLabelAdapter);
-    if (showFx) _drawFx(canvas, rect, start, end, rawToX, priceToY);
+    if (showFx) _drawFx(canvas, rect, start, end, rawToX, priceToY, chartLabels);
     DrawingObjectPainter.paintObjects(
         canvas: canvas,
         chartRect: rect,
@@ -1040,7 +1040,8 @@ class _OriginChartPainter extends CustomPainter {
   }
 
   void _drawFx(Canvas canvas, Rect rect, int start, int end,
-      double Function(int) rawToX, double Function(double) priceToY) {
+      double Function(int) rawToX, double Function(double) priceToY,
+      List<ChartLabel> chartLabels) {
     for (final fx in snapshot.fxs) {
       if (fx.rawIndex < start || fx.rawIndex > end) continue;
       final color = fx.type == FxType.top
@@ -1050,14 +1051,24 @@ class _OriginChartPainter extends CustomPainter {
           rawToX(fx.rawIndex).clamp(rect.left, rect.right).toDouble(),
           priceToY(fx.price).clamp(rect.top, rect.bottom).toDouble());
       canvas.drawCircle(p, 4, Paint()..color = color);
-      if (showFxText)
-        _drawText(canvas, fx.isTop ? '顶' : '底',
-            Offset(p.dx - 6, p.dy + (fx.isTop ? -20 : 8)), 11, color);
+      if (showFxText) {
+        chartLabels.add(ChartLabel(
+          text: fx.isTop ? '顶' : '底',
+          anchor: p,
+          side: fx.isTop ? ChartLabelSide.top : ChartLabelSide.bottom,
+          priority: ChartLabelPriority.fx,
+          rawIndex: fx.rawIndex,
+          color: color,
+          fontSize: 11,
+          visibleWhenWindowLe: 240,
+        ));
+      }
     }
   }
 
   void _drawBi(Canvas canvas, Rect rect, int start, int end,
-      double Function(int) rawToX, double Function(double) priceToY) {
+      double Function(int) rawToX, double Function(double) priceToY,
+      List<ChartLabel> chartLabels) {
     final paint = Paint()
       ..color = const Color(0xFFE53935)
       ..strokeWidth = 1.45;
@@ -1070,18 +1081,24 @@ class _OriginChartPainter extends CustomPainter {
           rawToX(bi.endRawIndex).clamp(rect.left, rect.right).toDouble(),
           priceToY(bi.endPrice).clamp(rect.top, rect.bottom).toDouble());
       canvas.drawLine(p1, p2, paint);
-      if (showBiText)
-        _drawText(
-            canvas,
-            'B${bi.index + 1}',
-            Offset(p2.dx - 12, p2.dy + (bi.isUp ? -18 : 6)),
-            10,
-            const Color(0xFFFF8A80));
+      if (showBiText) {
+        chartLabels.add(ChartLabel(
+          text: 'B${bi.index + 1}',
+          anchor: p2,
+          side: bi.isUp ? ChartLabelSide.top : ChartLabelSide.bottom,
+          priority: ChartLabelPriority.bi,
+          rawIndex: bi.endRawIndex,
+          color: const Color(0xFFFF8A80),
+          fontSize: 10,
+          visibleWhenWindowLe: 240,
+        ));
+      }
     }
   }
 
   void _drawSeg(Canvas canvas, Rect rect, int start, int end,
-      double Function(int) rawToX, double Function(double) priceToY) {
+      double Function(int) rawToX, double Function(double) priceToY,
+      List<ChartLabel> chartLabels) {
     for (final seg in snapshot.segs) {
       if (seg.endRawIndex < start || seg.startRawIndex > end) continue;
       final paint = Paint()
@@ -1096,13 +1113,18 @@ class _OriginChartPainter extends CustomPainter {
           rawToX(seg.endRawIndex).clamp(rect.left, rect.right).toDouble(),
           priceToY(seg.endPrice).clamp(rect.top, rect.bottom).toDouble());
       canvas.drawLine(p1, p2, paint);
-      if (showSegText)
-        _drawText(
-            canvas,
-            'S${seg.index + 1}${seg.isSure ? '' : '?'}',
-            Offset(p2.dx - 14, p2.dy + (seg.isUp ? -20 : 8)),
-            10,
-            Colors.white70);
+      if (showSegText) {
+        chartLabels.add(ChartLabel(
+          text: 'S${seg.index + 1}${seg.isSure ? '' : '?'}',
+          anchor: p2,
+          side: seg.isUp ? ChartLabelSide.top : ChartLabelSide.bottom,
+          priority: ChartLabelPriority.seg,
+          rawIndex: seg.endRawIndex,
+          color: Colors.white70,
+          fontSize: 10,
+          visibleWhenWindowLe: 360,
+        ));
+      }
     }
   }
 
