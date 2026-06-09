@@ -69,17 +69,19 @@ class _WindowsHoverTitleBarState extends State<WindowsHoverTitleBar> {
                         const Expanded(
                           child: Text(
                             '缠论K线复盘',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style:
                                 TextStyle(color: Colors.white54, fontSize: 12),
                           ),
                         ),
                         _WindowButton(
-                          tooltip: '最小化',
+                          semanticLabel: '最小化',
                           icon: Icons.remove,
                           onTap: () => windowManager.minimize(),
                         ),
                         _WindowButton(
-                          tooltip: '最大化 / 还原',
+                          semanticLabel: '最大化 / 还原',
                           icon: Icons.crop_square,
                           onTap: () async {
                             final maximized = await windowManager.isMaximized();
@@ -91,7 +93,7 @@ class _WindowsHoverTitleBarState extends State<WindowsHoverTitleBar> {
                           },
                         ),
                         _WindowButton(
-                          tooltip: '关闭',
+                          semanticLabel: '关闭',
                           icon: Icons.close,
                           danger: true,
                           onTap: () => windowManager.close(),
@@ -110,13 +112,13 @@ class _WindowsHoverTitleBarState extends State<WindowsHoverTitleBar> {
 }
 
 class _WindowButton extends StatelessWidget {
-  final String tooltip;
+  final String semanticLabel;
   final IconData icon;
   final bool danger;
   final VoidCallback onTap;
 
   const _WindowButton({
-    required this.tooltip,
+    required this.semanticLabel,
     required this.icon,
     required this.onTap,
     this.danger = false,
@@ -124,9 +126,11 @@ class _WindowButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
+    return Semantics(
+      label: semanticLabel,
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: SizedBox(
           width: 46,
