@@ -107,9 +107,70 @@ def _optional_int(value: Any) -> int | None:
     return int(text)
 
 
+_BSP_ADVANCED_SUFFIXES = ('buy', 'sell', 'segbuy', 'segsell', 'seg')
+_BSP_ADVANCED_VALUE_TYPES = {
+    'divergence_rate': 'float',
+    'min_zs_cnt': 'int',
+    'bsp1_only_multibi_zs': 'bool',
+    'max_bs2_rate': 'float',
+    'macd_algo': 'str',
+    'bs1_peak': 'bool',
+    'bs_type': 'bs_type',
+    'bsp2_follow_1': 'bool',
+    'bsp3_follow_1': 'bool',
+    'bsp3_peak': 'bool',
+    'bsp2s_follow_2': 'bool',
+    'max_bsp2s_lv': 'optional_int',
+    'strict_bsp3': 'bool',
+    'bsp3a_max_zs_cnt': 'int',
+}
+
+
+def _blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _bsp_advanced_key_parts(key: str) -> tuple[str, str] | None:
+    if '-' not in key:
+        return None
+    name, suffix = key.rsplit('-', 1)
+    if name not in _BSP_ADVANCED_VALUE_TYPES:
+        return None
+    if suffix not in _BSP_ADVANCED_SUFFIXES:
+        return None
+    return name, suffix
+
+
+def _coerce_bsp_advanced_value(name: str, value: Any) -> Any:
+    kind = _BSP_ADVANCED_VALUE_TYPES[name]
+    if kind == 'bool':
+        return _bool(value)
+    if kind == 'int':
+        return int(value)
+    if kind == 'optional_int':
+        return _optional_int(value)
+    if kind == 'float':
+        return float(value)
+    if kind == 'bs_type':
+        if isinstance(value, list):
+            return [str(x).strip() for x in value if str(x).strip()]
+        return [x.strip() for x in re.split(r'[,，\s]+', str(value)) if x.strip()]
+    return str(value)
+
+
+def _with_bsp_advanced_overrides(result: dict[str, Any], cfg: dict[str, Any]) -> dict[str, Any]:
+    for key, value in cfg.items():
+        parts = _bsp_advanced_key_parts(str(key))
+        if parts is None or _blank(value):
+            continue
+        name, _suffix = parts
+        result[str(key)] = _coerce_bsp_advanced_value(name, value)
+    return result
+
+
 def _config_dict(*, trigger_step: bool, config: dict[str, Any] | None = None) -> dict[str, Any]:
     cfg = config or {}
-    return {
+    result = {
         'trigger_step': trigger_step,
         'skip_step': int(cfg.get('skip_step') or 0),
         'seg_algo': str(cfg.get('seg_algo') or 'chan'),
@@ -167,6 +228,7 @@ def _config_dict(*, trigger_step: bool, config: dict[str, Any] | None = None) ->
         'strict_bsp3': _bool(cfg.get('strict_bsp3'), False),
         'bsp3a_max_zs_cnt': int(cfg.get('bsp3a_max_zs_cnt') or 1),
     }
+    return _with_bsp_advanced_overrides(result, cfg)
 
 
 def _attr(obj: Any, names: Iterable[str], default: Any = None) -> Any:

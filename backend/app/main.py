@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import Body, FastAPI, Query
+from fastapi import Body, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
@@ -17,6 +17,37 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+
+
+_BSP_ADVANCED_QUERY_KEYS = {
+    'divergence_rate',
+    'min_zs_cnt',
+    'bsp1_only_multibi_zs',
+    'max_bs2_rate',
+    'macd_algo',
+    'bs1_peak',
+    'bs_type',
+    'bsp2_follow_1',
+    'bsp3_follow_1',
+    'bsp3_peak',
+    'bsp2s_follow_2',
+    'max_bsp2s_lv',
+    'strict_bsp3',
+    'bsp3a_max_zs_cnt',
+}
+_BSP_ADVANCED_QUERY_SUFFIXES = {'buy', 'sell', 'segbuy', 'segsell', 'seg'}
+
+
+def _bsp_advanced_config_from_query(request: Request) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in request.query_params.items():
+        if '-' not in key:
+            continue
+        name, suffix = key.rsplit('-', 1)
+        if name in _BSP_ADVANCED_QUERY_KEYS and suffix in _BSP_ADVANCED_QUERY_SUFFIXES:
+            if str(value).strip():
+                result[key] = value
+    return result
 
 
 def _config_from_query(
@@ -158,6 +189,7 @@ def root() -> dict[str, object]:
 
 @app.get('/api/chan/analyze')
 def chan_analyze(
+    request: Request,
     mode: str = Query('once', description='once / step'),
     symbol: str = Query('000001', description='股票代码，支持 000001 或 000001.SZ'),
     market: str | None = Query(None, description='SZ / SH；留空时按代码自动推断'),
@@ -271,6 +303,7 @@ def chan_analyze(
         bsp3a_max_zs_cnt=bsp3a_max_zs_cnt,
         macd_algo=macd_algo,
     )
+    config.update(_bsp_advanced_config_from_query(request))
     if mode.lower() == 'step':
         return analyze_step(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
     return analyze_once(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)

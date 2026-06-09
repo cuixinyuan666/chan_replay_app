@@ -42,6 +42,31 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     'rsi',
   ];
 
+  static const Set<String> _bspAdvancedSuffixes = {
+    'buy',
+    'sell',
+    'segbuy',
+    'segsell',
+    'seg',
+  };
+
+  static const Set<String> _bspAdvancedKeys = {
+    'divergence_rate',
+    'min_zs_cnt',
+    'bsp1_only_multibi_zs',
+    'max_bs2_rate',
+    'macd_algo',
+    'bs1_peak',
+    'bs_type',
+    'bsp2_follow_1',
+    'bsp3_follow_1',
+    'bsp3_peak',
+    'bsp2s_follow_2',
+    'max_bsp2s_lv',
+    'strict_bsp3',
+    'bsp3a_max_zs_cnt',
+  };
+
   static const Map<String, Object?> _settingDefaults = {
     'skip_step': 0,
     'bi_algo': 'normal',
@@ -94,6 +119,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     'strict_bsp3': false,
     'bsp3a_max_zs_cnt': 1,
     'macd_algo': 'peak',
+    'bsp_advanced': '',
   };
 
   final TextEditingController _stockCodeController =
@@ -190,6 +216,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   bool _strictBsp3 = false;
   int _bsp3aMaxZsCnt = 1;
   String _macdAlgo = 'peak';
+  String _bspAdvancedText = '';
 
   static bool get _isAndroidApp =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -278,6 +305,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         'strict_bsp3': _strictBsp3,
         'bsp3a_max_zs_cnt': _bsp3aMaxZsCnt,
         'macd_algo': _macdAlgo,
+        ..._parseBspAdvancedText(_bspAdvancedText),
       };
 
   @override
@@ -628,6 +656,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         var strictBsp3 = _strictBsp3;
         var bsp3aMaxZsCnt = _bsp3aMaxZsCnt;
         var macdAlgo = _macdAlgo;
+        var bspAdvancedText = _bspAdvancedText;
 
         return DefaultTabController(
           initialIndex: initialTab,
@@ -651,11 +680,12 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
               Widget textField(String key, String label, String value,
                   ValueChanged<String> onChanged,
-                  {String? helper, bool valid = true}) {
+                  {String? helper, bool valid = true, int maxLines = 1}) {
                 final tone = _settingTone(key, value, valid: valid);
                 return TextFormField(
                   initialValue: value,
                   enabled: !_loading,
+                  maxLines: maxLines,
                   decoration: _settingDecoration(label, tone, helper: helper),
                   onChanged: (v) => setSheetState(() => onChanged(v.trim())),
                 );
@@ -804,6 +834,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                   _strictBsp3 = strictBsp3;
                   _bsp3aMaxZsCnt = bsp3aMaxZsCnt;
                   _macdAlgo = macdAlgo;
+                  _bspAdvancedText = bspAdvancedText;
                 });
                 _load();
               }
@@ -1188,6 +1219,33 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                                         bsp2sFollow2, (v) => bsp2sFollow2 = v),
                                     boolTile('strict_bsp3', 'strict_bsp3',
                                         strictBsp3, (v) => strictBsp3 = v),
+                                    const SizedBox(height: 8),
+                                    ExpansionTile(
+                                      tilePadding: EdgeInsets.zero,
+                                      initiallyExpanded: false,
+                                      title: const Text('BSP 高级覆盖',
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w700)),
+                                      subtitle: const Text(
+                                          '每行 key-suffix=value；suffix: buy/sell/segbuy/segsell/seg',
+                                          style: TextStyle(
+                                              color: Colors.white54,
+                                              fontSize: 11)),
+                                      children: [
+                                        textField(
+                                          'bsp_advanced',
+                                          'BSP advanced overrides',
+                                          bspAdvancedText,
+                                          (v) => bspAdvancedText = v,
+                                          helper:
+                                              '示例：divergence_rate-buy=1.2；macd_algo-seg=area；strict_bsp3-segbuy=true',
+                                          valid: _validBspAdvancedText(
+                                              bspAdvancedText),
+                                          maxLines: 8,
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1658,6 +1716,38 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       for (final item in _bspTypes)
         if (current.contains(item)) item
     ].join(',');
+  }
+
+  Map<String, String> _parseBspAdvancedText(String text) {
+    return _parseBspAdvancedTextOrNull(text) ?? const <String, String>{};
+  }
+
+  Map<String, String>? _parseBspAdvancedTextOrNull(String text) {
+    final result = <String, String>{};
+    for (final line in const LineSplitter().convert(text)) {
+      final raw = line.trim();
+      if (raw.isEmpty || raw.startsWith('#')) continue;
+      final sep = raw.indexOf('=');
+      if (sep <= 0) return null;
+      final key = raw.substring(0, sep).trim();
+      final value = raw.substring(sep + 1).trim();
+      if (value.isEmpty || !_validBspAdvancedKey(key)) return null;
+      result[key] = value;
+    }
+    return result;
+  }
+
+  bool _validBspAdvancedText(String text) {
+    return _parseBspAdvancedTextOrNull(text) != null;
+  }
+
+  bool _validBspAdvancedKey(String key) {
+    final dash = key.lastIndexOf('-');
+    if (dash <= 0 || dash >= key.length - 1) return false;
+    final name = key.substring(0, dash);
+    final suffix = key.substring(dash + 1);
+    return _bspAdvancedKeys.contains(name) &&
+        _bspAdvancedSuffixes.contains(suffix);
   }
 
   bool _validBspTypeText(String text) {
