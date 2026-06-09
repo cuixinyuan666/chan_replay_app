@@ -1,7 +1,6 @@
 import 'package:chan_replay_app/core/models/bsp.dart';
 import 'package:chan_replay_app/ui/widgets/bsp_chart_label_adapter.dart';
 import 'package:chan_replay_app/ui/widgets/chart_label_layout.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -56,7 +55,13 @@ void main() {
 
   test('detects bi and seg levels consistently', () {
     const bi = BspPoint(index: 0, rawIndex: 1, price: 1, type: '1', level: '');
-    const seg = BspPoint(index: 1, rawIndex: 2, price: 2, type: '1', level: 'segment');
+    const seg = BspPoint(
+      index: 1,
+      rawIndex: 2,
+      price: 2,
+      type: '1',
+      level: 'segment',
+    );
 
     expect(adapter.isBiLevel(bi), isTrue);
     expect(adapter.isSegLevel(bi), isFalse);
