@@ -224,6 +224,7 @@ docs/label_overlap_policy.md                K线图文字与标签避让策略
 python tools/audit_dart_algorithm_usage.py
 python tools/check_chanpy_guardrails.py
 python tools/validate_chanpy_output_contract.py path/to/analysis.json
+python tools/validate_easy_tdx_indicator_contract.py path/to/analysis.json
 ```
 
 GitHub Actions 已加入：
@@ -266,13 +267,15 @@ python tools/check_chanpy_guardrails.py
 19. 用户本地执行 flutter analyze，结果 No issues found。
 20. 已新增 Dart 算法边界审计、chan.py a_ 护栏、输出合同校验工具。
 21. 已新增 quick_guide 对齐矩阵、easy-tdx 指标合同、标签避让策略文档。
+22. 已新增 Flutter 通用标签避让布局器 `lib/ui/widgets/chart_label_layout.dart`。
+23. 已新增 easy-tdx / indicators 合同校验脚本 `tools/validate_easy_tdx_indicator_contract.py`。
 
 待完成：
 1. Windows / Android flutter run 实机验收。
 2. BSP 导出字段仍需用真实样本校验是否覆盖 chan.py 当前版本的所有买卖点对象形态。
 3. merged_bars 字段已返回，但仍需用长样本核对 raw_index/high/low/open/close 与 chan.py 预期是否完全一致。
 4. 删除或隔离旧 Dart 算法层中的生产链路入口。
-5. 在 OriginKlineChart 中实装统一 label lane / label layout，禁止文字、数字、标签重叠。
+5. 将 `chart_label_layout.dart` 接入 `OriginKlineChart` 的 FX / BI / SEG / ZS / BSP 文本绘制。
 6. easy-tdx VOL / amount / turnover / indicators 输出与 Flutter 副图显示。
 7. 进一步把 README 中 CChan / CChanConfig 说明链接到 Vespa quick_guide 对应章节。
 ```
