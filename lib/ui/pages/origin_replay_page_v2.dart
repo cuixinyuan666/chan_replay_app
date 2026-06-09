@@ -162,6 +162,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   bool _showBiBsp = true;
   bool _showSegBsp = true;
   bool _showMergedBars = false;
+  bool _showLayerStatusPanel = true;
   Timer? _timer;
   Timer? _toolbarCollapseTimer;
   Timer? _loadVisualTimer;
@@ -1870,7 +1871,6 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     );
   }
 
-
   void _addQuickTvTool(TradingViewDrawingTool tool) {
     if (_quickTvTools.contains(tool)) return;
     setState(() => _quickTvTools.add(tool));
@@ -1914,10 +1914,14 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
           width: 40,
           padding: const EdgeInsets.symmetric(vertical: 5),
           decoration: BoxDecoration(
-            color: active ? const Color(0xFF1E3A8A) : Colors.white.withValues(alpha: 0.05),
+            color: active
+                ? const Color(0xFF1E3A8A)
+                : Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(9),
             border: Border.all(
-                color: active ? const Color(0xFF8AB4FF) : Colors.white.withValues(alpha: 0.10)),
+                color: active
+                    ? const Color(0xFF8AB4FF)
+                    : Colors.white.withValues(alpha: 0.10)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1931,7 +1935,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
               for (final tool in _quickTvTools)
                 Tooltip(
                   waitDuration: const Duration(seconds: 3),
-                  message: '${TradingViewDrawingToolRegistry.metaOf(tool).label}\n右键或长按移出快捷栏',
+                  message:
+                      '${TradingViewDrawingToolRegistry.metaOf(tool).label}\n右键或长按移出快捷栏',
                   child: GestureDetector(
                     onTap: () => _selectQuickTvTool(tool),
                     onLongPress: () => _removeQuickTvTool(tool),
@@ -1944,7 +1949,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                         color: Colors.white.withValues(alpha: 0.04),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(_quickTvToolIcon(tool), size: 17, color: Colors.white70),
+                      child: Icon(_quickTvToolIcon(tool),
+                          size: 17, color: Colors.white70),
                     ),
                   ),
                 ),
@@ -1972,14 +1978,16 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
             children: [
               const SizedBox(height: 6),
               InkWell(
-                onTap: () => setState(() => _toolbarExpanded = !_toolbarExpanded),
+                onTap: () =>
+                    setState(() => _toolbarExpanded = !_toolbarExpanded),
                 child: SizedBox(
                   width: width,
                   height: 34,
                   child: Center(
                     child: Text(
                       _toolbarExpanded ? '<-' : '>',
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ),
                 ),
@@ -1999,6 +2007,14 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                             _loading ? null : _openDataPanel),
                         _toolIcon('CChanConfig 设置', Icons.tune,
                             _loading ? null : _openConfigPanel),
+                        _toolIcon(
+                            '图层状态面板',
+                            Icons.info_outline,
+                            _hasBars
+                                ? () => setState(() => _showLayerStatusPanel =
+                                    !_showLayerStatusPanel)
+                                : null,
+                            selected: _showLayerStatusPanel),
                         _toolIcon('本地CSV上传', Icons.upload_file,
                             _loading ? null : _pickCsv),
                         _toolIcon(
@@ -2045,14 +2061,18 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                             Icons.keyboard_arrow_up,
                             _hasBars
                                 ? () => setState(() => _priceScale =
-                                    (_priceScale * 1.18).clamp(0.35, 5.0).toDouble())
+                                    (_priceScale * 1.18)
+                                        .clamp(0.35, 5.0)
+                                        .toDouble())
                                 : null),
                         _toolIcon(
                             '上下缩小',
                             Icons.keyboard_arrow_down,
                             _hasBars
                                 ? () => setState(() => _priceScale =
-                                    (_priceScale / 1.18).clamp(0.35, 5.0).toDouble())
+                                    (_priceScale / 1.18)
+                                        .clamp(0.35, 5.0)
+                                        .toDouble())
                                 : null),
                         _toolIcon(
                             '重置缩放',
@@ -2075,8 +2095,6 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     );
   }
 
-
-
   Widget _toolIcon(String tooltip, IconData icon, VoidCallback? onPressed,
       {bool selected = false}) {
     return Tooltip(
@@ -2090,6 +2108,124 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
             backgroundColor:
                 selected ? const Color(0xFF2962FF) : Colors.transparent,
             visualDensity: VisualDensity.compact),
+      ),
+    );
+  }
+
+  Widget _buildLayerStatusPanel() {
+    final biBspCnt = _fullSnapshot.bsps.where(_isBiBsp).length;
+    final segBspCnt = _fullSnapshot.bsps.where(_isSegBsp).length;
+    final rows = [
+      _LayerStatusRow('FX', _fullSnapshot.fxs.length, _showFx),
+      _LayerStatusRow('BI', _fullSnapshot.bis.length, _showBi),
+      _LayerStatusRow('SEG', _fullSnapshot.segs.length, _showSeg),
+      _LayerStatusRow('ZS', _fullSnapshot.zss.length, _showZs),
+      _LayerStatusRow('笔BSP', biBspCnt, _showBiBsp),
+      _LayerStatusRow('段BSP', segBspCnt, _showSegBsp),
+      _LayerStatusRow('合并K线', _fullSnapshot.mergedBars.length, _showMergedBars),
+    ];
+
+    return Positioned(
+      top: 8,
+      right: 8,
+      child: IgnorePointer(
+        child: Container(
+          width: 236,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xEE131722),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.22),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.layers, size: 15, color: Colors.white70),
+                  SizedBox(width: 6),
+                  Text(
+                    '图层状态',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              for (final row in rows) _layerStatusLine(row),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _layerStatusLine(_LayerStatusRow row) {
+    final hasBackend = row.count > 0;
+    final effective = hasBackend && row.enabled;
+    final dataColor =
+        hasBackend ? const Color(0xFF66BB6A) : const Color(0xFFEF5350);
+    final showColor = row.enabled ? const Color(0xFF8AB4FF) : Colors.white38;
+    final effectiveColor = effective ? const Color(0xFF66BB6A) : Colors.white38;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 52,
+            child: Text(
+              row.label,
+              style: const TextStyle(color: Colors.white70, fontSize: 11),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          _layerStatusChip(
+            '后端 ${row.count}',
+            dataColor,
+          ),
+          const SizedBox(width: 5),
+          _layerStatusChip(
+            row.enabled ? '显示 开' : '显示 关',
+            showColor,
+          ),
+          const SizedBox(width: 5),
+          Icon(
+            effective ? Icons.visibility : Icons.visibility_off,
+            size: 13,
+            color: effectiveColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _layerStatusChip(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.72)),
+        color: color.withValues(alpha: 0.10),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -2131,12 +2267,14 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                   crosshairIndex: _crosshairIndex,
                   isChanOverlayVisible: _isChanOverlayVisible,
                   onChanOverlayToggled: _toggleChanOverlayTool,
-                  onCrosshairChanged: (i) => setState(() => _crosshairIndex = i),
+                  onCrosshairChanged: (i) =>
+                      setState(() => _crosshairIndex = i),
                   onPanBars: _panChartByBars,
                   onWindowSizeChanged: (v) => setState(() => _windowSize = v),
                   onPriceScaleChanged: (v) => setState(() => _priceScale = v),
                 ),
               ),
+              if (_showLayerStatusPanel) _buildLayerStatusPanel(),
               if (visualState != null)
                 Positioned.fill(child: ChanLoadingOverlay(state: visualState)),
             ],
@@ -2145,7 +2283,6 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       ),
     );
   }
-
 
   _Symbol? _parseSymbol(String input) {
     var text = input.trim().toUpperCase();
@@ -2382,6 +2519,14 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
   String _safeStoragePart(String raw) =>
       raw.replaceAll(RegExp('[^a-zA-Z0-9._-]+'), '_');
+}
+
+class _LayerStatusRow {
+  final String label;
+  final int count;
+  final bool enabled;
+
+  const _LayerStatusRow(this.label, this.count, this.enabled);
 }
 
 class _Symbol {
