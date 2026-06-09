@@ -88,6 +88,12 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   bool get _isStepMode => _mode == 'step';
   bool get _hasBars => _fullSnapshot.rawBars.isNotEmpty;
   int get _stepTotal => _frames.isNotEmpty ? _frames.length : _fullSnapshot.rawBars.length;
+  bool get _hasFx => _fullSnapshot.fxs.isNotEmpty;
+  bool get _hasFxLine => _fullSnapshot.fxs.length >= 2;
+  bool get _hasBi => _fullSnapshot.bis.isNotEmpty;
+  bool get _hasSeg => _fullSnapshot.segs.isNotEmpty;
+  bool get _hasZs => _fullSnapshot.zss.isNotEmpty;
+  bool get _hasMergedBars => _fullSnapshot.mergedBars.isNotEmpty;
   bool get _hasBiBsp => _fullSnapshot.bsps.any(_isBiBsp);
   bool get _hasSegBsp => _fullSnapshot.bsps.any(_isSegBsp);
 
@@ -134,19 +140,10 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
   Future<void> _load() async {
     if (_loading) return;
-    if (_startDate.isAfter(_endDate)) {
-      _showMessage('× 开始日期不能晚于结束日期');
-      return;
-    }
+    if (_startDate.isAfter(_endDate)) { _showMessage('× 开始日期不能晚于结束日期'); return; }
     final symbol = _parseSymbol(_stockCodeController.text.trim());
-    if (_dataSource != 'csv' && symbol == null) {
-      _showMessage('× 代码格式错误：请输入 000001 / 600000 / SZ000001 / 600000.SH');
-      return;
-    }
-    if (_dataSource == 'csv' && (_localCsvBars == null || _localCsvBars!.isEmpty)) {
-      _showMessage('× 请先选择本地 CSV');
-      return;
-    }
+    if (_dataSource != 'csv' && symbol == null) { _showMessage('× 代码格式错误：请输入 000001 / 600000 / SZ000001 / 600000.SH'); return; }
+    if (_dataSource == 'csv' && (_localCsvBars == null || _localCsvBars!.isEmpty)) { _showMessage('× 请先选择本地 CSV'); return; }
 
     setState(() => _loading = true);
     final source = PythonChanAnalysisSource(baseUrl: _backendUrlController.text.trim());
@@ -159,55 +156,30 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         _stopPlay();
         _fullSnapshot = analysis.snapshot;
         _frames = analysis.frames;
-        if (_isStepMode && _frames.isNotEmpty) {
-          _cursor = 0;
-          _snapshot = _frames.first;
-        } else {
-          _cursor = _isStepMode ? math.min(120, analysis.snapshot.rawBars.length).toInt() : analysis.snapshot.rawBars.length;
-          _snapshot = _isStepMode ? _sliceSnapshot(analysis.snapshot, _cursor) : analysis.snapshot;
-        }
-        _viewEndIndex = null;
-        _crosshairIndex = null;
-        _priceScale = 1.0;
+        if (_isStepMode && _frames.isNotEmpty) { _cursor = 0; _snapshot = _frames.first; }
+        else { _cursor = _isStepMode ? math.min(120, analysis.snapshot.rawBars.length).toInt() : analysis.snapshot.rawBars.length; _snapshot = _isStepMode ? _sliceSnapshot(analysis.snapshot, _cursor) : analysis.snapshot; }
+        _viewEndIndex = null; _crosshairIndex = null; _priceScale = 1.0;
         final name = _dataSource == 'csv' ? (_localCsvName.isEmpty ? '本地CSV' : _localCsvName) : '${symbol!.market}${symbol.code}';
         final biBspCnt = _snapshot.bsps.where(_isBiBsp).length;
         final segBspCnt = _snapshot.bsps.where(_isSegBsp).length;
         _status = 'chan.py 获取$name $_periodAdjustLabel K:${_snapshot.rawBars.length} MB:${_snapshot.mergedBars.length} FX:${_snapshot.fxs.length} BI:${_snapshot.bis.length} SEG:${_snapshot.segs.length} ZS:${_snapshot.zss.length} BSP:${_snapshot.bsps.length} 笔BSP:$biBspCnt 段BSP:$segBspCnt';
       });
       _showMessage('√ $_status');
-    } catch (e) {
-      if (mounted) _showMessage('× Python chan.py 引擎失败：$e');
-    } finally {
-      source.close();
-      if (mounted) setState(() => _loading = false);
-    }
+    } catch (e) { if (mounted) _showMessage('× Python chan.py 引擎失败：$e'); }
+    finally { source.close(); if (mounted) setState(() => _loading = false); }
   }
 
   Future<void> _pickCsv() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['csv', 'txt'], withData: true);
     if (result == null || result.files.isEmpty) return;
-    final file = result.files.single;
-    final bytes = file.bytes;
-    if (bytes == null) {
-      _showMessage('× 读取 CSV 失败：未返回文件内容');
-      return;
-    }
+    final file = result.files.single; final bytes = file.bytes;
+    if (bytes == null) { _showMessage('× 读取 CSV 失败：未返回文件内容'); return; }
     try {
       final rows = _parseCsvBars(utf8.decode(bytes, allowMalformed: true));
-      if (rows.isEmpty) {
-        _showMessage('× CSV 未识别到 K线，请检查列名 time/open/high/low/close');
-        return;
-      }
-      setState(() {
-        _dataSource = 'csv';
-        _localCsvName = file.name;
-        _localCsvBars = rows;
-        _status = '已读取本地CSV ${file.name}，${rows.length} 根K线，等待 Python chan.py 分析';
-      });
+      if (rows.isEmpty) { _showMessage('× CSV 未识别到 K线，请检查列名 time/open/high/low/close'); return; }
+      setState(() { _dataSource = 'csv'; _localCsvName = file.name; _localCsvBars = rows; _status = '已读取本地CSV ${file.name}，${rows.length} 根K线，等待 Python chan.py 分析'; });
       await _load();
-    } catch (e) {
-      _showMessage('× CSV 解析失败：$e');
-    }
+    } catch (e) { _showMessage('× CSV 解析失败：$e'); }
   }
 
   List<RawBar> _parseCsvBars(String text) {
@@ -217,21 +189,14 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     final headers = lines.first.split(sep).map((e) => e.trim().toLowerCase()).toList();
     int col(List<String> names) => headers.indexWhere((h) => names.contains(h));
     final timeCol = col(['time', 'dt', 'date', 'datetime', 'trade_date']);
-    final openCol = col(['open', 'o']);
-    final highCol = col(['high', 'h']);
-    final lowCol = col(['low', 'l']);
-    final closeCol = col(['close', 'c']);
-    final volCol = col(['vol', 'volume', 'v']);
+    final openCol = col(['open', 'o']); final highCol = col(['high', 'h']); final lowCol = col(['low', 'l']); final closeCol = col(['close', 'c']); final volCol = col(['vol', 'volume', 'v']);
     if ([timeCol, openCol, highCol, lowCol, closeCol].any((e) => e < 0)) return [];
     final bars = <RawBar>[];
     for (var i = 1; i < lines.length; i++) {
       final cells = lines[i].split(sep).map((e) => e.trim()).toList();
       if (cells.length <= [timeCol, openCol, highCol, lowCol, closeCol].reduce(math.max)) continue;
       final time = DateTime.tryParse(cells[timeCol].replaceAll('/', '-').replaceFirst(' ', 'T'));
-      final open = double.tryParse(cells[openCol].replaceAll(',', ''));
-      final high = double.tryParse(cells[highCol].replaceAll(',', ''));
-      final low = double.tryParse(cells[lowCol].replaceAll(',', ''));
-      final close = double.tryParse(cells[closeCol].replaceAll(',', ''));
+      final open = double.tryParse(cells[openCol].replaceAll(',', '')); final high = double.tryParse(cells[highCol].replaceAll(',', '')); final low = double.tryParse(cells[lowCol].replaceAll(',', '')); final close = double.tryParse(cells[closeCol].replaceAll(',', ''));
       final vol = volCol >= 0 && volCol < cells.length ? double.tryParse(cells[volCol].replaceAll(',', '')) ?? 0 : 0.0;
       if (time == null || open == null || high == null || low == null || close == null) continue;
       bars.add(RawBar(index: bars.length, time: time, open: open, high: math.max(math.max(open, high), math.max(low, close)), low: math.min(math.min(open, high), math.min(low, close)), close: close, volume: vol));
@@ -286,7 +251,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
               const SizedBox(height: 8), _sectionTitle('买卖点 BSP'), TextFormField(initialValue: bsType, enabled: !_loading, decoration: const InputDecoration(labelText: 'bs_type', helperText: '例如 1,1p,2,2s,3a,3b', border: OutlineInputBorder()), onChanged: (v) => bsType = v.trim()),
               const SizedBox(height: 10), Row(children: [Expanded(child: TextFormField(initialValue: divergenceRate, enabled: !_loading, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'divergence_rate', border: OutlineInputBorder()), onChanged: (v) => divergenceRate = v.trim())), const SizedBox(width: 10), Expanded(child: TextFormField(initialValue: maxBs2Rate, enabled: !_loading, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'max_bs2_rate', border: OutlineInputBorder()), onChanged: (v) => maxBs2Rate = v.trim()))]),
               const SizedBox(height: 10), Row(children: [Expanded(child: TextFormField(initialValue: '$minZsCnt', enabled: !_loading, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'min_zs_cnt', border: OutlineInputBorder()), onChanged: (v) => minZsCnt = int.tryParse(v.trim()) ?? minZsCnt)), const SizedBox(width: 10), Expanded(child: TextFormField(initialValue: '$bsp3aMaxZsCnt', enabled: !_loading, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'bsp3a_max_zs_cnt', border: OutlineInputBorder()), onChanged: (v) => bsp3aMaxZsCnt = int.tryParse(v.trim()) ?? bsp3aMaxZsCnt))]),
-              const SizedBox(height: 10), _dropdown('macd_algo', macdAlgo, const ['peak', 'area', 'full_area', 'slope'], (v) => setSheetState(() => macdAlgo = v ?? macdAlgo)), SwitchListTile(value: bs1Peak, onChanged: _loading ? null : (v) => setSheetState(() => bs1Peak = v), title: const Text('bs1_peak')), SwitchListTile(value: bsp2Follow1, onChanged: _loading ? null : (v) => setSheetState(() => bsp2Follow1 = v), title: const Text('bsp2_follow_1')), SwitchListTile(value: bsp3Follow1, onChanged: _loading ? null : (v) => setSheetState(() => bsp3Follow1 = v), title: const Text('bsp3_follow_1')), SwitchListTile(value: bsp3Peak, onChanged: _loading ? null : (v) => setSheetState(() => bsp3Peak = v), title: const Text('bsp3_peak')), SwitchListTile(value: bsp2sFollow2, onChanged: _loading ? null : (v) => setSheetState(() => bsp2sFollow2 = v), title: const Text('bsp2s_follow_2')), SwitchListTile(value: strictBsp3, onChanged: _loading ? null : (v) => setSheetState(() => strictBsp3 = v), title: const Text('strict_bsp3')),
+              const SizedBox(height: 10), _dropdown('macd_algo', macdAlgo, const ['peak', 'area', 'full_area', 'slope'], (v) => setSheetState(() => macdAlgo = v ?? macdAlgo)), SwitchListTile(value: bs1Peak, onChanged: _loading ? null : (v) => setSheetState(() => bs1Peak = v), title: const Text('bs1_peak')), SwitchListTile(value: bsp2Follow1, onChanged: _loading ? null : (v) => setSheetState(() => bsp2Follow1 = v), title: const Text('bsp2_follow_1')), SwitchListTile(value: bsp3Follow1, onChanged: _loading ? null : (v) => setSheetState(() => bsp3Follow1 = v), title: const Text('bsp3_follow_1')), SwitchListTile(value: bsp3Peak, onChanged: _loading ? null : (v) => setSheetState(() => bsp3Peak = v), title: const Text('bsp3_peak')), SwitchListTile(value: bsp2sFollow2, onChanged: _loading ? null : (v) => setSheetState(() => bsp2sFollow2 = v), title: const Text('bsp2_follow_2')), SwitchListTile(value: strictBsp3, onChanged: _loading ? null : (v) => setSheetState(() => strictBsp3 = v), title: const Text('strict_bsp3')),
             ])),
           ])),
           SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _loading ? null : applyAndReload, icon: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh), label: const Text('应用并重新计算'))),
@@ -303,9 +268,25 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   @override
   Widget build(BuildContext context) => Scaffold(backgroundColor: const Color(0xFF0B0D10), appBar: AppBar(toolbarHeight: 40, elevation: 0, backgroundColor: const Color(0xFF131722), title: Text(_status, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54))), body: SafeArea(top: false, child: Row(children: [_buildLeftToolbar(), Expanded(child: Column(children: [Expanded(child: _buildChartPanel()), if (_isStepMode) ReplayControllerBar(enabled: _hasBars, playing: _playing, cursor: _cursor, total: _stepTotal, onReset: _reset, onStepBack: _stepBack, onStepForward: _stepForward, onTogglePlay: _togglePlay, onSliderChanged: (v) => _jumpTo(v.round()))]))])));
 
-  Widget _buildLeftToolbar() => AnimatedContainer(duration: const Duration(milliseconds: 160), width: _toolbarExpanded ? 48 : 28, color: const Color(0xFF131722), child: SingleChildScrollView(child: Column(children: [const SizedBox(height: 6), InkWell(onTap: () => setState(() => _toolbarExpanded = !_toolbarExpanded), child: SizedBox(width: _toolbarExpanded ? 36 : 24, height: 30, child: Center(child: Text(_toolbarExpanded ? '<-' : '->', style: const TextStyle(color: Colors.white70))))), if (_toolbarExpanded) ...[const Divider(height: 12, color: Colors.white12), _toolIcon('数据/标的/周期/日期', Icons.search, _loading ? null : _openDataPanel), _toolIcon('CChanConfig 设置', Icons.tune, _loading ? null : _openConfigPanel), _toolIcon('本地CSV上传', Icons.upload_file, _loading ? null : _pickCsv), _toolIcon('一次性显示', Icons.fullscreen, _hasBars ? () => setState(() { _mode = 'once'; _cursor = _fullSnapshot.rawBars.length; _snapshot = _fullSnapshot; }) : null, selected: _mode == 'once'), _toolIcon('严格逐K', Icons.play_circle_outline, _hasBars ? () => setState(() { _mode = 'step'; _cursor = 0; _snapshot = _frames.isNotEmpty ? _frames.first : _sliceSnapshot(_fullSnapshot, 0); }) : null, selected: _mode == 'step'), const Divider(height: 18, color: Colors.white12), _toolIcon('显示分型顶底', Icons.trip_origin, _hasBars ? () => setState(() => _showFx = !_showFx) : null, selected: _showFx), _toolIcon('显示分型顶底文字', Icons.title, _hasBars && _showFx ? () => setState(() => _showFxText = !_showFxText) : null, selected: _showFxText), _toolIcon('显示分型顶底连线', Icons.timeline, _hasBars ? () => setState(() => _showFxLine = !_showFxLine) : null, selected: _showFxLine), _toolIcon('显示笔', Icons.show_chart, _hasBars ? () => setState(() => _showBi = !_showBi) : null, selected: _showBi), _toolIcon('显示笔端点文字', Icons.text_fields, _hasBars && _showBi ? () => setState(() => _showBiText = !_showBiText) : null, selected: _showBiText), _toolIcon('显示线段', Icons.multiline_chart, _hasBars ? () => setState(() => _showSeg = !_showSeg) : null, selected: _showSeg), _toolIcon('显示线段端点文字', Icons.font_download_outlined, _hasBars && _showSeg ? () => setState(() => _showSegText = !_showSegText) : null, selected: _showSegText), _toolIcon('显示中枢', Icons.crop_square, _hasBars ? () => setState(() => _showZs = !_showZs) : null, selected: _showZs), _toolIcon('显示笔买卖点', Icons.change_circle, _hasBars && _hasBiBsp ? () => setState(() => _showBiBsp = !_showBiBsp) : null, selected: _showBiBsp && _hasBiBsp), _toolIcon('显示线段买卖点', Icons.timeline, _hasBars && _hasSegBsp ? () => setState(() => _showSegBsp = !_showSegBsp) : null, selected: _showSegBsp && _hasSegBsp), _toolIcon('显示合并K线', Icons.filter_none, _hasBars && _snapshot.mergedBars.isNotEmpty ? () => setState(() => _showMergedBars = !_showMergedBars) : null, selected: _showMergedBars && _snapshot.mergedBars.isNotEmpty), const Divider(height: 18, color: Colors.white12), _toolIcon('左右放大', Icons.zoom_in, _hasBars ? () => setState(() => _windowSize = (_windowSize - 15).clamp(24, 360).toInt()) : null), _toolIcon('左右缩小', Icons.zoom_out, _hasBars ? () => setState(() => _windowSize = (_windowSize + 15).clamp(24, 360).toInt()) : null), _toolIcon('上下放大', Icons.keyboard_arrow_up, _hasBars ? () => setState(() => _priceScale = (_priceScale * 1.18).clamp(0.35, 5.0).toDouble()) : null), _toolIcon('上下缩小', Icons.keyboard_arrow_down, _hasBars ? () => setState(() => _priceScale = (_priceScale / 1.18).clamp(0.35, 5.0).toDouble()) : null), _toolIcon('重置缩放', Icons.center_focus_strong, _hasBars ? () => setState(() { _windowSize = 90; _priceScale = 1.0; _viewEndIndex = null; }) : null)]])));
+  Widget _buildLeftToolbar() => AnimatedContainer(duration: const Duration(milliseconds: 160), width: _toolbarExpanded ? 48 : 28, color: const Color(0xFF131722), child: SingleChildScrollView(child: Column(children: [const SizedBox(height: 6), InkWell(onTap: () => setState(() => _toolbarExpanded = !_toolbarExpanded), child: SizedBox(width: _toolbarExpanded ? 36 : 24, height: 30, child: Center(child: Text(_toolbarExpanded ? '<-' : '->', style: const TextStyle(color: Colors.white70))))), if (_toolbarExpanded) ...[
+    const Divider(height: 12, color: Colors.white12),
+    _toolIcon('数据/标的/周期/日期', Icons.search, _loading ? null : _openDataPanel), _toolIcon('CChanConfig 设置', Icons.tune, _loading ? null : _openConfigPanel), _toolIcon('本地CSV上传', Icons.upload_file, _loading ? null : _pickCsv), _toolIcon('一次性显示', Icons.fullscreen, _hasBars ? () => setState(() { _mode = 'once'; _cursor = _fullSnapshot.rawBars.length; _snapshot = _fullSnapshot; }) : null, selected: _mode == 'once'), _toolIcon('严格逐K', Icons.play_circle_outline, _hasBars ? () => setState(() { _mode = 'step'; _cursor = 0; _snapshot = _frames.isNotEmpty ? _frames.first : _sliceSnapshot(_fullSnapshot, 0); }) : null, selected: _mode == 'step'),
+    const Divider(height: 18, color: Colors.white12),
+    _toolIcon('显示分型顶底', Icons.trip_origin, _hasFx ? () => setState(() => _showFx = !_showFx) : null, selected: _showFx && _hasFx),
+    _toolIcon('显示分型顶底文字', Icons.title, _hasFx && _showFx ? () => setState(() => _showFxText = !_showFxText) : null, selected: _showFxText && _hasFx && _showFx),
+    _toolIcon('显示分型顶底连线', Icons.timeline, _hasFxLine ? () => setState(() => _showFxLine = !_showFxLine) : null, selected: _showFxLine && _hasFxLine),
+    _toolIcon('显示笔', Icons.show_chart, _hasBi ? () => setState(() => _showBi = !_showBi) : null, selected: _showBi && _hasBi),
+    _toolIcon('显示笔端点文字', Icons.text_fields, _hasBi && _showBi ? () => setState(() => _showBiText = !_showBiText) : null, selected: _showBiText && _hasBi && _showBi),
+    _toolIcon('显示线段', Icons.multiline_chart, _hasSeg ? () => setState(() => _showSeg = !_showSeg) : null, selected: _showSeg && _hasSeg),
+    _toolIcon('显示线段端点文字', Icons.font_download_outlined, _hasSeg && _showSeg ? () => setState(() => _showSegText = !_showSegText) : null, selected: _showSegText && _hasSeg && _showSeg),
+    _toolIcon('显示中枢', Icons.crop_square, _hasZs ? () => setState(() => _showZs = !_showZs) : null, selected: _showZs && _hasZs),
+    _toolIcon('显示笔买卖点', Icons.change_circle, _hasBiBsp ? () => setState(() => _showBiBsp = !_showBiBsp) : null, selected: _showBiBsp && _hasBiBsp),
+    _toolIcon('显示线段买卖点', Icons.timeline, _hasSegBsp ? () => setState(() => _showSegBsp = !_showSegBsp) : null, selected: _showSegBsp && _hasSegBsp),
+    _toolIcon('显示合并K线', Icons.filter_none, _hasMergedBars ? () => setState(() => _showMergedBars = !_showMergedBars) : null, selected: _showMergedBars && _hasMergedBars),
+    const Divider(height: 18, color: Colors.white12),
+    _toolIcon('左右放大', Icons.zoom_in, _hasBars ? () => setState(() => _windowSize = (_windowSize - 15).clamp(24, 360).toInt()) : null), _toolIcon('左右缩小', Icons.zoom_out, _hasBars ? () => setState(() => _windowSize = (_windowSize + 15).clamp(24, 360).toInt()) : null), _toolIcon('上下放大', Icons.keyboard_arrow_up, _hasBars ? () => setState(() => _priceScale = (_priceScale * 1.18).clamp(0.35, 5.0).toDouble()) : null), _toolIcon('上下缩小', Icons.keyboard_arrow_down, _hasBars ? () => setState(() => _priceScale = (_priceScale / 1.18).clamp(0.35, 5.0).toDouble()) : null), _toolIcon('重置缩放', Icons.center_focus_strong, _hasBars ? () => setState(() { _windowSize = 90; _priceScale = 1.0; _viewEndIndex = null; }) : null)]])));
   Widget _toolIcon(String tooltip, IconData icon, VoidCallback? onPressed, {bool selected = false}) => Tooltip(message: onPressed == null ? '$tooltip（当前不可用）' : tooltip, child: IconButton(onPressed: onPressed, icon: Icon(icon, size: 19), color: selected ? Colors.white : Colors.white60, disabledColor: Colors.white24, style: IconButton.styleFrom(backgroundColor: selected ? const Color(0xFF2962FF) : Colors.transparent, visualDensity: VisualDensity.compact)));
-  Widget _buildChartPanel() => Padding(padding: const EdgeInsets.fromLTRB(4, 4, 4, 2), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: DecoratedBox(decoration: BoxDecoration(color: const Color(0xFF0B0D10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))), child: OriginKlineChart(snapshot: _snapshot, showFx: _showFx, showFxLine: _showFxLine, showFxText: _showFxText, showBi: _showBi, showBiText: _showBiText, showSeg: _showSeg, showSegText: _showSegText, showZs: _showZs, showBiBsp: _showBiBsp, showSegBsp: _showSegBsp, showMergedBars: _showMergedBars, drawingStorageKey: _drawingStorageKey, windowSize: _windowSize, priceScale: _priceScale, viewEndIndex: _viewEndIndex, crosshairIndex: _crosshairIndex, onCrosshairChanged: (i) => setState(() => _crosshairIndex = i), onPanBars: _panChartByBars, onWindowSizeChanged: (v) => setState(() => _windowSize = v), onPriceScaleChanged: (v) => setState(() => _priceScale = v)))));
+  Widget _buildChartPanel() => Padding(padding: const EdgeInsets.fromLTRB(4, 4, 4, 2), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: DecoratedBox(decoration: BoxDecoration(color: const Color(0xFF0B0D10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))), child: OriginKlineChart(snapshot: _snapshot, showFx: _showFx && _hasFx, showFxLine: _showFxLine && _hasFxLine, showFxText: _showFxText && _hasFx, showBi: _showBi && _hasBi, showBiText: _showBiText && _hasBi, showSeg: _showSeg && _hasSeg, showSegText: _showSegText && _hasSeg, showZs: _showZs && _hasZs, showBiBsp: _showBiBsp && _hasBiBsp, showSegBsp: _showSegBsp && _hasSegBsp, showMergedBars: _showMergedBars && _hasMergedBars, drawingStorageKey: _drawingStorageKey, windowSize: _windowSize, priceScale: _priceScale, viewEndIndex: _viewEndIndex, crosshairIndex: _crosshairIndex, onCrosshairChanged: (i) => setState(() => _crosshairIndex = i), onPanBars: _panChartByBars, onWindowSizeChanged: (v) => setState(() => _windowSize = v), onPriceScaleChanged: (v) => setState(() => _priceScale = v)))));
 
   _Symbol? _parseSymbol(String input) { var text = input.trim().toUpperCase(); if (text.endsWith('.SZ') || text.endsWith('.SH')) text = text.substring(0, 6); if (text.startsWith('SZ') || text.startsWith('SH')) text = text.substring(2); if (!RegExp(r'^\d{6}$').hasMatch(text)) return null; return _Symbol(code: text, market: text.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ'); }
   void _showMessage(String message) { if (!mounted) return; ScaffoldMessenger.of(context).hideCurrentSnackBar(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 3))); }
