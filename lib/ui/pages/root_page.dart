@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'ashare_bsp_scanner_page.dart';
+import 'easy_tdx_indicator_page.dart';
 import 'origin_replay_page_v2.dart';
 
 class RootPage extends StatefulWidget {
@@ -29,6 +30,7 @@ class _RootPageState extends State<RootPage> {
               children: const [
                 OriginReplayPageV2(),
                 AshareBspScannerPage(),
+                EasyTdxIndicatorPage(),
               ],
             ),
           ),
@@ -65,6 +67,13 @@ class _RootLeftToolbar extends StatelessWidget {
               value: 1,
               icon: Icons.radar,
               label: '扫描器',
+            ),
+            const SizedBox(height: 8),
+            _item(
+              context,
+              value: 2,
+              icon: Icons.insights,
+              label: '指标',
             ),
           ],
         ),
