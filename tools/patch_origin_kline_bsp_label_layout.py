@@ -18,7 +18,6 @@ After `--apply`, run:
 from __future__ import annotations
 
 import argparse
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +28,10 @@ IMPORT_INSERT = "import 'bsp_chart_label_adapter.dart';\nimport 'chart_label_lay
 
 LABEL_LIST_ANCHOR = "    double rawToX(int rawIndex) => rect.left + (rawIndex - start + 0.5) * step;\n\n"
 LABEL_LIST_INSERT = (
+    "    final chartLabels = <ChartLabel>[];\n"
+    "    const bspLabelAdapter = BspChartLabelAdapter();\n\n"
+)
+OLD_LABEL_LIST_INSERT = (
     "    final chartLabels = <ChartLabel>[];\n"
     "    final bspLabelAdapter = const BspChartLabelAdapter();\n\n"
 )
@@ -113,6 +116,16 @@ def replace_once(source: str, old: str, new: str, label: str) -> tuple[str, bool
     return source.replace(old, new, 1), True, f"applied: {label}"
 
 
+def normalize_previous_patch(source: str) -> tuple[str, bool, str]:
+    if OLD_LABEL_LIST_INSERT in source:
+        return (
+            source.replace(OLD_LABEL_LIST_INSERT, LABEL_LIST_INSERT, 1),
+            True,
+            "normalized: const BSP label adapter",
+        )
+    return source, False, "already normalized: const BSP label adapter"
+
+
 def apply_patch(source: str) -> PatchResult:
     changed = False
     notes: list[str] = []
@@ -171,6 +184,10 @@ def apply_patch(source: str) -> PatchResult:
     changed |= did
     notes.append(note)
 
+    source, did, note = normalize_previous_patch(source)
+    changed |= did
+    notes.append(note)
+
     return PatchResult(content=source, changed=changed, notes=notes)
 
 
@@ -182,8 +199,8 @@ def main() -> int:
     args = parser.parse_args()
 
     if not TARGET.exists():
-      print(f"FAIL: {TARGET} does not exist")
-      return 1
+        print(f"FAIL: {TARGET} does not exist")
+        return 1
 
     source = TARGET.read_text(encoding="utf-8")
     try:
