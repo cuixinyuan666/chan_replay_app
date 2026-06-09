@@ -13,6 +13,7 @@ dependencies:
   http: ^1.2.2
   candlesticks: ^3.0.1
   url_launcher: ^6.3.1
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
