@@ -223,7 +223,7 @@ docs/label_overlap_policy.md                K线图文字与标签避让策略
 ```bash
 python tools/audit_dart_algorithm_usage.py
 python tools/check_chanpy_guardrails.py
-python tools/audit_bsp_label_layout_usage.py
+python tools/audit_bsp_label_layout_usage.py --strict
 python tools/validate_chanpy_output_contract.py path/to/analysis.json
 python tools/validate_easy_tdx_indicator_contract.py path/to/analysis.json
 ```
@@ -243,7 +243,8 @@ flutter test test/chart_label_layout_test.dart
 flutter test test/bsp_chart_label_adapter_test.dart
 python tools/audit_dart_algorithm_usage.py
 python tools/check_chanpy_guardrails.py
-python tools/audit_bsp_label_layout_usage.py
+python tools/patch_origin_kline_bsp_label_layout.py --check
+python tools/audit_bsp_label_layout_usage.py --strict
 python tools/validate_easy_tdx_indicator_contract.py test/fixtures/easy_tdx_indicator_contract_valid.json
 ```
 
@@ -276,16 +277,17 @@ python tools/validate_easy_tdx_indicator_contract.py test/fixtures/easy_tdx_indi
 23. 已新增 easy-tdx / indicators 合同校验脚本 `tools/validate_easy_tdx_indicator_contract.py`。
 24. 已新增 BSP 到 ChartLabel 的 UI 适配层 `lib/ui/widgets/bsp_chart_label_adapter.dart`。
 25. 已新增 chart label 与 BSP label adapter 单元测试，并纳入 GitHub Actions。
-26. 已新增 BSP label layout 迁移审计脚本 `tools/audit_bsp_label_layout_usage.py`，当前为 warning 模式。
+26. 已新增 BSP label layout 迁移审计脚本 `tools/audit_bsp_label_layout_usage.py`，并切换为 strict 护栏。
+27. 已将 `bsp_chart_label_adapter.dart` 和 `chart_label_layout.dart` 接入 `OriginKlineChart` 的 BSP 文本绘制。
+28. 用户本地验证通过：`flutter analyze` 为 No issues found，`audit_bsp_label_layout_usage.py --strict` 通过，两个 label 相关 Flutter test 全部通过。
 
 待完成：
 1. Windows / Android flutter run 实机验收。
 2. BSP 导出字段仍需用真实样本校验是否覆盖 chan.py 当前版本的所有买卖点对象形态。
 3. merged_bars 字段已返回，但仍需用长样本核对 raw_index/high/low/open/close 与 chan.py 预期是否完全一致。
 4. 删除或隔离旧 Dart 算法层中的生产链路入口。
-5. 将 `bsp_chart_label_adapter.dart` 和 `chart_label_layout.dart` 接入 `OriginKlineChart` 的 BSP 文本绘制；接入完成后把 `audit_bsp_label_layout_usage.py` 切换为 `--strict`。
-6. easy-tdx VOL / amount / turnover / indicators 输出与 Flutter 副图显示。
-7. 进一步把 README 中 CChan / CChanConfig 说明链接到 Vespa quick_guide 对应章节。
+5. easy-tdx VOL / amount / turnover / indicators 输出与 Flutter 副图显示。
+6. 进一步把 README 中 CChan / CChanConfig 说明链接到 Vespa quick_guide 对应章节。
 ```
 
 ## 当前注意事项
