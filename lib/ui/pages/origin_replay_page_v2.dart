@@ -91,6 +91,17 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   bool get _hasBiBsp => _fullSnapshot.bsps.any(_isBiBsp);
   bool get _hasSegBsp => _fullSnapshot.bsps.any(_isSegBsp);
 
+  String get _drawingStorageKey {
+    final source = _dataSource.trim().isEmpty ? 'source' : _dataSource.trim();
+    if (_dataSource == 'csv') {
+      final csvName = _localCsvName.trim().isEmpty ? 'local_csv' : _localCsvName.trim();
+      return _safeStoragePart('drawing_${source}_$csvName_${_period}_$_adjust');
+    }
+    final symbol = _parseSymbol(_stockCodeController.text.trim());
+    final symbolKey = symbol == null ? _stockCodeController.text.trim().toUpperCase() : '${symbol.market}${symbol.code}';
+    return _safeStoragePart('drawing_${source}_$symbolKey_${_period}_$_adjust');
+  }
+
   Map<String, dynamic> get _chanConfig => {
         'bi_algo': _biAlgo,
         'bi_strict': _biStrict,
@@ -551,7 +562,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
   Widget _toolIcon(String tooltip, IconData icon, VoidCallback? onPressed, {bool selected = false}) => Tooltip(message: onPressed == null ? '$tooltip（当前不可用）' : tooltip, child: IconButton(onPressed: onPressed, icon: Icon(icon, size: 19), color: selected ? Colors.white : Colors.white60, disabledColor: Colors.white24, style: IconButton.styleFrom(backgroundColor: selected ? const Color(0xFF2962FF) : Colors.transparent, visualDensity: VisualDensity.compact)));
 
-  Widget _buildChartPanel() => Padding(padding: const EdgeInsets.fromLTRB(4, 4, 4, 2), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: DecoratedBox(decoration: BoxDecoration(color: const Color(0xFF0B0D10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))), child: OriginKlineChart(snapshot: _snapshot, showFx: _showFx, showFxLine: _showFxLine, showFxText: _showFxText, showBi: _showBi, showBiText: _showBiText, showSeg: _showSeg, showSegText: _showSegText, showZs: _showZs, showBiBsp: _showBiBsp, showSegBsp: _showSegBsp, showMergedBars: _showMergedBars, windowSize: _windowSize, priceScale: _priceScale, viewEndIndex: _viewEndIndex, crosshairIndex: _crosshairIndex, onCrosshairChanged: (i) => setState(() => _crosshairIndex = i), onPanBars: _panChartByBars, onWindowSizeChanged: (v) => setState(() => _windowSize = v), onPriceScaleChanged: (v) => setState(() => _priceScale = v)))));
+  Widget _buildChartPanel() => Padding(padding: const EdgeInsets.fromLTRB(4, 4, 4, 2), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: DecoratedBox(decoration: BoxDecoration(color: const Color(0xFF0B0D10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))), child: OriginKlineChart(snapshot: _snapshot, showFx: _showFx, showFxLine: _showFxLine, showFxText: _showFxText, showBi: _showBi, showBiText: _showBiText, showSeg: _showSeg, showSegText: _showSegText, showZs: _showZs, showBiBsp: _showBiBsp, showSegBsp: _showSegBsp, showMergedBars: _showMergedBars, drawingStorageKey: _drawingStorageKey, windowSize: _windowSize, priceScale: _priceScale, viewEndIndex: _viewEndIndex, crosshairIndex: _crosshairIndex, onCrosshairChanged: (i) => setState(() => _crosshairIndex = i), onPanBars: _panChartByBars, onWindowSizeChanged: (v) => setState(() => _windowSize = v), onPriceScaleChanged: (v) => setState(() => _priceScale = v)))));
 
   _Symbol? _parseSymbol(String input) {
     var text = input.trim().toUpperCase();
@@ -571,6 +582,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   String _periodLabel(String p) => {'MIN1': '1分钟', 'MIN5': '5分钟', 'MIN15': '15分钟', 'MIN30': '30分钟', 'MIN60': '60分钟', 'DAILY': '日线', 'WEEKLY': '周线', 'MONTHLY': '月线'}[p] ?? p;
   String _adjustLabel(String a) => {'QFQ': '前复权', 'HFQ': '后复权', 'NONE': '不复权'}[a] ?? a;
   String _fmtDate(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String _safeStoragePart(String raw) => raw.replaceAll(RegExp('[^a-zA-Z0-9._-]+'), '_');
 }
 
 class _Symbol {
