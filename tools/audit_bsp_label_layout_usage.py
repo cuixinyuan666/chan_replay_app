@@ -18,27 +18,37 @@ from __future__ import annotations
 
 import argparse
 import re
-import sys
 from pathlib import Path
 
 TARGET = Path("lib/ui/widgets/origin_kline_chart.dart")
 
 
 def _extract_method_body(source: str, method_name: str) -> str:
-    match = re.search(rf"\n\s*void\s+{re.escape(method_name)}\s*\([^)]*\)\s*\{{", source)
+    """Return a Dart method body by scanning from the method name to the next brace.
+
+    A simple `[^)]*` regex fails for Dart signatures containing callback types
+    such as `double Function(double) priceToY`; those signatures contain nested
+    parentheses before the method body. This scanner is intentionally small and
+    robust enough for the painter methods used here.
+    """
+    match = re.search(rf"\bvoid\s+{re.escape(method_name)}\b", source)
     if not match:
         return ""
-    start = match.end() - 1
+
+    open_brace = source.find("{", match.end())
+    if open_brace < 0:
+        return ""
+
     depth = 0
-    for i in range(start, len(source)):
+    for i in range(open_brace, len(source)):
         ch = source[i]
         if ch == "{":
             depth += 1
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return source[start : i + 1]
-    return source[start:]
+                return source[open_brace : i + 1]
+    return source[open_brace:]
 
 
 def main() -> int:
