@@ -3,8 +3,11 @@ include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
     - lib/ui/pages/replay_page.dart
+  errors:
+    dangling_library_doc_comments: ignore
 
 linter:
   rules:
     avoid_print: false
     unnecessary_brace_in_string_interps: false
+    curly_braces_in_flow_control_structures: false
