@@ -34,6 +34,13 @@ ALLOWED_NON_PRODUCTION_PARTS = {
     "tests",
 }
 
+# Definition files are allowed to exist temporarily while the branch is being
+# migrated. The blocking rule is about importing or instantiating them from the
+# production route.
+ENGINE_DEFINITION_PREFIXES = (
+    "lib/core/engine/",
+)
+
 ENGINE_IMPORT_RE = re.compile(r"import\s+['\"][^'\"]*core/engine/[^'\"]+['\"]")
 ENGINE_SYMBOL_RE = re.compile(
     r"\b(ChanReplayEngine|FxEngine|BiEngine|SegEngine|ZsEngine|IncludeProcessor)\b"
@@ -59,6 +66,9 @@ def iter_dart_files() -> Iterable[Path]:
 
 
 def is_non_production_path(path: Path) -> bool:
+    rel = path.relative_to(REPO_ROOT).as_posix()
+    if rel.startswith(ENGINE_DEFINITION_PREFIXES):
+        return True
     parts = set(path.relative_to(REPO_ROOT).parts)
     return bool(parts & ALLOWED_NON_PRODUCTION_PARTS)
 
@@ -81,7 +91,7 @@ def audit_file(path: Path) -> list[Finding]:
                     no,
                     stripped,
                     blocking,
-                    "production Dart imports legacy Chan engine" if blocking else "allowed non-production import",
+                    "production Dart imports legacy Chan engine" if blocking else "allowed non-production import/definition",
                 )
             )
         if ENGINE_SYMBOL_RE.search(line):
@@ -93,7 +103,7 @@ def audit_file(path: Path) -> list[Finding]:
                     no,
                     stripped,
                     blocking,
-                    "production Dart references legacy Chan engine symbol" if blocking else "allowed non-production symbol",
+                    "production Dart references legacy Chan engine symbol" if blocking else "allowed non-production symbol/definition",
                 )
             )
         # Draw models are allowed when the same file clearly consumes Python source;
