@@ -238,8 +238,11 @@ GitHub Actions 已加入：
 ```bash
 flutter pub get
 flutter analyze
+flutter test test/chart_label_layout_test.dart
+flutter test test/bsp_chart_label_adapter_test.dart
 python tools/audit_dart_algorithm_usage.py
 python tools/check_chanpy_guardrails.py
+python tools/validate_easy_tdx_indicator_contract.py test/fixtures/easy_tdx_indicator_contract_valid.json
 ```
 
 ## 当前完成度
@@ -269,13 +272,15 @@ python tools/check_chanpy_guardrails.py
 21. 已新增 quick_guide 对齐矩阵、easy-tdx 指标合同、标签避让策略文档。
 22. 已新增 Flutter 通用标签避让布局器 `lib/ui/widgets/chart_label_layout.dart`。
 23. 已新增 easy-tdx / indicators 合同校验脚本 `tools/validate_easy_tdx_indicator_contract.py`。
+24. 已新增 BSP 到 ChartLabel 的 UI 适配层 `lib/ui/widgets/bsp_chart_label_adapter.dart`。
+25. 已新增 chart label 与 BSP label adapter 单元测试，并纳入 GitHub Actions。
 
 待完成：
 1. Windows / Android flutter run 实机验收。
 2. BSP 导出字段仍需用真实样本校验是否覆盖 chan.py 当前版本的所有买卖点对象形态。
 3. merged_bars 字段已返回，但仍需用长样本核对 raw_index/high/low/open/close 与 chan.py 预期是否完全一致。
 4. 删除或隔离旧 Dart 算法层中的生产链路入口。
-5. 将 `chart_label_layout.dart` 接入 `OriginKlineChart` 的 FX / BI / SEG / ZS / BSP 文本绘制。
+5. 将 `bsp_chart_label_adapter.dart` 和 `chart_label_layout.dart` 接入 `OriginKlineChart` 的 BSP 文本绘制。
 6. easy-tdx VOL / amount / turnover / indicators 输出与 Flutter 副图显示。
 7. 进一步把 README 中 CChan / CChanConfig 说明链接到 Vespa quick_guide 对应章节。
 ```
