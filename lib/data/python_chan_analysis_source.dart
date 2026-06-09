@@ -198,24 +198,31 @@ class PythonChanAnalysisSource {
       }
     }
 
-    final mergedBars = <MergedBar>[];
+    final backendMergedBars = <MergedBar>[];
     final mergedRows = data['merged_bars'] ?? data['mergedBars'];
     if (mergedRows is List) {
       for (final row in mergedRows) {
         if (row is Map) {
           final merged = _parseMergedBar(row, bars);
-          if (merged != null) mergedBars.add(merged);
+          if (merged != null) backendMergedBars.add(merged);
         }
       }
     }
-    if (mergedBars.isEmpty) mergedBars.addAll([for (final bar in bars) _dummyMergedBar(bar)]);
+
+    // This fallback is internal only. It lets FX/BI parsing resolve rawIndex anchors
+    // when a backend omits merged_bars, but it must not be exposed as
+    // ChanSnapshot.mergedBars because the UI should display only backend-provided
+    // merged K-lines.
+    final structuralMergedBars = backendMergedBars.isNotEmpty
+        ? backendMergedBars
+        : [for (final bar in bars) _dummyMergedBar(bar)];
 
     final fxs = <FX>[];
     final fxRows = data['fx'];
     if (fxRows is List) {
       for (final row in fxRows) {
         if (row is Map) {
-          final fx = _parseFx(row, mergedBars);
+          final fx = _parseFx(row, structuralMergedBars);
           if (fx != null) fxs.add(fx);
         }
       }
@@ -226,7 +233,7 @@ class PythonChanAnalysisSource {
     if (biRows is List) {
       for (final row in biRows) {
         if (row is Map) {
-          final bi = _parseBi(row, bis.length, mergedBars);
+          final bi = _parseBi(row, bis.length, structuralMergedBars);
           if (bi != null) bis.add(bi);
         }
       }
@@ -274,7 +281,15 @@ class PythonChanAnalysisSource {
       }
     }
 
-    return ChanSnapshot(rawBars: bars, mergedBars: mergedBars, fxs: fxs, bis: linkedBis, segs: segs, zss: zss, bsps: bsps);
+    return ChanSnapshot(
+      rawBars: bars,
+      mergedBars: backendMergedBars,
+      fxs: fxs,
+      bis: linkedBis,
+      segs: segs,
+      zss: zss,
+      bsps: bsps,
+    );
   }
 
   RawBar? _parseRawBar(Map row, int index) {
@@ -319,7 +334,17 @@ class PythonChanAnalysisSource {
     if (rawIndex == null || price == null || mergedBars.isEmpty) return null;
     final isTop = '${row['type'] ?? ''}'.toLowerCase().contains('top');
     final center = _mergedAt(mergedBars, rawIndex);
-    return FX(index: _int(row['index']) ?? center.index, rawIndex: rawIndex, time: _parseTime(row['time']) ?? center.time, type: isTop ? FxType.top : FxType.bottom, price: price, left: center, center: center, right: center, confirmed: row['confirmed'] != false);
+    return FX(
+      index: _int(row['index']) ?? center.index,
+      rawIndex: rawIndex,
+      time: _parseTime(row['time']) ?? center.time,
+      type: isTop ? FxType.top : FxType.bottom,
+      price: price,
+      left: center,
+      center: center,
+      right: center,
+      confirmed: row['confirmed'] != false,
+    );
   }
 
   BI? _parseBi(Map row, int index, List<MergedBar> mergedBars) {
@@ -331,9 +356,35 @@ class PythonChanAnalysisSource {
     final isDown = '${row['direction'] ?? ''}'.toLowerCase().contains('down');
     final startMerged = _mergedAt(mergedBars, startRaw);
     final endMerged = _mergedAt(mergedBars, endRaw);
-    final startFx = FX(index: startMerged.index, rawIndex: startRaw, time: _parseTime(row['start_time'] ?? row['startTime']) ?? startMerged.time, type: isDown ? FxType.top : FxType.bottom, price: startPrice, left: startMerged, center: startMerged, right: startMerged, confirmed: true);
-    final endFx = FX(index: endMerged.index, rawIndex: endRaw, time: _parseTime(row['end_time'] ?? row['endTime']) ?? endMerged.time, type: isDown ? FxType.bottom : FxType.top, price: endPrice, left: endMerged, center: endMerged, right: endMerged, confirmed: row['is_sure'] != false);
-    return BI(index: _int(row['index']) ?? index, start: startFx, end: endFx, direction: isDown ? BiDirection.down : BiDirection.up, isSure: row['is_sure'] != false);
+    final startFx = FX(
+      index: startMerged.index,
+      rawIndex: startRaw,
+      time: _parseTime(row['start_time'] ?? row['startTime']) ?? startMerged.time,
+      type: isDown ? FxType.top : FxType.bottom,
+      price: startPrice,
+      left: startMerged,
+      center: startMerged,
+      right: startMerged,
+      confirmed: true,
+    );
+    final endFx = FX(
+      index: endMerged.index,
+      rawIndex: endRaw,
+      time: _parseTime(row['end_time'] ?? row['endTime']) ?? endMerged.time,
+      type: isDown ? FxType.bottom : FxType.top,
+      price: endPrice,
+      left: endMerged,
+      center: endMerged,
+      right: endMerged,
+      confirmed: row['is_sure'] != false,
+    );
+    return BI(
+      index: _int(row['index']) ?? index,
+      start: startFx,
+      end: endFx,
+      direction: isDown ? BiDirection.down : BiDirection.up,
+      isSure: row['is_sure'] != false,
+    );
   }
 
   SEG? _parseSeg(Map row, int index, List<BI> bis) {
@@ -341,7 +392,15 @@ class PythonChanAnalysisSource {
     final end = _int(row['end_bi_index'] ?? row['endBiIndex']);
     if (start == null || end == null || start < 0 || end < start || end >= bis.length) return null;
     final isDown = '${row['direction'] ?? ''}'.toLowerCase().contains('down');
-    return SEG(index: _int(row['index']) ?? index, startBi: bis[start], endBi: bis[end], direction: isDown ? SegDirection.down : SegDirection.up, isSure: row['is_sure'] == true, reason: '${row['reason'] ?? 'chan.py'}', biList: bis.sublist(start, end + 1));
+    return SEG(
+      index: _int(row['index']) ?? index,
+      startBi: bis[start],
+      endBi: bis[end],
+      direction: isDown ? SegDirection.down : SegDirection.up,
+      isSure: row['is_sure'] == true,
+      reason: '${row['reason'] ?? 'chan.py'}',
+      biList: bis.sublist(start, end + 1),
+    );
   }
 
   ZS? _parseZs(Map row, int index) {
@@ -352,17 +411,57 @@ class PythonChanAnalysisSource {
     final gg = _num(row['gg']);
     final dd = _num(row['dd']);
     if (startBi == null || endBi == null || zg == null || zd == null || gg == null || dd == null) return null;
-    return ZS(index: _int(row['index']) ?? index, startBiIndex: startBi, endBiIndex: endBi, startRawIndex: _int(row['start_raw_index'] ?? row['startRawIndex']) ?? 0, endRawIndex: _int(row['end_raw_index'] ?? row['endRawIndex']) ?? 0, zg: zg, zd: zd, gg: gg, dd: dd, confirmed: row['confirmed'] == true, biInIndex: _int(row['bi_in_index'] ?? row['biInIndex']), biOutIndex: _int(row['bi_out_index'] ?? row['biOutIndex']), startSegIndex: _int(row['start_seg_index'] ?? row['startSegIndex']), endSegIndex: _int(row['end_seg_index'] ?? row['endSegIndex']));
+    return ZS(
+      index: _int(row['index']) ?? index,
+      startBiIndex: startBi,
+      endBiIndex: endBi,
+      startRawIndex: _int(row['start_raw_index'] ?? row['startRawIndex']) ?? 0,
+      endRawIndex: _int(row['end_raw_index'] ?? row['endRawIndex']) ?? 0,
+      zg: zg,
+      zd: zd,
+      gg: gg,
+      dd: dd,
+      confirmed: row['confirmed'] == true,
+      biInIndex: _int(row['bi_in_index'] ?? row['biInIndex']),
+      biOutIndex: _int(row['bi_out_index'] ?? row['biOutIndex']),
+      startSegIndex: _int(row['start_seg_index'] ?? row['startSegIndex']),
+      endSegIndex: _int(row['end_seg_index'] ?? row['endSegIndex']),
+    );
   }
 
   BspPoint? _parseBsp(Map row, int index) {
     final rawIndex = _int(row['raw_index'] ?? row['rawIndex']);
     final price = _num(row['price']);
     if (rawIndex == null || price == null) return null;
-    return BspPoint(index: _int(row['index']) ?? index, rawIndex: rawIndex, time: _parseTime(row['time']), price: price, type: '${row['type'] ?? 'BSP'}', level: '${row['level'] ?? ''}', biIndex: _int(row['bi_index'] ?? row['biIndex']), segIndex: _int(row['seg_index'] ?? row['segIndex']), zsIndex: _int(row['zs_index'] ?? row['zsIndex']), confirmed: row['confirmed'] != false);
+    return BspPoint(
+      index: _int(row['index']) ?? index,
+      rawIndex: rawIndex,
+      time: _parseTime(row['time']),
+      price: price,
+      type: '${row['type'] ?? 'BSP'}',
+      level: '${row['level'] ?? ''}',
+      biIndex: _int(row['bi_index'] ?? row['biIndex']),
+      segIndex: _int(row['seg_index'] ?? row['segIndex']),
+      zsIndex: _int(row['zs_index'] ?? row['zsIndex']),
+      confirmed: row['confirmed'] != false,
+    );
   }
 
-  MergedBar _dummyMergedBar(RawBar bar) => MergedBar(index: bar.index, startRawIndex: bar.index, endRawIndex: bar.index, highRawIndex: bar.index, lowRawIndex: bar.index, time: bar.time, highTime: bar.time, lowTime: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume);
+  MergedBar _dummyMergedBar(RawBar bar) => MergedBar(
+        index: bar.index,
+        startRawIndex: bar.index,
+        endRawIndex: bar.index,
+        highRawIndex: bar.index,
+        lowRawIndex: bar.index,
+        time: bar.time,
+        highTime: bar.time,
+        lowTime: bar.time,
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        volume: bar.volume,
+      );
 
   MergedBar _mergedAt(List<MergedBar> bars, int rawIndex) {
     for (final bar in bars) {
@@ -371,7 +470,14 @@ class PythonChanAnalysisSource {
     return bars[rawIndex.clamp(0, bars.length - 1).toInt()];
   }
 
-  Map<String, dynamic> _barToJson(RawBar bar) => {'dt': _fmtDate(bar.time), 'open': bar.open, 'high': bar.high, 'low': bar.low, 'close': bar.close, 'vol': bar.volume};
+  Map<String, dynamic> _barToJson(RawBar bar) => {
+        'dt': _fmtDate(bar.time),
+        'open': bar.open,
+        'high': bar.high,
+        'low': bar.low,
+        'close': bar.close,
+        'vol': bar.volume,
+      };
 
   DateTime? _parseTime(Object? value) {
     if (value is DateTime) return value;
@@ -404,7 +510,11 @@ class PythonChanAnalysisSource {
 
   bool _looksLikeConnectionFailure(http.ClientException e) {
     final msg = e.toString().toLowerCase();
-    return msg.contains('connection refused') || msg.contains('connection failed') || msg.contains('failed host lookup') || msg.contains('connection reset') || msg.contains('connection closed');
+    return msg.contains('connection refused') ||
+        msg.contains('connection failed') ||
+        msg.contains('failed host lookup') ||
+        msg.contains('connection reset') ||
+        msg.contains('connection closed');
   }
 
   void close() {
@@ -432,7 +542,14 @@ class _LocalPythonChanProcess {
     Object? lastError;
     for (final candidate in candidates) {
       try {
-        final process = await Process.start(candidate.executable, [...candidate.prefixArgs, appEngine.path, '--host', '127.0.0.1', '--port', '$port'], workingDirectory: appEngine.parent.parent.path, runInShell: false, environment: {'PYTHONIOENCODING': 'utf-8'}, mode: ProcessStartMode.normal);
+        final process = await Process.start(
+          candidate.executable,
+          [...candidate.prefixArgs, appEngine.path, '--host', '127.0.0.1', '--port', '$port'],
+          workingDirectory: appEngine.parent.parent.path,
+          runInShell: false,
+          environment: {'PYTHONIOENCODING': 'utf-8'},
+          mode: ProcessStartMode.normal,
+        );
         final runner = _LocalPythonChanProcess._(process, baseUrl);
         await runner._waitUntilReady();
         return runner;
@@ -463,7 +580,11 @@ class _LocalPythonChanProcess {
 
   static List<File> _appEngineCandidatesFrom(Directory dir) {
     final sep = Platform.pathSeparator;
-    return [File('${dir.path}${sep}python${sep}app_engine.py'), File('${dir.path}${sep}data${sep}python${sep}app_engine.py'), File('${dir.path}${sep}app_engine.py')];
+    return [
+      File('${dir.path}${sep}python${sep}app_engine.py'),
+      File('${dir.path}${sep}data${sep}python${sep}app_engine.py'),
+      File('${dir.path}${sep}app_engine.py'),
+    ];
   }
 
   static Future<int> _pickFreePort() async {
