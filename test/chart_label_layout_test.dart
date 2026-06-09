@@ -37,7 +37,7 @@ void main() {
   });
 
   test('keeps labels inside chart bounds', () {
-    final chartRect = const Rect.fromLTWH(10, 20, 120, 80);
+    const chartRect = Rect.fromLTWH(10, 20, 120, 80);
     final layout = ChartLabelLayout(chartRect: chartRect, visibleCount: 60);
 
     final laidOut = layout.layout(<ChartLabel>[
