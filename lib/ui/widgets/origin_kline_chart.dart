@@ -91,6 +91,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   TradingViewDrawingTool _selectedDrawingTool = TradingViewDrawingTool.cursor;
   DrawingObjectCollection _drawings = const DrawingObjectCollection();
   List<DrawingAnchor> _pendingAnchors = const [];
+  _DrawingDragState? _dragState;
 
   List<DrawingObject> get _effectiveDrawingObjects {
     if (widget.drawingObjects.isEmpty) return _drawings.objects;
@@ -123,6 +124,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
               setState(() {
                 _drawings = const DrawingObjectCollection();
                 _pendingAnchors = const [];
+                _dragState = null;
               });
               _showDrawMessage('已清空手动画线');
             },
@@ -139,11 +141,15 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
                 onTapDown: (details) => _handleTap(details.localPosition, size),
                 onLongPressStart: (details) => _updateCrosshair(details.localPosition, size),
                 onLongPressMoveUpdate: (details) => _updateCrosshair(details.localPosition, size),
-                onScaleStart: (_) {
+                onScaleStart: (details) {
                   _scaleStartWindow = widget.windowSize;
                   _panRemainder = 0;
+                  if (!_interactiveDrawingTools.contains(_selectedDrawingTool)) {
+                    _startDrawingDrag(details.localFocalPoint, size);
+                  }
                 },
                 onScaleUpdate: (details) => _handleScale(details, size),
+                onScaleEnd: (_) => _endDrawingDrag(),
                 child: CustomPaint(
                   painter: _OriginChartPainter(
                     snapshot: widget.snapshot,
@@ -179,6 +185,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     setState(() {
       _selectedDrawingTool = tool;
       _pendingAnchors = const [];
+      _dragState = null;
     });
   }
 
@@ -222,6 +229,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     setState(() {
       _drawings = _drawings.clearSelection().upsert(object);
       _pendingAnchors = const [];
+      _dragState = null;
     });
     _showDrawMessage('已创建：${meta.label}');
   }
@@ -235,8 +243,8 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       chartRect: meta.chartRect,
       startRawIndex: meta.startIndex,
       endRawIndex: meta.endIndex,
-      rawToX: (rawIndex) => meta.chartRect.left + (rawIndex - meta.startIndex + 0.5) * meta.step,
-      priceToY: (price) => meta.chartRect.bottom - (price - meta.minPrice) / math.max(meta.maxPrice - meta.minPrice, 0.0000001) * meta.chartRect.height,
+      rawToX: meta.rawToX,
+      priceToY: meta.priceToY,
     );
   }
 
@@ -244,6 +252,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     setState(() {
       _drawings = _drawings.select(object.id);
       _pendingAnchors = const [];
+      _dragState = null;
     });
     final meta = TradingViewDrawingToolRegistry.metaOf(object.tool);
     _showDrawMessage('已选中：${meta.label}${object.locked ? '（已锁定）' : ''}');
@@ -255,16 +264,18 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     setState(() {
       _drawings = _drawings.clearSelection();
       _pendingAnchors = const [];
+      _dragState = null;
     });
     if (!updateStateOnly) _showDrawMessage('已取消选择');
   }
 
   void _deleteSelectedDrawing() {
     final selected = _selectedDrawing;
-    if (selected == null) return;
+    if (selected == null || selected.locked) return;
     setState(() {
       _drawings = _drawings.remove(selected.id);
       _pendingAnchors = const [];
+      _dragState = null;
     });
     _showDrawMessage('已删除手动画线');
   }
@@ -273,7 +284,10 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     final selected = _selectedDrawing;
     if (selected == null) return;
     final next = selected.lock(!selected.locked);
-    setState(() => _drawings = _drawings.upsert(next));
+    setState(() {
+      _drawings = _drawings.upsert(next);
+      _dragState = null;
+    });
     _showDrawMessage(next.locked ? '已锁定对象' : '已解锁对象');
   }
 
@@ -281,17 +295,105 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     final selected = _selectedDrawing;
     if (selected == null) return;
     final next = selected.hide(!selected.hidden);
-    setState(() => _drawings = _drawings.upsert(next));
+    setState(() {
+      _drawings = _drawings.upsert(next);
+      _dragState = null;
+    });
     _showDrawMessage(next.hidden ? '已隐藏对象，可在当前浮条恢复' : '已恢复显示对象');
+  }
+
+  void _startDrawingDrag(Offset p, Size size) {
+    final selected = _selectedDrawing;
+    final meta = _visibleMeta(size);
+    final pointerAnchor = _chartAnchorAt(p, size);
+    if (selected == null || meta == null || pointerAnchor == null || selected.locked || selected.hidden) {
+      _dragState = null;
+      return;
+    }
+    final handleIndex = _hitDrawingHandle(selected, p, meta);
+    if (handleIndex != null) {
+      _dragState = _DrawingDragState(object: selected, mode: _DrawingDragMode.anchor, anchorIndex: handleIndex, startPointerAnchor: pointerAnchor);
+      return;
+    }
+    final bodyHit = DrawingObjectHitTest.hitTest(
+      objects: [selected],
+      point: p,
+      chartRect: meta.chartRect,
+      startRawIndex: meta.startIndex,
+      endRawIndex: meta.endIndex,
+      rawToX: meta.rawToX,
+      priceToY: meta.priceToY,
+      tolerance: 10,
+    );
+    if (bodyHit != null) {
+      _dragState = _DrawingDragState(object: selected, mode: _DrawingDragMode.body, startPointerAnchor: pointerAnchor);
+      return;
+    }
+    _dragState = null;
+  }
+
+  void _updateDrawingDrag(Offset p, Size size) {
+    final state = _dragState;
+    if (state == null) return;
+    final pointerAnchor = _chartAnchorAt(p, size);
+    if (pointerAnchor == null) return;
+
+    final nextAnchors = switch (state.mode) {
+      _DrawingDragMode.anchor => _anchorsWithMovedHandle(state.object, state.anchorIndex ?? 0, pointerAnchor),
+      _DrawingDragMode.body => _anchorsWithMovedBody(state.object, state.startPointerAnchor, pointerAnchor),
+    };
+    final current = _drawings.objects.where((e) => e.id == state.object.id).firstOrNull;
+    if (current == null || current.locked) return;
+    setState(() {
+      _drawings = _drawings.upsert(current.copyWith(anchors: nextAnchors, selected: true, updatedAt: DateTime.now()));
+    });
+  }
+
+  void _endDrawingDrag() {
+    if (_dragState == null) return;
+    _dragState = null;
+  }
+
+  int? _hitDrawingHandle(DrawingObject object, Offset p, _VisibleMeta meta) {
+    for (var i = 0; i < object.anchors.length; i++) {
+      final anchor = object.anchors[i];
+      if (!anchor.isChart || anchor.rawIndex == null || anchor.price == null) continue;
+      final handle = Offset(meta.rawToX(anchor.rawIndex!), meta.priceToY(anchor.price!));
+      if ((p - handle).distance <= 12) return i;
+    }
+    return null;
+  }
+
+  List<DrawingAnchor> _anchorsWithMovedHandle(DrawingObject object, int index, DrawingAnchor pointerAnchor) {
+    return [
+      for (var i = 0; i < object.anchors.length; i++)
+        if (i == index && object.anchors[i].isChart)
+          pointerAnchor
+        else
+          object.anchors[i],
+    ];
+  }
+
+  List<DrawingAnchor> _anchorsWithMovedBody(DrawingObject object, DrawingAnchor startPointerAnchor, DrawingAnchor pointerAnchor) {
+    final deltaRaw = (pointerAnchor.rawIndex ?? 0) - (startPointerAnchor.rawIndex ?? 0);
+    final deltaPrice = (pointerAnchor.price ?? 0) - (startPointerAnchor.price ?? 0);
+    final maxRaw = math.max(0, widget.snapshot.rawBars.length - 1);
+    return [
+      for (final anchor in object.anchors)
+        if (anchor.isChart && anchor.rawIndex != null && anchor.price != null)
+          DrawingAnchor.chart(
+            rawIndex: (anchor.rawIndex! + deltaRaw).clamp(0, maxRaw).toInt(),
+            price: anchor.price! + deltaPrice,
+          )
+        else
+          anchor,
+    ];
   }
 
   DrawingAnchor? _chartAnchorAt(Offset p, Size size) {
     final meta = _visibleMeta(size);
     if (meta == null || !meta.chartRect.contains(p)) return null;
-    final local = ((p.dx - meta.chartRect.left) / meta.step).floor();
-    final rawIndex = (meta.startIndex + local).clamp(meta.startIndex, meta.endIndex).toInt();
-    final price = meta.priceAtY(p.dy);
-    return DrawingAnchor.chart(rawIndex: rawIndex, price: price);
+    return meta.anchorAt(p);
   }
 
   DrawingStyle _defaultStyleFor(TradingViewDrawingTool tool) {
@@ -340,6 +442,10 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   }
 
   void _handleScale(ScaleUpdateDetails details, Size size) {
+    if (_dragState != null) {
+      _updateDrawingDrag(details.localFocalPoint, size);
+      return;
+    }
     if ((details.scale - 1).abs() > 0.03) {
       final nextWindow = ((_scaleStartWindow ?? widget.windowSize) / details.scale).round().clamp(24, 360).toInt();
       if (nextWindow != widget.windowSize) widget.onWindowSizeChanged?.call(nextWindow);
@@ -388,6 +494,22 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   }
 }
 
+enum _DrawingDragMode { anchor, body }
+
+class _DrawingDragState {
+  final DrawingObject object;
+  final _DrawingDragMode mode;
+  final int? anchorIndex;
+  final DrawingAnchor startPointerAnchor;
+
+  const _DrawingDragState({
+    required this.object,
+    required this.mode,
+    required this.startPointerAnchor,
+    this.anchorIndex,
+  });
+}
+
 class _SelectedDrawingBar extends StatelessWidget {
   final DrawingObject object;
   final VoidCallback onDelete;
@@ -419,7 +541,7 @@ class _SelectedDrawingBar extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('${meta.label}${object.hidden ? '（隐藏）' : ''}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            Text('${meta.label}${object.locked ? '（锁）' : ''}${object.hidden ? '（隐藏）' : ''}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
             const SizedBox(width: 8),
             _miniButton(object.locked ? '解锁' : '锁定', object.locked ? Icons.lock_open : Icons.lock, onToggleLock),
             _miniButton(object.hidden ? '恢复显示' : '隐藏', object.hidden ? Icons.visibility : Icons.visibility_off, onToggleHidden),
@@ -456,6 +578,19 @@ class _VisibleMeta {
   final double maxPrice;
 
   const _VisibleMeta(this.chartRect, this.startIndex, this.endIndex, this.step, this.minPrice, this.maxPrice);
+
+  double rawToX(int rawIndex) => chartRect.left + (rawIndex - startIndex + 0.5) * step;
+
+  double priceToY(double price) {
+    final range = math.max(maxPrice - minPrice, 0.0000001);
+    return chartRect.bottom - (price - minPrice) / range * chartRect.height;
+  }
+
+  DrawingAnchor anchorAt(Offset p) {
+    final local = ((p.dx - chartRect.left) / step).floor();
+    final rawIndex = (startIndex + local).clamp(startIndex, endIndex).toInt();
+    return DrawingAnchor.chart(rawIndex: rawIndex, price: priceAtY(p.dy));
+  }
 
   double priceAtY(double y) {
     final clampedY = y.clamp(chartRect.top, chartRect.bottom).toDouble();
