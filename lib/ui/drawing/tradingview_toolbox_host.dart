@@ -30,7 +30,8 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
   bool _open = false;
   TradingViewDrawingTool _localSelectedTool = TradingViewDrawingTool.cursor;
 
-  TradingViewDrawingTool get _effectiveSelectedTool => widget.selectedTool ?? _localSelectedTool;
+  TradingViewDrawingTool get _effectiveSelectedTool =>
+      widget.selectedTool ?? _localSelectedTool;
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +44,8 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
           top: 48,
           child: _ToolboxButton(
             open: _open,
-            selectedLabel: TradingViewDrawingToolRegistry.metaOf(selected).label,
+            selectedLabel:
+                TradingViewDrawingToolRegistry.metaOf(selected).label,
             drawingCount: widget.drawingCount,
             onPressed: () => setState(() => _open = !_open),
           ),
@@ -67,7 +69,9 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
                 final meta = TradingViewDrawingToolRegistry.metaOf(tool);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(meta.minPoints > 0 ? '已选择：${meta.label}。请在K线图上点击放置锚点。' : '已选择：${meta.label}。'),
+                    content: Text(meta.minPoints > 0
+                        ? '已选择：${meta.label}。请在K线图上点击放置锚点。'
+                        : '已选择：${meta.label}。'),
                     duration: const Duration(seconds: 2),
                     behavior: SnackBarBehavior.floating,
                     backgroundColor: const Color(0xFF1E3A8A),
@@ -148,7 +152,8 @@ class _ToolboxPanel extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
           boxShadow: const [
-            BoxShadow(blurRadius: 20, offset: Offset(0, 8), color: Color(0x99000000)),
+            BoxShadow(
+                blurRadius: 20, offset: Offset(0, 8), color: Color(0x99000000)),
           ],
         ),
         child: Column(
@@ -158,12 +163,16 @@ class _ToolboxPanel extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
               child: Row(
                 children: [
-                  const Icon(Icons.architecture, size: 18, color: Colors.white70),
+                  const Icon(Icons.architecture,
+                      size: 18, color: Colors.white70),
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
                       'TradingView 画线工具箱',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white),
                     ),
                   ),
                   IconButton(
@@ -188,7 +197,10 @@ class _ToolboxPanel extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: Text(
                 '选择工具后在K线图上点击创建锚点。缠论叠加只显示 Vespa/chan.py 或后端结果，不在前端重算。',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.62), fontSize: 12, height: 1.35),
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.62),
+                    fontSize: 12,
+                    height: 1.35),
               ),
             ),
             const Divider(height: 1, color: Colors.white12),
@@ -235,9 +247,14 @@ class _ToolGroupTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ExpansionTile(
-      initiallyExpanded: group == TradingViewDrawingGroup.lines || group == TradingViewDrawingGroup.chanOverlay,
+      initiallyExpanded: group == TradingViewDrawingGroup.lines ||
+          group == TradingViewDrawingGroup.chanOverlay,
       leading: Icon(_groupIcon(group), color: Colors.white70, size: 18),
-      title: Text(_groupLabel(group), style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600)),
+      title: Text(_groupLabel(group),
+          style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600)),
       tilePadding: const EdgeInsets.symmetric(horizontal: 12),
       childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
       collapsedIconColor: Colors.white54,
@@ -292,10 +309,21 @@ class _ToolTile extends StatelessWidget {
           enabled: enabled,
           selected: selected,
           selectedTileColor: const Color(0x332962FF),
-          leading: Icon(_toolIcon(meta.tool), size: 18, color: selected ? const Color(0xFF8AB4FF) : Colors.white60),
-          title: Text(meta.label, style: TextStyle(color: enabled ? Colors.white : Colors.white60, fontSize: 13)),
-          subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: enabled ? 0.50 : 0.36), fontSize: 11)),
-          trailing: Text(_pointLabel(meta), style: const TextStyle(color: Colors.white30, fontSize: 10)),
+          leading: Icon(_toolIcon(meta.tool),
+              size: 18,
+              color: selected ? const Color(0xFF8AB4FF) : Colors.white60),
+          title: Text(meta.label,
+              style: TextStyle(
+                  color: enabled ? Colors.white : Colors.white60,
+                  fontSize: 13)),
+          subtitle: Text(subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: enabled ? 0.50 : 0.36),
+                  fontSize: 11)),
+          trailing: Text(_pointLabel(meta),
+              style: const TextStyle(color: Colors.white30, fontSize: 10)),
           onTap: enabled ? () => onSelected(meta.tool) : null,
         ),
       ),
@@ -337,17 +365,31 @@ IconData _toolIcon(TradingViewDrawingTool tool) {
   return switch (tool) {
     TradingViewDrawingTool.cursor => Icons.near_me,
     TradingViewDrawingTool.crosshair => Icons.control_camera,
-    TradingViewDrawingTool.horizontalLine || TradingViewDrawingTool.horizontalRay => Icons.horizontal_rule,
+    TradingViewDrawingTool.horizontalLine ||
+    TradingViewDrawingTool.horizontalRay =>
+      Icons.horizontal_rule,
     TradingViewDrawingTool.verticalLine => Icons.vertical_align_center,
-    TradingViewDrawingTool.rectangle || TradingViewDrawingTool.rotatedRectangle => Icons.crop_square,
-    TradingViewDrawingTool.text || TradingViewDrawingTool.anchoredText => Icons.title,
+    TradingViewDrawingTool.rectangle ||
+    TradingViewDrawingTool.rotatedRectangle =>
+      Icons.crop_square,
+    TradingViewDrawingTool.text ||
+    TradingViewDrawingTool.anchoredText =>
+      Icons.title,
     TradingViewDrawingTool.longPosition => Icons.trending_up,
     TradingViewDrawingTool.shortPosition => Icons.trending_down,
-    TradingViewDrawingTool.chanFx || TradingViewDrawingTool.chanFxLine => Icons.trip_origin,
-    TradingViewDrawingTool.chanBi || TradingViewDrawingTool.chanBiText => Icons.show_chart,
-    TradingViewDrawingTool.chanSeg || TradingViewDrawingTool.chanSegText => Icons.multiline_chart,
+    TradingViewDrawingTool.chanFx ||
+    TradingViewDrawingTool.chanFxLine =>
+      Icons.trip_origin,
+    TradingViewDrawingTool.chanBi ||
+    TradingViewDrawingTool.chanBiText =>
+      Icons.show_chart,
+    TradingViewDrawingTool.chanSeg ||
+    TradingViewDrawingTool.chanSegText =>
+      Icons.multiline_chart,
     TradingViewDrawingTool.chanZs => Icons.crop_square,
-    TradingViewDrawingTool.chanBiBsp || TradingViewDrawingTool.chanSegBsp => Icons.sell,
+    TradingViewDrawingTool.chanBiBsp ||
+    TradingViewDrawingTool.chanSegBsp =>
+      Icons.sell,
     TradingViewDrawingTool.chanMergedBars => Icons.view_week,
     _ => Icons.architecture,
   };

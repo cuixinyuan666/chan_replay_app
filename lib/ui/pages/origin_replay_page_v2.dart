@@ -96,8 +96,10 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     'macd_algo': 'peak',
   };
 
-  final TextEditingController _stockCodeController = TextEditingController(text: '000001');
-  final TextEditingController _backendUrlController = TextEditingController(text: _defaultBackendBaseUrl);
+  final TextEditingController _stockCodeController =
+      TextEditingController(text: '000001');
+  final TextEditingController _backendUrlController =
+      TextEditingController(text: _defaultBackendBaseUrl);
 
   ChanSnapshot _snapshot = ChanSnapshot.empty();
   ChanSnapshot _fullSnapshot = ChanSnapshot.empty();
@@ -189,13 +191,16 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   int _bsp3aMaxZsCnt = 1;
   String _macdAlgo = 'peak';
 
-  static bool get _isAndroidApp => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  static bool get _isAndroidApp =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-  static String get _defaultBackendBaseUrl => _isAndroidApp ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
+  static String get _defaultBackendBaseUrl =>
+      _isAndroidApp ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
 
   bool get _isStepMode => _mode == 'step';
   bool get _hasBars => _fullSnapshot.rawBars.isNotEmpty;
-  int get _stepTotal => _frames.isNotEmpty ? _frames.length : _fullSnapshot.rawBars.length;
+  int get _stepTotal =>
+      _frames.isNotEmpty ? _frames.length : _fullSnapshot.rawBars.length;
   bool get _hasFx => _fullSnapshot.fxs.isNotEmpty;
   bool get _hasFxLine => _fullSnapshot.fxs.length >= 2;
   bool get _hasBi => _fullSnapshot.bis.isNotEmpty;
@@ -208,12 +213,17 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   String get _drawingStorageKey {
     final source = _dataSource.trim().isEmpty ? 'source' : _dataSource.trim();
     if (_dataSource == 'csv') {
-      final csvName = _localCsvName.trim().isEmpty ? 'local_csv' : _localCsvName.trim();
-      return _safeStoragePart('drawing_${source}_${csvName}_${_period}_$_adjust');
+      final csvName =
+          _localCsvName.trim().isEmpty ? 'local_csv' : _localCsvName.trim();
+      return _safeStoragePart(
+          'drawing_${source}_${csvName}_${_period}_$_adjust');
     }
     final symbol = _parseSymbol(_stockCodeController.text.trim());
-    final symbolKey = symbol == null ? _stockCodeController.text.trim().toUpperCase() : '${symbol.market}${symbol.code}';
-    return _safeStoragePart('drawing_${source}_${symbolKey}_${_period}_$_adjust');
+    final symbolKey = symbol == null
+        ? _stockCodeController.text.trim().toUpperCase()
+        : '${symbol.market}${symbol.code}';
+    return _safeStoragePart(
+        'drawing_${source}_${symbolKey}_${_period}_$_adjust');
   }
 
   Map<String, dynamic> get _chanConfig => {
@@ -290,13 +300,15 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       _showMessage('× 代码格式错误：请输入 000001 / 600000 / SZ000001 / 600000.SH');
       return;
     }
-    if (_dataSource == 'csv' && (_localCsvBars == null || _localCsvBars!.isEmpty)) {
+    if (_dataSource == 'csv' &&
+        (_localCsvBars == null || _localCsvBars!.isEmpty)) {
       _showMessage('× 请先选择本地 CSV');
       return;
     }
 
     setState(() => _loading = true);
-    final source = PythonChanAnalysisSource(baseUrl: _backendUrlController.text.trim());
+    final source =
+        PythonChanAnalysisSource(baseUrl: _backendUrlController.text.trim());
     try {
       final analysis = _dataSource == 'csv'
           ? await source.analyzeBars(
@@ -328,14 +340,20 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
           _cursor = 0;
           _snapshot = _frames.first;
         } else {
-          _cursor = _isStepMode ? math.min(120, analysis.snapshot.rawBars.length).toInt() : analysis.snapshot.rawBars.length;
-          _snapshot = _isStepMode ? _sliceSnapshot(analysis.snapshot, _cursor) : analysis.snapshot;
+          _cursor = _isStepMode
+              ? math.min(120, analysis.snapshot.rawBars.length).toInt()
+              : analysis.snapshot.rawBars.length;
+          _snapshot = _isStepMode
+              ? _sliceSnapshot(analysis.snapshot, _cursor)
+              : analysis.snapshot;
         }
         _viewEndIndex = null;
         _crosshairIndex = null;
         _priceScale = 1.0;
 
-        final name = _dataSource == 'csv' ? (_localCsvName.isEmpty ? '本地CSV' : _localCsvName) : '${symbol!.market}${symbol.code}';
+        final name = _dataSource == 'csv'
+            ? (_localCsvName.isEmpty ? '本地CSV' : _localCsvName)
+            : '${symbol!.market}${symbol.code}';
         final biBspCnt = _snapshot.bsps.where(_isBiBsp).length;
         final segBspCnt = _snapshot.bsps.where(_isSegBsp).length;
         _status = 'chan.py 获取$name $_periodAdjustLabel '
@@ -378,7 +396,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         _dataSource = 'csv';
         _localCsvName = file.name;
         _localCsvBars = rows;
-        _status = '已读取本地CSV ${file.name}，${rows.length} 根K线，等待 Python chan.py 分析';
+        _status =
+            '已读取本地CSV ${file.name}，${rows.length} 根K线，等待 Python chan.py 分析';
       });
       await _load();
     } catch (e) {
@@ -387,11 +406,15 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   }
 
   List<RawBar> _parseCsvBars(String text) {
-    final lines = const LineSplitter().convert(text).where((e) => e.trim().isNotEmpty).toList();
+    final lines = const LineSplitter()
+        .convert(text)
+        .where((e) => e.trim().isNotEmpty)
+        .toList();
     if (lines.length < 2) return [];
 
     final sep = lines.first.contains('\t') ? '\t' : ',';
-    final headers = lines.first.split(sep).map((e) => e.trim().toLowerCase()).toList();
+    final headers =
+        lines.first.split(sep).map((e) => e.trim().toLowerCase()).toList();
     int col(List<String> names) => headers.indexWhere((h) => names.contains(h));
 
     final timeCol = col(['time', 'dt', 'date', 'datetime', 'trade_date']);
@@ -400,20 +423,30 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     final lowCol = col(['low', 'l']);
     final closeCol = col(['close', 'c']);
     final volCol = col(['vol', 'volume', 'v']);
-    if ([timeCol, openCol, highCol, lowCol, closeCol].any((e) => e < 0)) return [];
+    if ([timeCol, openCol, highCol, lowCol, closeCol].any((e) => e < 0))
+      return [];
 
     final bars = <RawBar>[];
     for (var i = 1; i < lines.length; i++) {
       final cells = lines[i].split(sep).map((e) => e.trim()).toList();
-      if (cells.length <= [timeCol, openCol, highCol, lowCol, closeCol].reduce(math.max)) continue;
+      if (cells.length <=
+          [timeCol, openCol, highCol, lowCol, closeCol].reduce(math.max))
+        continue;
 
-      final time = DateTime.tryParse(cells[timeCol].replaceAll('/', '-').replaceFirst(' ', 'T'));
+      final time = DateTime.tryParse(
+          cells[timeCol].replaceAll('/', '-').replaceFirst(' ', 'T'));
       final open = double.tryParse(cells[openCol].replaceAll(',', ''));
       final high = double.tryParse(cells[highCol].replaceAll(',', ''));
       final low = double.tryParse(cells[lowCol].replaceAll(',', ''));
       final close = double.tryParse(cells[closeCol].replaceAll(',', ''));
-      final vol = volCol >= 0 && volCol < cells.length ? double.tryParse(cells[volCol].replaceAll(',', '')) ?? 0 : 0.0;
-      if (time == null || open == null || high == null || low == null || close == null) continue;
+      final vol = volCol >= 0 && volCol < cells.length
+          ? double.tryParse(cells[volCol].replaceAll(',', '')) ?? 0
+          : 0.0;
+      if (time == null ||
+          open == null ||
+          high == null ||
+          low == null ||
+          close == null) continue;
 
       bars.add(
         RawBar(
@@ -451,7 +484,9 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
   bool _isBiBsp(BspPoint bsp) {
     final level = bsp.level.trim().toLowerCase();
-    return level.isEmpty || level == 'bi' || (!level.contains('seg') && level != 'segment');
+    return level.isEmpty ||
+        level == 'bi' ||
+        (!level.contains('seg') && level != 'segment');
   }
 
   void _reset() {
@@ -459,7 +494,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     setState(() {
       _stopPlay();
       _cursor = 0;
-      _snapshot = _frames.isNotEmpty ? _frames.first : _sliceSnapshot(_fullSnapshot, 0);
+      _snapshot =
+          _frames.isNotEmpty ? _frames.first : _sliceSnapshot(_fullSnapshot, 0);
       _viewEndIndex = null;
       _crosshairIndex = null;
     });
@@ -473,7 +509,9 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     }
     setState(() {
       _cursor += 1;
-      _snapshot = _frames.isNotEmpty ? _frames[_cursor] : _sliceSnapshot(_fullSnapshot, _cursor);
+      _snapshot = _frames.isNotEmpty
+          ? _frames[_cursor]
+          : _sliceSnapshot(_fullSnapshot, _cursor);
     });
   }
 
@@ -481,7 +519,9 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     if (!_isStepMode || !_hasBars || _cursor <= 0) return;
     setState(() {
       _cursor -= 1;
-      _snapshot = _frames.isNotEmpty ? _frames[_cursor] : _sliceSnapshot(_fullSnapshot, _cursor);
+      _snapshot = _frames.isNotEmpty
+          ? _frames[_cursor]
+          : _sliceSnapshot(_fullSnapshot, _cursor);
     });
   }
 
@@ -489,7 +529,9 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     if (!_isStepMode || !_hasBars) return;
     setState(() {
       _cursor = value.clamp(0, math.max(0, _stepTotal - 1)).toInt();
-      _snapshot = _frames.isNotEmpty ? _frames[_cursor] : _sliceSnapshot(_fullSnapshot, _cursor);
+      _snapshot = _frames.isNotEmpty
+          ? _frames[_cursor]
+          : _sliceSnapshot(_fullSnapshot, _cursor);
     });
   }
 
@@ -498,7 +540,10 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     setState(() {
       _playing = !_playing;
       _timer?.cancel();
-      _timer = _playing ? Timer.periodic(const Duration(milliseconds: 450), (_) => _stepForward()) : null;
+      _timer = _playing
+          ? Timer.periodic(
+              const Duration(milliseconds: 450), (_) => _stepForward())
+          : null;
     });
   }
 
@@ -589,18 +634,24 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
           length: 2,
           child: StatefulBuilder(
             builder: (context, setSheetState) {
-              Widget intField(String key, String label, int value, ValueChanged<int> onChanged, {int min = 0, String? helper}) {
+              Widget intField(String key, String label, int value,
+                  ValueChanged<int> onChanged,
+                  {int min = 0, String? helper}) {
                 final tone = _settingTone(key, value, valid: value >= min);
                 return TextFormField(
                   initialValue: '$value',
                   enabled: !_loading,
                   keyboardType: TextInputType.number,
-                  decoration: _settingDecoration(label, tone, helper: helper ?? '最小值 $min'),
-                  onChanged: (v) => setSheetState(() => onChanged(int.tryParse(v.trim()) ?? value)),
+                  decoration: _settingDecoration(label, tone,
+                      helper: helper ?? '最小值 $min'),
+                  onChanged: (v) => setSheetState(
+                      () => onChanged(int.tryParse(v.trim()) ?? value)),
                 );
               }
 
-              Widget textField(String key, String label, String value, ValueChanged<String> onChanged, {String? helper, bool valid = true}) {
+              Widget textField(String key, String label, String value,
+                  ValueChanged<String> onChanged,
+                  {String? helper, bool valid = true}) {
                 final tone = _settingTone(key, value, valid: valid);
                 return TextFormField(
                   initialValue: value,
@@ -610,39 +661,60 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                 );
               }
 
-              Widget dropdownSetting(String key, String label, String value, List<String> values, ValueChanged<String?>? onChanged) {
-                final tone = _settingTone(key, value, valid: values.contains(value));
+              Widget dropdownSetting(String key, String label, String value,
+                  List<String> values, ValueChanged<String?>? onChanged) {
+                final tone =
+                    _settingTone(key, value, valid: values.contains(value));
                 return DropdownButtonFormField<String>(
                   initialValue: value,
                   decoration: _settingDecoration(label, tone),
-                  items: values.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                  items: values
+                      .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                      .toList(),
                   onChanged: _loading ? null : onChanged,
                 );
               }
 
-              Widget boolTile(String key, String title, bool value, ValueChanged<bool> onChanged) {
+              Widget boolTile(String key, String title, bool value,
+                  ValueChanged<bool> onChanged) {
                 final tone = _settingTone(key, value);
                 return Container(
                   margin: const EdgeInsets.symmetric(vertical: 3),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: _toneColor(tone).withValues(alpha: 0.82), width: 1.2),
+                    border: Border.all(
+                        color: _toneColor(tone).withValues(alpha: 0.82),
+                        width: 1.2),
                   ),
                   child: SwitchListTile(
                     value: value,
-                    onChanged: _loading ? null : (v) => setSheetState(() => onChanged(v)),
-                    title: Text(title, style: TextStyle(color: _toneColor(tone), fontWeight: FontWeight.w600)),
-                    subtitle: Text(_toneText(tone), style: TextStyle(color: _toneColor(tone).withValues(alpha: 0.82), fontSize: 11)),
+                    onChanged: _loading
+                        ? null
+                        : (v) => setSheetState(() => onChanged(v)),
+                    title: Text(title,
+                        style: TextStyle(
+                            color: _toneColor(tone),
+                            fontWeight: FontWeight.w600)),
+                    subtitle: Text(_toneText(tone),
+                        style: TextStyle(
+                            color: _toneColor(tone).withValues(alpha: 0.82),
+                            fontSize: 11)),
                   ),
                 );
               }
 
-              Widget row2(Widget a, Widget b) => Row(children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)]);
+              Widget row2(Widget a, Widget b) => Row(children: [
+                    Expanded(child: a),
+                    const SizedBox(width: 10),
+                    Expanded(child: b)
+                  ]);
 
               Widget bspTypeSelector() {
                 final selected = _csvTokens(bsType).toSet();
                 final valid = _validBspTypeText(bsType);
-                final tone = _settingTone('bs_type', _normalizeBspTypeText(bsType), valid: valid);
+                final tone = _settingTone(
+                    'bs_type', _normalizeBspTypeText(bsType),
+                    valid: valid);
                 return InputDecorator(
                   decoration: _settingDecoration(
                     'bs_type',
@@ -657,10 +729,15 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                         FilterChip(
                           label: Text(type),
                           selected: selected.contains(type),
-                          selectedColor: _toneColor(tone).withValues(alpha: 0.20),
+                          selectedColor:
+                              _toneColor(tone).withValues(alpha: 0.20),
                           checkmarkColor: _toneColor(tone),
-                          side: BorderSide(color: _toneColor(tone).withValues(alpha: 0.70)),
-                          onSelected: _loading ? null : (v) => setSheetState(() => bsType = _toggleCsvToken(bsType, type, v)),
+                          side: BorderSide(
+                              color: _toneColor(tone).withValues(alpha: 0.70)),
+                          onSelected: _loading
+                              ? null
+                              : (v) => setSheetState(() =>
+                                  bsType = _toggleCsvToken(bsType, type, v)),
                         ),
                     ],
                   ),
@@ -733,12 +810,14 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
               return SafeArea(
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
+                  padding: EdgeInsets.fromLTRB(
+                      16, 0, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
                   child: SizedBox(
                     height: MediaQuery.of(context).size.height * 0.84,
                     child: Column(
                       children: [
-                        const TabBar(tabs: [Tab(text: '数据'), Tab(text: 'CChanConfig')]),
+                        const TabBar(
+                            tabs: [Tab(text: '数据'), Tab(text: 'CChanConfig')]),
                         Expanded(
                           child: TabBarView(
                             children: [
@@ -751,26 +830,101 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                                       '数据源',
                                       dataSource,
                                       const ['easy_tdx', 'csv'],
-                                      (v) => setSheetState(() => dataSource = v ?? dataSource),
-                                      labels: const {'easy_tdx': 'easy-tdx / Python chan.py', 'csv': '本地 CSV / Python chan.py'},
+                                      (v) => setSheetState(
+                                          () => dataSource = v ?? dataSource),
+                                      labels: const {
+                                        'easy_tdx': 'easy-tdx / Python chan.py',
+                                        'csv': '本地 CSV / Python chan.py'
+                                      },
                                     ),
                                     const SizedBox(height: 10),
-                                    TextField(controller: _backendUrlController, enabled: !_loading && !_isAndroidApp, decoration: const InputDecoration(labelText: 'Windows Python chan.py 服务地址', border: OutlineInputBorder())),
+                                    TextField(
+                                        controller: _backendUrlController,
+                                        enabled: !_loading && !_isAndroidApp,
+                                        decoration: const InputDecoration(
+                                            labelText:
+                                                'Windows Python chan.py 服务地址',
+                                            border: OutlineInputBorder())),
                                     const SizedBox(height: 10),
-                                    TextField(controller: _stockCodeController, enabled: !_loading && dataSource != 'csv', decoration: const InputDecoration(labelText: '代码（自动识别市场）', border: OutlineInputBorder())),
+                                    TextField(
+                                        controller: _stockCodeController,
+                                        enabled:
+                                            !_loading && dataSource != 'csv',
+                                        decoration: const InputDecoration(
+                                            labelText: '代码（自动识别市场）',
+                                            border: OutlineInputBorder())),
                                     const SizedBox(height: 10),
-                                    OutlinedButton.icon(onPressed: _loading ? null : _pickCsv, icon: const Icon(Icons.upload_file), label: Text(_localCsvName.isEmpty ? '选择本地 CSV' : '已选 $_localCsvName')),
+                                    OutlinedButton.icon(
+                                        onPressed: _loading ? null : _pickCsv,
+                                        icon: const Icon(Icons.upload_file),
+                                        label: Text(_localCsvName.isEmpty
+                                            ? '选择本地 CSV'
+                                            : '已选 $_localCsvName')),
                                     const SizedBox(height: 10),
-                                    _dropdown('模式', mode, const ['once', 'step'], (v) => setSheetState(() => mode = v ?? mode), labels: const {'once': '一次性', 'step': '严格逐K trigger_step / step_load'}),
+                                    _dropdown(
+                                        '模式',
+                                        mode,
+                                        const ['once', 'step'],
+                                        (v) => setSheetState(
+                                            () => mode = v ?? mode),
+                                        labels: const {
+                                          'once': '一次性',
+                                          'step':
+                                              '严格逐K trigger_step / step_load'
+                                        }),
                                     const SizedBox(height: 10),
                                     row2(
-                                      _dropdown('周期', period, const ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY', 'WEEKLY', 'MONTHLY'], (v) => setSheetState(() => period = v ?? period), labels: const {'MIN1': '1分钟', 'MIN5': '5分钟', 'MIN15': '15分钟', 'MIN30': '30分钟', 'MIN60': '60分钟', 'DAILY': '日线', 'WEEKLY': '周线', 'MONTHLY': '月线'}),
-                                      _dropdown('复权', adjust, const ['QFQ', 'HFQ', 'NONE'], (v) => setSheetState(() => adjust = v ?? adjust), labels: const {'QFQ': '前复权', 'HFQ': '后复权', 'NONE': '不复权'}),
+                                      _dropdown(
+                                          '周期',
+                                          period,
+                                          const [
+                                            'MIN1',
+                                            'MIN5',
+                                            'MIN15',
+                                            'MIN30',
+                                            'MIN60',
+                                            'DAILY',
+                                            'WEEKLY',
+                                            'MONTHLY'
+                                          ],
+                                          (v) => setSheetState(
+                                              () => period = v ?? period),
+                                          labels: const {
+                                            'MIN1': '1分钟',
+                                            'MIN5': '5分钟',
+                                            'MIN15': '15分钟',
+                                            'MIN30': '30分钟',
+                                            'MIN60': '60分钟',
+                                            'DAILY': '日线',
+                                            'WEEKLY': '周线',
+                                            'MONTHLY': '月线'
+                                          }),
+                                      _dropdown(
+                                          '复权',
+                                          adjust,
+                                          const ['QFQ', 'HFQ', 'NONE'],
+                                          (v) => setSheetState(
+                                              () => adjust = v ?? adjust),
+                                          labels: const {
+                                            'QFQ': '前复权',
+                                            'HFQ': '后复权',
+                                            'NONE': '不复权'
+                                          }),
                                     ),
                                     const SizedBox(height: 10),
                                     row2(
-                                      _dateTile('开始日期', start, !_loading, () async { final picked = await _pickDate(start); if (picked != null) setSheetState(() => start = picked); }),
-                                      _dateTile('结束日期', end, !_loading, () async { final picked = await _pickDate(end); if (picked != null) setSheetState(() => end = picked); }),
+                                      _dateTile('开始日期', start, !_loading,
+                                          () async {
+                                        final picked = await _pickDate(start);
+                                        if (picked != null)
+                                          setSheetState(() => start = picked);
+                                      }),
+                                      _dateTile('结束日期', end, !_loading,
+                                          () async {
+                                        final picked = await _pickDate(end);
+                                        if (picked != null)
+                                          setSheetState(() => end = picked);
+                                      }),
                                     ),
                                   ],
                                 ),
@@ -780,70 +934,278 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     const SizedBox(height: 12),
-                                    const Text('这些设置直接传给 Python CChanConfig；枚举值来自 Vespa Common/CEnum.py 和各 Config 类。', style: TextStyle(color: Colors.white70)),
+                                    const Text(
+                                        '这些设置直接传给 Python CChanConfig；枚举值来自 Vespa Common/CEnum.py 和各 Config 类。',
+                                        style:
+                                            TextStyle(color: Colors.white70)),
                                     const SizedBox(height: 8),
                                     _settingToneLegend(),
                                     const SizedBox(height: 12),
                                     _sectionTitle('回放 / 数据校验'),
-                                    intField('skip_step', 'skip_step', skipStep, (v) => skipStep = v),
-                                    boolTile('kl_data_check', 'kl_data_check', klDataCheck, (v) => klDataCheck = v),
-                                    row2(intField('max_kl_misalgin_cnt', 'max_kl_misalgin_cnt', maxKlMisalginCnt, (v) => maxKlMisalginCnt = v), intField('max_kl_inconsistent_cnt', 'max_kl_inconsistent_cnt', maxKlInconsistentCnt, (v) => maxKlInconsistentCnt = v)),
-                                    boolTile('auto_skip_illegal_sub_lv', 'auto_skip_illegal_sub_lv', autoSkipIllegalSubLv, (v) => autoSkipIllegalSubLv = v),
-                                    boolTile('print_warning', 'print_warning', printWarning, (v) => printWarning = v),
-                                    boolTile('print_err_time', 'print_err_time', printErrTime, (v) => printErrTime = v),
+                                    intField('skip_step', 'skip_step', skipStep,
+                                        (v) => skipStep = v),
+                                    boolTile('kl_data_check', 'kl_data_check',
+                                        klDataCheck, (v) => klDataCheck = v),
+                                    row2(
+                                        intField(
+                                            'max_kl_misalgin_cnt',
+                                            'max_kl_misalgin_cnt',
+                                            maxKlMisalginCnt,
+                                            (v) => maxKlMisalginCnt = v),
+                                        intField(
+                                            'max_kl_inconsistent_cnt',
+                                            'max_kl_inconsistent_cnt',
+                                            maxKlInconsistentCnt,
+                                            (v) => maxKlInconsistentCnt = v)),
+                                    boolTile(
+                                        'auto_skip_illegal_sub_lv',
+                                        'auto_skip_illegal_sub_lv',
+                                        autoSkipIllegalSubLv,
+                                        (v) => autoSkipIllegalSubLv = v),
+                                    boolTile('print_warning', 'print_warning',
+                                        printWarning, (v) => printWarning = v),
+                                    boolTile('print_err_time', 'print_err_time',
+                                        printErrTime, (v) => printErrTime = v),
                                     const SizedBox(height: 12),
                                     _sectionTitle('笔 BI'),
-                                    row2(dropdownSetting('bi_algo', 'bi_algo', biAlgo, const ['normal', 'fx'], (v) => setSheetState(() => biAlgo = v ?? biAlgo)), dropdownSetting('bi_fx_check', 'bi_fx_check', biFxCheck, const ['strict', 'loss', 'half', 'totally'], (v) => setSheetState(() => biFxCheck = v ?? biFxCheck))),
-                                    boolTile('bi_strict', 'bi_strict', biStrict, (v) => biStrict = v),
-                                    boolTile('gap_as_kl', 'gap_as_kl', gapAsKl, (v) => gapAsKl = v),
-                                    boolTile('bi_end_is_peak', 'bi_end_is_peak', biEndIsPeak, (v) => biEndIsPeak = v),
-                                    boolTile('bi_allow_sub_peak', 'bi_allow_sub_peak', biAllowSubPeak, (v) => biAllowSubPeak = v),
+                                    row2(
+                                        dropdownSetting(
+                                            'bi_algo',
+                                            'bi_algo',
+                                            biAlgo,
+                                            const ['normal', 'fx'],
+                                            (v) => setSheetState(
+                                                () => biAlgo = v ?? biAlgo)),
+                                        dropdownSetting(
+                                            'bi_fx_check',
+                                            'bi_fx_check',
+                                            biFxCheck,
+                                            const [
+                                              'strict',
+                                              'loss',
+                                              'half',
+                                              'totally'
+                                            ],
+                                            (v) => setSheetState(() =>
+                                                biFxCheck = v ?? biFxCheck))),
+                                    boolTile('bi_strict', 'bi_strict', biStrict,
+                                        (v) => biStrict = v),
+                                    boolTile('gap_as_kl', 'gap_as_kl', gapAsKl,
+                                        (v) => gapAsKl = v),
+                                    boolTile('bi_end_is_peak', 'bi_end_is_peak',
+                                        biEndIsPeak, (v) => biEndIsPeak = v),
+                                    boolTile(
+                                        'bi_allow_sub_peak',
+                                        'bi_allow_sub_peak',
+                                        biAllowSubPeak,
+                                        (v) => biAllowSubPeak = v),
                                     const SizedBox(height: 12),
                                     _sectionTitle('线段 SEG'),
-                                    row2(dropdownSetting('seg_algo', 'seg_algo', segAlgo, const ['chan', '1+1', 'break'], (v) => setSheetState(() => segAlgo = v ?? segAlgo)), dropdownSetting('left_seg_method', 'left_seg_method', leftSegMethod, const ['peak', 'all'], (v) => setSheetState(() => leftSegMethod = v ?? leftSegMethod))),
+                                    row2(
+                                        dropdownSetting(
+                                            'seg_algo',
+                                            'seg_algo',
+                                            segAlgo,
+                                            const ['chan', '1+1', 'break'],
+                                            (v) => setSheetState(
+                                                () => segAlgo = v ?? segAlgo)),
+                                        dropdownSetting(
+                                            'left_seg_method',
+                                            'left_seg_method',
+                                            leftSegMethod,
+                                            const ['peak', 'all'],
+                                            (v) => setSheetState(() =>
+                                                leftSegMethod =
+                                                    v ?? leftSegMethod))),
                                     const SizedBox(height: 12),
                                     _sectionTitle('中枢 ZS'),
-                                    row2(dropdownSetting('zs_algo', 'zs_algo', zsAlgo, const ['normal', 'over_seg', 'auto'], (v) => setSheetState(() => zsAlgo = v ?? zsAlgo)), dropdownSetting('zs_combine_mode', 'zs_combine_mode', zsCombineMode, const ['zs', 'peak'], (v) => setSheetState(() => zsCombineMode = v ?? zsCombineMode))),
-                                    boolTile('zs_combine', 'zs_combine', zsCombine, (v) => zsCombine = v),
-                                    boolTile('one_bi_zs', 'one_bi_zs', oneBiZs, (v) => oneBiZs = v),
+                                    row2(
+                                        dropdownSetting(
+                                            'zs_algo',
+                                            'zs_algo',
+                                            zsAlgo,
+                                            const [
+                                              'normal',
+                                              'over_seg',
+                                              'auto'
+                                            ],
+                                            (v) => setSheetState(
+                                                () => zsAlgo = v ?? zsAlgo)),
+                                        dropdownSetting(
+                                            'zs_combine_mode',
+                                            'zs_combine_mode',
+                                            zsCombineMode,
+                                            const ['zs', 'peak'],
+                                            (v) => setSheetState(() =>
+                                                zsCombineMode =
+                                                    v ?? zsCombineMode))),
+                                    boolTile('zs_combine', 'zs_combine',
+                                        zsCombine, (v) => zsCombine = v),
+                                    boolTile('one_bi_zs', 'one_bi_zs', oneBiZs,
+                                        (v) => oneBiZs = v),
                                     const SizedBox(height: 12),
                                     _sectionTitle('指标模型'),
-                                    row2(textField('mean_metrics', 'mean_metrics', meanMetrics, (v) => meanMetrics = v, helper: '逗号分隔整数，如 5,10,20', valid: _validIntListText(meanMetrics)), textField('trend_metrics', 'trend_metrics', trendMetrics, (v) => trendMetrics = v, helper: '逗号分隔整数', valid: _validIntListText(trendMetrics))),
-                                    row2(intField('macd_fast', 'macd.fast', macdFast, (v) => macdFast = v, min: 1), intField('macd_slow', 'macd.slow', macdSlow, (v) => macdSlow = v, min: 1)),
-                                    intField('macd_signal', 'macd.signal', macdSignal, (v) => macdSignal = v, min: 1),
-                                    row2(intField('boll_n', 'boll_n', bollN, (v) => bollN = v, min: 1), intField('rsi_cycle', 'rsi_cycle', rsiCycle, (v) => rsiCycle = v, min: 1)),
-                                    intField('kdj_cycle', 'kdj_cycle', kdjCycle, (v) => kdjCycle = v, min: 1),
-                                    boolTile('cal_demark', 'cal_demark', calDemark, (v) => calDemark = v),
-                                    boolTile('cal_rsi', 'cal_rsi', calRsi, (v) => calRsi = v),
-                                    boolTile('cal_kdj', 'cal_kdj', calKdj, (v) => calKdj = v),
+                                    row2(
+                                        textField(
+                                            'mean_metrics',
+                                            'mean_metrics',
+                                            meanMetrics,
+                                            (v) => meanMetrics = v,
+                                            helper: '逗号分隔整数，如 5,10,20',
+                                            valid:
+                                                _validIntListText(meanMetrics)),
+                                        textField(
+                                            'trend_metrics',
+                                            'trend_metrics',
+                                            trendMetrics,
+                                            (v) => trendMetrics = v,
+                                            helper: '逗号分隔整数',
+                                            valid: _validIntListText(
+                                                trendMetrics))),
+                                    row2(
+                                        intField('macd_fast', 'macd.fast',
+                                            macdFast, (v) => macdFast = v,
+                                            min: 1),
+                                        intField('macd_slow', 'macd.slow',
+                                            macdSlow, (v) => macdSlow = v,
+                                            min: 1)),
+                                    intField('macd_signal', 'macd.signal',
+                                        macdSignal, (v) => macdSignal = v,
+                                        min: 1),
+                                    row2(
+                                        intField('boll_n', 'boll_n', bollN,
+                                            (v) => bollN = v, min: 1),
+                                        intField('rsi_cycle', 'rsi_cycle',
+                                            rsiCycle, (v) => rsiCycle = v,
+                                            min: 1)),
+                                    intField('kdj_cycle', 'kdj_cycle', kdjCycle,
+                                        (v) => kdjCycle = v,
+                                        min: 1),
+                                    boolTile('cal_demark', 'cal_demark',
+                                        calDemark, (v) => calDemark = v),
+                                    boolTile('cal_rsi', 'cal_rsi', calRsi,
+                                        (v) => calRsi = v),
+                                    boolTile('cal_kdj', 'cal_kdj', calKdj,
+                                        (v) => calKdj = v),
                                     const SizedBox(height: 12),
                                     _sectionTitle('Demark'),
-                                    row2(intField('demark_len', 'demark_len', demarkLen, (v) => demarkLen = v, min: 1), intField('demark_setup_bias', 'setup_bias', demarkSetupBias, (v) => demarkSetupBias = v, min: 1)),
-                                    row2(intField('demark_countdown_bias', 'countdown_bias', demarkCountdownBias, (v) => demarkCountdownBias = v, min: 1), intField('demark_max_countdown', 'max_countdown', demarkMaxCountdown, (v) => demarkMaxCountdown = v, min: 1)),
-                                    boolTile('demark_tiaokong_st', 'tiaokong_st', demarkTiaokongSt, (v) => demarkTiaokongSt = v),
-                                    boolTile('demark_setup_cmp2close', 'setup_cmp2close', demarkSetupCmp2close, (v) => demarkSetupCmp2close = v),
-                                    boolTile('demark_countdown_cmp2close', 'countdown_cmp2close', demarkCountdownCmp2close, (v) => demarkCountdownCmp2close = v),
+                                    row2(
+                                        intField('demark_len', 'demark_len',
+                                            demarkLen, (v) => demarkLen = v,
+                                            min: 1),
+                                        intField(
+                                            'demark_setup_bias',
+                                            'setup_bias',
+                                            demarkSetupBias,
+                                            (v) => demarkSetupBias = v,
+                                            min: 1)),
+                                    row2(
+                                        intField(
+                                            'demark_countdown_bias',
+                                            'countdown_bias',
+                                            demarkCountdownBias,
+                                            (v) => demarkCountdownBias = v,
+                                            min: 1),
+                                        intField(
+                                            'demark_max_countdown',
+                                            'max_countdown',
+                                            demarkMaxCountdown,
+                                            (v) => demarkMaxCountdown = v,
+                                            min: 1)),
+                                    boolTile(
+                                        'demark_tiaokong_st',
+                                        'tiaokong_st',
+                                        demarkTiaokongSt,
+                                        (v) => demarkTiaokongSt = v),
+                                    boolTile(
+                                        'demark_setup_cmp2close',
+                                        'setup_cmp2close',
+                                        demarkSetupCmp2close,
+                                        (v) => demarkSetupCmp2close = v),
+                                    boolTile(
+                                        'demark_countdown_cmp2close',
+                                        'countdown_cmp2close',
+                                        demarkCountdownCmp2close,
+                                        (v) => demarkCountdownCmp2close = v),
                                     const SizedBox(height: 12),
                                     _sectionTitle('买卖点 BSP'),
                                     bspTypeSelector(),
                                     const SizedBox(height: 10),
-                                    row2(textField('divergence_rate', 'divergence_rate', divergenceRate, (v) => divergenceRate = v, valid: _validDoubleText(divergenceRate)), textField('max_bs2_rate', 'max_bs2_rate', maxBs2Rate, (v) => maxBs2Rate = v, valid: _validDoubleText(maxBs2Rate, max: 1))),
-                                    row2(intField('min_zs_cnt', 'min_zs_cnt', minZsCnt, (v) => minZsCnt = v), intField('bsp3a_max_zs_cnt', 'bsp3a_max_zs_cnt', bsp3aMaxZsCnt, (v) => bsp3aMaxZsCnt = v, min: 1)),
-                                    row2(textField('max_bsp2s_lv', 'max_bsp2s_lv', maxBsp2sLv, (v) => maxBsp2sLv = v, helper: '空值表示 None', valid: _validOptionalIntText(maxBsp2sLv)), dropdownSetting('macd_algo', 'macd_algo', macdAlgo, _macdAlgoValues, (v) => setSheetState(() => macdAlgo = v ?? macdAlgo))),
-                                    boolTile('bsp1_only_multibi_zs', 'bsp1_only_multibi_zs', bsp1OnlyMultibiZs, (v) => bsp1OnlyMultibiZs = v),
-                                    boolTile('bs1_peak', 'bs1_peak', bs1Peak, (v) => bs1Peak = v),
-                                    boolTile('bsp2_follow_1', 'bsp2_follow_1', bsp2Follow1, (v) => bsp2Follow1 = v),
-                                    boolTile('bsp3_follow_1', 'bsp3_follow_1', bsp3Follow1, (v) => bsp3Follow1 = v),
-                                    boolTile('bsp3_peak', 'bsp3_peak', bsp3Peak, (v) => bsp3Peak = v),
-                                    boolTile('bsp2s_follow_2', 'bsp2s_follow_2', bsp2sFollow2, (v) => bsp2sFollow2 = v),
-                                    boolTile('strict_bsp3', 'strict_bsp3', strictBsp3, (v) => strictBsp3 = v),
+                                    row2(
+                                        textField(
+                                            'divergence_rate',
+                                            'divergence_rate',
+                                            divergenceRate,
+                                            (v) => divergenceRate = v,
+                                            valid: _validDoubleText(
+                                                divergenceRate)),
+                                        textField(
+                                            'max_bs2_rate',
+                                            'max_bs2_rate',
+                                            maxBs2Rate,
+                                            (v) => maxBs2Rate = v,
+                                            valid: _validDoubleText(maxBs2Rate,
+                                                max: 1))),
+                                    row2(
+                                        intField('min_zs_cnt', 'min_zs_cnt',
+                                            minZsCnt, (v) => minZsCnt = v),
+                                        intField(
+                                            'bsp3a_max_zs_cnt',
+                                            'bsp3a_max_zs_cnt',
+                                            bsp3aMaxZsCnt,
+                                            (v) => bsp3aMaxZsCnt = v,
+                                            min: 1)),
+                                    row2(
+                                        textField(
+                                            'max_bsp2s_lv',
+                                            'max_bsp2s_lv',
+                                            maxBsp2sLv,
+                                            (v) => maxBsp2sLv = v,
+                                            helper: '空值表示 None',
+                                            valid: _validOptionalIntText(
+                                                maxBsp2sLv)),
+                                        dropdownSetting(
+                                            'macd_algo',
+                                            'macd_algo',
+                                            macdAlgo,
+                                            _macdAlgoValues,
+                                            (v) => setSheetState(() =>
+                                                macdAlgo = v ?? macdAlgo))),
+                                    boolTile(
+                                        'bsp1_only_multibi_zs',
+                                        'bsp1_only_multibi_zs',
+                                        bsp1OnlyMultibiZs,
+                                        (v) => bsp1OnlyMultibiZs = v),
+                                    boolTile('bs1_peak', 'bs1_peak', bs1Peak,
+                                        (v) => bs1Peak = v),
+                                    boolTile('bsp2_follow_1', 'bsp2_follow_1',
+                                        bsp2Follow1, (v) => bsp2Follow1 = v),
+                                    boolTile('bsp3_follow_1', 'bsp3_follow_1',
+                                        bsp3Follow1, (v) => bsp3Follow1 = v),
+                                    boolTile('bsp3_peak', 'bsp3_peak', bsp3Peak,
+                                        (v) => bsp3Peak = v),
+                                    boolTile('bsp2s_follow_2', 'bsp2s_follow_2',
+                                        bsp2sFollow2, (v) => bsp2sFollow2 = v),
+                                    boolTile('strict_bsp3', 'strict_bsp3',
+                                        strictBsp3, (v) => strictBsp3 = v),
                                   ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _loading ? null : applyAndReload, icon: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh), label: const Text('应用并重新计算'))),
+                        SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                                onPressed: _loading ? null : applyAndReload,
+                                icon: _loading
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2))
+                                    : const Icon(Icons.refresh),
+                                label: const Text('应用并重新计算'))),
                       ],
                     ),
                   ),
@@ -856,11 +1218,16 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     );
   }
 
-  Widget _dropdown(String label, String value, List<String> values, ValueChanged<String?>? onChanged, {Map<String, String> labels = const {}}) {
+  Widget _dropdown(String label, String value, List<String> values,
+      ValueChanged<String?>? onChanged,
+      {Map<String, String> labels = const {}}) {
     return DropdownButtonFormField<String>(
       initialValue: value,
-      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-      items: values.map((v) => DropdownMenuItem(value: v, child: Text(labels[v] ?? v))).toList(),
+      decoration:
+          InputDecoration(labelText: label, border: const OutlineInputBorder()),
+      items: values
+          .map((v) => DropdownMenuItem(value: v, child: Text(labels[v] ?? v)))
+          .toList(),
       onChanged: _loading ? null : onChanged,
     );
   }
@@ -869,9 +1236,14 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     Widget item(_SettingTone tone, String text) => Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 10, height: 10, decoration: BoxDecoration(color: _toneColor(tone), shape: BoxShape.circle)),
+            Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                    color: _toneColor(tone), shape: BoxShape.circle)),
             const SizedBox(width: 4),
-            Text(text, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            Text(text,
+                style: const TextStyle(color: Colors.white70, fontSize: 12)),
           ],
         );
     return Container(
@@ -894,14 +1266,19 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     );
   }
 
-  InputDecoration _settingDecoration(String label, _SettingTone tone, {String? helper}) {
+  InputDecoration _settingDecoration(String label, _SettingTone tone,
+      {String? helper}) {
     final color = _toneColor(tone);
-    final helperText = tone == _SettingTone.invalid ? (helper == null || helper.isEmpty ? '非法值' : '$helper；非法值') : helper;
+    final helperText = tone == _SettingTone.invalid
+        ? (helper == null || helper.isEmpty ? '非法值' : '$helper；非法值')
+        : helper;
     return InputDecoration(
       labelText: label,
       labelStyle: TextStyle(color: color, fontWeight: FontWeight.w600),
       helperText: helperText,
-      helperStyle: TextStyle(color: tone == _SettingTone.invalid ? color : Colors.white54, fontSize: 11),
+      helperStyle: TextStyle(
+          color: tone == _SettingTone.invalid ? color : Colors.white54,
+          fontSize: 11),
       border: _toneBorder(tone),
       enabledBorder: _toneBorder(tone),
       focusedBorder: _toneBorder(tone, width: 2),
@@ -910,13 +1287,17 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   }
 
   OutlineInputBorder _toneBorder(_SettingTone tone, {double width = 1.2}) {
-    return OutlineInputBorder(borderSide: BorderSide(color: _toneColor(tone).withValues(alpha: 0.86), width: width));
+    return OutlineInputBorder(
+        borderSide: BorderSide(
+            color: _toneColor(tone).withValues(alpha: 0.86), width: width));
   }
 
   _SettingTone _settingTone(String key, Object? value, {bool valid = true}) {
     if (!valid) return _SettingTone.invalid;
     final defaultValue = _settingDefaults[key];
-    return value == defaultValue ? _SettingTone.defaultValue : _SettingTone.changed;
+    return value == defaultValue
+        ? _SettingTone.defaultValue
+        : _SettingTone.changed;
   }
 
   Color _toneColor(_SettingTone tone) {
@@ -944,17 +1325,23 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   Widget _sectionTitle(String text) {
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 8),
-      child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+      child: Text(text,
+          style: const TextStyle(
+              color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
     );
   }
 
-  Widget _dateTile(String title, DateTime value, bool enabled, VoidCallback onTap) {
+  Widget _dateTile(
+      String title, DateTime value, bool enabled, VoidCallback onTap) {
     return Opacity(
       opacity: enabled ? 1 : 0.38,
       child: InkWell(
         onTap: enabled ? onTap : null,
         child: InputDecorator(
-          decoration: InputDecoration(labelText: title, border: const OutlineInputBorder(), suffixIcon: const Icon(Icons.calendar_month)),
+          decoration: InputDecoration(
+              labelText: title,
+              border: const OutlineInputBorder(),
+              suffixIcon: const Icon(Icons.calendar_month)),
           child: Text(_fmtDate(value)),
         ),
       ),
@@ -982,7 +1369,11 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         toolbarHeight: 40,
         elevation: 0,
         backgroundColor: const Color(0xFF131722),
-        title: Text(_status, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54)),
+        title: Text(_status,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: Colors.white54)),
       ),
       body: SafeArea(
         top: false,
@@ -1025,33 +1416,146 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
             const SizedBox(height: 6),
             InkWell(
               onTap: () => setState(() => _toolbarExpanded = !_toolbarExpanded),
-              child: SizedBox(width: _toolbarExpanded ? 36 : 24, height: 30, child: Center(child: Text(_toolbarExpanded ? '<-' : '->', style: const TextStyle(color: Colors.white70)))),
+              child: SizedBox(
+                  width: _toolbarExpanded ? 36 : 24,
+                  height: 30,
+                  child: Center(
+                      child: Text(_toolbarExpanded ? '<-' : '->',
+                          style: const TextStyle(color: Colors.white70)))),
             ),
             if (_toolbarExpanded) ...[
               const Divider(height: 12, color: Colors.white12),
-              _toolIcon('数据/标的/周期/日期', Icons.search, _loading ? null : _openDataPanel),
-              _toolIcon('CChanConfig 设置', Icons.tune, _loading ? null : _openConfigPanel),
-              _toolIcon('本地CSV上传', Icons.upload_file, _loading ? null : _pickCsv),
-              _toolIcon('一次性显示', Icons.fullscreen, _hasBars ? () => setState(() { _mode = 'once'; _cursor = _fullSnapshot.rawBars.length; _snapshot = _fullSnapshot; }) : null, selected: _mode == 'once'),
-              _toolIcon('严格逐K', Icons.play_circle_outline, _hasBars ? () => setState(() { _mode = 'step'; _cursor = 0; _snapshot = _frames.isNotEmpty ? _frames.first : _sliceSnapshot(_fullSnapshot, 0); }) : null, selected: _mode == 'step'),
+              _toolIcon('数据/标的/周期/日期', Icons.search,
+                  _loading ? null : _openDataPanel),
+              _toolIcon('CChanConfig 设置', Icons.tune,
+                  _loading ? null : _openConfigPanel),
+              _toolIcon(
+                  '本地CSV上传', Icons.upload_file, _loading ? null : _pickCsv),
+              _toolIcon(
+                  '一次性显示',
+                  Icons.fullscreen,
+                  _hasBars
+                      ? () => setState(() {
+                            _mode = 'once';
+                            _cursor = _fullSnapshot.rawBars.length;
+                            _snapshot = _fullSnapshot;
+                          })
+                      : null,
+                  selected: _mode == 'once'),
+              _toolIcon(
+                  '严格逐K',
+                  Icons.play_circle_outline,
+                  _hasBars
+                      ? () => setState(() {
+                            _mode = 'step';
+                            _cursor = 0;
+                            _snapshot = _frames.isNotEmpty
+                                ? _frames.first
+                                : _sliceSnapshot(_fullSnapshot, 0);
+                          })
+                      : null,
+                  selected: _mode == 'step'),
               const Divider(height: 18, color: Colors.white12),
-              _toolIcon('显示分型顶底', Icons.trip_origin, _hasFx ? () => setState(() => _showFx = !_showFx) : null, selected: _showFx && _hasFx),
-              _toolIcon('显示分型顶底文字', Icons.title, _hasFx && _showFx ? () => setState(() => _showFxText = !_showFxText) : null, selected: _showFxText && _hasFx && _showFx),
-              _toolIcon('显示分型顶底连线', Icons.timeline, _hasFxLine ? () => setState(() => _showFxLine = !_showFxLine) : null, selected: _showFxLine && _hasFxLine),
-              _toolIcon('显示笔', Icons.show_chart, _hasBi ? () => setState(() => _showBi = !_showBi) : null, selected: _showBi && _hasBi),
-              _toolIcon('显示笔端点文字', Icons.text_fields, _hasBi && _showBi ? () => setState(() => _showBiText = !_showBiText) : null, selected: _showBiText && _hasBi && _showBi),
-              _toolIcon('显示线段', Icons.multiline_chart, _hasSeg ? () => setState(() => _showSeg = !_showSeg) : null, selected: _showSeg && _hasSeg),
-              _toolIcon('显示线段端点文字', Icons.font_download_outlined, _hasSeg && _showSeg ? () => setState(() => _showSegText = !_showSegText) : null, selected: _showSegText && _hasSeg && _showSeg),
-              _toolIcon('显示中枢', Icons.crop_square, _hasZs ? () => setState(() => _showZs = !_showZs) : null, selected: _showZs && _hasZs),
-              _toolIcon('显示笔买卖点', Icons.change_circle, _hasBiBsp ? () => setState(() => _showBiBsp = !_showBiBsp) : null, selected: _showBiBsp && _hasBiBsp),
-              _toolIcon('显示线段买卖点', Icons.timeline, _hasSegBsp ? () => setState(() => _showSegBsp = !_showSegBsp) : null, selected: _showSegBsp && _hasSegBsp),
-              _toolIcon('显示合并K线', Icons.filter_none, _hasMergedBars ? () => setState(() => _showMergedBars = !_showMergedBars) : null, selected: _showMergedBars && _hasMergedBars),
+              _toolIcon('显示分型顶底', Icons.trip_origin,
+                  _hasFx ? () => setState(() => _showFx = !_showFx) : null,
+                  selected: _showFx && _hasFx),
+              _toolIcon(
+                  '显示分型顶底文字',
+                  Icons.title,
+                  _hasFx && _showFx
+                      ? () => setState(() => _showFxText = !_showFxText)
+                      : null,
+                  selected: _showFxText && _hasFx && _showFx),
+              _toolIcon(
+                  '显示分型顶底连线',
+                  Icons.timeline,
+                  _hasFxLine
+                      ? () => setState(() => _showFxLine = !_showFxLine)
+                      : null,
+                  selected: _showFxLine && _hasFxLine),
+              _toolIcon('显示笔', Icons.show_chart,
+                  _hasBi ? () => setState(() => _showBi = !_showBi) : null,
+                  selected: _showBi && _hasBi),
+              _toolIcon(
+                  '显示笔端点文字',
+                  Icons.text_fields,
+                  _hasBi && _showBi
+                      ? () => setState(() => _showBiText = !_showBiText)
+                      : null,
+                  selected: _showBiText && _hasBi && _showBi),
+              _toolIcon('显示线段', Icons.multiline_chart,
+                  _hasSeg ? () => setState(() => _showSeg = !_showSeg) : null,
+                  selected: _showSeg && _hasSeg),
+              _toolIcon(
+                  '显示线段端点文字',
+                  Icons.font_download_outlined,
+                  _hasSeg && _showSeg
+                      ? () => setState(() => _showSegText = !_showSegText)
+                      : null,
+                  selected: _showSegText && _hasSeg && _showSeg),
+              _toolIcon('显示中枢', Icons.crop_square,
+                  _hasZs ? () => setState(() => _showZs = !_showZs) : null,
+                  selected: _showZs && _hasZs),
+              _toolIcon(
+                  '显示笔买卖点',
+                  Icons.change_circle,
+                  _hasBiBsp
+                      ? () => setState(() => _showBiBsp = !_showBiBsp)
+                      : null,
+                  selected: _showBiBsp && _hasBiBsp),
+              _toolIcon(
+                  '显示线段买卖点',
+                  Icons.timeline,
+                  _hasSegBsp
+                      ? () => setState(() => _showSegBsp = !_showSegBsp)
+                      : null,
+                  selected: _showSegBsp && _hasSegBsp),
+              _toolIcon(
+                  '显示合并K线',
+                  Icons.filter_none,
+                  _hasMergedBars
+                      ? () => setState(() => _showMergedBars = !_showMergedBars)
+                      : null,
+                  selected: _showMergedBars && _hasMergedBars),
               const Divider(height: 18, color: Colors.white12),
-              _toolIcon('左右放大', Icons.zoom_in, _hasBars ? () => setState(() => _windowSize = (_windowSize - 15).clamp(24, 360).toInt()) : null),
-              _toolIcon('左右缩小', Icons.zoom_out, _hasBars ? () => setState(() => _windowSize = (_windowSize + 15).clamp(24, 360).toInt()) : null),
-              _toolIcon('上下放大', Icons.keyboard_arrow_up, _hasBars ? () => setState(() => _priceScale = (_priceScale * 1.18).clamp(0.35, 5.0).toDouble()) : null),
-              _toolIcon('上下缩小', Icons.keyboard_arrow_down, _hasBars ? () => setState(() => _priceScale = (_priceScale / 1.18).clamp(0.35, 5.0).toDouble()) : null),
-              _toolIcon('重置缩放', Icons.center_focus_strong, _hasBars ? () => setState(() { _windowSize = 90; _priceScale = 1.0; _viewEndIndex = null; }) : null),
+              _toolIcon(
+                  '左右放大',
+                  Icons.zoom_in,
+                  _hasBars
+                      ? () => setState(() => _windowSize =
+                          (_windowSize - 15).clamp(24, 360).toInt())
+                      : null),
+              _toolIcon(
+                  '左右缩小',
+                  Icons.zoom_out,
+                  _hasBars
+                      ? () => setState(() => _windowSize =
+                          (_windowSize + 15).clamp(24, 360).toInt())
+                      : null),
+              _toolIcon(
+                  '上下放大',
+                  Icons.keyboard_arrow_up,
+                  _hasBars
+                      ? () => setState(() => _priceScale =
+                          (_priceScale * 1.18).clamp(0.35, 5.0).toDouble())
+                      : null),
+              _toolIcon(
+                  '上下缩小',
+                  Icons.keyboard_arrow_down,
+                  _hasBars
+                      ? () => setState(() => _priceScale =
+                          (_priceScale / 1.18).clamp(0.35, 5.0).toDouble())
+                      : null),
+              _toolIcon(
+                  '重置缩放',
+                  Icons.center_focus_strong,
+                  _hasBars
+                      ? () => setState(() {
+                            _windowSize = 90;
+                            _priceScale = 1.0;
+                            _viewEndIndex = null;
+                          })
+                      : null),
             ],
           ],
         ),
@@ -1059,7 +1563,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     );
   }
 
-  Widget _toolIcon(String tooltip, IconData icon, VoidCallback? onPressed, {bool selected = false}) {
+  Widget _toolIcon(String tooltip, IconData icon, VoidCallback? onPressed,
+      {bool selected = false}) {
     return Tooltip(
       message: onPressed == null ? '$tooltip（当前不可用）' : tooltip,
       child: IconButton(
@@ -1067,7 +1572,10 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         icon: Icon(icon, size: 19),
         color: selected ? Colors.white : Colors.white60,
         disabledColor: Colors.white24,
-        style: IconButton.styleFrom(backgroundColor: selected ? const Color(0xFF2962FF) : Colors.transparent, visualDensity: VisualDensity.compact),
+        style: IconButton.styleFrom(
+            backgroundColor:
+                selected ? const Color(0xFF2962FF) : Colors.transparent,
+            visualDensity: VisualDensity.compact),
       ),
     );
   }
@@ -1078,7 +1586,9 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: DecoratedBox(
-          decoration: BoxDecoration(color: const Color(0xFF0B0D10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
+          decoration: BoxDecoration(
+              color: const Color(0xFF0B0D10),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
           child: OriginKlineChart(
             snapshot: _snapshot,
             showFx: _showFx && _hasFx,
@@ -1109,19 +1619,24 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
   _Symbol? _parseSymbol(String input) {
     var text = input.trim().toUpperCase();
-    if (text.endsWith('.SZ') || text.endsWith('.SH')) text = text.substring(0, 6);
-    if (text.startsWith('SZ') || text.startsWith('SH')) text = text.substring(2);
+    if (text.endsWith('.SZ') || text.endsWith('.SH'))
+      text = text.substring(0, 6);
+    if (text.startsWith('SZ') || text.startsWith('SH'))
+      text = text.substring(2);
     if (!RegExp(r'^\d{6}$').hasMatch(text)) return null;
-    return _Symbol(code: text, market: text.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ');
+    return _Symbol(
+        code: text, market: text.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ');
   }
 
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 3)));
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 3)));
   }
 
-  List<String> _csvTokens(String text) => text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  List<String> _csvTokens(String text) =>
+      text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
 
   String _toggleCsvToken(String csv, String token, bool selected) {
     final current = _csvTokens(csv).toSet();
@@ -1130,19 +1645,26 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     } else {
       current.remove(token);
     }
-    final ordered = [for (final item in _bspTypes) if (current.contains(item)) item];
+    final ordered = [
+      for (final item in _bspTypes)
+        if (current.contains(item)) item
+    ];
     return ordered.isEmpty ? token : ordered.join(',');
   }
 
   String _normalizeBspTypeText(String text) {
     final current = _csvTokens(text).toSet();
-    return [for (final item in _bspTypes) if (current.contains(item)) item].join(',');
+    return [
+      for (final item in _bspTypes)
+        if (current.contains(item)) item
+    ].join(',');
   }
 
   bool _validBspTypeText(String text) {
     final tokens = _csvTokens(text);
     if (tokens.isEmpty) return false;
-    return tokens.toSet().length == tokens.length && tokens.every(_bspTypes.contains);
+    return tokens.toSet().length == tokens.length &&
+        tokens.every(_bspTypes.contains);
   }
 
   bool _validIntListText(String text) {
@@ -1160,18 +1682,36 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
   bool _validOptionalIntText(String text) {
     final raw = text.trim().toLowerCase();
-    return raw.isEmpty || raw == 'none' || raw == 'null' || int.tryParse(raw) != null;
+    return raw.isEmpty ||
+        raw == 'none' ||
+        raw == 'null' ||
+        int.tryParse(raw) != null;
   }
 
-  String get _periodAdjustLabel => '${_periodLabel(_period)} ${_adjustLabel(_adjust)}';
+  String get _periodAdjustLabel =>
+      '${_periodLabel(_period)} ${_adjustLabel(_adjust)}';
 
-  String _periodLabel(String p) => {'MIN1': '1分钟', 'MIN5': '5分钟', 'MIN15': '15分钟', 'MIN30': '30分钟', 'MIN60': '60分钟', 'DAILY': '日线', 'WEEKLY': '周线', 'MONTHLY': '月线'}[p] ?? p;
+  String _periodLabel(String p) =>
+      {
+        'MIN1': '1分钟',
+        'MIN5': '5分钟',
+        'MIN15': '15分钟',
+        'MIN30': '30分钟',
+        'MIN60': '60分钟',
+        'DAILY': '日线',
+        'WEEKLY': '周线',
+        'MONTHLY': '月线'
+      }[p] ??
+      p;
 
-  String _adjustLabel(String a) => {'QFQ': '前复权', 'HFQ': '后复权', 'NONE': '不复权'}[a] ?? a;
+  String _adjustLabel(String a) =>
+      {'QFQ': '前复权', 'HFQ': '后复权', 'NONE': '不复权'}[a] ?? a;
 
-  String _fmtDate(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String _fmtDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  String _safeStoragePart(String raw) => raw.replaceAll(RegExp('[^a-zA-Z0-9._-]+'), '_');
+  String _safeStoragePart(String raw) =>
+      raw.replaceAll(RegExp('[^a-zA-Z0-9._-]+'), '_');
 }
 
 class _Symbol {
