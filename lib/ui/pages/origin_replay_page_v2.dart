@@ -366,6 +366,10 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
               endDate: _endDate,
               config: _chanConfig,
             );
+      final fallbackWarning = analysis.meta['warning'];
+      if (fallbackWarning is String && fallbackWarning.trim().isNotEmpty) {
+        throw Exception(fallbackWarning);
+      }
       if (!mounted) return;
 
       setState(() {
@@ -939,7 +943,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                         suffix,
                         'macd_algo',
                         'macd_algo',
-                        _macdAlgoValues,
+                        _macdAlgoValuesForBspSuffix(suffix),
+                        labels: const {'slope': 'slope / Vespa线段默认'},
                       ),
                       advancedBoolDropdown(
                           suffix, 'strict_bsp3', 'strict_bsp3'),
@@ -1919,6 +1924,66 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     ].join(',');
   }
 
+  List<String> _macdAlgoValuesForBspSuffix(String suffix) {
+    return _isSegBspSuffix(suffix) ? const ['slope'] : _macdAlgoValues;
+  }
+
+  bool _isSegBspSuffix(String suffix) {
+    return suffix == 'seg' || suffix == 'segbuy' || suffix == 'segsell';
+  }
+
+  bool _validBspAdvancedValue(String key, String value) {
+    final dash = key.lastIndexOf('-');
+    if (dash <= 0 || dash >= key.length - 1) return false;
+    final name = key.substring(0, dash);
+    final suffix = key.substring(dash + 1);
+    final raw = value.trim();
+    if (raw.isEmpty) return false;
+
+    switch (name) {
+      case 'divergence_rate':
+        return _validDoubleText(raw);
+      case 'max_bs2_rate':
+        return _validDoubleText(raw, max: 1);
+      case 'min_zs_cnt':
+        return int.tryParse(raw) != null;
+      case 'bsp3a_max_zs_cnt':
+        final value = int.tryParse(raw);
+        return value != null && value >= 1;
+      case 'max_bsp2s_lv':
+        return _validOptionalIntText(raw);
+      case 'bs_type':
+        return _validBspTypeText(raw);
+      case 'macd_algo':
+        if (_isSegBspSuffix(suffix)) return raw == 'slope';
+        return _macdAlgoValues.contains(raw);
+      case 'bsp1_only_multibi_zs':
+      case 'bs1_peak':
+      case 'bsp2_follow_1':
+      case 'bsp3_follow_1':
+      case 'bsp3_peak':
+      case 'bsp2s_follow_2':
+      case 'strict_bsp3':
+        return _validBoolText(raw);
+    }
+    return false;
+  }
+
+  bool _validBoolText(String text) {
+    return {
+      'true',
+      'false',
+      '1',
+      '0',
+      'yes',
+      'no',
+      'y',
+      'n',
+      'on',
+      'off',
+    }.contains(text.trim().toLowerCase());
+  }
+
   String _setBspAdvancedValue(
       String text, String key, String suffix, String value) {
     final parsed = _parseBspAdvancedTextOrNull(text);
@@ -1976,7 +2041,11 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       if (sep <= 0) return null;
       final key = raw.substring(0, sep).trim();
       final value = raw.substring(sep + 1).trim();
-      if (value.isEmpty || !_validBspAdvancedKey(key)) return null;
+      if (value.isEmpty ||
+          !_validBspAdvancedKey(key) ||
+          !_validBspAdvancedValue(key, value)) {
+        return null;
+      }
       result[key] = value;
     }
     return result;
