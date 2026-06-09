@@ -23,24 +23,27 @@ class AshareBspScannerPage extends StatefulWidget {
 class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   static bool get _isAndroidApp =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-
   static String get _defaultBackendBaseUrl =>
       _isAndroidApp ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
 
   final TextEditingController _backendUrlController =
       TextEditingController(text: _defaultBackendBaseUrl);
-  final TextEditingController _codeController = TextEditingController(text: '000001');
-  final TextEditingController _limitController = TextEditingController(text: '300');
+  final TextEditingController _codeController =
+      TextEditingController(text: '000001');
+  final TextEditingController _limitController =
+      TextEditingController(text: '300');
+
+  final List<_ScanResult> _results = <_ScanResult>[];
+  final List<String> _logs = <String>[];
 
   bool _biStrict = true;
   bool _scanning = false;
   bool _analyzing = false;
   int _scanSerial = 0;
 
-  final List<_ScannerResult> _results = <_ScannerResult>[];
-  final List<String> _logs = <String>[];
-  _ScannerResult? _selectedResult;
+  _ScanResult? _selectedResult;
   ChanSnapshot _snapshot = ChanSnapshot.empty();
+  String _status = '就绪 - 点击"开始扫描"分析股票';
 
   bool _showBi = true;
   bool _showSeg = true;
@@ -50,7 +53,6 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   double _priceScale = 1.0;
   int? _viewEndIndex;
   int? _crosshairIndex;
-  String _status = '就绪 - 点击"开始扫描"分析股票';
 
   Map<String, dynamic> get _scannerConfig => <String, dynamic>{
         'bi_strict': _biStrict,
@@ -89,7 +91,9 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     });
 
     try {
-      final uri = Uri.parse(_join(_backendUrlController.text.trim(), '/api/scanner/bsp/scan'));
+      final uri = Uri.parse(
+        _join(_backendUrlController.text.trim(), '/api/scanner/bsp/scan'),
+      );
       final response = await http
           .post(
             uri,
@@ -104,6 +108,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
           )
           .timeout(const Duration(minutes: 8));
       if (serial != _scanSerial) return;
+
       final body = utf8.decode(response.bodyBytes);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('扫描器后端返回 ${response.statusCode}: $body');
@@ -115,19 +120,23 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       if (decoded['ok'] == false) {
         throw Exception(decoded['error'] ?? '扫描器后端执行失败');
       }
+
       final rows = decoded['results'];
       final logRows = decoded['logs'];
       setState(() {
         _results
           ..clear()
           ..addAll(rows is List
-              ? rows.whereType<Map>().map((e) => _ScannerResult.fromJson(Map<String, dynamic>.from(e)))
-              : const <_ScannerResult>[]);
+              ? rows
+                  .whereType<Map>()
+                  .map((e) => _ScanResult.fromJson(Map<String, dynamic>.from(e)))
+              : const <_ScanResult>[]);
         _logs
           ..clear()
           ..addAll(logRows is List ? logRows.map((e) => '$e') : const <String>[]);
         _status = '扫描完成: 成功${decoded['success_count'] ?? 0}只, '
-            '跳过${decoded['fail_count'] ?? 0}只, 发现${decoded['found_count'] ?? _results.length}只买点股票';
+            '跳过${decoded['fail_count'] ?? 0}只, '
+            '发现${decoded['found_count'] ?? _results.length}只买点股票';
       });
     } catch (e) {
       if (!mounted || serial != _scanSerial) return;
@@ -136,7 +145,9 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         _status = '扫描失败: $e';
       });
     } finally {
-      if (mounted && serial == _scanSerial) setState(() => _scanning = false);
+      if (mounted && serial == _scanSerial) {
+        setState(() => _scanning = false);
+      }
     }
   }
 
@@ -159,17 +170,19 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     await _loadChartFor(code: code, market: _inferMarket(code), target: null);
   }
 
-  Future<void> _openResult(_ScannerResult result) async {
+  Future<void> _openResult(_ScanResult result) async {
     await _loadChartFor(code: result.code, market: result.market, target: result);
   }
 
   Future<void> _loadChartFor({
     required String code,
     required String market,
-    required _ScannerResult? target,
+    required _ScanResult? target,
   }) async {
     if (_analyzing) return;
-    final source = PythonChanAnalysisSource(baseUrl: _backendUrlController.text.trim());
+    final source = PythonChanAnalysisSource(
+      baseUrl: _backendUrlController.text.trim(),
+    );
     setState(() {
       _analyzing = true;
       _status = '正在分析 $code...';
@@ -186,8 +199,8 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         endDate: now,
         config: _scannerConfig,
       );
-      final snapshot = analysis.snapshot;
       if (!mounted) return;
+      final snapshot = analysis.snapshot;
       final targetBsp = target == null ? null : _matchBsp(snapshot, target);
       final rawIndex = targetBsp?.rawIndex ?? target?.rawIndex;
       setState(() {
@@ -198,14 +211,15 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
           final maxEnd = snapshot.rawBars.length - 1;
           final focus = rawIndex.clamp(0, maxEnd).toInt();
           _crosshairIndex = focus;
-          _viewEndIndex = (focus + math.max(20, _windowSize ~/ 2)).clamp(0, maxEnd).toInt();
+          _viewEndIndex =
+              (focus + math.max(20, _windowSize ~/ 2)).clamp(0, maxEnd).toInt();
         } else {
           _crosshairIndex = null;
           _viewEndIndex = null;
         }
         _status = target == null
             ? '分析完成: $code'
-            : '显示: ${target.code} ${target.name} ${target.bspType} ${_fmtDateTime(target.bspTime)}';
+            : '显示: ${target.code} ${target.name} ${target.bspType} ${_fmtDate(target.bspTime)}';
       });
     } catch (e) {
       if (mounted) _showMessage('分析失败: $e');
@@ -215,24 +229,26 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     }
   }
 
-  BspPoint? _matchBsp(ChanSnapshot snapshot, _ScannerResult result) {
+  BspPoint? _matchBsp(ChanSnapshot snapshot, _ScanResult result) {
     for (final bsp in snapshot.bsps) {
       if (bsp.rawIndex == result.rawIndex &&
-          (result.bspType.isEmpty || bsp.type == result.bspType || bsp.type.contains(result.bspType))) {
+          (result.bspType.isEmpty ||
+              bsp.type == result.bspType ||
+              bsp.type.contains(result.bspType))) {
         return bsp;
       }
     }
     for (final bsp in snapshot.bsps) {
       if (bsp.rawIndex == result.rawIndex) return bsp;
     }
-    if (result.rawIndex == null || snapshot.rawBars.isEmpty) return null;
-    final raw = result.rawIndex!.clamp(0, snapshot.rawBars.length - 1).toInt();
-    final fallbackPrice = result.bspPrice ?? snapshot.rawBars[raw].close;
+    final rawIndex = result.rawIndex;
+    if (rawIndex == null || snapshot.rawBars.isEmpty) return null;
+    final raw = rawIndex.clamp(0, snapshot.rawBars.length - 1).toInt();
     return BspPoint(
       index: -1,
       rawIndex: raw,
       time: result.bspTime,
-      price: fallbackPrice,
+      price: result.bspPrice ?? snapshot.rawBars[raw].close,
       type: result.bspType.isEmpty ? 'BSP' : result.bspType,
       level: result.level,
     );
@@ -240,8 +256,10 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
 
   List<DrawingObject> _highlightObjects() {
     final result = _selectedResult;
-    final bsp = result == null ? null : _matchBsp(_snapshot, result);
-    if (bsp == null || _snapshot.rawBars.isEmpty) return const [];
+    if (result == null || _snapshot.rawBars.isEmpty) return const [];
+    final bsp = _matchBsp(_snapshot, result);
+    if (bsp == null) return const [];
+
     final maxRaw = _snapshot.rawBars.length - 1;
     final leftRaw = math.max(0, bsp.rawIndex - 1).toInt();
     final rightRaw = math.min(maxRaw, bsp.rawIndex + 1).toInt();
@@ -303,7 +321,9 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 value: _biStrict,
-                onChanged: _scanning ? null : (v) => setState(() => _biStrict = v ?? _biStrict),
+                onChanged: _scanning
+                    ? null
+                    : (v) => setState(() => _biStrict = v ?? _biStrict),
                 title: const Text('笔严格模式'),
               ),
               TextField(
@@ -321,7 +341,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: '扫描数量上限',
-                  helperText: '默认 300；后端仍按 easy-tdx 股票列表过滤 ST / 科创 / 北交 / B股 / 停牌',
+                  helperText: '默认 300；后端过滤 ST / 科创 / 北交 / B股 / 停牌',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -332,7 +352,11 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                     child: FilledButton.icon(
                       onPressed: _scanning ? null : _startScan,
                       icon: _scanning
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : const Icon(Icons.play_arrow),
                       label: const Text('开始扫描'),
                     ),
@@ -347,7 +371,11 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                   ),
                 ],
               ),
-              if (_scanning) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
+              if (_scanning)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: LinearProgressIndicator(),
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -360,14 +388,22 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                     child: TextField(
                       controller: _codeController,
                       enabled: !_analyzing && !_scanning,
-                      decoration: const InputDecoration(labelText: '股票代码', hintText: '如: 000001', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: '股票代码',
+                        hintText: '如: 000001',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
                     onPressed: _analyzing || _scanning ? null : _analyzeSingle,
                     child: _analyzing
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Text('分析'),
                   ),
                 ],
@@ -381,7 +417,12 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
           const SizedBox(height: 6),
           Align(
             alignment: Alignment.centerLeft,
-            child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            child: Text(
+              _status,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
           ),
         ],
       ),
@@ -404,7 +445,9 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       children: [
         Expanded(
           child: _results.isEmpty
-              ? const Center(child: Text('暂无买点结果', style: TextStyle(color: Colors.white54)))
+              ? const Center(
+                  child: Text('暂无买点结果', style: TextStyle(color: Colors.white54)),
+                )
               : Scrollbar(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -430,9 +473,9 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                               cells: [
                                 DataCell(Text(result.code)),
                                 DataCell(Text(result.name, overflow: TextOverflow.ellipsis)),
-                                DataCell(Text(_fmtNum(result.price, digits: 2))),
-                                DataCell(Text(_fmtNum(result.change, digits: 2))),
-                                DataCell(Text('${result.bspType} (${_fmtDateTime(result.bspTime)})')),
+                                DataCell(Text(_fmtNum(result.price))),
+                                DataCell(Text(_fmtNum(result.change))),
+                                DataCell(Text('${result.bspType} (${_fmtDate(result.bspTime)})')),
                               ],
                             ),
                         ],
@@ -493,7 +536,12 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: _snapshot.rawBars.isEmpty
-                    ? const Center(child: Text('点击扫描结果或单股分析后显示 chan.py 图表', style: TextStyle(color: Colors.white70)))
+                    ? const Center(
+                        child: Text(
+                          '点击扫描结果或单股分析后显示 chan.py 图表',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      )
                     : OriginKlineChart(
                         snapshot: _snapshot,
                         showFx: false,
@@ -549,10 +597,10 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                 ? null
                 : () {
                     final result = _selectedResult;
-                    if (result != null) {
-                      _openResult(result);
-                    } else {
+                    if (result == null) {
                       _analyzeSingle();
+                    } else {
+                      _openResult(result);
                     }
                   },
             icon: const Icon(Icons.refresh, size: 16),
@@ -595,10 +643,17 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Checkbox(value: value, onChanged: (v) => onChanged(v ?? value), visualDensity: VisualDensity.compact),
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-        ]),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Checkbox(
+              value: value,
+              onChanged: (v) => onChanged(v ?? value),
+              visualDensity: VisualDensity.compact,
+            ),
+            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          ],
+        ),
       ),
     );
   }
@@ -608,10 +663,13 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       message: tooltip,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Checkbox(value: value, onChanged: null, visualDensity: VisualDensity.compact),
-          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 12)),
-        ]),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Checkbox(value: value, onChanged: null, visualDensity: VisualDensity.compact),
+            Text(label, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+          ],
+        ),
       ),
     );
   }
@@ -625,38 +683,47 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   String get _chartSymbolLabel {
     final result = _selectedResult;
     if (result == null) return '扫描器';
-    return '${result.name} ${result.market}${result.code} ${result.bspType} ${_fmtDateTime(result.bspTime)}';
+    return '${result.name} ${result.market}${result.code} ${result.bspType} ${_fmtDate(result.bspTime)}';
   }
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      duration: const Duration(seconds: 2),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: const Color(0xFF1E3A8A),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF1E3A8A),
+      ),
+    );
   }
 
-  static String _join(String base, String path) => '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}$path';
+  static String _join(String base, String path) =>
+      '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}$path';
 
   static String? _normalizeCode(String value) {
-    final code = value.trim().toUpperCase().replaceAll('.SZ', '').replaceAll('.SH', '').replaceAll(RegExp(r'[^0-9]'), '');
+    final code = value
+        .trim()
+        .toUpperCase()
+        .replaceAll('.SZ', '')
+        .replaceAll('.SH', '')
+        .replaceAll(RegExp(r'[^0-9]'), '');
     if (code.length < 6) return null;
     return code.substring(code.length - 6);
   }
 
-  static String _inferMarket(String code) => code.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ';
+  static String _inferMarket(String code) =>
+      code.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ';
 
-  static String _fmtNum(num? value, {int digits = 2}) => value == null ? '-' : value.toStringAsFixed(digits);
+  static String _fmtNum(num? value) => value == null ? '-' : value.toStringAsFixed(2);
 
-  static String _fmtDateTime(DateTime? value) {
+  static String _fmtDate(DateTime? value) {
     if (value == null) return '-';
     return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
   }
 }
 
-class _ScannerResult {
+class _ScanResult {
   final String code;
   final String market;
   final String name;
@@ -668,7 +735,7 @@ class _ScannerResult {
   final double? bspPrice;
   final String level;
 
-  const _ScannerResult({
+  const _ScanResult({
     required this.code,
     required this.market,
     required this.name,
@@ -681,11 +748,12 @@ class _ScannerResult {
     required this.level,
   });
 
-  factory _ScannerResult.fromJson(Map<String, dynamic> json) {
+  factory _ScanResult.fromJson(Map<String, dynamic> json) {
     final code = _string(json['code']);
-    return _ScannerResult(
+    final market = _string(json['market']);
+    return _ScanResult(
       code: code,
-      market: _string(json['market']).isEmpty ? _inferMarket(code) : _string(json['market']),
+      market: market.isEmpty ? _inferMarket(code) : market,
       name: _string(json['name']).isEmpty ? code : _string(json['name']),
       price: _double(json['price']),
       change: _double(json['change']),
@@ -713,10 +781,14 @@ class _ScannerResult {
   }
 
   static DateTime? _date(Object? value) {
-    final text = '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
+    final text = '${value ?? ''}'
+        .trim()
+        .replaceFirst(' ', 'T')
+        .replaceAll('/', '-');
     if (text.isEmpty || text.toLowerCase() == 'null') return null;
     return DateTime.tryParse(text);
   }
 
-  static String _inferMarket(String code) => code.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ';
+  static String _inferMarket(String code) =>
+      code.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ';
 }
