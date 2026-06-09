@@ -224,6 +224,7 @@ docs/label_overlap_policy.md                K线图文字与标签避让策略
 python tools/audit_dart_algorithm_usage.py
 python tools/check_chanpy_guardrails.py
 python tools/audit_bsp_label_layout_usage.py --strict
+python tools/audit_origin_kline_global_label_layout_usage.py --strict
 python tools/validate_chanpy_output_contract.py path/to/analysis.json
 python tools/validate_easy_tdx_indicator_contract.py path/to/analysis.json
 ```
@@ -244,7 +245,9 @@ flutter test test/bsp_chart_label_adapter_test.dart
 python tools/audit_dart_algorithm_usage.py
 python tools/check_chanpy_guardrails.py
 python tools/patch_origin_kline_bsp_label_layout.py --check
+python tools/patch_origin_kline_global_label_layout.py --check
 python tools/audit_bsp_label_layout_usage.py --strict
+python tools/audit_origin_kline_global_label_layout_usage.py --strict
 python tools/validate_easy_tdx_indicator_contract.py test/fixtures/easy_tdx_indicator_contract_valid.json
 ```
 
@@ -280,6 +283,8 @@ python tools/validate_easy_tdx_indicator_contract.py test/fixtures/easy_tdx_indi
 26. 已新增 BSP label layout 迁移审计脚本 `tools/audit_bsp_label_layout_usage.py`，并切换为 strict 护栏。
 27. 已将 `bsp_chart_label_adapter.dart` 和 `chart_label_layout.dart` 接入 `OriginKlineChart` 的 BSP 文本绘制。
 28. 用户本地验证通过：`flutter analyze` 为 No issues found，`audit_bsp_label_layout_usage.py --strict` 通过，两个 label 相关 Flutter test 全部通过。
+29. 已将 `OriginKlineChart` 内 FX / BI / SEG / BSP 结构文字统一接入 `ChartLabelLayout`，全局结构文字进入同一避让队列。
+30. 已新增全局结构文字布局审计脚本 `tools/audit_origin_kline_global_label_layout_usage.py`，并纳入 GitHub Actions strict 护栏。
 
 待完成：
 1. Windows / Android flutter run 实机验收。
