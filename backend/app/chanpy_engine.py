@@ -73,30 +73,99 @@ def _bool(value: Any, default: bool = False) -> bool:
     return str(value).strip().lower() in ('1', 'true', 'yes', 'y', 'on')
 
 
+def _int_list(value: Any) -> list[int]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        result: list[int] = []
+        for item in value:
+            try:
+                result.append(int(item))
+            except (TypeError, ValueError):
+                continue
+        return result
+    text = str(value).strip()
+    if not text:
+        return []
+    result = []
+    for part in re.split(r'[,，\s]+', text):
+        if not part:
+            continue
+        try:
+            result.append(int(part))
+        except ValueError:
+            continue
+    return result
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in ('none', 'null'):
+        return None
+    return int(text)
+
+
 def _config_dict(*, trigger_step: bool, config: dict[str, Any] | None = None) -> dict[str, Any]:
     cfg = config or {}
     return {
         'trigger_step': trigger_step,
         'skip_step': int(cfg.get('skip_step') or 0),
         'seg_algo': str(cfg.get('seg_algo') or 'chan'),
+        'left_seg_method': str(cfg.get('left_seg_method') or 'peak'),
         'bi_algo': str(cfg.get('bi_algo') or 'normal'),
         'bi_strict': _bool(cfg.get('bi_strict'), True),
+        'bi_fx_check': str(cfg.get('bi_fx_check') or 'strict'),
+        'gap_as_kl': _bool(cfg.get('gap_as_kl'), False),
+        'bi_end_is_peak': _bool(cfg.get('bi_end_is_peak'), True),
+        'bi_allow_sub_peak': _bool(cfg.get('bi_allow_sub_peak'), True),
         'zs_algo': str(cfg.get('zs_algo') or 'normal'),
         'zs_combine': _bool(cfg.get('zs_combine'), True),
         'zs_combine_mode': str(cfg.get('zs_combine_mode') or 'zs'),
         'one_bi_zs': _bool(cfg.get('one_bi_zs'), False),
-        'bs_type': str(cfg.get('bs_type') or '1,1p,2,2s,3a,3b'),
+        'kl_data_check': _bool(cfg.get('kl_data_check'), True),
+        'max_kl_misalgin_cnt': int(cfg.get('max_kl_misalgin_cnt') or 2),
+        'max_kl_inconsistent_cnt': int(cfg.get('max_kl_inconsistent_cnt') or 5),
+        'auto_skip_illegal_sub_lv': _bool(cfg.get('auto_skip_illegal_sub_lv'), False),
+        'print_warning': _bool(cfg.get('print_warning'), True),
+        'print_err_time': _bool(cfg.get('print_err_time'), True),
+        'mean_metrics': _int_list(cfg.get('mean_metrics')),
+        'trend_metrics': _int_list(cfg.get('trend_metrics')),
+        'macd': cfg.get('macd') if isinstance(cfg.get('macd'), dict) else {
+            'fast': int(cfg.get('macd_fast') or 12),
+            'slow': int(cfg.get('macd_slow') or 26),
+            'signal': int(cfg.get('macd_signal') or 9),
+        },
+        'cal_demark': _bool(cfg.get('cal_demark'), False),
+        'cal_rsi': _bool(cfg.get('cal_rsi'), False),
+        'cal_kdj': _bool(cfg.get('cal_kdj'), False),
+        'rsi_cycle': int(cfg.get('rsi_cycle') or 14),
+        'kdj_cycle': int(cfg.get('kdj_cycle') or 9),
+        'demark': cfg.get('demark') if isinstance(cfg.get('demark'), dict) else {
+            'demark_len': int(cfg.get('demark_len') or 9),
+            'setup_bias': int(cfg.get('demark_setup_bias') or 4),
+            'countdown_bias': int(cfg.get('demark_countdown_bias') or 2),
+            'max_countdown': int(cfg.get('demark_max_countdown') or 13),
+            'tiaokong_st': _bool(cfg.get('demark_tiaokong_st'), True),
+            'setup_cmp2close': _bool(cfg.get('demark_setup_cmp2close'), True),
+            'countdown_cmp2close': _bool(cfg.get('demark_countdown_cmp2close'), True),
+        },
+        'boll_n': int(cfg.get('boll_n') or 20),
         'divergence_rate': float(cfg.get('divergence_rate') or float('inf')),
         'min_zs_cnt': int(cfg.get('min_zs_cnt') or 1),
+        'bsp1_only_multibi_zs': _bool(cfg.get('bsp1_only_multibi_zs'), True),
         'max_bs2_rate': float(cfg.get('max_bs2_rate') or 0.9999),
+        'macd_algo': str(cfg.get('macd_algo') or 'peak'),
         'bs1_peak': _bool(cfg.get('bs1_peak'), True),
+        'bs_type': cfg.get('bs_type') or ['1', '1p', '2', '2s', '3a', '3b'],
         'bsp2_follow_1': _bool(cfg.get('bsp2_follow_1'), True),
         'bsp3_follow_1': _bool(cfg.get('bsp3_follow_1'), True),
         'bsp3_peak': _bool(cfg.get('bsp3_peak'), False),
         'bsp2s_follow_2': _bool(cfg.get('bsp2s_follow_2'), False),
+        'max_bsp2s_lv': _optional_int(cfg.get('max_bsp2s_lv')),
         'strict_bsp3': _bool(cfg.get('strict_bsp3'), False),
         'bsp3a_max_zs_cnt': int(cfg.get('bsp3a_max_zs_cnt') or 1),
-        'macd_algo': str(cfg.get('macd_algo') or 'peak'),
     }
 
 
