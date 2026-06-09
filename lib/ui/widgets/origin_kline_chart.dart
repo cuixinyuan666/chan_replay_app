@@ -10,6 +10,7 @@ import '../../core/models/raw_bar.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/drawing_object_hit_test.dart';
 import '../drawing/drawing_object_painter.dart';
+import '../drawing/drawing_object_persistence.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import '../drawing/tradingview_toolbox_host.dart';
 
@@ -27,6 +28,7 @@ class OriginKlineChart extends StatefulWidget {
   final bool showSegBsp;
   final bool showMergedBars;
   final List<DrawingObject> drawingObjects;
+  final String drawingStorageKey;
   final int windowSize;
   final double priceScale;
   final int? viewEndIndex;
@@ -51,6 +53,7 @@ class OriginKlineChart extends StatefulWidget {
     required this.showSegBsp,
     this.showMergedBars = false,
     this.drawingObjects = const [],
+    this.drawingStorageKey = '',
     required this.windowSize,
     this.priceScale = 1.0,
     this.viewEndIndex,
@@ -92,6 +95,15 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   DrawingObjectCollection _drawings = const DrawingObjectCollection();
   List<DrawingAnchor> _pendingAnchors = const [];
   _DrawingDragState? _dragState;
+  String _loadedStorageKey = '';
+
+  String get _effectiveStorageKey {
+    final explicit = widget.drawingStorageKey.trim();
+    if (explicit.isNotEmpty) return explicit;
+    final bars = widget.snapshot.rawBars;
+    if (bars.isEmpty) return 'empty';
+    return 'snapshot_${bars.length}_${bars.first.time.toIso8601String()}_${bars.last.time.toIso8601String()}';
+  }
 
   List<DrawingObject> get _effectiveDrawingObjects {
     if (widget.drawingObjects.isEmpty) return _drawings.objects;
@@ -103,6 +115,18 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       if (object.selected) return object;
     }
     return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPersistedDrawings();
+  }
+
+  @override
+  void didUpdateWidget(covariant OriginKlineChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_effectiveStorageKey != _loadedStorageKey) _loadPersistedDrawings();
   }
 
   @override
@@ -121,11 +145,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       onClearDrawings: _drawings.objects.isEmpty
           ? null
           : () {
-              setState(() {
-                _drawings = const DrawingObjectCollection();
-                _pendingAnchors = const [];
-                _dragState = null;
-              });
+              _setDrawings(const DrawingObjectCollection());
               _showDrawMessage('已清空手动画线');
             },
       child: Stack(
@@ -175,10 +195,64 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
               ),
             );
           }),
+          Positioned(left: 52, bottom: 8, child: _DrawingPersistenceBar(drawingCount: _drawings.objects.length, onImport: _importDrawings, onExport: _drawings.objects.isEmpty ? null : _exportDrawings)),
           if (selectedDrawing != null) Positioned(right: 68, top: 8, child: _SelectedDrawingBar(object: selectedDrawing, onDelete: _deleteSelectedDrawing, onToggleLock: _toggleSelectedDrawingLock, onToggleHidden: _toggleSelectedDrawingHidden, onCancel: _clearDrawingSelection)),
         ],
       ),
     );
+  }
+
+  Future<void> _loadPersistedDrawings() async {
+    final key = _effectiveStorageKey;
+    _loadedStorageKey = key;
+    final objects = await DrawingObjectPersistence.load(key);
+    if (!mounted || key != _effectiveStorageKey) return;
+    setState(() {
+      _drawings = DrawingObjectCollection(objects: objects.map((e) => e.selectOnly(false)).toList(growable: false));
+      _pendingAnchors = const [];
+      _dragState = null;
+    });
+  }
+
+  void _setDrawings(DrawingObjectCollection next, {bool persist = true}) {
+    setState(() {
+      _drawings = next;
+      _pendingAnchors = const [];
+      _dragState = null;
+    });
+    if (persist) _persistDrawings();
+  }
+
+  Future<void> _persistDrawings() async {
+    try {
+      await DrawingObjectPersistence.save(_effectiveStorageKey, _drawings.objects);
+    } catch (e) {
+      _showDrawMessage('画线自动保存失败：$e');
+    }
+  }
+
+  Future<void> _importDrawings() async {
+    try {
+      final objects = await DrawingObjectPersistence.importFromFile();
+      if (objects == null) return;
+      _setDrawings(DrawingObjectCollection(objects: objects.map((e) => e.selectOnly(false)).toList(growable: false)));
+      _showDrawMessage('已导入 ${objects.length} 个手动画线对象');
+    } catch (e) {
+      _showDrawMessage('导入画线失败：$e');
+    }
+  }
+
+  Future<void> _exportDrawings() async {
+    if (_drawings.objects.isEmpty) {
+      _showDrawMessage('暂无手动画线可导出');
+      return;
+    }
+    try {
+      final path = await DrawingObjectPersistence.exportToFile(storageKey: _effectiveStorageKey, objects: _drawings.objects);
+      if (path != null) _showDrawMessage('已导出手动画线 JSON');
+    } catch (e) {
+      _showDrawMessage('导出画线失败：$e');
+    }
   }
 
   void _selectDrawingTool(TradingViewDrawingTool tool) {
@@ -226,26 +300,14 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       createdAt: now,
       updatedAt: now,
     );
-    setState(() {
-      _drawings = _drawings.clearSelection().upsert(object);
-      _pendingAnchors = const [];
-      _dragState = null;
-    });
+    _setDrawings(_drawings.clearSelection().upsert(object));
     _showDrawMessage('已创建：${meta.label}');
   }
 
   DrawingObject? _hitTestDrawing(Offset p, Size size) {
     final meta = _visibleMeta(size);
     if (meta == null || !meta.chartRect.contains(p)) return null;
-    return DrawingObjectHitTest.hitTest(
-      objects: _drawings.objects,
-      point: p,
-      chartRect: meta.chartRect,
-      startRawIndex: meta.startIndex,
-      endRawIndex: meta.endIndex,
-      rawToX: meta.rawToX,
-      priceToY: meta.priceToY,
-    );
+    return DrawingObjectHitTest.hitTest(objects: _drawings.objects, point: p, chartRect: meta.chartRect, startRawIndex: meta.startIndex, endRawIndex: meta.endIndex, rawToX: meta.rawToX, priceToY: meta.priceToY);
   }
 
   void _selectExistingDrawing(DrawingObject object) {
@@ -272,11 +334,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   void _deleteSelectedDrawing() {
     final selected = _selectedDrawing;
     if (selected == null || selected.locked) return;
-    setState(() {
-      _drawings = _drawings.remove(selected.id);
-      _pendingAnchors = const [];
-      _dragState = null;
-    });
+    _setDrawings(_drawings.remove(selected.id));
     _showDrawMessage('已删除手动画线');
   }
 
@@ -284,10 +342,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     final selected = _selectedDrawing;
     if (selected == null) return;
     final next = selected.lock(!selected.locked);
-    setState(() {
-      _drawings = _drawings.upsert(next);
-      _dragState = null;
-    });
+    _setDrawings(_drawings.upsert(next));
     _showDrawMessage(next.locked ? '已锁定对象' : '已解锁对象');
   }
 
@@ -295,10 +350,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     final selected = _selectedDrawing;
     if (selected == null) return;
     final next = selected.hide(!selected.hidden);
-    setState(() {
-      _drawings = _drawings.upsert(next);
-      _dragState = null;
-    });
+    _setDrawings(_drawings.upsert(next));
     _showDrawMessage(next.hidden ? '已隐藏对象，可在当前浮条恢复' : '已恢复显示对象');
   }
 
@@ -315,16 +367,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       _dragState = _DrawingDragState(object: selected, mode: _DrawingDragMode.anchor, anchorIndex: handleIndex, startPointerAnchor: pointerAnchor);
       return;
     }
-    final bodyHit = DrawingObjectHitTest.hitTest(
-      objects: [selected],
-      point: p,
-      chartRect: meta.chartRect,
-      startRawIndex: meta.startIndex,
-      endRawIndex: meta.endIndex,
-      rawToX: meta.rawToX,
-      priceToY: meta.priceToY,
-      tolerance: 10,
-    );
+    final bodyHit = DrawingObjectHitTest.hitTest(objects: [selected], point: p, chartRect: meta.chartRect, startRawIndex: meta.startIndex, endRawIndex: meta.endIndex, rawToX: meta.rawToX, priceToY: meta.priceToY, tolerance: 10);
     if (bodyHit != null) {
       _dragState = _DrawingDragState(object: selected, mode: _DrawingDragMode.body, startPointerAnchor: pointerAnchor);
       return;
@@ -337,7 +380,6 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     if (state == null) return;
     final pointerAnchor = _chartAnchorAt(p, size);
     if (pointerAnchor == null) return;
-
     final nextAnchors = switch (state.mode) {
       _DrawingDragMode.anchor => _anchorsWithMovedHandle(state.object, state.anchorIndex ?? 0, pointerAnchor),
       _DrawingDragMode.body => _anchorsWithMovedBody(state.object, state.startPointerAnchor, pointerAnchor),
@@ -358,6 +400,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   void _endDrawingDrag() {
     if (_dragState == null) return;
     _dragState = null;
+    _persistDrawings();
   }
 
   int? _hitDrawingHandle(DrawingObject object, Offset p, _VisibleMeta meta) {
@@ -370,30 +413,13 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     return null;
   }
 
-  List<DrawingAnchor> _anchorsWithMovedHandle(DrawingObject object, int index, DrawingAnchor pointerAnchor) {
-    return [
-      for (var i = 0; i < object.anchors.length; i++)
-        if (i == index && object.anchors[i].isChart)
-          pointerAnchor
-        else
-          object.anchors[i],
-    ];
-  }
+  List<DrawingAnchor> _anchorsWithMovedHandle(DrawingObject object, int index, DrawingAnchor pointerAnchor) => [for (var i = 0; i < object.anchors.length; i++) if (i == index && object.anchors[i].isChart) pointerAnchor else object.anchors[i]];
 
   List<DrawingAnchor> _anchorsWithMovedBody(DrawingObject object, DrawingAnchor startPointerAnchor, DrawingAnchor pointerAnchor) {
     final deltaRaw = (pointerAnchor.rawIndex ?? 0) - (startPointerAnchor.rawIndex ?? 0);
     final deltaPrice = (pointerAnchor.price ?? 0) - (startPointerAnchor.price ?? 0);
     final maxRaw = math.max(0, widget.snapshot.rawBars.length - 1);
-    return [
-      for (final anchor in object.anchors)
-        if (anchor.isChart && anchor.rawIndex != null && anchor.price != null)
-          DrawingAnchor.chart(
-            rawIndex: (anchor.rawIndex! + deltaRaw).clamp(0, maxRaw).toInt(),
-            price: anchor.price! + deltaPrice,
-          )
-        else
-          anchor,
-    ];
+    return [for (final anchor in object.anchors) if (anchor.isChart && anchor.rawIndex != null && anchor.price != null) DrawingAnchor.chart(rawIndex: (anchor.rawIndex! + deltaRaw).clamp(0, maxRaw).toInt(), price: anchor.price! + deltaPrice) else anchor];
   }
 
   DrawingAnchor? _chartAnchorAt(Offset p, Size size) {
@@ -403,10 +429,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   }
 
   DrawingStyle _defaultStyleFor(TradingViewDrawingTool tool) {
-    final isMeasure = tool == TradingViewDrawingTool.ruler ||
-        tool == TradingViewDrawingTool.dateRange ||
-        tool == TradingViewDrawingTool.priceRange ||
-        tool == TradingViewDrawingTool.dateAndPriceRange;
+    final isMeasure = tool == TradingViewDrawingTool.ruler || tool == TradingViewDrawingTool.dateRange || tool == TradingViewDrawingTool.priceRange || tool == TradingViewDrawingTool.dateAndPriceRange;
     return switch (tool) {
       TradingViewDrawingTool.rectangle => const DrawingStyle(colorValue: 0xFF82B1FF, strokeWidth: 1.2, filled: true, fillColorValue: 0x332962FF, fillOpacity: 0.18),
       TradingViewDrawingTool.horizontalLine || TradingViewDrawingTool.horizontalRay => const DrawingStyle(colorValue: 0xFFFFD54F, strokeWidth: 1.2, dashed: true),
@@ -417,26 +440,12 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     };
   }
 
-  String _defaultTextFor(TradingViewDrawingTool tool, DrawingAnchor anchor) {
-    return switch (tool) {
-      TradingViewDrawingTool.priceLabel || TradingViewDrawingTool.priceNote => anchor.price?.toStringAsFixed(2) ?? '价格',
-      TradingViewDrawingTool.text || TradingViewDrawingTool.anchoredText => '文本',
-      TradingViewDrawingTool.note => '备注',
-      _ => '',
-    };
-  }
+  String _defaultTextFor(TradingViewDrawingTool tool, DrawingAnchor anchor) => switch (tool) { TradingViewDrawingTool.priceLabel || TradingViewDrawingTool.priceNote => anchor.price?.toStringAsFixed(2) ?? '价格', TradingViewDrawingTool.text || TradingViewDrawingTool.anchoredText => '文本', TradingViewDrawingTool.note => '备注', _ => '' };
 
   void _showDrawMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF1E3A8A),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 2), behavior: SnackBarBehavior.floating, backgroundColor: const Color(0xFF1E3A8A)));
   }
 
   void _handleWheel(PointerScrollEvent event, Size size) {
@@ -507,13 +516,28 @@ class _DrawingDragState {
   final _DrawingDragMode mode;
   final int? anchorIndex;
   final DrawingAnchor startPointerAnchor;
+  const _DrawingDragState({required this.object, required this.mode, required this.startPointerAnchor, this.anchorIndex});
+}
 
-  const _DrawingDragState({
-    required this.object,
-    required this.mode,
-    required this.startPointerAnchor,
-    this.anchorIndex,
-  });
+class _DrawingPersistenceBar extends StatelessWidget {
+  final int drawingCount;
+  final VoidCallback onImport;
+  final VoidCallback? onExport;
+  const _DrawingPersistenceBar({required this.drawingCount, required this.onImport, required this.onExport});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xCC1F2937),
+      borderRadius: BorderRadius.circular(8),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        _miniButton('导入画线 JSON', Icons.file_open, onImport),
+        _miniButton(drawingCount > 0 ? '导出画线 JSON' : '暂无画线可导出', Icons.ios_share, onExport),
+      ]),
+    );
+  }
+
+  Widget _miniButton(String tooltip, IconData icon, VoidCallback? onPressed) => Tooltip(message: tooltip, child: IconButton(onPressed: onPressed, icon: Icon(icon, size: 16), color: Colors.white70, disabledColor: Colors.white24, visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints.tightFor(width: 30, height: 30)));
 }
 
 class _SelectedDrawingBar extends StatelessWidget {
@@ -522,14 +546,7 @@ class _SelectedDrawingBar extends StatelessWidget {
   final VoidCallback onToggleLock;
   final VoidCallback onToggleHidden;
   final VoidCallback onCancel;
-
-  const _SelectedDrawingBar({
-    required this.object,
-    required this.onDelete,
-    required this.onToggleLock,
-    required this.onToggleHidden,
-    required this.onCancel,
-  });
+  const _SelectedDrawingBar({required this.object, required this.onDelete, required this.onToggleLock, required this.onToggleHidden, required this.onCancel});
 
   @override
   Widget build(BuildContext context) {
@@ -540,39 +557,20 @@ class _SelectedDrawingBar extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('${meta.label}${object.locked ? '（锁）' : ''}${object.hidden ? '（隐藏）' : ''}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-            const SizedBox(width: 8),
-            _miniButton(object.locked ? '解锁' : '锁定', object.locked ? Icons.lock_open : Icons.lock, onToggleLock),
-            _miniButton(object.hidden ? '恢复显示' : '隐藏', object.hidden ? Icons.visibility : Icons.visibility_off, onToggleHidden),
-            _miniButton('删除', Icons.delete_outline, object.locked ? null : onDelete),
-            _miniButton('取消选择', Icons.close, onCancel),
-          ],
-        ),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.white.withValues(alpha: 0.12))),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('${meta.label}${object.locked ? '（锁）' : ''}${object.hidden ? '（隐藏）' : ''}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          const SizedBox(width: 8),
+          _miniButton(object.locked ? '解锁' : '锁定', object.locked ? Icons.lock_open : Icons.lock, onToggleLock),
+          _miniButton(object.hidden ? '恢复显示' : '隐藏', object.hidden ? Icons.visibility : Icons.visibility_off, onToggleHidden),
+          _miniButton('删除', Icons.delete_outline, object.locked ? null : onDelete),
+          _miniButton('取消选择', Icons.close, onCancel),
+        ]),
       ),
     );
   }
 
-  Widget _miniButton(String tooltip, IconData icon, VoidCallback? onPressed) {
-    return Tooltip(
-      message: onPressed == null ? '$tooltip（已锁定）' : tooltip,
-      child: IconButton(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 16),
-        color: Colors.white70,
-        disabledColor: Colors.white24,
-        visualDensity: VisualDensity.compact,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-      ),
-    );
-  }
+  Widget _miniButton(String tooltip, IconData icon, VoidCallback? onPressed) => Tooltip(message: onPressed == null ? '$tooltip（已锁定）' : tooltip, child: IconButton(onPressed: onPressed, icon: Icon(icon, size: 16), color: Colors.white70, disabledColor: Colors.white24, visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints.tightFor(width: 28, height: 28)));
 }
 
 class _VisibleMeta {
@@ -582,27 +580,11 @@ class _VisibleMeta {
   final double step;
   final double minPrice;
   final double maxPrice;
-
   const _VisibleMeta(this.chartRect, this.startIndex, this.endIndex, this.step, this.minPrice, this.maxPrice);
-
   double rawToX(int rawIndex) => chartRect.left + (rawIndex - startIndex + 0.5) * step;
-
-  double priceToY(double price) {
-    final range = math.max(maxPrice - minPrice, 0.0000001);
-    return chartRect.bottom - (price - minPrice) / range * chartRect.height;
-  }
-
-  DrawingAnchor anchorAt(Offset p) {
-    final local = ((p.dx - chartRect.left) / step).floor();
-    final rawIndex = (startIndex + local).clamp(startIndex, endIndex).toInt();
-    return DrawingAnchor.chart(rawIndex: rawIndex, price: priceAtY(p.dy));
-  }
-
-  double priceAtY(double y) {
-    final clampedY = y.clamp(chartRect.top, chartRect.bottom).toDouble();
-    final range = math.max(maxPrice - minPrice, 0.0000001);
-    return minPrice + (chartRect.bottom - clampedY) / chartRect.height * range;
-  }
+  double priceToY(double price) => chartRect.bottom - (price - minPrice) / math.max(maxPrice - minPrice, 0.0000001) * chartRect.height;
+  DrawingAnchor anchorAt(Offset p) => DrawingAnchor.chart(rawIndex: (startIndex + ((p.dx - chartRect.left) / step).floor()).clamp(startIndex, endIndex).toInt(), price: priceAtY(p.dy));
+  double priceAtY(double y) => minPrice + (chartRect.bottom - y.clamp(chartRect.top, chartRect.bottom).toDouble()) / chartRect.height * math.max(maxPrice - minPrice, 0.0000001);
 }
 
 class _OriginChartPainter extends CustomPainter {
@@ -629,25 +611,7 @@ class _OriginChartPainter extends CustomPainter {
   final int? viewEndIndex;
   final int? crosshairIndex;
 
-  _OriginChartPainter({
-    required this.snapshot,
-    required this.showFx,
-    required this.showFxLine,
-    required this.showFxText,
-    required this.showBi,
-    required this.showBiText,
-    required this.showSeg,
-    required this.showSegText,
-    required this.showZs,
-    required this.showBiBsp,
-    required this.showSegBsp,
-    required this.showMergedBars,
-    required this.drawingObjects,
-    required this.windowSize,
-    required this.priceScale,
-    this.viewEndIndex,
-    this.crosshairIndex,
-  });
+  _OriginChartPainter({required this.snapshot, required this.showFx, required this.showFxLine, required this.showFxText, required this.showBi, required this.showBiText, required this.showSeg, required this.showSegText, required this.showZs, required this.showBiBsp, required this.showSegBsp, required this.showMergedBars, required this.drawingObjects, required this.windowSize, required this.priceScale, this.viewEndIndex, this.crosshairIndex});
 
   static Rect chartRectFor(Size size) => Rect.fromLTWH(_leftPad, _topPad, math.max(0.0, size.width - _leftPad - _rightPad), math.max(0.0, size.height - _topPad - _bottomPad));
 
@@ -681,15 +645,7 @@ class _OriginChartPainter extends CustomPainter {
     if (showSeg) _drawSeg(canvas, rect, start, end, rawToX, priceToY);
     if (showBiBsp || showSegBsp) _drawBsp(canvas, rect, start, end, rawToX, priceToY);
     if (showFx) _drawFx(canvas, rect, start, end, rawToX, priceToY);
-    DrawingObjectPainter.paintObjects(
-      canvas: canvas,
-      chartRect: rect,
-      objects: drawingObjects,
-      startRawIndex: start,
-      endRawIndex: end,
-      rawToX: rawToX,
-      priceToY: priceToY,
-    );
+    DrawingObjectPainter.paintObjects(canvas: canvas, chartRect: rect, objects: drawingObjects, startRawIndex: start, endRawIndex: end, rawToX: rawToX, priceToY: priceToY);
     final cross = crosshairIndex;
     if (cross != null && cross >= start && cross <= end) {
       _drawCrosshair(canvas, rect, bars[cross], rawToX, priceToY);
@@ -728,10 +684,7 @@ class _OriginChartPainter extends CustomPainter {
   }
 
   void _drawMergedBars(Canvas canvas, Rect rect, int start, int end, double Function(int) rawToX, double Function(double) priceToY, double step) {
-    final stroke = Paint()
-      ..color = const Color(0xFFFFD54F).withValues(alpha: 0.72)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(1.0, step * 0.05);
+    final stroke = Paint()..color = const Color(0xFFFFD54F).withValues(alpha: 0.72)..style = PaintingStyle.stroke..strokeWidth = math.max(1.0, step * 0.05);
     for (final merged in snapshot.mergedBars) {
       if (merged.endRawIndex < start || merged.startRawIndex > end) continue;
       final leftRaw = math.max(merged.startRawIndex, start);
@@ -741,8 +694,7 @@ class _OriginChartPainter extends CustomPainter {
       if (right <= left) continue;
       final top = priceToY(merged.high).clamp(rect.top, rect.bottom).toDouble();
       final bottom = priceToY(merged.low).clamp(rect.top, rect.bottom).toDouble();
-      final area = Rect.fromLTRB(left, math.min(top, bottom), right, math.max(top, bottom));
-      canvas.drawRect(area, stroke);
+      canvas.drawRect(Rect.fromLTRB(left, math.min(top, bottom), right, math.max(top, bottom)), stroke);
     }
   }
 
@@ -818,44 +770,19 @@ class _OriginChartPainter extends CustomPainter {
       final tipOffset = isSegLevel ? 9.0 : 7.0;
       final baseOffset = isSegLevel ? 6.0 : 5.0;
       final path = Path();
-      if (bsp.isSell) {
-        path.moveTo(x, y - tipOffset); path.lineTo(x - halfWidth, y + baseOffset); path.lineTo(x + halfWidth, y + baseOffset);
-      } else {
-        path.moveTo(x, y + tipOffset); path.lineTo(x - halfWidth, y - baseOffset); path.lineTo(x + halfWidth, y - baseOffset);
-      }
+      if (bsp.isSell) { path.moveTo(x, y - tipOffset); path.lineTo(x - halfWidth, y + baseOffset); path.lineTo(x + halfWidth, y + baseOffset); } else { path.moveTo(x, y + tipOffset); path.lineTo(x - halfWidth, y - baseOffset); path.lineTo(x + halfWidth, y - baseOffset); }
       path.close();
       canvas.drawPath(path, Paint()..color = color);
-      final label = '${isSegLevel ? '段' : '笔'}${bsp.type}';
-      _drawText(canvas, label, Offset(x + 5, y + (bsp.isSell ? -20 : 8)), isSegLevel ? 10.5 : 9, color);
+      _drawText(canvas, '${isSegLevel ? '段' : '笔'}${bsp.type}', Offset(x + 5, y + (bsp.isSell ? -20 : 8)), isSegLevel ? 10.5 : 9, color);
     }
   }
 
-  bool _isSegBsp(BspPoint bsp) {
-    final level = bsp.level.trim().toLowerCase();
-    return level == 'seg' || level == 'segment' || level.contains('seg');
-  }
+  bool _isSegBsp(BspPoint bsp) { final level = bsp.level.trim().toLowerCase(); return level == 'seg' || level == 'segment' || level.contains('seg'); }
+  bool _isBiBsp(BspPoint bsp) { final level = bsp.level.trim().toLowerCase(); return level.isEmpty || level == 'bi' || (!level.contains('seg') && level != 'segment'); }
 
-  bool _isBiBsp(BspPoint bsp) {
-    final level = bsp.level.trim().toLowerCase();
-    return level.isEmpty || level == 'bi' || (!level.contains('seg') && level != 'segment');
-  }
-
-  void _drawCrosshair(Canvas canvas, Rect rect, RawBar bar, double Function(int) rawToX, double Function(double) priceToY) {
-    final x = rawToX(bar.index).clamp(rect.left, rect.right).toDouble();
-    final y = priceToY(bar.close).clamp(rect.top, rect.bottom).toDouble();
-    final paint = Paint()..color = Colors.white.withValues(alpha: 0.52)..strokeWidth = 0.8;
-    canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), paint);
-    canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
-    _drawText(canvas, 'O:${bar.open.toStringAsFixed(2)} H:${bar.high.toStringAsFixed(2)} L:${bar.low.toStringAsFixed(2)} C:${bar.close.toStringAsFixed(2)} V:${bar.volume.toStringAsFixed(0)}', Offset(rect.left + 6, rect.top - 20), 11, Colors.white);
-  }
-
-  void _drawText(Canvas canvas, String text, Offset offset, double fontSize, Color color) {
-    final painter = TextPainter(text: TextSpan(text: text, style: TextStyle(color: color, fontSize: fontSize)), textDirection: TextDirection.ltr, maxLines: 1)..layout(maxWidth: 520);
-    painter.paint(canvas, offset);
-  }
-
+  void _drawCrosshair(Canvas canvas, Rect rect, RawBar bar, double Function(int) rawToX, double Function(double) priceToY) { final x = rawToX(bar.index).clamp(rect.left, rect.right).toDouble(); final y = priceToY(bar.close).clamp(rect.top, rect.bottom).toDouble(); final paint = Paint()..color = Colors.white.withValues(alpha: 0.52)..strokeWidth = 0.8; canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), paint); canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint); _drawText(canvas, 'O:${bar.open.toStringAsFixed(2)} H:${bar.high.toStringAsFixed(2)} L:${bar.low.toStringAsFixed(2)} C:${bar.close.toStringAsFixed(2)} V:${bar.volume.toStringAsFixed(0)}', Offset(rect.left + 6, rect.top - 20), 11, Colors.white); }
+  void _drawText(Canvas canvas, String text, Offset offset, double fontSize, Color color) { final painter = TextPainter(text: TextSpan(text: text, style: TextStyle(color: color, fontSize: fontSize)), textDirection: TextDirection.ltr, maxLines: 1)..layout(maxWidth: 520); painter.paint(canvas, offset); }
   String _fmtDate(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
   @override
   bool shouldRepaint(covariant _OriginChartPainter oldDelegate) => true;
 }
