@@ -232,16 +232,20 @@ def _bsp_type_text(item: Any, is_buy: bool) -> str:
     return f'{prefix}{text or "SP"}'
 
 
-def _bsp_price(item: Any, klu: Any, bi: Any, is_buy: bool) -> float | None:
+def _bsp_price(item: Any, klu: Any, line: Any, is_buy: bool) -> float | None:
+    # Vespa PlotMeta anchors BSP at bsp.klu.low for buy and bsp.klu.high for sell.
+    # Do the same first; direct value / line end value are only compatibility fallbacks.
+    if klu is not None:
+        if is_buy:
+            klu_price = _to_float(_attr(klu, ('low', 'close'), None))
+        else:
+            klu_price = _to_float(_attr(klu, ('high', 'close'), None))
+        if klu_price is not None:
+            return klu_price
     direct = _to_float(_attr(item, ('price', 'val', 'value'), None))
     if direct is not None:
         return direct
-    begin_val = _to_float(_call_any(bi, ('get_end_val',), None)) if bi is not None else None
-    if begin_val is not None:
-        return begin_val
-    if is_buy:
-        return _to_float(_attr(klu, ('low', 'close'), None))
-    return _to_float(_attr(klu, ('high', 'close'), None))
+    return _to_float(_call_any(line, ('get_end_val',), None)) if line is not None else None
 
 
 def _export_bsp(level: Any) -> list[dict[str, Any]]:
@@ -253,13 +257,13 @@ def _export_bsp(level: Any) -> list[dict[str, Any]]:
     seen: set[tuple[int, str, str]] = set()
     for level_name, container in containers:
         for item in _bsp_container_items(container):
-            bi = _attr(item, ('bi', 'relate_bi', 'related_bi'), None)
+            line = _attr(item, ('bi', 'seg', 'relate_bi', 'related_bi'), None)
             klu = _attr(item, ('klu', 'kl', 'point', 'kline'), None) or _call_any(item, ('get_klu',), None)
-            if klu is None and bi is not None:
-                klu = _call_any(bi, ('get_end_klu',), None)
+            if klu is None and line is not None:
+                klu = _call_any(line, ('get_end_klu',), None)
             is_buy = bool(_attr(item, ('is_buy',), False))
             raw_index = _idx(klu)
-            price = _bsp_price(item, klu, bi, is_buy)
+            price = _bsp_price(item, klu, line, is_buy)
             if raw_index is None or price is None:
                 continue
             type_text = _bsp_type_text(item, is_buy)
@@ -267,6 +271,7 @@ def _export_bsp(level: Any) -> list[dict[str, Any]]:
             if key in seen:
                 continue
             seen.add(key)
+            line_index = _idx(line)
             result.append({
                 'index': len(result),
                 'raw_index': raw_index,
@@ -274,8 +279,8 @@ def _export_bsp(level: Any) -> list[dict[str, Any]]:
                 'price': price,
                 'type': type_text,
                 'level': level_name,
-                'bi_index': _idx(bi),
-                'seg_index': _idx(bi) if level_name == 'seg' else None,
+                'bi_index': line_index if level_name == 'bi' else None,
+                'seg_index': line_index if level_name == 'seg' else None,
                 'zs_index': None,
                 'confirmed': bool(_attr(item, ('is_sure', 'confirmed'), True)),
             })
