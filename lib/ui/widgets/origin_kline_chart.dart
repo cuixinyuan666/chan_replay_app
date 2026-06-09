@@ -8,6 +8,7 @@ import '../../core/models/chan_snapshot.dart';
 import '../../core/models/fx.dart';
 import '../../core/models/raw_bar.dart';
 import '../drawing/drawing_object.dart';
+import '../drawing/drawing_object_hit_test.dart';
 import '../drawing/drawing_object_painter.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import '../drawing/tradingview_toolbox_host.dart';
@@ -96,12 +97,20 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     return [...widget.drawingObjects, ..._drawings.objects];
   }
 
+  DrawingObject? get _selectedDrawing {
+    for (final object in _drawings.objects) {
+      if (object.selected) return object;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bars = widget.snapshot.rawBars;
     if (bars.isEmpty) {
       return const Center(child: Text('暂无K线数据', style: TextStyle(color: Colors.white70)));
     }
+    final selectedDrawing = _selectedDrawing;
     return TradingViewToolboxHost(
       hasBars: bars.isNotEmpty,
       hasChanSnapshot: widget.snapshot.rawBars.isNotEmpty,
@@ -117,47 +126,52 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
               });
               _showDrawMessage('已清空手动画线');
             },
-      child: LayoutBuilder(builder: (context, constraints) {
-        final size = Size(constraints.maxWidth, constraints.maxHeight);
-        return Listener(
-          onPointerSignal: (event) {
-            if (event is PointerScrollEvent) _handleWheel(event, size);
-          },
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (details) => _handleTap(details.localPosition, size),
-            onLongPressStart: (details) => _updateCrosshair(details.localPosition, size),
-            onLongPressMoveUpdate: (details) => _updateCrosshair(details.localPosition, size),
-            onScaleStart: (_) {
-              _scaleStartWindow = widget.windowSize;
-              _panRemainder = 0;
-            },
-            onScaleUpdate: (details) => _handleScale(details, size),
-            child: CustomPaint(
-              painter: _OriginChartPainter(
-                snapshot: widget.snapshot,
-                showFx: widget.showFx,
-                showFxLine: widget.showFxLine,
-                showFxText: widget.showFxText,
-                showBi: widget.showBi,
-                showBiText: widget.showBiText,
-                showSeg: widget.showSeg,
-                showSegText: widget.showSegText,
-                showZs: widget.showZs,
-                showBiBsp: widget.showBiBsp,
-                showSegBsp: widget.showSegBsp,
-                showMergedBars: widget.showMergedBars,
-                drawingObjects: _effectiveDrawingObjects,
-                windowSize: widget.windowSize,
-                priceScale: widget.priceScale,
-                viewEndIndex: widget.viewEndIndex,
-                crosshairIndex: widget.crosshairIndex,
+      child: Stack(
+        children: [
+          LayoutBuilder(builder: (context, constraints) {
+            final size = Size(constraints.maxWidth, constraints.maxHeight);
+            return Listener(
+              onPointerSignal: (event) {
+                if (event is PointerScrollEvent) _handleWheel(event, size);
+              },
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (details) => _handleTap(details.localPosition, size),
+                onLongPressStart: (details) => _updateCrosshair(details.localPosition, size),
+                onLongPressMoveUpdate: (details) => _updateCrosshair(details.localPosition, size),
+                onScaleStart: (_) {
+                  _scaleStartWindow = widget.windowSize;
+                  _panRemainder = 0;
+                },
+                onScaleUpdate: (details) => _handleScale(details, size),
+                child: CustomPaint(
+                  painter: _OriginChartPainter(
+                    snapshot: widget.snapshot,
+                    showFx: widget.showFx,
+                    showFxLine: widget.showFxLine,
+                    showFxText: widget.showFxText,
+                    showBi: widget.showBi,
+                    showBiText: widget.showBiText,
+                    showSeg: widget.showSeg,
+                    showSegText: widget.showSegText,
+                    showZs: widget.showZs,
+                    showBiBsp: widget.showBiBsp,
+                    showSegBsp: widget.showSegBsp,
+                    showMergedBars: widget.showMergedBars,
+                    drawingObjects: _effectiveDrawingObjects,
+                    windowSize: widget.windowSize,
+                    priceScale: widget.priceScale,
+                    viewEndIndex: widget.viewEndIndex,
+                    crosshairIndex: widget.crosshairIndex,
+                  ),
+                  size: Size.infinite,
+                ),
               ),
-              size: Size.infinite,
-            ),
-          ),
-        );
-      }),
+            );
+          }),
+          if (selectedDrawing != null) Positioned(right: 68, top: 8, child: _SelectedDrawingBar(object: selectedDrawing, onDelete: _deleteSelectedDrawing, onToggleLock: _toggleSelectedDrawingLock, onToggleHidden: _toggleSelectedDrawingHidden, onCancel: _clearDrawingSelection)),
+        ],
+      ),
     );
   }
 
@@ -170,6 +184,12 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
 
   void _handleTap(Offset p, Size size) {
     if (!_interactiveDrawingTools.contains(_selectedDrawingTool)) {
+      final hit = _hitTestDrawing(p, size);
+      if (hit != null) {
+        _selectExistingDrawing(hit);
+        return;
+      }
+      _clearDrawingSelection(updateStateOnly: true);
       _updateCrosshair(p, size);
       return;
     }
@@ -204,6 +224,65 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       _pendingAnchors = const [];
     });
     _showDrawMessage('已创建：${meta.label}');
+  }
+
+  DrawingObject? _hitTestDrawing(Offset p, Size size) {
+    final meta = _visibleMeta(size);
+    if (meta == null || !meta.chartRect.contains(p)) return null;
+    return DrawingObjectHitTest.hitTest(
+      objects: _drawings.objects,
+      point: p,
+      chartRect: meta.chartRect,
+      startRawIndex: meta.startIndex,
+      endRawIndex: meta.endIndex,
+      rawToX: (rawIndex) => meta.chartRect.left + (rawIndex - meta.startIndex + 0.5) * meta.step,
+      priceToY: (price) => meta.chartRect.bottom - (price - meta.minPrice) / math.max(meta.maxPrice - meta.minPrice, 0.0000001) * meta.chartRect.height,
+    );
+  }
+
+  void _selectExistingDrawing(DrawingObject object) {
+    setState(() {
+      _drawings = _drawings.select(object.id);
+      _pendingAnchors = const [];
+    });
+    final meta = TradingViewDrawingToolRegistry.metaOf(object.tool);
+    _showDrawMessage('已选中：${meta.label}${object.locked ? '（已锁定）' : ''}');
+  }
+
+  void _clearDrawingSelection({bool updateStateOnly = false}) {
+    final hasSelected = _selectedDrawing != null;
+    if (!hasSelected) return;
+    setState(() {
+      _drawings = _drawings.clearSelection();
+      _pendingAnchors = const [];
+    });
+    if (!updateStateOnly) _showDrawMessage('已取消选择');
+  }
+
+  void _deleteSelectedDrawing() {
+    final selected = _selectedDrawing;
+    if (selected == null) return;
+    setState(() {
+      _drawings = _drawings.remove(selected.id);
+      _pendingAnchors = const [];
+    });
+    _showDrawMessage('已删除手动画线');
+  }
+
+  void _toggleSelectedDrawingLock() {
+    final selected = _selectedDrawing;
+    if (selected == null) return;
+    final next = selected.lock(!selected.locked);
+    setState(() => _drawings = _drawings.upsert(next));
+    _showDrawMessage(next.locked ? '已锁定对象' : '已解锁对象');
+  }
+
+  void _toggleSelectedDrawingHidden() {
+    final selected = _selectedDrawing;
+    if (selected == null) return;
+    final next = selected.hide(!selected.hidden);
+    setState(() => _drawings = _drawings.upsert(next));
+    _showDrawMessage(next.hidden ? '已隐藏对象，可在当前浮条恢复' : '已恢复显示对象');
   }
 
   DrawingAnchor? _chartAnchorAt(Offset p, Size size) {
@@ -293,6 +372,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     final bars = widget.snapshot.rawBars;
     if (bars.isEmpty || size.width <= 0 || size.height <= 0) return null;
     final rect = _OriginChartPainter.chartRectFor(size);
+    if (rect.width <= 0 || rect.height <= 0) return null;
     final end = (widget.viewEndIndex ?? bars.length - 1).clamp(0, bars.length - 1).toInt();
     final start = math.max(0, end - widget.windowSize + 1).toInt();
     final visible = bars.sublist(start, end + 1);
@@ -305,6 +385,65 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     final minPrice = center - scaledRange / 2 - padding;
     final maxPrice = center + scaledRange / 2 + padding;
     return _VisibleMeta(rect, start, end, rect.width / math.max(1, end - start + 1), minPrice, maxPrice);
+  }
+}
+
+class _SelectedDrawingBar extends StatelessWidget {
+  final DrawingObject object;
+  final VoidCallback onDelete;
+  final VoidCallback onToggleLock;
+  final VoidCallback onToggleHidden;
+  final VoidCallback onCancel;
+
+  const _SelectedDrawingBar({
+    required this.object,
+    required this.onDelete,
+    required this.onToggleLock,
+    required this.onToggleHidden,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final meta = TradingViewDrawingToolRegistry.metaOf(object.tool);
+    return Material(
+      color: const Color(0xEE1F2937),
+      elevation: 12,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('${meta.label}${object.hidden ? '（隐藏）' : ''}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            const SizedBox(width: 8),
+            _miniButton(object.locked ? '解锁' : '锁定', object.locked ? Icons.lock_open : Icons.lock, onToggleLock),
+            _miniButton(object.hidden ? '恢复显示' : '隐藏', object.hidden ? Icons.visibility : Icons.visibility_off, onToggleHidden),
+            _miniButton('删除', Icons.delete_outline, object.locked ? null : onDelete),
+            _miniButton('取消选择', Icons.close, onCancel),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _miniButton(String tooltip, IconData icon, VoidCallback? onPressed) {
+    return Tooltip(
+      message: onPressed == null ? '$tooltip（已锁定）' : tooltip,
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 16),
+        color: Colors.white70,
+        disabledColor: Colors.white24,
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+      ),
+    );
   }
 }
 
