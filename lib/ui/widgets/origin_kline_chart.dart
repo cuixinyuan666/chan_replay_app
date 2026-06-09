@@ -342,10 +342,16 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       _DrawingDragMode.anchor => _anchorsWithMovedHandle(state.object, state.anchorIndex ?? 0, pointerAnchor),
       _DrawingDragMode.body => _anchorsWithMovedBody(state.object, state.startPointerAnchor, pointerAnchor),
     };
-    final current = _drawings.objects.where((e) => e.id == state.object.id).firstOrNull;
+    DrawingObject? current;
+    for (final object in _drawings.objects) {
+      if (object.id == state.object.id) {
+        current = object;
+        break;
+      }
+    }
     if (current == null || current.locked) return;
     setState(() {
-      _drawings = _drawings.upsert(current.copyWith(anchors: nextAnchors, selected: true, updatedAt: DateTime.now()));
+      _drawings = _drawings.upsert(current!.copyWith(anchors: nextAnchors, selected: true, updatedAt: DateTime.now()));
     });
   }
 
