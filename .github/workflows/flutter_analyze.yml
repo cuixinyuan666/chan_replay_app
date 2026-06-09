@@ -30,8 +30,14 @@ jobs:
       - name: Analyze Dart
         run: flutter analyze
 
+      - name: Test chart label layout
+        run: flutter test test/chart_label_layout_test.dart
+
       - name: Audit Dart algorithm boundary
         run: python tools/audit_dart_algorithm_usage.py
 
       - name: Check chan.py placement guardrails
         run: python tools/check_chanpy_guardrails.py
+
+      - name: Validate easy-tdx indicator contract fixture
+        run: python tools/validate_easy_tdx_indicator_contract.py test/fixtures/easy_tdx_indicator_contract_valid.json
