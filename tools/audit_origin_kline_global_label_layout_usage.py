@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 
 TARGET = Path("lib/ui/widgets/origin_kline_chart.dart")
+BSP_ADAPTER = Path("lib/ui/widgets/bsp_chart_label_adapter.dart")
 STRUCTURE_METHODS = ("_drawFx", "_drawBi", "_drawSeg", "_drawBsp")
 
 
@@ -39,6 +40,16 @@ def _extract_method_body(source: str, method_name: str) -> str:
     return source[open_brace:]
 
 
+def _method_signature(source: str, method_name: str) -> str:
+    start = source.find(f"void {method_name}")
+    if start < 0:
+        return ""
+    open_brace = source.find("{", start)
+    if open_brace < 0:
+        return ""
+    return source[start:open_brace]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--strict", action="store_true")
@@ -47,8 +58,12 @@ def main() -> int:
     if not TARGET.exists():
         print(f"FAIL: {TARGET} does not exist")
         return 1
+    if not BSP_ADAPTER.exists():
+        print(f"FAIL: {BSP_ADAPTER} does not exist")
+        return 1
 
     source = TARGET.read_text(encoding="utf-8")
+    bsp_adapter_source = BSP_ADAPTER.read_text(encoding="utf-8")
     missing: list[str] = []
 
     if "final chartLabels = <ChartLabel>[];" not in source:
@@ -56,15 +71,17 @@ def main() -> int:
     if "ChartLabelLayout(" not in source or "paintLaidOutChartLabels" not in source:
         missing.append("missing shared ChartLabelLayout paint path")
 
-    expected_priorities = {
+    expected_origin_priorities = {
         "fx": "ChartLabelPriority.fx",
         "bi": "ChartLabelPriority.bi",
         "seg": "ChartLabelPriority.seg",
-        "bsp": "ChartLabelPriority.bsp",
     }
-    for name, token in expected_priorities.items():
+    for name, token in expected_origin_priorities.items():
         if token not in source:
-            missing.append(f"missing {name.upper()} label priority token: {token}")
+            missing.append(f"missing {name.upper()} label priority token in OriginKlineChart: {token}")
+
+    if "ChartLabelPriority.bsp" not in bsp_adapter_source:
+        missing.append("missing BSP label priority token in bsp_chart_label_adapter.dart: ChartLabelPriority.bsp")
 
     for method in STRUCTURE_METHODS:
         body = _extract_method_body(source, method)
@@ -73,7 +90,7 @@ def main() -> int:
             continue
         if re.search(r"\b_drawText\s*\(", body):
             missing.append(f"direct _drawText still used inside {method}")
-        if method != "_drawBsp" and "List<ChartLabel> chartLabels" not in source[source.find(f"void {method}"): source.find("{", source.find(f"void {method}"))]:
+        if method != "_drawBsp" and "List<ChartLabel> chartLabels" not in _method_signature(source, method):
             missing.append(f"{method} does not accept chartLabels")
 
     if missing:
