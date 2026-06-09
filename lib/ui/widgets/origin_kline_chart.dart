@@ -36,6 +36,8 @@ class OriginKlineChart extends StatefulWidget {
   final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
   final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
   final ValueListenable<int>? toolboxOpenSignal;
+  final ValueListenable<TradingViewDrawingTool?>? toolboxSelectedToolSignal;
+  final ValueChanged<TradingViewDrawingTool>? onToolboxQuickToolAdded;
   final int windowSize;
   final double priceScale;
   final int? viewEndIndex;
@@ -65,6 +67,8 @@ class OriginKlineChart extends StatefulWidget {
     this.isChanOverlayVisible,
     this.onChanOverlayToggled,
     this.toolboxOpenSignal,
+    this.toolboxSelectedToolSignal,
+    this.onToolboxQuickToolAdded,
     required this.windowSize,
     this.priceScale = 1.0,
     this.viewEndIndex,
@@ -166,12 +170,28 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   void initState() {
     super.initState();
     _loadPersistedDrawings();
+    widget.toolboxSelectedToolSignal?.addListener(_handleExternalToolSelection);
   }
 
   @override
   void didUpdateWidget(covariant OriginKlineChart oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (_effectiveStorageKey != _loadedStorageKey) _loadPersistedDrawings();
+    if (oldWidget.toolboxSelectedToolSignal != widget.toolboxSelectedToolSignal) {
+      oldWidget.toolboxSelectedToolSignal?.removeListener(_handleExternalToolSelection);
+      widget.toolboxSelectedToolSignal?.addListener(_handleExternalToolSelection);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.toolboxSelectedToolSignal?.removeListener(_handleExternalToolSelection);
+    super.dispose();
+  }
+
+  void _handleExternalToolSelection() {
+    final tool = widget.toolboxSelectedToolSignal?.value;
+    if (tool != null) _selectDrawingTool(tool);
   }
 
   @override
@@ -201,6 +221,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       canExportDrawings: _drawings.objects.isNotEmpty,
       isChanOverlayVisible: widget.isChanOverlayVisible,
       onChanOverlayToggled: widget.onChanOverlayToggled,
+      onQuickToolAdded: widget.onToolboxQuickToolAdded,
       child: Stack(
         children: [
           LayoutBuilder(builder: (context, constraints) {

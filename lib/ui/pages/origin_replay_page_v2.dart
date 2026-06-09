@@ -168,6 +168,9 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   ChanLoadVisualState? _loadVisualState;
   bool _toolbarHovering = false;
   final ValueNotifier<int> _tvToolboxOpenSignal = ValueNotifier<int>(0);
+  final ValueNotifier<TradingViewDrawingTool?> _tvToolSelectSignal =
+      ValueNotifier<TradingViewDrawingTool?>(null);
+  final List<TradingViewDrawingTool> _quickTvTools = [];
 
   String _mode = 'once';
   String _dataSource = 'easy_tdx';
@@ -339,6 +342,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     _toolbarCollapseTimer?.cancel();
     _loadVisualTimer?.cancel();
     _tvToolboxOpenSignal.dispose();
+    _tvToolSelectSignal.dispose();
     _stockCodeController.dispose();
     _backendUrlController.dispose();
     super.dispose();
@@ -1867,6 +1871,90 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   }
 
 
+  void _addQuickTvTool(TradingViewDrawingTool tool) {
+    if (_quickTvTools.contains(tool)) return;
+    setState(() => _quickTvTools.add(tool));
+  }
+
+  void _removeQuickTvTool(TradingViewDrawingTool tool) {
+    setState(() => _quickTvTools.remove(tool));
+  }
+
+  void _selectQuickTvTool(TradingViewDrawingTool tool) {
+    _tvToolSelectSignal.value = null;
+    _tvToolSelectSignal.value = tool;
+    _tvToolboxOpenSignal.value++;
+  }
+
+  IconData _quickTvToolIcon(TradingViewDrawingTool tool) {
+    return switch (tool) {
+      TradingViewDrawingTool.chanFx => Icons.filter_center_focus,
+      TradingViewDrawingTool.chanFxLine => Icons.timeline,
+      TradingViewDrawingTool.chanFxText => Icons.format_color_text,
+      TradingViewDrawingTool.chanBi => Icons.edit_note,
+      TradingViewDrawingTool.chanBiText => Icons.format_color_text,
+      TradingViewDrawingTool.chanSeg => Icons.account_tree,
+      TradingViewDrawingTool.chanSegText => Icons.short_text,
+      TradingViewDrawingTool.chanZs => Icons.select_all,
+      TradingViewDrawingTool.chanBiBsp => Icons.shopping_cart_checkout,
+      TradingViewDrawingTool.chanSegBsp => Icons.sell_outlined,
+      TradingViewDrawingTool.chanMergedBars => Icons.view_week,
+      _ => Icons.architecture,
+    };
+  }
+
+  Widget _buildTvQuickToolDropZone() {
+    return DragTarget<TradingViewDrawingTool>(
+      onAcceptWithDetails: (details) => _addQuickTvTool(details.data),
+      builder: (context, candidateData, rejectedData) {
+        final active = candidateData.isNotEmpty;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          width: 40,
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          decoration: BoxDecoration(
+            color: active ? const Color(0xFF1E3A8A) : Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+                color: active ? const Color(0xFF8AB4FF) : Colors.white.withValues(alpha: 0.10)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Tooltip(
+                waitDuration: const Duration(seconds: 3),
+                message: '拖拽 TV 工具到这里固定为左侧快捷按钮',
+                child: Icon(active ? Icons.add_circle : Icons.push_pin_outlined,
+                    size: 18, color: Colors.white70),
+              ),
+              for (final tool in _quickTvTools)
+                Tooltip(
+                  waitDuration: const Duration(seconds: 3),
+                  message: '${TradingViewDrawingToolRegistry.metaOf(tool).label}\n右键或长按移出快捷栏',
+                  child: GestureDetector(
+                    onTap: () => _selectQuickTvTool(tool),
+                    onLongPress: () => _removeQuickTvTool(tool),
+                    onSecondaryTap: () => _removeQuickTvTool(tool),
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      margin: const EdgeInsets.only(top: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(_quickTvToolIcon(tool), size: 17, color: Colors.white70),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildLeftToolbar() {
     final width = _toolbarExpanded ? 48.0 : 14.0;
     return Positioned(
@@ -1905,6 +1993,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                         const Divider(height: 12, color: Colors.white12),
                         _toolIcon('TV 工具箱', Icons.architecture,
                             () => _tvToolboxOpenSignal.value++),
+                        _buildTvQuickToolDropZone(),
                         const Divider(height: 12, color: Colors.white12),
                         _toolIcon('数据/标的/周期/日期', Icons.search,
                             _loading ? null : _openDataPanel),
@@ -2034,6 +2123,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                   showMergedBars: _showMergedBars && _hasMergedBars,
                   drawingStorageKey: _drawingStorageKey,
                   toolboxOpenSignal: _tvToolboxOpenSignal,
+                  toolboxSelectedToolSignal: _tvToolSelectSignal,
+                  onToolboxQuickToolAdded: _addQuickTvTool,
                   windowSize: _windowSize,
                   priceScale: _priceScale,
                   viewEndIndex: _viewEndIndex,

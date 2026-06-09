@@ -18,6 +18,7 @@ class TradingViewToolboxHost extends StatefulWidget {
   final bool canExportDrawings;
   final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
   final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
+  final ValueChanged<TradingViewDrawingTool>? onQuickToolAdded;
   final ValueListenable<int>? openSignal;
   final int drawingCount;
 
@@ -35,6 +36,7 @@ class TradingViewToolboxHost extends StatefulWidget {
     this.canExportDrawings = false,
     this.isChanOverlayVisible,
     this.onChanOverlayToggled,
+    this.onQuickToolAdded,
     this.openSignal,
     this.drawingCount = 0,
   });
@@ -101,25 +103,36 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
     setState(() => _quickTools.remove(tool));
   }
 
+  void _handleQuickToolAdded(TradingViewDrawingTool tool) {
+    final external = widget.onQuickToolAdded;
+    if (external != null) {
+      external(tool);
+      return;
+    }
+    _addQuickTool(tool);
+  }
+
   @override
   Widget build(BuildContext context) {
     final selected = _effectiveSelectedTool;
     final hasExternalButton = widget.openSignal != null;
+    final hasExternalQuickRail = widget.onQuickToolAdded != null;
     return Stack(
       children: [
         widget.child,
-        Positioned(
-          left: hasExternalButton ? 54 : 8,
-          top: 8,
-          bottom: 12,
-          child: _QuickToolRail(
-            tools: _quickTools,
-            selectedTool: selected,
-            onAcceptTool: _addQuickTool,
-            onRemoveTool: _removeQuickTool,
-            onSelected: _selectTool,
+        if (!hasExternalQuickRail)
+          Positioned(
+            left: hasExternalButton ? 54 : 8,
+            top: 8,
+            bottom: 12,
+            child: _QuickToolRail(
+              tools: _quickTools,
+              selectedTool: selected,
+              onAcceptTool: _addQuickTool,
+              onRemoveTool: _removeQuickTool,
+              onSelected: _selectTool,
+            ),
           ),
-        ),
         if (!hasExternalButton)
           Positioned(
             left: 8,
@@ -152,7 +165,7 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
               onChanOverlayToggled: widget.onChanOverlayToggled,
               onClose: () => setState(() => _open = false),
               onSelected: _selectTool,
-              onQuickToolAdded: _addQuickTool,
+              onQuickToolAdded: _handleQuickToolAdded,
             ),
           ),
       ],
