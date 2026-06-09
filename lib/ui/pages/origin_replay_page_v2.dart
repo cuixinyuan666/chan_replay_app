@@ -167,6 +167,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   Timer? _loadVisualTimer;
   ChanLoadVisualState? _loadVisualState;
   bool _toolbarHovering = false;
+  final ValueNotifier<int> _tvToolboxOpenSignal = ValueNotifier<int>(0);
 
   String _mode = 'once';
   String _dataSource = 'easy_tdx';
@@ -337,6 +338,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     _timer?.cancel();
     _toolbarCollapseTimer?.cancel();
     _loadVisualTimer?.cancel();
+    _tvToolboxOpenSignal.dispose();
     _stockCodeController.dispose();
     _backendUrlController.dispose();
     super.dispose();
@@ -1836,10 +1838,9 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       ),
       body: SafeArea(
         top: false,
-        child: Row(
+        child: Stack(
           children: [
-            _buildLeftToolbar(),
-            Expanded(
+            Positioned.fill(
               child: Column(
                 children: [
                   Expanded(child: _buildChartPanel()),
@@ -1858,121 +1859,133 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                 ],
               ),
             ),
+            _buildLeftToolbar(),
           ],
         ),
       ),
     );
   }
 
+
   Widget _buildLeftToolbar() {
-    return MouseRegion(
-      onEnter: (_) => _handleToolbarEnter(),
-      onExit: (_) => _handleToolbarExit(),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: 48,
-        color: const Color(0xFF131722),
-        child: Column(
-          children: [
-            const SizedBox(height: 6),
-            InkWell(
-              onTap: () => setState(() => _toolbarExpanded = !_toolbarExpanded),
-              child: SizedBox(
-                width: 36,
-                height: 30,
-                child: Center(
-                  child: Text(
-                    _toolbarExpanded ? '<-' : '->',
-                    style: const TextStyle(color: Colors.white70),
+    final width = _toolbarExpanded ? 48.0 : 14.0;
+    return Positioned(
+      left: 0,
+      top: 0,
+      bottom: 0,
+      child: MouseRegion(
+        onEnter: (_) => _handleToolbarEnter(),
+        onExit: (_) => _handleToolbarExit(),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: width,
+          color: const Color(0xEE131722),
+          child: Column(
+            children: [
+              const SizedBox(height: 6),
+              InkWell(
+                onTap: () => setState(() => _toolbarExpanded = !_toolbarExpanded),
+                child: SizedBox(
+                  width: width,
+                  height: 34,
+                  child: Center(
+                    child: Text(
+                      _toolbarExpanded ? '<-' : '>',
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
                   ),
                 ),
               ),
-            ),
-            if (_toolbarExpanded)
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  child: Column(
-                    children: [
-                      const Divider(height: 12, color: Colors.white12),
-                      _toolIcon('数据/标的/周期/日期', Icons.search,
-                          _loading ? null : _openDataPanel),
-                      _toolIcon('CChanConfig 设置', Icons.tune,
-                          _loading ? null : _openConfigPanel),
-                      _toolIcon('本地CSV上传', Icons.upload_file,
-                          _loading ? null : _pickCsv),
-                      _toolIcon(
-                          '一次性显示',
-                          Icons.fullscreen,
-                          _hasBars
-                              ? () => setState(() {
-                                    _mode = 'once';
-                                    _cursor = _fullSnapshot.rawBars.length;
-                                    _snapshot = _fullSnapshot;
-                                  })
-                              : null,
-                          selected: _mode == 'once'),
-                      _toolIcon(
-                          '严格逐K',
-                          Icons.play_circle_outline,
-                          _hasBars
-                              ? () => setState(() {
-                                    _mode = 'step';
-                                    _cursor = 0;
-                                    _snapshot = _frames.isNotEmpty
-                                        ? _frames.first
-                                        : _sliceSnapshot(_fullSnapshot, 0);
-                                  })
-                              : null,
-                          selected: _mode == 'step'),
-                      const Divider(height: 18, color: Colors.white12),
-                      _toolIcon(
-                          '左右放大',
-                          Icons.zoom_in,
-                          _hasBars
-                              ? () => setState(() => _windowSize =
-                                  (_windowSize - 15).clamp(24, 360).toInt())
-                              : null),
-                      _toolIcon(
-                          '左右缩小',
-                          Icons.zoom_out,
-                          _hasBars
-                              ? () => setState(() => _windowSize =
-                                  (_windowSize + 15).clamp(24, 360).toInt())
-                              : null),
-                      _toolIcon(
-                          '上下放大',
-                          Icons.keyboard_arrow_up,
-                          _hasBars
-                              ? () => setState(() => _priceScale =
-                                  (_priceScale * 1.18).clamp(0.35, 5.0).toDouble())
-                              : null),
-                      _toolIcon(
-                          '上下缩小',
-                          Icons.keyboard_arrow_down,
-                          _hasBars
-                              ? () => setState(() => _priceScale =
-                                  (_priceScale / 1.18).clamp(0.35, 5.0).toDouble())
-                              : null),
-                      _toolIcon(
-                          '重置缩放',
-                          Icons.center_focus_strong,
-                          _hasBars
-                              ? () => setState(() {
-                                    _windowSize = 90;
-                                    _priceScale = 1.0;
-                                    _viewEndIndex = null;
-                                  })
-                              : null),
-                    ],
+              if (_toolbarExpanded)
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: Column(
+                      children: [
+                        const Divider(height: 12, color: Colors.white12),
+                        _toolIcon('TV 工具箱', Icons.architecture,
+                            () => _tvToolboxOpenSignal.value++),
+                        const Divider(height: 12, color: Colors.white12),
+                        _toolIcon('数据/标的/周期/日期', Icons.search,
+                            _loading ? null : _openDataPanel),
+                        _toolIcon('CChanConfig 设置', Icons.tune,
+                            _loading ? null : _openConfigPanel),
+                        _toolIcon('本地CSV上传', Icons.upload_file,
+                            _loading ? null : _pickCsv),
+                        _toolIcon(
+                            '一次性显示',
+                            Icons.fullscreen,
+                            _hasBars
+                                ? () => setState(() {
+                                      _mode = 'once';
+                                      _cursor = _fullSnapshot.rawBars.length;
+                                      _snapshot = _fullSnapshot;
+                                    })
+                                : null,
+                            selected: _mode == 'once'),
+                        _toolIcon(
+                            '严格逐K',
+                            Icons.play_circle_outline,
+                            _hasBars
+                                ? () => setState(() {
+                                      _mode = 'step';
+                                      _cursor = 0;
+                                      _snapshot = _frames.isNotEmpty
+                                          ? _frames.first
+                                          : _sliceSnapshot(_fullSnapshot, 0);
+                                    })
+                                : null,
+                            selected: _mode == 'step'),
+                        const Divider(height: 18, color: Colors.white12),
+                        _toolIcon(
+                            '左右放大',
+                            Icons.zoom_in,
+                            _hasBars
+                                ? () => setState(() => _windowSize =
+                                    (_windowSize - 15).clamp(24, 360).toInt())
+                                : null),
+                        _toolIcon(
+                            '左右缩小',
+                            Icons.zoom_out,
+                            _hasBars
+                                ? () => setState(() => _windowSize =
+                                    (_windowSize + 15).clamp(24, 360).toInt())
+                                : null),
+                        _toolIcon(
+                            '上下放大',
+                            Icons.keyboard_arrow_up,
+                            _hasBars
+                                ? () => setState(() => _priceScale =
+                                    (_priceScale * 1.18).clamp(0.35, 5.0).toDouble())
+                                : null),
+                        _toolIcon(
+                            '上下缩小',
+                            Icons.keyboard_arrow_down,
+                            _hasBars
+                                ? () => setState(() => _priceScale =
+                                    (_priceScale / 1.18).clamp(0.35, 5.0).toDouble())
+                                : null),
+                        _toolIcon(
+                            '重置缩放',
+                            Icons.center_focus_strong,
+                            _hasBars
+                                ? () => setState(() {
+                                      _windowSize = 90;
+                                      _priceScale = 1.0;
+                                      _viewEndIndex = null;
+                                    })
+                                : null),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+
 
 
   Widget _toolIcon(String tooltip, IconData icon, VoidCallback? onPressed,
@@ -2020,6 +2033,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                   showSegBsp: _showSegBsp && _hasSegBsp,
                   showMergedBars: _showMergedBars && _hasMergedBars,
                   drawingStorageKey: _drawingStorageKey,
+                  toolboxOpenSignal: _tvToolboxOpenSignal,
                   windowSize: _windowSize,
                   priceScale: _priceScale,
                   viewEndIndex: _viewEndIndex,

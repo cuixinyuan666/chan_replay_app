@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/bsp.dart';
@@ -34,6 +35,7 @@ class OriginKlineChart extends StatefulWidget {
   final String symbolLabel;
   final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
   final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
+  final ValueListenable<int>? toolboxOpenSignal;
   final int windowSize;
   final double priceScale;
   final int? viewEndIndex;
@@ -62,6 +64,7 @@ class OriginKlineChart extends StatefulWidget {
     this.symbolLabel = '',
     this.isChanOverlayVisible,
     this.onChanOverlayToggled,
+    this.toolboxOpenSignal,
     required this.windowSize,
     this.priceScale = 1.0,
     this.viewEndIndex,
@@ -184,6 +187,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       hasChanSnapshot: widget.snapshot.rawBars.isNotEmpty,
       isToolAvailable: _isToolAvailable,
       selectedTool: _selectedDrawingTool,
+      openSignal: widget.toolboxOpenSignal,
       drawingCount: _drawings.objects.length,
       onSelected: _selectDrawingTool,
       onClearDrawings: _drawings.objects.isEmpty
