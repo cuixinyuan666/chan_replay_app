@@ -88,13 +88,17 @@
 
 ### 7. 拖拽编辑
 
-实现：
+状态：已完成。
 
-- 端点拖拽；
-- 整体移动；
-- 拖拽过程中实时更新 rawIndex/price；
-- 锁定对象不可拖拽；
-- ESC/右键取消。
+已在 `OriginKlineChart` 中接入拖拽编辑：
+
+- 光标/十字光标模式下，选中对象后可拖拽端点；
+- 点击对象本体并拖动可整体移动；
+- 拖拽过程中实时把屏幕坐标反写为 `DrawingAnchor.chart(rawIndex, price)`；
+- 整体移动按起点 rawIndex/price 与当前 rawIndex/price 的差值平移全部 chart anchor；
+- 锁定或隐藏对象不可拖拽；
+- 拖拽逻辑复用当前图表的 `onScaleStart/onScaleUpdate/onScaleEnd`，避免和已有左右拖动/缩放手势冲突；
+- 拖拽只处理用户手动画线对象，不推导任何缠论结构。
 
 ### 8. 画线持久化
 
