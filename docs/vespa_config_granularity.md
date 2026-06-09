@@ -198,6 +198,23 @@ macd_algo-segsell=slope
 
 不建议在线段级 BSP 上使用 `area`。实测 `macd_algo-seg=area` 可能触发后端 fallback，表现为 K 线仍显示，但分型、笔、线段、中枢、BSP 全部为空。普通 `buy` / `sell` 暂不限制完整 MACD_ALGO 枚举；若未来发现具体组合触发 fallback，再按 suffix 做白名单收窄。
 
+### 后端错误显式化
+
+chan.py 计算异常时，后端 fallback 不再返回 `ok=true`。失败响应应使用：
+
+```json
+{
+  "ok": false,
+  "error": "chan.py unavailable or failed: ...",
+  "meta": {
+    "fallback": true,
+    "warning": "chan.py unavailable or failed: ..."
+  }
+}
+```
+
+前端应以顶层 `ok=false` 作为失败判断依据；`meta.warning` 仅保留为兼容旧版本和调试提示，不应作为主判断条件。这样可以避免异常结果把正常图表替换成只有 K 线、结构全空的 fallback 快照。
+
 ## 前后端同步
 
 - Flutter `_chanConfig` 已输出上述基础配置和 BSP 高级覆盖配置；

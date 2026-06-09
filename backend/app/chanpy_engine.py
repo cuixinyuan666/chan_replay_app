@@ -474,8 +474,10 @@ def _run_chanpy_step_export(*, bars: list[dict[str, Any]], code: str, freq: str,
 
 
 def _fallback_result(*, bars: list[dict[str, Any]], symbol: str, market: str, freq: str, adjust: str, mode: str, error: Exception) -> dict[str, Any]:
+    message = f'chan.py unavailable or failed: {error}'
     return {
-        'ok': True,
+        'ok': False,
+        'error': message,
         'bars': bars,
         'merged_bars': [],
         'fx': [],
@@ -492,7 +494,8 @@ def _fallback_result(*, bars: list[dict[str, Any]], symbol: str, market: str, fr
             'freq': freq.upper(),
             'adjust': adjust.upper(),
             'mode': mode,
-            'warning': f'chan.py unavailable or failed: {error}',
+            'warning': message,
+            'fallback': True,
         },
     }
 
