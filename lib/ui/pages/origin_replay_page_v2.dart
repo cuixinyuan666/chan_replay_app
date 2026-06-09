@@ -50,6 +50,14 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     'seg',
   };
 
+  static const Map<String, String> _bspAdvancedSuffixLabels = {
+    'buy': '买点覆盖 buy',
+    'sell': '卖点覆盖 sell',
+    'segbuy': '段买点覆盖 segbuy',
+    'segsell': '段卖点覆盖 segsell',
+    'seg': '线段默认覆盖 seg',
+  };
+
   static const Set<String> _bspAdvancedKeys = {
     'divergence_rate',
     'min_zs_cnt',
@@ -774,6 +782,191 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                 );
               }
 
+              bool advancedEmptyOr(
+                  String value, bool Function(String value) validator) {
+                final raw = value.trim();
+                return raw.isEmpty || validator(raw);
+              }
+
+              String advancedValue(String key, String suffix) {
+                final parsed = _parseBspAdvancedTextOrNull(bspAdvancedText);
+                return parsed == null ? '' : parsed['$key-$suffix'] ?? '';
+              }
+
+              void setAdvancedValue(String key, String suffix, String value) {
+                bspAdvancedText =
+                    _setBspAdvancedValue(bspAdvancedText, key, suffix, value);
+              }
+
+              Widget advancedTextField(
+                String suffix,
+                String key,
+                String label, {
+                String? helper,
+                bool Function(String value)? validator,
+              }) {
+                final value = advancedValue(key, suffix);
+                return textField(
+                  '$key-$suffix',
+                  '$label-$suffix',
+                  value,
+                  (v) => setAdvancedValue(key, suffix, v),
+                  helper: helper ?? '留空表示继承基础配置',
+                  valid: validator == null
+                      ? true
+                      : advancedEmptyOr(value, validator),
+                );
+              }
+
+              Widget advancedDropdown(
+                String suffix,
+                String key,
+                String label,
+                List<String> values, {
+                Map<String, String> labels = const {},
+              }) {
+                final value = advancedValue(key, suffix);
+                final valid = value.isEmpty || values.contains(value);
+                return DropdownButtonFormField<String>(
+                  initialValue: valid ? value : '',
+                  decoration: _settingDecoration(
+                    '$label-$suffix',
+                    _settingTone('$key-$suffix', value, valid: valid),
+                    helper: '留空表示继承基础配置',
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('继承基础配置')),
+                    for (final item in values)
+                      DropdownMenuItem(
+                        value: item,
+                        child: Text(labels[item] ?? item),
+                      ),
+                  ],
+                  onChanged: _loading
+                      ? null
+                      : (v) => setSheetState(
+                            () => setAdvancedValue(key, suffix, v ?? ''),
+                          ),
+                );
+              }
+
+              Widget advancedBoolDropdown(
+                  String suffix, String key, String label) {
+                return advancedDropdown(
+                  suffix,
+                  key,
+                  label,
+                  const ['true', 'false'],
+                  labels: const {'true': 'true / 启用', 'false': 'false / 关闭'},
+                );
+              }
+
+              Widget advancedSuffixPanel(String suffix) {
+                final parsed = _parseBspAdvancedTextOrNull(bspAdvancedText) ??
+                    const <String, String>{};
+                final count =
+                    parsed.keys.where((key) => key.endsWith('-$suffix')).length;
+                final title = _bspAdvancedSuffixLabels[suffix] ?? suffix;
+                return ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(bottom: 8),
+                  title: Text(
+                    count > 0 ? '$title · $count 项' : title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    '留空表示继承基础 BSP 配置',
+                    style: TextStyle(color: Colors.white54, fontSize: 11),
+                  ),
+                  children: [
+                    row2(
+                      advancedTextField(
+                        suffix,
+                        'divergence_rate',
+                        'divergence_rate',
+                        helper: 'double，例如 1.2 / 1e18',
+                        validator: _validDoubleText,
+                      ),
+                      advancedTextField(
+                        suffix,
+                        'max_bs2_rate',
+                        'max_bs2_rate',
+                        helper: 'double，最大 1',
+                        validator: (v) => _validDoubleText(v, max: 1),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    row2(
+                      advancedTextField(
+                        suffix,
+                        'min_zs_cnt',
+                        'min_zs_cnt',
+                        helper: '整数',
+                        validator: (v) => int.tryParse(v) != null,
+                      ),
+                      advancedTextField(
+                        suffix,
+                        'bsp3a_max_zs_cnt',
+                        'bsp3a_max_zs_cnt',
+                        helper: '整数，建议 >= 1',
+                        validator: (v) =>
+                            int.tryParse(v) != null && int.parse(v) >= 1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    row2(
+                      advancedTextField(
+                        suffix,
+                        'max_bsp2s_lv',
+                        'max_bsp2s_lv',
+                        helper: '空 / none / null / 整数',
+                        validator: _validOptionalIntText,
+                      ),
+                      advancedTextField(
+                        suffix,
+                        'bs_type',
+                        'bs_type',
+                        helper: '逗号分隔：1,1p,2,2s,3a,3b',
+                        validator: _validBspTypeText,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    row2(
+                      advancedDropdown(
+                        suffix,
+                        'macd_algo',
+                        'macd_algo',
+                        _macdAlgoValues,
+                      ),
+                      advancedBoolDropdown(
+                          suffix, 'strict_bsp3', 'strict_bsp3'),
+                    ),
+                    const SizedBox(height: 8),
+                    row2(
+                      advancedBoolDropdown(suffix, 'bsp1_only_multibi_zs',
+                          'bsp1_only_multibi_zs'),
+                      advancedBoolDropdown(suffix, 'bs1_peak', 'bs1_peak'),
+                    ),
+                    const SizedBox(height: 8),
+                    row2(
+                      advancedBoolDropdown(
+                          suffix, 'bsp2_follow_1', 'bsp2_follow_1'),
+                      advancedBoolDropdown(
+                          suffix, 'bsp3_follow_1', 'bsp3_follow_1'),
+                    ),
+                    const SizedBox(height: 8),
+                    row2(
+                      advancedBoolDropdown(suffix, 'bsp3_peak', 'bsp3_peak'),
+                      advancedBoolDropdown(
+                          suffix, 'bsp2s_follow_2', 'bsp2s_follow_2'),
+                    ),
+                  ],
+                );
+              }
+
               void applyAndReload() {
                 Navigator.pop(context);
                 setState(() {
@@ -1228,18 +1421,23 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                                               color: Colors.white,
                                               fontWeight: FontWeight.w700)),
                                       subtitle: const Text(
-                                          '每行 key-suffix=value；suffix: buy/sell/segbuy/segsell/seg',
+                                          '表单最终生成 key-suffix=value；不在 Flutter 侧计算 BSP',
                                           style: TextStyle(
                                               color: Colors.white54,
                                               fontSize: 11)),
                                       children: [
+                                        for (final suffix
+                                            in _bspAdvancedSuffixes)
+                                          advancedSuffixPanel(suffix),
+                                        const Divider(
+                                            height: 18, color: Colors.white12),
                                         textField(
                                           'bsp_advanced',
-                                          'BSP advanced overrides',
+                                          '专家文本 / 自动生成配置',
                                           bspAdvancedText,
                                           (v) => bspAdvancedText = v,
                                           helper:
-                                              '示例：divergence_rate-buy=1.2；macd_algo-seg=area；strict_bsp3-segbuy=true',
+                                              '可直接编辑；每行 key-suffix=value；# 开头为注释',
                                           valid: _validBspAdvancedText(
                                               bspAdvancedText),
                                           maxLines: 8,
@@ -1352,6 +1550,9 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
   _SettingTone _settingTone(String key, Object? value, {bool valid = true}) {
     if (!valid) return _SettingTone.invalid;
+    if (key.contains('-') && value is String && value.trim().isEmpty) {
+      return _SettingTone.defaultValue;
+    }
     final defaultValue = _settingDefaults[key];
     return value == defaultValue
         ? _SettingTone.defaultValue
@@ -1716,6 +1917,50 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       for (final item in _bspTypes)
         if (current.contains(item)) item
     ].join(',');
+  }
+
+  String _setBspAdvancedValue(
+      String text, String key, String suffix, String value) {
+    final parsed = _parseBspAdvancedTextOrNull(text);
+    final next = Map<String, String>.from(parsed ?? const <String, String>{});
+    final fullKey = '$key-$suffix';
+    final raw = value.trim();
+    if (raw.isEmpty) {
+      next.remove(fullKey);
+    } else {
+      next[fullKey] = raw;
+    }
+    final keys = next.keys.toList()..sort(_compareBspAdvancedKeys);
+    return keys.map((key) => '$key=${next[key]}').join('\n');
+  }
+
+  int _compareBspAdvancedKeys(String a, String b) {
+    final suffixA = _advancedSuffix(a);
+    final suffixB = _advancedSuffix(b);
+    final suffixOrderA = _bspAdvancedSuffixes.toList().indexOf(suffixA);
+    final suffixOrderB = _bspAdvancedSuffixes.toList().indexOf(suffixB);
+    final safeSuffixA = suffixOrderA < 0 ? 999 : suffixOrderA;
+    final safeSuffixB = suffixOrderB < 0 ? 999 : suffixOrderB;
+    if (safeSuffixA != safeSuffixB) return safeSuffixA.compareTo(safeSuffixB);
+
+    final baseA = _advancedBaseKey(a);
+    final baseB = _advancedBaseKey(b);
+    final keyOrderA = _bspAdvancedKeys.toList().indexOf(baseA);
+    final keyOrderB = _bspAdvancedKeys.toList().indexOf(baseB);
+    final safeKeyA = keyOrderA < 0 ? 999 : keyOrderA;
+    final safeKeyB = keyOrderB < 0 ? 999 : keyOrderB;
+    if (safeKeyA != safeKeyB) return safeKeyA.compareTo(safeKeyB);
+    return a.compareTo(b);
+  }
+
+  String _advancedSuffix(String key) {
+    final dash = key.lastIndexOf('-');
+    return dash < 0 ? '' : key.substring(dash + 1);
+  }
+
+  String _advancedBaseKey(String key) {
+    final dash = key.lastIndexOf('-');
+    return dash < 0 ? key : key.substring(0, dash);
   }
 
   Map<String, String> _parseBspAdvancedText(String text) {
