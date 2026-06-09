@@ -119,16 +119,37 @@ def replace_once(source: str, old: str, new: str, label: str) -> tuple[str, bool
 def normalize_previous_patch(source: str) -> tuple[str, bool, str]:
     if OLD_LABEL_LIST_INSERT in source:
         return (
-            source.replace(OLD_LABEL_LIST_INSERT, LABEL_LIST_INSERT, 1),
+            source.replace(OLD_LABEL_LIST_INSERT, LABEL_LIST_INSERT),
             True,
             "normalized: const BSP label adapter",
         )
     return source, False, "already normalized: const BSP label adapter"
 
 
+def dedupe_label_setup(source: str) -> tuple[str, bool, str]:
+    count = source.count(LABEL_LIST_INSERT)
+    if count <= 1:
+        return source, False, "no duplicate BSP label setup"
+    first = source.find(LABEL_LIST_INSERT)
+    before = source[: first + len(LABEL_LIST_INSERT)]
+    after = source[first + len(LABEL_LIST_INSERT):].replace(LABEL_LIST_INSERT, "")
+    return before + after, True, f"deduped: removed {count - 1} duplicate BSP label setup block(s)"
+
+
 def apply_patch(source: str) -> PatchResult:
     changed = False
     notes: list[str] = []
+
+    # Normalize old patch output before checking for the canonical block. This
+    # avoids inserting a second label setup block when a previous version already
+    # applied `final bspLabelAdapter = const ...`.
+    source, did, note = normalize_previous_patch(source)
+    changed |= did
+    notes.append(note)
+
+    source, did, note = dedupe_label_setup(source)
+    changed |= did
+    notes.append(note)
 
     source, did, note = replace_once(
         source,
@@ -145,6 +166,10 @@ def apply_patch(source: str) -> PatchResult:
         LABEL_LIST_ANCHOR + LABEL_LIST_INSERT,
         "label list setup",
     )
+    changed |= did
+    notes.append(note)
+
+    source, did, note = dedupe_label_setup(source)
     changed |= did
     notes.append(note)
 
@@ -184,7 +209,7 @@ def apply_patch(source: str) -> PatchResult:
     changed |= did
     notes.append(note)
 
-    source, did, note = normalize_previous_patch(source)
+    source, did, note = dedupe_label_setup(source)
     changed |= did
     notes.append(note)
 
