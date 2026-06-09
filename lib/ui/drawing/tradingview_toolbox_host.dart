@@ -571,25 +571,43 @@ class _ToolGroupTile extends StatelessWidget {
         collapsedIconColor: Colors.white54,
         iconColor: Colors.white70,
         children: [
-          ReorderableListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            buildDefaultDragHandles: true,
-            itemCount: tools.length,
-            onReorder: onToolReorder,
-            itemBuilder: (context, index) {
-              final meta = tools[index];
-              return _ToolTile(
-                key: ValueKey('tool_${meta.tool.name}'),
-                meta: meta,
-                selected: selectedTool == meta.tool,
-                disabledReason: _disabledReason(meta),
-                isChanOverlayVisible: isChanOverlayVisible,
-                onChanOverlayToggled: onChanOverlayToggled,
-                onSelected: onSelected,
-                onQuickToolAdded: onQuickToolAdded,
-              );
-            },
+          Column(
+            children: [
+              for (var index = 0; index < tools.length; index++)
+                DragTarget<TradingViewDrawingTool>(
+                  onWillAcceptWithDetails: (_) => true,
+                  onAcceptWithDetails: (details) {
+                    final fromIndex = tools.indexWhere(
+                        (meta) => meta.tool == details.data);
+                    if (fromIndex >= 0 && fromIndex != index) {
+                      onToolReorder(fromIndex, index);
+                    }
+                  },
+                  builder: (context, candidateData, rejectedData) {
+                    final active = candidateData.isNotEmpty;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 120),
+                      decoration: BoxDecoration(
+                        border: active
+                            ? Border.all(
+                                color: const Color(0xFF8AB4FF), width: 1)
+                            : null,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: _ToolTile(
+                        key: ValueKey('tool_${tools[index].tool.name}'),
+                        meta: tools[index],
+                        selected: selectedTool == tools[index].tool,
+                        disabledReason: _disabledReason(tools[index]),
+                        isChanOverlayVisible: isChanOverlayVisible,
+                        onChanOverlayToggled: onChanOverlayToggled,
+                        onSelected: onSelected,
+                        onQuickToolAdded: onQuickToolAdded,
+                      ),
+                    );
+                  },
+                ),
+            ],
           ),
         ],
       ),
@@ -675,9 +693,8 @@ class _ToolTile extends StatelessWidget {
         ),
       ),
     );
-    return LongPressDraggable<TradingViewDrawingTool>(
+    return Draggable<TradingViewDrawingTool>(
       data: meta.tool,
-      delay: const Duration(milliseconds: 220),
       feedback: Material(
         color: Colors.transparent,
         child: DecoratedBox(
@@ -696,7 +713,6 @@ class _ToolTile extends StatelessWidget {
         ),
       ),
       childWhenDragging: Opacity(opacity: 0.35, child: tile),
-      onDragCompleted: () => onQuickToolAdded(meta.tool),
       child: tile,
     );
   }
