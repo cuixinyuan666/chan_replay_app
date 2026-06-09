@@ -24,6 +24,22 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   static final DateTime _defaultStartDate = DateTime(2020, 1, 1);
   static final DateTime _defaultEndDate = DateTime(2026, 6, 6);
 
+  static const List<String> _bspTypes = ['1', '1p', '2', '2s', '3a', '3b'];
+  static const List<String> _macdAlgoValues = [
+    'area',
+    'peak',
+    'full_area',
+    'diff',
+    'slope',
+    'amp',
+    'volumn',
+    'amount',
+    'volumn_avg',
+    'amount_avg',
+    'turnrate_avg',
+    'rsi',
+  ];
+
   final TextEditingController _stockCodeController = TextEditingController(text: '000001');
   final TextEditingController _backendUrlController = TextEditingController(text: _defaultBackendBaseUrl);
 
@@ -64,21 +80,55 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
   String _biAlgo = 'normal';
   bool _biStrict = true;
+  String _biFxCheck = 'strict';
+  bool _gapAsKl = false;
+  bool _biEndIsPeak = true;
+  bool _biAllowSubPeak = true;
   String _segAlgo = 'chan';
+  String _leftSegMethod = 'peak';
   String _zsAlgo = 'normal';
   bool _zsCombine = true;
   String _zsCombineMode = 'zs';
   bool _oneBiZs = false;
 
+  int _skipStep = 0;
+  bool _klDataCheck = true;
+  int _maxKlMisalginCnt = 2;
+  int _maxKlInconsistentCnt = 5;
+  bool _autoSkipIllegalSubLv = false;
+  bool _printWarning = true;
+  bool _printErrTime = true;
+
+  String _meanMetrics = '';
+  String _trendMetrics = '';
+  int _macdFast = 12;
+  int _macdSlow = 26;
+  int _macdSignal = 9;
+  bool _calDemark = false;
+  bool _calRsi = false;
+  bool _calKdj = false;
+  int _rsiCycle = 14;
+  int _kdjCycle = 9;
+  int _demarkLen = 9;
+  int _demarkSetupBias = 4;
+  int _demarkCountdownBias = 2;
+  int _demarkMaxCountdown = 13;
+  bool _demarkTiaokongSt = true;
+  bool _demarkSetupCmp2close = true;
+  bool _demarkCountdownCmp2close = true;
+  int _bollN = 20;
+
   String _bsType = '1,1p,2,2s,3a,3b';
   String _divergenceRate = '1e18';
   int _minZsCnt = 1;
+  bool _bsp1OnlyMultibiZs = true;
   String _maxBs2Rate = '0.9999';
   bool _bs1Peak = true;
   bool _bsp2Follow1 = true;
   bool _bsp3Follow1 = true;
   bool _bsp3Peak = false;
   bool _bsp2sFollow2 = false;
+  String _maxBsp2sLv = '';
   bool _strictBsp3 = false;
   int _bsp3aMaxZsCnt = 1;
   String _macdAlgo = 'peak';
@@ -111,22 +161,54 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   }
 
   Map<String, dynamic> get _chanConfig => {
+        'skip_step': _skipStep,
         'bi_algo': _biAlgo,
         'bi_strict': _biStrict,
+        'bi_fx_check': _biFxCheck,
+        'gap_as_kl': _gapAsKl,
+        'bi_end_is_peak': _biEndIsPeak,
+        'bi_allow_sub_peak': _biAllowSubPeak,
         'seg_algo': _segAlgo,
+        'left_seg_method': _leftSegMethod,
         'zs_algo': _zsAlgo,
         'zs_combine': _zsCombine,
         'zs_combine_mode': _zsCombineMode,
         'one_bi_zs': _oneBiZs,
+        'kl_data_check': _klDataCheck,
+        'max_kl_misalgin_cnt': _maxKlMisalginCnt,
+        'max_kl_inconsistent_cnt': _maxKlInconsistentCnt,
+        'auto_skip_illegal_sub_lv': _autoSkipIllegalSubLv,
+        'print_warning': _printWarning,
+        'print_err_time': _printErrTime,
+        'mean_metrics': _meanMetrics,
+        'trend_metrics': _trendMetrics,
+        'macd_fast': _macdFast,
+        'macd_slow': _macdSlow,
+        'macd_signal': _macdSignal,
+        'cal_demark': _calDemark,
+        'cal_rsi': _calRsi,
+        'cal_kdj': _calKdj,
+        'rsi_cycle': _rsiCycle,
+        'kdj_cycle': _kdjCycle,
+        'demark_len': _demarkLen,
+        'demark_setup_bias': _demarkSetupBias,
+        'demark_countdown_bias': _demarkCountdownBias,
+        'demark_max_countdown': _demarkMaxCountdown,
+        'demark_tiaokong_st': _demarkTiaokongSt,
+        'demark_setup_cmp2close': _demarkSetupCmp2close,
+        'demark_countdown_cmp2close': _demarkCountdownCmp2close,
+        'boll_n': _bollN,
         'bs_type': _bsType,
         'divergence_rate': _divergenceRate,
         'min_zs_cnt': _minZsCnt,
+        'bsp1_only_multibi_zs': _bsp1OnlyMultibiZs,
         'max_bs2_rate': _maxBs2Rate,
         'bs1_peak': _bs1Peak,
         'bsp2_follow_1': _bsp2Follow1,
         'bsp3_follow_1': _bsp3Follow1,
         'bsp3_peak': _bsp3Peak,
         'bsp2s_follow_2': _bsp2sFollow2,
+        'max_bsp2s_lv': _maxBsp2sLv,
         'strict_bsp3': _strictBsp3,
         'bsp3a_max_zs_cnt': _bsp3aMaxZsCnt,
         'macd_algo': _macdAlgo,
@@ -396,20 +478,52 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         var end = _endDate;
         var biAlgo = _biAlgo;
         var biStrict = _biStrict;
+        var biFxCheck = _biFxCheck;
+        var gapAsKl = _gapAsKl;
+        var biEndIsPeak = _biEndIsPeak;
+        var biAllowSubPeak = _biAllowSubPeak;
         var segAlgo = _segAlgo;
+        var leftSegMethod = _leftSegMethod;
         var zsAlgo = _zsAlgo;
         var zsCombine = _zsCombine;
         var zsCombineMode = _zsCombineMode;
         var oneBiZs = _oneBiZs;
+        var skipStep = _skipStep;
+        var klDataCheck = _klDataCheck;
+        var maxKlMisalginCnt = _maxKlMisalginCnt;
+        var maxKlInconsistentCnt = _maxKlInconsistentCnt;
+        var autoSkipIllegalSubLv = _autoSkipIllegalSubLv;
+        var printWarning = _printWarning;
+        var printErrTime = _printErrTime;
+        var meanMetrics = _meanMetrics;
+        var trendMetrics = _trendMetrics;
+        var macdFast = _macdFast;
+        var macdSlow = _macdSlow;
+        var macdSignal = _macdSignal;
+        var calDemark = _calDemark;
+        var calRsi = _calRsi;
+        var calKdj = _calKdj;
+        var rsiCycle = _rsiCycle;
+        var kdjCycle = _kdjCycle;
+        var demarkLen = _demarkLen;
+        var demarkSetupBias = _demarkSetupBias;
+        var demarkCountdownBias = _demarkCountdownBias;
+        var demarkMaxCountdown = _demarkMaxCountdown;
+        var demarkTiaokongSt = _demarkTiaokongSt;
+        var demarkSetupCmp2close = _demarkSetupCmp2close;
+        var demarkCountdownCmp2close = _demarkCountdownCmp2close;
+        var bollN = _bollN;
         var bsType = _bsType;
         var divergenceRate = _divergenceRate;
         var minZsCnt = _minZsCnt;
+        var bsp1OnlyMultibiZs = _bsp1OnlyMultibiZs;
         var maxBs2Rate = _maxBs2Rate;
         var bs1Peak = _bs1Peak;
         var bsp2Follow1 = _bsp2Follow1;
         var bsp3Follow1 = _bsp3Follow1;
         var bsp3Peak = _bsp3Peak;
         var bsp2sFollow2 = _bsp2sFollow2;
+        var maxBsp2sLv = _maxBsp2sLv;
         var strictBsp3 = _strictBsp3;
         var bsp3aMaxZsCnt = _bsp3aMaxZsCnt;
         var macdAlgo = _macdAlgo;
@@ -419,6 +533,58 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
           length: 2,
           child: StatefulBuilder(
             builder: (context, setSheetState) {
+              Widget intField(String label, int value, ValueChanged<int> onChanged, {String? helper}) {
+                return TextFormField(
+                  initialValue: '$value',
+                  enabled: !_loading,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(labelText: label, helperText: helper, border: const OutlineInputBorder()),
+                  onChanged: (v) => onChanged(int.tryParse(v.trim()) ?? value),
+                );
+              }
+
+              Widget textField(String label, String value, ValueChanged<String> onChanged, {String? helper}) {
+                return TextFormField(
+                  initialValue: value,
+                  enabled: !_loading,
+                  decoration: InputDecoration(labelText: label, helperText: helper, border: const OutlineInputBorder()),
+                  onChanged: (v) => onChanged(v.trim()),
+                );
+              }
+
+              Widget boolTile(String title, bool value, ValueChanged<bool> onChanged) {
+                return SwitchListTile(
+                  value: value,
+                  onChanged: _loading ? null : (v) => setSheetState(() => onChanged(v)),
+                  title: Text(title),
+                );
+              }
+
+              Widget row2(Widget a, Widget b) => Row(children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)]);
+
+              Widget bspTypeSelector() {
+                final selected = _csvTokens(bsType).toSet();
+                return InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'bs_type',
+                    helperText: '来自 Vespa BSP_TYPE: 1 / 1p / 2 / 2s / 3a / 3b',
+                    border: OutlineInputBorder(),
+                  ),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      for (final type in _bspTypes)
+                        FilterChip(
+                          label: Text(type),
+                          selected: selected.contains(type),
+                          onSelected: _loading ? null : (v) => setSheetState(() => bsType = _toggleCsvToken(bsType, type, v)),
+                        ),
+                    ],
+                  ),
+                );
+              }
+
               void applyAndReload() {
                 Navigator.pop(context);
                 setState(() {
@@ -430,20 +596,52 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                   _endDate = end;
                   _biAlgo = biAlgo;
                   _biStrict = biStrict;
+                  _biFxCheck = biFxCheck;
+                  _gapAsKl = gapAsKl;
+                  _biEndIsPeak = biEndIsPeak;
+                  _biAllowSubPeak = biAllowSubPeak;
                   _segAlgo = segAlgo;
+                  _leftSegMethod = leftSegMethod;
                   _zsAlgo = zsAlgo;
                   _zsCombine = zsCombine;
                   _zsCombineMode = zsCombineMode;
                   _oneBiZs = oneBiZs;
+                  _skipStep = skipStep;
+                  _klDataCheck = klDataCheck;
+                  _maxKlMisalginCnt = maxKlMisalginCnt;
+                  _maxKlInconsistentCnt = maxKlInconsistentCnt;
+                  _autoSkipIllegalSubLv = autoSkipIllegalSubLv;
+                  _printWarning = printWarning;
+                  _printErrTime = printErrTime;
+                  _meanMetrics = meanMetrics;
+                  _trendMetrics = trendMetrics;
+                  _macdFast = macdFast;
+                  _macdSlow = macdSlow;
+                  _macdSignal = macdSignal;
+                  _calDemark = calDemark;
+                  _calRsi = calRsi;
+                  _calKdj = calKdj;
+                  _rsiCycle = rsiCycle;
+                  _kdjCycle = kdjCycle;
+                  _demarkLen = demarkLen;
+                  _demarkSetupBias = demarkSetupBias;
+                  _demarkCountdownBias = demarkCountdownBias;
+                  _demarkMaxCountdown = demarkMaxCountdown;
+                  _demarkTiaokongSt = demarkTiaokongSt;
+                  _demarkSetupCmp2close = demarkSetupCmp2close;
+                  _demarkCountdownCmp2close = demarkCountdownCmp2close;
+                  _bollN = bollN;
                   _bsType = bsType;
                   _divergenceRate = divergenceRate;
                   _minZsCnt = minZsCnt;
+                  _bsp1OnlyMultibiZs = bsp1OnlyMultibiZs;
                   _maxBs2Rate = maxBs2Rate;
                   _bs1Peak = bs1Peak;
                   _bsp2Follow1 = bsp2Follow1;
                   _bsp3Follow1 = bsp3Follow1;
                   _bsp3Peak = bsp3Peak;
                   _bsp2sFollow2 = bsp2sFollow2;
+                  _maxBsp2sLv = maxBsp2sLv;
                   _strictBsp3 = strictBsp3;
                   _bsp3aMaxZsCnt = bsp3aMaxZsCnt;
                   _macdAlgo = macdAlgo;
@@ -455,7 +653,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
                   child: SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.80,
+                    height: MediaQuery.of(context).size.height * 0.84,
                     child: Column(
                       children: [
                         const TabBar(tabs: [Tab(text: '数据'), Tab(text: 'CChanConfig')]),
@@ -472,96 +670,25 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                                       dataSource,
                                       const ['easy_tdx', 'csv'],
                                       (v) => setSheetState(() => dataSource = v ?? dataSource),
-                                      labels: const {
-                                        'easy_tdx': 'easy-tdx / Python chan.py',
-                                        'csv': '本地 CSV / Python chan.py',
-                                      },
+                                      labels: const {'easy_tdx': 'easy-tdx / Python chan.py', 'csv': '本地 CSV / Python chan.py'},
                                     ),
                                     const SizedBox(height: 10),
-                                    TextField(
-                                      controller: _backendUrlController,
-                                      enabled: !_loading && !_isAndroidApp,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Windows Python chan.py 服务地址',
-                                        border: OutlineInputBorder(),
-                                      ),
+                                    TextField(controller: _backendUrlController, enabled: !_loading && !_isAndroidApp, decoration: const InputDecoration(labelText: 'Windows Python chan.py 服务地址', border: OutlineInputBorder())),
+                                    const SizedBox(height: 10),
+                                    TextField(controller: _stockCodeController, enabled: !_loading && dataSource != 'csv', decoration: const InputDecoration(labelText: '代码（自动识别市场）', border: OutlineInputBorder())),
+                                    const SizedBox(height: 10),
+                                    OutlinedButton.icon(onPressed: _loading ? null : _pickCsv, icon: const Icon(Icons.upload_file), label: Text(_localCsvName.isEmpty ? '选择本地 CSV' : '已选 $_localCsvName')),
+                                    const SizedBox(height: 10),
+                                    _dropdown('模式', mode, const ['once', 'step'], (v) => setSheetState(() => mode = v ?? mode), labels: const {'once': '一次性', 'step': '严格逐K trigger_step / step_load'}),
+                                    const SizedBox(height: 10),
+                                    row2(
+                                      _dropdown('周期', period, const ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY', 'WEEKLY', 'MONTHLY'], (v) => setSheetState(() => period = v ?? period), labels: const {'MIN1': '1分钟', 'MIN5': '5分钟', 'MIN15': '15分钟', 'MIN30': '30分钟', 'MIN60': '60分钟', 'DAILY': '日线', 'WEEKLY': '周线', 'MONTHLY': '月线'}),
+                                      _dropdown('复权', adjust, const ['QFQ', 'HFQ', 'NONE'], (v) => setSheetState(() => adjust = v ?? adjust), labels: const {'QFQ': '前复权', 'HFQ': '后复权', 'NONE': '不复权'}),
                                     ),
                                     const SizedBox(height: 10),
-                                    TextField(
-                                      controller: _stockCodeController,
-                                      enabled: !_loading && dataSource != 'csv',
-                                      decoration: const InputDecoration(
-                                        labelText: '代码（自动识别市场）',
-                                        border: OutlineInputBorder(),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    OutlinedButton.icon(
-                                      onPressed: _loading ? null : _pickCsv,
-                                      icon: const Icon(Icons.upload_file),
-                                      label: Text(_localCsvName.isEmpty ? '选择本地 CSV' : '已选 $_localCsvName'),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    _dropdown(
-                                      '模式',
-                                      mode,
-                                      const ['once', 'step'],
-                                      (v) => setSheetState(() => mode = v ?? mode),
-                                      labels: const {
-                                        'once': '一次性',
-                                        'step': '严格逐K trigger_step / step_load',
-                                      },
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: _dropdown(
-                                            '周期',
-                                            period,
-                                            const ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY', 'WEEKLY', 'MONTHLY'],
-                                            (v) => setSheetState(() => period = v ?? period),
-                                            labels: const {
-                                              'MIN1': '1分钟',
-                                              'MIN5': '5分钟',
-                                              'MIN15': '15分钟',
-                                              'MIN30': '30分钟',
-                                              'MIN60': '60分钟',
-                                              'DAILY': '日线',
-                                              'WEEKLY': '周线',
-                                              'MONTHLY': '月线',
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: _dropdown(
-                                            '复权',
-                                            adjust,
-                                            const ['QFQ', 'HFQ', 'NONE'],
-                                            (v) => setSheetState(() => adjust = v ?? adjust),
-                                            labels: const {'QFQ': '前复权', 'HFQ': '后复权', 'NONE': '不复权'},
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: _dateTile('开始日期', start, !_loading, () async {
-                                            final picked = await _pickDate(start);
-                                            if (picked != null) setSheetState(() => start = picked);
-                                          }),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: _dateTile('结束日期', end, !_loading, () async {
-                                            final picked = await _pickDate(end);
-                                            if (picked != null) setSheetState(() => end = picked);
-                                          }),
-                                        ),
-                                      ],
+                                    row2(
+                                      _dateTile('开始日期', start, !_loading, () async { final picked = await _pickDate(start); if (picked != null) setSheetState(() => start = picked); }),
+                                      _dateTile('结束日期', end, !_loading, () async { final picked = await _pickDate(end); if (picked != null) setSheetState(() => end = picked); }),
                                     ),
                                   ],
                                 ),
@@ -571,117 +698,68 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     const SizedBox(height: 12),
-                                    const Text(
-                                      '这些设置直接传给 Python CChanConfig；加载前或加载后修改都会重新请求 chan.py。',
-                                      style: TextStyle(color: Colors.white70),
-                                    ),
+                                    const Text('这些设置直接传给 Python CChanConfig；枚举值来自 Vespa Common/CEnum.py 和各 Config 类。', style: TextStyle(color: Colors.white70)),
                                     const SizedBox(height: 12),
-                                    _sectionTitle('结构识别'),
-                                    _dropdown('bi_algo', biAlgo, const ['normal', 'fx'], (v) => setSheetState(() => biAlgo = v ?? biAlgo)),
-                                    SwitchListTile(
-                                      value: biStrict,
-                                      onChanged: _loading ? null : (v) => setSheetState(() => biStrict = v),
-                                      title: const Text('bi_strict'),
-                                    ),
-                                    _dropdown('seg_algo', segAlgo, const ['chan', '1+1', 'break'], (v) => setSheetState(() => segAlgo = v ?? segAlgo)),
-                                    const SizedBox(height: 10),
+                                    _sectionTitle('回放 / 数据校验'),
+                                    intField('skip_step', skipStep, (v) => skipStep = v),
+                                    boolTile('kl_data_check', klDataCheck, (v) => klDataCheck = v),
+                                    row2(intField('max_kl_misalgin_cnt', maxKlMisalginCnt, (v) => maxKlMisalginCnt = v), intField('max_kl_inconsistent_cnt', maxKlInconsistentCnt, (v) => maxKlInconsistentCnt = v)),
+                                    boolTile('auto_skip_illegal_sub_lv', autoSkipIllegalSubLv, (v) => autoSkipIllegalSubLv = v),
+                                    boolTile('print_warning', printWarning, (v) => printWarning = v),
+                                    boolTile('print_err_time', printErrTime, (v) => printErrTime = v),
+                                    const SizedBox(height: 12),
+                                    _sectionTitle('笔 BI'),
+                                    row2(_dropdown('bi_algo', biAlgo, const ['normal', 'fx'], (v) => setSheetState(() => biAlgo = v ?? biAlgo)), _dropdown('bi_fx_check', biFxCheck, const ['strict', 'loss', 'half', 'totally'], (v) => setSheetState(() => biFxCheck = v ?? biFxCheck))),
+                                    boolTile('bi_strict', biStrict, (v) => biStrict = v),
+                                    boolTile('gap_as_kl', gapAsKl, (v) => gapAsKl = v),
+                                    boolTile('bi_end_is_peak', biEndIsPeak, (v) => biEndIsPeak = v),
+                                    boolTile('bi_allow_sub_peak', biAllowSubPeak, (v) => biAllowSubPeak = v),
+                                    const SizedBox(height: 12),
+                                    _sectionTitle('线段 SEG'),
+                                    row2(_dropdown('seg_algo', segAlgo, const ['chan', '1+1', 'break'], (v) => setSheetState(() => segAlgo = v ?? segAlgo)), _dropdown('left_seg_method', leftSegMethod, const ['peak', 'all'], (v) => setSheetState(() => leftSegMethod = v ?? leftSegMethod))),
+                                    const SizedBox(height: 12),
                                     _sectionTitle('中枢 ZS'),
-                                    _dropdown('zs_algo', zsAlgo, const ['normal', 'over_seg', 'auto'], (v) => setSheetState(() => zsAlgo = v ?? zsAlgo)),
-                                    SwitchListTile(
-                                      value: zsCombine,
-                                      onChanged: _loading ? null : (v) => setSheetState(() => zsCombine = v),
-                                      title: const Text('zs_combine'),
-                                    ),
-                                    _dropdown('zs_combine_mode', zsCombineMode, const ['zs', 'peak'], (v) => setSheetState(() => zsCombineMode = v ?? zsCombineMode)),
-                                    SwitchListTile(
-                                      value: oneBiZs,
-                                      onChanged: _loading ? null : (v) => setSheetState(() => oneBiZs = v),
-                                      title: const Text('one_bi_zs'),
-                                    ),
-                                    const SizedBox(height: 8),
+                                    row2(_dropdown('zs_algo', zsAlgo, const ['normal', 'over_seg', 'auto'], (v) => setSheetState(() => zsAlgo = v ?? zsAlgo)), _dropdown('zs_combine_mode', zsCombineMode, const ['zs', 'peak'], (v) => setSheetState(() => zsCombineMode = v ?? zsCombineMode))),
+                                    boolTile('zs_combine', zsCombine, (v) => zsCombine = v),
+                                    boolTile('one_bi_zs', oneBiZs, (v) => oneBiZs = v),
+                                    const SizedBox(height: 12),
+                                    _sectionTitle('指标模型'),
+                                    row2(textField('mean_metrics', meanMetrics, (v) => meanMetrics = v, helper: '逗号分隔整数，如 5,10,20'), textField('trend_metrics', trendMetrics, (v) => trendMetrics = v, helper: '逗号分隔整数')),
+                                    row2(intField('macd.fast', macdFast, (v) => macdFast = v), intField('macd.slow', macdSlow, (v) => macdSlow = v)),
+                                    intField('macd.signal', macdSignal, (v) => macdSignal = v),
+                                    row2(intField('boll_n', bollN, (v) => bollN = v), intField('rsi_cycle', rsiCycle, (v) => rsiCycle = v)),
+                                    intField('kdj_cycle', kdjCycle, (v) => kdjCycle = v),
+                                    boolTile('cal_demark', calDemark, (v) => calDemark = v),
+                                    boolTile('cal_rsi', calRsi, (v) => calRsi = v),
+                                    boolTile('cal_kdj', calKdj, (v) => calKdj = v),
+                                    const SizedBox(height: 12),
+                                    _sectionTitle('Demark'),
+                                    row2(intField('demark_len', demarkLen, (v) => demarkLen = v), intField('setup_bias', demarkSetupBias, (v) => demarkSetupBias = v)),
+                                    row2(intField('countdown_bias', demarkCountdownBias, (v) => demarkCountdownBias = v), intField('max_countdown', demarkMaxCountdown, (v) => demarkMaxCountdown = v)),
+                                    boolTile('tiaokong_st', demarkTiaokongSt, (v) => demarkTiaokongSt = v),
+                                    boolTile('setup_cmp2close', demarkSetupCmp2close, (v) => demarkSetupCmp2close = v),
+                                    boolTile('countdown_cmp2close', demarkCountdownCmp2close, (v) => demarkCountdownCmp2close = v),
+                                    const SizedBox(height: 12),
                                     _sectionTitle('买卖点 BSP'),
-                                    TextFormField(
-                                      initialValue: bsType,
-                                      enabled: !_loading,
-                                      decoration: const InputDecoration(
-                                        labelText: 'bs_type',
-                                        helperText: '例如 1,1p,2,2s,3a,3b',
-                                        border: OutlineInputBorder(),
-                                      ),
-                                      onChanged: (v) => bsType = v.trim(),
-                                    ),
+                                    bspTypeSelector(),
                                     const SizedBox(height: 10),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: TextFormField(
-                                            initialValue: divergenceRate,
-                                            enabled: !_loading,
-                                            keyboardType: TextInputType.number,
-                                            decoration: const InputDecoration(labelText: 'divergence_rate', border: OutlineInputBorder()),
-                                            onChanged: (v) => divergenceRate = v.trim(),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: TextFormField(
-                                            initialValue: maxBs2Rate,
-                                            enabled: !_loading,
-                                            keyboardType: TextInputType.number,
-                                            decoration: const InputDecoration(labelText: 'max_bs2_rate', border: OutlineInputBorder()),
-                                            onChanged: (v) => maxBs2Rate = v.trim(),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: TextFormField(
-                                            initialValue: '$minZsCnt',
-                                            enabled: !_loading,
-                                            keyboardType: TextInputType.number,
-                                            decoration: const InputDecoration(labelText: 'min_zs_cnt', border: OutlineInputBorder()),
-                                            onChanged: (v) => minZsCnt = int.tryParse(v.trim()) ?? minZsCnt,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: TextFormField(
-                                            initialValue: '$bsp3aMaxZsCnt',
-                                            enabled: !_loading,
-                                            keyboardType: TextInputType.number,
-                                            decoration: const InputDecoration(labelText: 'bsp3a_max_zs_cnt', border: OutlineInputBorder()),
-                                            onChanged: (v) => bsp3aMaxZsCnt = int.tryParse(v.trim()) ?? bsp3aMaxZsCnt,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
-                                    _dropdown('macd_algo', macdAlgo, const ['peak', 'area', 'full_area', 'slope'], (v) => setSheetState(() => macdAlgo = v ?? macdAlgo)),
-                                    SwitchListTile(value: bs1Peak, onChanged: _loading ? null : (v) => setSheetState(() => bs1Peak = v), title: const Text('bs1_peak')),
-                                    SwitchListTile(value: bsp2Follow1, onChanged: _loading ? null : (v) => setSheetState(() => bsp2Follow1 = v), title: const Text('bsp2_follow_1')),
-                                    SwitchListTile(value: bsp3Follow1, onChanged: _loading ? null : (v) => setSheetState(() => bsp3Follow1 = v), title: const Text('bsp3_follow_1')),
-                                    SwitchListTile(value: bsp3Peak, onChanged: _loading ? null : (v) => setSheetState(() => bsp3Peak = v), title: const Text('bsp3_peak')),
-                                    SwitchListTile(value: bsp2sFollow2, onChanged: _loading ? null : (v) => setSheetState(() => bsp2sFollow2 = v), title: const Text('bsp2s_follow_2')),
-                                    SwitchListTile(value: strictBsp3, onChanged: _loading ? null : (v) => setSheetState(() => strictBsp3 = v), title: const Text('strict_bsp3')),
+                                    row2(textField('divergence_rate', divergenceRate, (v) => divergenceRate = v), textField('max_bs2_rate', maxBs2Rate, (v) => maxBs2Rate = v)),
+                                    row2(intField('min_zs_cnt', minZsCnt, (v) => minZsCnt = v), intField('bsp3a_max_zs_cnt', bsp3aMaxZsCnt, (v) => bsp3aMaxZsCnt = v)),
+                                    row2(textField('max_bsp2s_lv', maxBsp2sLv, (v) => maxBsp2sLv = v, helper: '空值表示 None'), _dropdown('macd_algo', macdAlgo, _macdAlgoValues, (v) => setSheetState(() => macdAlgo = v ?? macdAlgo))),
+                                    boolTile('bsp1_only_multibi_zs', bsp1OnlyMultibiZs, (v) => bsp1OnlyMultibiZs = v),
+                                    boolTile('bs1_peak', bs1Peak, (v) => bs1Peak = v),
+                                    boolTile('bsp2_follow_1', bsp2Follow1, (v) => bsp2Follow1 = v),
+                                    boolTile('bsp3_follow_1', bsp3Follow1, (v) => bsp3Follow1 = v),
+                                    boolTile('bsp3_peak', bsp3Peak, (v) => bsp3Peak = v),
+                                    boolTile('bsp2s_follow_2', bsp2sFollow2, (v) => bsp2sFollow2 = v),
+                                    boolTile('strict_bsp3', strictBsp3, (v) => strictBsp3 = v),
                                   ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _loading ? null : applyAndReload,
-                            icon: _loading
-                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                : const Icon(Icons.refresh),
-                            label: const Text('应用并重新计算'),
-                          ),
-                        ),
+                        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _loading ? null : applyAndReload, icon: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh), label: const Text('应用并重新计算'))),
                       ],
                     ),
                   ),
@@ -694,13 +772,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     );
   }
 
-  Widget _dropdown(
-    String label,
-    String value,
-    List<String> values,
-    ValueChanged<String?>? onChanged, {
-    Map<String, String> labels = const {},
-  }) {
+  Widget _dropdown(String label, String value, List<String> values, ValueChanged<String?>? onChanged, {Map<String, String> labels = const {}}) {
     return DropdownButtonFormField<String>(
       initialValue: value,
       decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
@@ -712,10 +784,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   Widget _sectionTitle(String text) {
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 8),
-      child: Text(
-        text,
-        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-      ),
+      child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
     );
   }
 
@@ -725,11 +794,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       child: InkWell(
         onTap: enabled ? onTap : null,
         child: InputDecorator(
-          decoration: InputDecoration(
-            labelText: title,
-            border: const OutlineInputBorder(),
-            suffixIcon: const Icon(Icons.calendar_month),
-          ),
+          decoration: InputDecoration(labelText: title, border: const OutlineInputBorder(), suffixIcon: const Icon(Icons.calendar_month)),
           child: Text(_fmtDate(value)),
         ),
       ),
@@ -800,43 +865,15 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
             const SizedBox(height: 6),
             InkWell(
               onTap: () => setState(() => _toolbarExpanded = !_toolbarExpanded),
-              child: SizedBox(
-                width: _toolbarExpanded ? 36 : 24,
-                height: 30,
-                child: Center(
-                  child: Text(_toolbarExpanded ? '<-' : '->', style: const TextStyle(color: Colors.white70)),
-                ),
-              ),
+              child: SizedBox(width: _toolbarExpanded ? 36 : 24, height: 30, child: Center(child: Text(_toolbarExpanded ? '<-' : '->', style: const TextStyle(color: Colors.white70)))),
             ),
             if (_toolbarExpanded) ...[
               const Divider(height: 12, color: Colors.white12),
               _toolIcon('数据/标的/周期/日期', Icons.search, _loading ? null : _openDataPanel),
               _toolIcon('CChanConfig 设置', Icons.tune, _loading ? null : _openConfigPanel),
               _toolIcon('本地CSV上传', Icons.upload_file, _loading ? null : _pickCsv),
-              _toolIcon(
-                '一次性显示',
-                Icons.fullscreen,
-                _hasBars
-                    ? () => setState(() {
-                          _mode = 'once';
-                          _cursor = _fullSnapshot.rawBars.length;
-                          _snapshot = _fullSnapshot;
-                        })
-                    : null,
-                selected: _mode == 'once',
-              ),
-              _toolIcon(
-                '严格逐K',
-                Icons.play_circle_outline,
-                _hasBars
-                    ? () => setState(() {
-                          _mode = 'step';
-                          _cursor = 0;
-                          _snapshot = _frames.isNotEmpty ? _frames.first : _sliceSnapshot(_fullSnapshot, 0);
-                        })
-                    : null,
-                selected: _mode == 'step',
-              ),
+              _toolIcon('一次性显示', Icons.fullscreen, _hasBars ? () => setState(() { _mode = 'once'; _cursor = _fullSnapshot.rawBars.length; _snapshot = _fullSnapshot; }) : null, selected: _mode == 'once'),
+              _toolIcon('严格逐K', Icons.play_circle_outline, _hasBars ? () => setState(() { _mode = 'step'; _cursor = 0; _snapshot = _frames.isNotEmpty ? _frames.first : _sliceSnapshot(_fullSnapshot, 0); }) : null, selected: _mode == 'step'),
               const Divider(height: 18, color: Colors.white12),
               _toolIcon('显示分型顶底', Icons.trip_origin, _hasFx ? () => setState(() => _showFx = !_showFx) : null, selected: _showFx && _hasFx),
               _toolIcon('显示分型顶底文字', Icons.title, _hasFx && _showFx ? () => setState(() => _showFxText = !_showFxText) : null, selected: _showFxText && _hasFx && _showFx),
@@ -854,17 +891,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
               _toolIcon('左右缩小', Icons.zoom_out, _hasBars ? () => setState(() => _windowSize = (_windowSize + 15).clamp(24, 360).toInt()) : null),
               _toolIcon('上下放大', Icons.keyboard_arrow_up, _hasBars ? () => setState(() => _priceScale = (_priceScale * 1.18).clamp(0.35, 5.0).toDouble()) : null),
               _toolIcon('上下缩小', Icons.keyboard_arrow_down, _hasBars ? () => setState(() => _priceScale = (_priceScale / 1.18).clamp(0.35, 5.0).toDouble()) : null),
-              _toolIcon(
-                '重置缩放',
-                Icons.center_focus_strong,
-                _hasBars
-                    ? () => setState(() {
-                          _windowSize = 90;
-                          _priceScale = 1.0;
-                          _viewEndIndex = null;
-                        })
-                    : null,
-              ),
+              _toolIcon('重置缩放', Icons.center_focus_strong, _hasBars ? () => setState(() { _windowSize = 90; _priceScale = 1.0; _viewEndIndex = null; }) : null),
             ],
           ],
         ),
@@ -880,10 +907,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
         icon: Icon(icon, size: 19),
         color: selected ? Colors.white : Colors.white60,
         disabledColor: Colors.white24,
-        style: IconButton.styleFrom(
-          backgroundColor: selected ? const Color(0xFF2962FF) : Colors.transparent,
-          visualDensity: VisualDensity.compact,
-        ),
+        style: IconButton.styleFrom(backgroundColor: selected ? const Color(0xFF2962FF) : Colors.transparent, visualDensity: VisualDensity.compact),
       ),
     );
   }
@@ -894,10 +918,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xFF0B0D10),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          ),
+          decoration: BoxDecoration(color: const Color(0xFF0B0D10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
           child: OriginKlineChart(
             snapshot: _snapshot,
             showFx: _showFx && _hasFx,
@@ -940,29 +961,26 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 3)));
   }
 
+  List<String> _csvTokens(String text) => text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+
+  String _toggleCsvToken(String csv, String token, bool selected) {
+    final current = _csvTokens(csv).toSet();
+    if (selected) {
+      current.add(token);
+    } else {
+      current.remove(token);
+    }
+    final ordered = [for (final item in _bspTypes) if (current.contains(item)) item];
+    return ordered.isEmpty ? token : ordered.join(',');
+  }
+
   String get _periodAdjustLabel => '${_periodLabel(_period)} ${_adjustLabel(_adjust)}';
 
-  String _periodLabel(String p) {
-    return {
-          'MIN1': '1分钟',
-          'MIN5': '5分钟',
-          'MIN15': '15分钟',
-          'MIN30': '30分钟',
-          'MIN60': '60分钟',
-          'DAILY': '日线',
-          'WEEKLY': '周线',
-          'MONTHLY': '月线',
-        }[p] ??
-        p;
-  }
+  String _periodLabel(String p) => {'MIN1': '1分钟', 'MIN5': '5分钟', 'MIN15': '15分钟', 'MIN30': '30分钟', 'MIN60': '60分钟', 'DAILY': '日线', 'WEEKLY': '周线', 'MONTHLY': '月线'}[p] ?? p;
 
-  String _adjustLabel(String a) {
-    return {'QFQ': '前复权', 'HFQ': '后复权', 'NONE': '不复权'}[a] ?? a;
-  }
+  String _adjustLabel(String a) => {'QFQ': '前复权', 'HFQ': '后复权', 'NONE': '不复权'}[a] ?? a;
 
-  String _fmtDate(DateTime d) {
-    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-  }
+  String _fmtDate(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   String _safeStoragePart(String raw) => raw.replaceAll(RegExp('[^a-zA-Z0-9._-]+'), '_');
 }
