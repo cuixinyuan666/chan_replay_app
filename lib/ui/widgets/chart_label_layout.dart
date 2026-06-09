@@ -70,9 +70,7 @@ class ChartLabelLayout {
   }
 
   List<LaidOutChartLabel> layout(Iterable<ChartLabel> labels) {
-    final ordered = labels
-        .where(_passesDensityFilter)
-        .toList(growable: false)
+    final ordered = labels.where(_passesDensityFilter).toList(growable: false)
       ..sort(_comparePriorityThenIndex);
 
     final result = <LaidOutChartLabel>[];
@@ -107,7 +105,8 @@ class ChartLabelLayout {
         : visibleCount <= 720
             ? 4
             : 8;
-    return rawIndex % step == 0 && label.priority.index >= ChartLabelPriority.bsp.index;
+    return rawIndex % step == 0 &&
+        label.priority.index >= ChartLabelPriority.bsp.index;
   }
 
   int _comparePriorityThenIndex(ChartLabel a, ChartLabel b) {
@@ -146,18 +145,32 @@ class ChartLabelLayout {
       ChartLabelSide.right => rightCandidates,
       ChartLabelSide.inside => insideCandidates,
     };
-    return raw.map((candidate) => _clampToChart(candidate, size)).toList(growable: false);
+    return raw
+        .map((candidate) => _clampToChart(candidate, size))
+        .toList(growable: false);
   }
 
   Offset _clampToChart(Offset offset, Size size) {
-    final minDx = chartRect.left;
-    final maxDx = chartRect.right - size.width;
-    final minDy = chartRect.top;
-    final maxDy = chartRect.bottom - size.height;
-    return Offset(
-      offset.dx.clamp(minDx, maxDx).toDouble(),
-      offset.dy.clamp(minDy, maxDy).toDouble(),
+    final dx = _clampAxis(
+      value: offset.dx,
+      min: chartRect.left,
+      max: chartRect.right - size.width,
     );
+    final dy = _clampAxis(
+      value: offset.dy,
+      min: chartRect.top,
+      max: chartRect.bottom - size.height,
+    );
+    return Offset(dx, dy);
+  }
+
+  double _clampAxis({
+    required double value,
+    required double min,
+    required double max,
+  }) {
+    if (max < min) return min;
+    return value.clamp(min, max).toDouble();
   }
 
   bool _intersectsOccupied(Rect rect) {
@@ -186,7 +199,10 @@ class ChartLabelLayout {
   }
 }
 
-void paintLaidOutChartLabels(Canvas canvas, Iterable<LaidOutChartLabel> labels) {
+void paintLaidOutChartLabels(
+  Canvas canvas,
+  Iterable<LaidOutChartLabel> labels,
+) {
   for (final item in labels) {
     final painter = TextPainter(
       text: TextSpan(
