@@ -8,7 +8,7 @@ Usage:
   python tools/validate_chanpy_output_contract.py path/to/analysis.json
 
 The JSON may be a direct backend response or a saved object containing:
-  bars / merged_bars / fx / bi / seg / zs / bsp / frames / meta
+  bars / merged_bars / fx / bi / seg / zs / bsp / indicators / frames / meta
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from typing import Any
 TOP_LEVEL_LISTS = ("bars", "merged_bars", "fx", "bi", "seg", "zs", "bsp")
 REQUIRED_BSP_FIELDS = ("index", "raw_index", "time", "price", "is_buy", "types", "bi_idx", "klu_idx", "is_sure")
 REQUIRED_MERGED_FIELDS = ("start_raw_index", "end_raw_index", "raw_index", "open", "high", "low", "close")
+INDICATOR_LIST_KEYS = ("vol", "amount", "turnover", "boll", "macd")
 BSP_TYPES = {"1", "1p", "2", "2s", "3a", "3b"}
 
 
@@ -49,6 +50,10 @@ def check_top_level(root: dict[str, Any]) -> list[Problem]:
             problems.append(Problem(key, "missing top-level list"))
         elif not isinstance(root[key], list):
             problems.append(Problem(key, "must be a list"))
+    if "indicators" not in root:
+        problems.append(Problem("indicators", "missing top-level indicator object"))
+    elif not isinstance(root["indicators"], dict):
+        problems.append(Problem("indicators", "must be a dict"))
     if "frames" in root and not isinstance(root["frames"], list):
         problems.append(Problem("frames", "must be a list when present"))
     if "meta" in root and not isinstance(root["meta"], dict):
@@ -115,6 +120,54 @@ def check_merged_bars(root: dict[str, Any], prefix: str = "merged_bars") -> list
     return problems
 
 
+def check_indicator_point(item: Any, path: str, required_values: tuple[str, ...] = ("value",)) -> list[Problem]:
+    problems: list[Problem] = []
+    if not isinstance(item, dict):
+        return [Problem(path, "must be an object")]
+    if not isinstance(get_any(item, "raw_index", "rawIndex"), int):
+        problems.append(Problem(f"{path}.raw_index", "must be an integer"))
+    for key in required_values:
+        value = item.get(key)
+        if value is not None and not isinstance(value, (int, float)):
+            problems.append(Problem(f"{path}.{key}", "must be numeric or null"))
+    return problems
+
+
+def check_indicators(root: dict[str, Any], prefix: str = "indicators") -> list[Problem]:
+    problems: list[Problem] = []
+    indicators = root.get("indicators")
+    if indicators is None:
+        return problems
+    if not isinstance(indicators, dict):
+        return [Problem(prefix, "must be a dict")]
+    for key in INDICATOR_LIST_KEYS:
+        value = indicators.get(key, [])
+        if not isinstance(value, list):
+            problems.append(Problem(f"{prefix}.{key}", "must be a list"))
+            continue
+        if key == "boll":
+            required = ("upper", "mid", "lower")
+        elif key == "macd":
+            required = ("dif", "dea", "hist")
+        else:
+            required = ("value",)
+        for i, item in enumerate(value):
+            problems.extend(check_indicator_point(item, f"{prefix}.{key}[{i}]", required))
+    ma = indicators.get("ma", {})
+    if not isinstance(ma, dict):
+        problems.append(Problem(f"{prefix}.ma", "must be a dict keyed by period"))
+    else:
+        for period, rows in ma.items():
+            if not str(period).isdigit():
+                problems.append(Problem(f"{prefix}.ma.{period}", "period key must be numeric text"))
+            if not isinstance(rows, list):
+                problems.append(Problem(f"{prefix}.ma.{period}", "must be a list"))
+                continue
+            for i, item in enumerate(rows):
+                problems.extend(check_indicator_point(item, f"{prefix}.ma.{period}[{i}]"))
+    return problems
+
+
 def check_frames(root: dict[str, Any]) -> list[Problem]:
     problems: list[Problem] = []
     frames = root.get("frames", [])
@@ -126,6 +179,7 @@ def check_frames(root: dict[str, Any]) -> list[Problem]:
             continue
         problems.extend(check_bsp(frame, prefix=f"frames[{i}].bsp"))
         problems.extend(check_merged_bars(frame, prefix=f"frames[{i}].merged_bars"))
+        problems.extend(check_indicators(frame, prefix=f"frames[{i}].indicators"))
     return problems
 
 
@@ -142,6 +196,7 @@ def main() -> int:
     problems.extend(check_top_level(root))
     problems.extend(check_bsp(root))
     problems.extend(check_merged_bars(root))
+    problems.extend(check_indicators(root))
     problems.extend(check_frames(root))
 
     if problems:
