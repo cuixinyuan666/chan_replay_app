@@ -70,11 +70,11 @@ CHART_END_NEW = """                  onPriceScaleChanged: (v) => setState(() => 
               ),
               if (_showLayerStatusPanel) _buildLayerStatusPanel(),"""
 
-SLICE_INDICATORS_OLD = """  bsps: source.bsps.where((e) => inCursor(e.rawIndex)).toList(),
-);"""
-SLICE_INDICATORS_NEW = """  bsps: source.bsps.where((e) => inCursor(e.rawIndex)).toList(),
-  indicators: source.indicators,
-);"""
+SLICE_INDICATORS_OLD = """      bsps: source.bsps.where((e) => inCursor(e.rawIndex)).toList(),
+    );"""
+SLICE_INDICATORS_NEW = """      bsps: source.bsps.where((e) => inCursor(e.rawIndex)).toList(),
+      indicators: source.indicators,
+    );"""
 
 PATCHES = [
     ('import OriginIndicatorPaneHost', IMPORT_OLD, IMPORT_NEW),
