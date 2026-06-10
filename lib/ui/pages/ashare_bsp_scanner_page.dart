@@ -33,7 +33,6 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   bool _scanning = false;
   bool _analyzing = false;
   int _scanSerial = 0;
-
   int _scanIndex = 0;
   int _scanTotal = 0;
   int _scanSuccessCount = 0;
@@ -41,8 +40,8 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   int _scanFoundCount = 0;
   String _scanCurrent = '';
 
-  double _leftWidth = 440;
-  double _settingsHeight = 260;
+  double _leftWidth = 480;
+  double _settingsHeight = 300;
   double _logHeight = 190;
 
   _ScanResult? _selectedResult;
@@ -132,9 +131,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         _scanTotal = _toInt(event['total']) ?? _scanTotal;
         _status = '${event['message'] ?? '开始扫描...'}';
         _appendLog(_status);
-        return;
-      }
-      if (type == 'progress') {
+      } else if (type == 'progress') {
         _scanIndex = _toInt(event['index']) ?? _scanIndex;
         _scanTotal = _toInt(event['total']) ?? _scanTotal;
         _scanSuccessCount = _toInt(event['success_count']) ?? _scanSuccessCount;
@@ -142,13 +139,9 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         _scanFoundCount = _toInt(event['found_count']) ?? _scanFoundCount;
         _scanCurrent = '${event['code'] ?? ''} ${event['name'] ?? ''}'.trim();
         _status = '${event['message'] ?? '扫描中...'}';
-        return;
-      }
-      if (type == 'log') {
+      } else if (type == 'log') {
         _appendLog('${event['message'] ?? ''}');
-        return;
-      }
-      if (type == 'result') {
+      } else if (type == 'result') {
         final row = event['row'];
         if (row is Map) {
           final result = _ScanResult.fromJson(Map<String, dynamic>.from(row));
@@ -160,14 +153,10 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         _scanFailCount = _toInt(event['fail_count']) ?? _scanFailCount;
         _scanFoundCount = _toInt(event['found_count']) ?? _results.length;
         _status = '发现买点 $_scanFoundCount 个，可直接点击结果查看K线；扫描继续运行';
-        return;
-      }
-      if (type == 'error') {
+      } else if (type == 'error') {
         _appendLog('❌ ${event['message'] ?? '扫描失败'}');
         _status = '${event['message'] ?? '扫描失败'}';
-        return;
-      }
-      if (type == 'done') {
+      } else if (type == 'done') {
         _scanTotal = _toInt(event['total']) ?? _scanTotal;
         _scanSuccessCount = _toInt(event['success_count']) ?? _scanSuccessCount;
         _scanFailCount = _toInt(event['fail_count']) ?? _scanFailCount;
@@ -248,9 +237,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
           _crosshairIndex = null;
           _viewEndIndex = null;
         }
-        _status = target == null
-            ? '分析完成: $code'
-            : '显示: ${target.code} ${target.name} ${target.bspType} ${_fmtDate(target.bspTime)}';
+        _status = target == null ? '分析完成: $code' : '显示: ${target.code} ${target.name} ${target.bspType} ${_fmtDate(target.bspTime)}';
       });
     } catch (e) {
       if (mounted) _showMessage('分析失败: $e');
@@ -262,10 +249,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
 
   BspPoint? _matchBsp(ChanSnapshot snapshot, _ScanResult result) {
     for (final bsp in snapshot.bsps) {
-      if (bsp.rawIndex == result.rawIndex &&
-          (result.bspType.isEmpty || bsp.type == result.bspType || bsp.type.contains(result.bspType))) {
-        return bsp;
-      }
+      if (bsp.rawIndex == result.rawIndex && (result.bspType.isEmpty || bsp.type == result.bspType || bsp.type.contains(result.bspType))) return bsp;
     }
     for (final bsp in snapshot.bsps) {
       if (bsp.rawIndex == result.rawIndex) return bsp;
@@ -301,13 +285,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
           DrawingAnchor.chart(rawIndex: leftRaw, price: bsp.price - pricePad),
           DrawingAnchor.chart(rawIndex: rightRaw, price: bsp.price + pricePad),
         ],
-        style: const DrawingStyle(
-          colorValue: 0xFFFFD54F,
-          strokeWidth: 2.4,
-          filled: true,
-          fillColorValue: 0x22FFD54F,
-          fillOpacity: 0.14,
-        ),
+        style: const DrawingStyle(colorValue: 0xFFFFD54F, strokeWidth: 2.4, filled: true, fillColorValue: 0x22FFD54F, fillOpacity: 0.14),
         locked: true,
         createdAt: now,
         updatedAt: now,
@@ -328,15 +306,13 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxLeft = math.max(360.0, constraints.maxWidth - 420.0);
-        final leftWidth = _leftWidth.clamp(340.0, maxLeft).toDouble();
+        final leftWidth = _leftWidth.clamp(320.0, maxLeft).toDouble();
         return Container(
           color: const Color(0xFF0B0D10),
           child: Row(
             children: [
               SizedBox(width: leftWidth, child: _buildLeftPanel()),
-              _resizeHandle(vertical: true, onDelta: (delta) => setState(() {
-                    _leftWidth = (_leftWidth + delta).clamp(340.0, maxLeft).toDouble();
-                  })),
+              _resizeHandle(vertical: true, onDelta: (delta) => setState(() => _leftWidth = (_leftWidth + delta).clamp(320.0, maxLeft).toDouble())),
               Expanded(child: _buildChartPanel()),
             ],
           ),
@@ -349,22 +325,16 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final available = constraints.maxHeight.isFinite ? constraints.maxHeight : 900.0;
-        final settingsMax = math.max(220.0, available - 360.0);
-        final logMax = math.max(140.0, available - _settingsHeight - 190.0);
-        final settingsHeight = _settingsHeight.clamp(190.0, settingsMax).toDouble();
-        final logHeight = _logHeight.clamp(120.0, logMax).toDouble();
+        final settingsHeight = _settingsHeight.clamp(220.0, math.max(240.0, available - 360.0)).toDouble();
+        final logHeight = _logHeight.clamp(120.0, math.max(140.0, available - settingsHeight - 190.0)).toDouble();
         return Padding(
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
               SizedBox(height: settingsHeight, child: _settingsPanel()),
-              _resizeHandle(vertical: false, onDelta: (delta) => setState(() {
-                    _settingsHeight = (_settingsHeight + delta).clamp(170.0, math.max(170.0, available - 280.0)).toDouble();
-                  })),
+              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _settingsHeight = (_settingsHeight + delta).clamp(200.0, math.max(200.0, available - 280.0)).toDouble())),
               Expanded(child: _resultsPanel()),
-              _resizeHandle(vertical: false, onDelta: (delta) => setState(() {
-                    _logHeight = (_logHeight - delta).clamp(110.0, math.max(110.0, available - 260.0)).toDouble();
-                  })),
+              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _logHeight = (_logHeight - delta).clamp(110.0, math.max(110.0, available - 260.0)).toDouble())),
               SizedBox(height: logHeight, child: _logsPanel()),
               const SizedBox(height: 6),
               Align(
@@ -380,65 +350,85 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
 
   Widget _settingsPanel() => _panel(
         '扫描设置',
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: _biStrict,
-                onChanged: _scanning ? null : (v) => setState(() => _biStrict = v ?? _biStrict),
-                title: const Text('笔严格模式'),
-              ),
-              TextField(
-                controller: _backendUrlController,
-                enabled: !_scanning && !_isAndroidApp,
-                decoration: const InputDecoration(labelText: 'Windows Python chan.py 服务地址', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _limitController,
-                enabled: !_scanning,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '扫描数量上限', helperText: '默认 300；支持最大 5000', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _scanning ? null : _startScan,
-                      icon: _scanning ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow),
-                      label: const Text('开始扫描'),
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: _biStrict,
+                  onChanged: _scanning ? null : (v) => setState(() => _biStrict = v ?? _biStrict),
+                  title: const Text('笔严格模式'),
+                ),
+                TextField(
+                  controller: _backendUrlController,
+                  enabled: !_scanning && !_isAndroidApp,
+                  decoration: const InputDecoration(labelText: 'Windows Python chan.py 服务地址', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _limitController,
+                  enabled: !_scanning,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '扫描数量上限', helperText: '默认 300；支持最大 5000', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    SizedBox(
+                      width: constraints.maxWidth < 380 ? constraints.maxWidth : (constraints.maxWidth - 8) / 2,
+                      child: FilledButton.icon(
+                        onPressed: _scanning ? null : _startScan,
+                        icon: _scanning ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow),
+                        label: const Text('开始扫描'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(child: FilledButton.tonalIcon(onPressed: _scanning ? _stopScan : null, icon: const Icon(Icons.stop), label: const Text('停止'))),
-                ],
-              ),
-              const SizedBox(height: 8),
-              _progressBlock(),
-              const Divider(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _codeController,
-                      enabled: !_analyzing,
-                      decoration: const InputDecoration(labelText: '单股分析代码', hintText: '如: 000001', border: OutlineInputBorder()),
+                    SizedBox(
+                      width: constraints.maxWidth < 380 ? constraints.maxWidth : (constraints.maxWidth - 8) / 2,
+                      child: FilledButton.tonalIcon(onPressed: _scanning ? _stopScan : null, icon: const Icon(Icons.stop), label: const Text('停止')),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: _analyzing ? null : _analyzeSingle,
-                    child: _analyzing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('分析'),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _progressBlock(),
+                const Divider(height: 18),
+                _singleAnalysisBlock(constraints.maxWidth),
+              ],
+            ),
           ),
         ),
       );
+
+  Widget _singleAnalysisBlock(double width) {
+    final narrow = width < 420;
+    final inputWidth = narrow ? width : math.max(260.0, width - 96.0);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SizedBox(
+          width: inputWidth,
+          child: TextField(
+            controller: _codeController,
+            enabled: !_analyzing,
+            decoration: const InputDecoration(labelText: '单股分析代码', hintText: '如: 000001', border: OutlineInputBorder()),
+          ),
+        ),
+        SizedBox(
+          width: narrow ? width : 88,
+          child: FilledButton(
+            onPressed: _analyzing ? null : _analyzeSingle,
+            child: _analyzing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('分析'),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _progressBlock() {
     final progress = _scanTotal > 0 ? (_scanIndex / _scanTotal).clamp(0.0, 1.0).toDouble() : null;
@@ -450,8 +440,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         LinearProgressIndicator(value: progressValue),
         const SizedBox(height: 6),
         Text('进度 $percent  $_scanIndex/$_scanTotal  成功$_scanSuccessCount  跳过$_scanFailCount  买点$_scanFoundCount', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-        if (_scanCurrent.isNotEmpty)
-          Text('当前: $_scanCurrent', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+        if (_scanCurrent.isNotEmpty) Text('当前: $_scanCurrent', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 11)),
       ],
     );
   }
@@ -516,11 +505,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0B0D10),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          ),
+          decoration: BoxDecoration(color: const Color(0xFF0B0D10), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
           child: SingleChildScrollView(
             reverse: true,
             child: SelectableText(_logs.isEmpty ? '暂无日志' : _logs.join('\n'), style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35)),
@@ -534,11 +519,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       );
 
   Widget _chartCanvas() => DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xFF131722),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        ),
+        decoration: BoxDecoration(color: const Color(0xFF131722), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: _snapshot.rawBars.isEmpty
@@ -572,13 +553,13 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       );
 
   Widget _chartToolbar({required bool fullscreen}) => Container(
+        width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFF131722),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        ),
-        child: Row(
+        decoration: BoxDecoration(color: const Color(0xFF131722), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             _disabledCheck('K线', true, 'K线为主图基础层，当前不可关闭'),
             _check('合并K线', _showMergedBars, (v) => setState(() => _showMergedBars = v)),
@@ -587,10 +568,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
             _check('中枢', _showZs, (v) => setState(() => _showZs = v)),
             _check('买卖点', _showBsp, (v) => setState(() => _showBsp = v)),
             _disabledCheck('MACD', true, 'MACD 副图当前未接入 OriginKlineChart，保留原扫描器入口占位'),
-            const Spacer(),
-            if (!fullscreen)
-              OutlinedButton.icon(onPressed: _snapshot.rawBars.isEmpty ? null : _openChartFullscreen, icon: const Icon(Icons.fullscreen, size: 16), label: const Text('全屏')),
-            if (!fullscreen) const SizedBox(width: 8),
+            if (!fullscreen) OutlinedButton.icon(onPressed: _snapshot.rawBars.isEmpty ? null : _openChartFullscreen, icon: const Icon(Icons.fullscreen, size: 16), label: const Text('全屏')),
             OutlinedButton.icon(
               onPressed: _snapshot.rawBars.isEmpty || _analyzing
                   ? null
@@ -623,6 +601,8 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                   ],
                 ),
                 const SizedBox(height: 8),
+                _chartToolbar(fullscreen: true),
+                const SizedBox(height: 8),
                 Expanded(child: _chartCanvas()),
               ],
             ),
@@ -635,19 +615,12 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   Widget _panel(String title, {required Widget child, Widget? trailing}) => Container(
         width: double.infinity,
         padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF131722),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)), const Spacer(), if (trailing != null) trailing]),
-            const SizedBox(height: 8),
-            Expanded(child: child),
-          ],
-        ),
+        decoration: BoxDecoration(color: const Color(0xFF131722), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)), const Spacer(), if (trailing != null) trailing]),
+          const SizedBox(height: 8),
+          Expanded(child: child),
+        ]),
       );
 
   Widget _resizeHandle({required bool vertical, required ValueChanged<double> onDelta}) => MouseRegion(
@@ -707,12 +680,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      duration: const Duration(seconds: 2),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: const Color(0xFF1E3A8A),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 2), behavior: SnackBarBehavior.floating, backgroundColor: const Color(0xFF1E3A8A)));
   }
 
   static String? _normalizeCode(String value) {
@@ -749,18 +717,7 @@ class _ScanResult {
   final double? bspPrice;
   final String level;
 
-  const _ScanResult({
-    required this.code,
-    required this.market,
-    required this.name,
-    required this.price,
-    required this.change,
-    required this.bspType,
-    required this.bspTime,
-    required this.rawIndex,
-    required this.bspPrice,
-    required this.level,
-  });
+  const _ScanResult({required this.code, required this.market, required this.name, required this.price, required this.change, required this.bspType, required this.bspTime, required this.rawIndex, required this.bspPrice, required this.level});
 
   factory _ScanResult.fromJson(Map<String, dynamic> json) {
     final code = _string(json['code']);
