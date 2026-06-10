@@ -39,6 +39,9 @@ jobs:
       - name: Audit Dart algorithm boundary
         run: python tools/audit_dart_algorithm_usage.py
 
+      - name: Audit global lazy loading boundary
+        run: python tools/audit_global_lazy_loading.py --strict
+
       - name: Check chan.py placement guardrails
         run: python tools/check_chanpy_guardrails.py
 
