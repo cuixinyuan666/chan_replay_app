@@ -103,9 +103,23 @@ APPLIED_SENTINELS = {
     'slice snapshot indicators': ['indicators: source.indicators,'],
 }
 
+PATCH_SENTINEL_KEY = {
+    'chart panel host start': 'chart panel host',
+    'chart panel host end': 'chart panel host',
+}
+
+
+def sentinel_key(name: str) -> str:
+    return PATCH_SENTINEL_KEY.get(name, name)
+
+
+def has_sentinels(text: str, name: str) -> bool:
+    snippets = APPLIED_SENTINELS.get(sentinel_key(name), [])
+    return bool(snippets) and all(snippet in text for snippet in snippets)
+
 
 def replace_once(text: str, name: str, old: str, new: str) -> tuple[str, str]:
-    if new in text:
+    if new in text or has_sentinels(text, name):
         return text, 'already_applied'
     if old not in text:
         raise RuntimeError(f'missing patch anchor: {name}')
@@ -126,7 +140,7 @@ def check_applied(text: str) -> list[str]:
 
 
 def check_anchors(text: str) -> list[str]:
-    return [name for name, old, new in PATCHES if old not in text and new not in text]
+    return [name for name, old, new in PATCHES if old not in text and new not in text and not has_sentinels(text, name)]
 
 
 def main() -> int:
