@@ -4,8 +4,9 @@ import 'package:window_manager/window_manager.dart';
 
 /// Minimal custom title-bar controls for the borderless Windows shell.
 ///
-/// The bar is hidden by default and fades in when the pointer reaches the top
-/// edge. It is a UI shell helper only; it does not affect chart state.
+/// The hover trigger is intentionally only a very thin strip at the top edge.
+/// The actual hit-test area is restricted to the right-top control capsule so
+/// chart/tool-bar widgets below it remain clickable.
 class WindowsHoverTitleBar extends StatefulWidget {
   final Widget child;
 
@@ -18,16 +19,14 @@ class WindowsHoverTitleBar extends StatefulWidget {
 class _WindowsHoverTitleBarState extends State<WindowsHoverTitleBar> {
   bool _visible = false;
 
-  bool get _isWindows =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+  bool get _isWindows => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
   @override
   Widget build(BuildContext context) {
     if (!_isWindows) return widget.child;
     return MouseRegion(
       onHover: (event) {
-        final next = event.position.dy <= 8 || event.localPosition.dy <= 8;
-        if (next != _visible) setState(() => _visible = next);
+        if (event.position.dy <= 6 && !_visible) setState(() => _visible = true);
       },
       child: Stack(
         children: [
@@ -36,43 +35,49 @@ class _WindowsHoverTitleBarState extends State<WindowsHoverTitleBar> {
             left: 0,
             top: 0,
             right: 0,
-            height: 46,
+            height: 6,
             child: MouseRegion(
               onEnter: (_) => setState(() => _visible = true),
-              onExit: (_) => setState(() => _visible = false),
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 140),
-                opacity: _visible ? 1 : 0,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onPanStart: (_) => windowManager.startDragging(),
-                  onDoubleTap: () async {
-                    final maximized = await windowManager.isMaximized();
-                    if (maximized) {
-                      await windowManager.unmaximize();
-                    } else {
-                      await windowManager.maximize();
-                    }
-                  },
+              child: const SizedBox.expand(),
+            ),
+          ),
+          Positioned(
+            top: 6,
+            right: 10,
+            width: 154,
+            height: 34,
+            child: IgnorePointer(
+              ignoring: !_visible,
+              child: MouseRegion(
+                onEnter: (_) => setState(() => _visible = true),
+                onExit: (_) => setState(() => _visible = false),
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 120),
+                  opacity: _visible ? 1 : 0,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0B0D10).withValues(alpha: 0.92),
-                      border: Border(
-                        bottom: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.10),
+                      color: const Color(0xFF0B0D10).withValues(alpha: 0.94),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                      boxShadow: const [
+                        BoxShadow(
+                          blurRadius: 10,
+                          offset: Offset(0, 2),
+                          color: Color(0x66000000),
                         ),
-                      ),
+                      ],
                     ),
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        const SizedBox(width: 14),
-                        const Expanded(
-                          child: Text(
-                            '缠论K线复盘',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style:
-                                TextStyle(color: Colors.white54, fontSize: 12),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onPanStart: (_) => windowManager.startDragging(),
+                          onDoubleTap: _toggleMaximize,
+                          child: const SizedBox(
+                            width: 34,
+                            height: 34,
+                            child: Icon(Icons.drag_indicator, size: 15, color: Colors.white38),
                           ),
                         ),
                         _WindowButton(
@@ -83,14 +88,7 @@ class _WindowsHoverTitleBarState extends State<WindowsHoverTitleBar> {
                         _WindowButton(
                           semanticLabel: '最大化 / 还原',
                           icon: Icons.crop_square,
-                          onTap: () async {
-                            final maximized = await windowManager.isMaximized();
-                            if (maximized) {
-                              await windowManager.unmaximize();
-                            } else {
-                              await windowManager.maximize();
-                            }
-                          },
+                          onTap: _toggleMaximize,
                         ),
                         _WindowButton(
                           semanticLabel: '关闭',
@@ -108,6 +106,15 @@ class _WindowsHoverTitleBarState extends State<WindowsHoverTitleBar> {
         ],
       ),
     );
+  }
+
+  Future<void> _toggleMaximize() async {
+    final maximized = await windowManager.isMaximized();
+    if (maximized) {
+      await windowManager.unmaximize();
+    } else {
+      await windowManager.maximize();
+    }
   }
 }
 
@@ -133,11 +140,11 @@ class _WindowButton extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: SizedBox(
-          width: 46,
-          height: 46,
+          width: 38,
+          height: 34,
           child: Icon(
             icon,
-            size: 17,
+            size: 16,
             color: danger ? const Color(0xFFFF8A80) : Colors.white70,
           ),
         ),
