@@ -40,8 +40,8 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   int _scanFoundCount = 0;
   String _scanCurrent = '';
 
-  double _leftWidth = 480;
-  double _settingsHeight = 300;
+  double _leftWidth = 500;
+  double _settingsHeight = 220;
   double _logHeight = 190;
 
   _ScanResult? _selectedResult;
@@ -311,14 +311,14 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final maxLeft = math.max(360.0, constraints.maxWidth - 420.0);
-        final leftWidth = _leftWidth.clamp(320.0, maxLeft).toDouble();
+        final maxLeft = math.max(380.0, constraints.maxWidth - 420.0);
+        final leftWidth = _leftWidth.clamp(340.0, maxLeft).toDouble();
         return Container(
           color: const Color(0xFF0B0D10),
           child: Row(
             children: [
               SizedBox(width: leftWidth, child: _buildLeftPanel()),
-              _resizeHandle(vertical: true, onDelta: (delta) => setState(() => _leftWidth = (_leftWidth + delta).clamp(320.0, maxLeft).toDouble())),
+              _resizeHandle(vertical: true, onDelta: (delta) => setState(() => _leftWidth = (_leftWidth + delta).clamp(340.0, maxLeft).toDouble())),
               Expanded(child: _buildChartPanel()),
             ],
           ),
@@ -331,16 +331,19 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final available = constraints.maxHeight.isFinite ? constraints.maxHeight : 900.0;
-        final settingsHeight = _settingsHeight.clamp(220.0, math.max(240.0, available - 360.0)).toDouble();
-        final logHeight = _logHeight.clamp(120.0, math.max(140.0, available - settingsHeight - 190.0)).toDouble();
+        final singleHeight = constraints.maxWidth < 430 ? 154.0 : 112.0;
+        final settingsHeight = _settingsHeight.clamp(180.0, math.max(190.0, available - singleHeight - 380.0)).toDouble();
+        final logHeight = _logHeight.clamp(120.0, math.max(140.0, available - settingsHeight - singleHeight - 210.0)).toDouble();
         return Padding(
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
               SizedBox(height: settingsHeight, child: _settingsPanel()),
-              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _settingsHeight = (_settingsHeight + delta).clamp(200.0, math.max(200.0, available - 280.0)).toDouble())),
+              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _settingsHeight = (_settingsHeight + delta).clamp(170.0, math.max(170.0, available - singleHeight - 300.0)).toDouble())),
+              SizedBox(height: singleHeight, child: _singleAnalysisPanel()),
+              const SizedBox(height: 8),
               Expanded(child: _resultsPanel()),
-              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _logHeight = (_logHeight - delta).clamp(110.0, math.max(110.0, available - 260.0)).toDouble())),
+              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _logHeight = (_logHeight - delta).clamp(110.0, math.max(110.0, available - settingsHeight - singleHeight - 180.0)).toDouble())),
               SizedBox(height: logHeight, child: _logsPanel()),
               const SizedBox(height: 6),
               Align(
@@ -401,17 +404,25 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                 ),
                 const SizedBox(height: 8),
                 _progressBlock(),
-                const Divider(height: 18),
-                _singleAnalysisBlock(constraints.maxWidth),
               ],
             ),
           ),
         ),
       );
 
+  Widget _singleAnalysisPanel() => _panel(
+        '单股分析',
+        child: LayoutBuilder(
+          builder: (context, constraints) => Align(
+            alignment: Alignment.topLeft,
+            child: _singleAnalysisBlock(constraints.maxWidth),
+          ),
+        ),
+      );
+
   Widget _singleAnalysisBlock(double width) {
-    final narrow = width < 420;
-    final inputWidth = narrow ? width : math.max(260.0, width - 96.0);
+    final narrow = width < 430;
+    final inputWidth = narrow ? width : math.max(280.0, width - 104.0);
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -426,7 +437,8 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
           ),
         ),
         SizedBox(
-          width: narrow ? width : 88,
+          width: narrow ? width : 96,
+          height: 48,
           child: FilledButton(
             onPressed: _analyzing ? null : _analyzeSingle,
             child: _analyzing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('分析'),
