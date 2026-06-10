@@ -6,7 +6,6 @@ from typing import Any, Iterable, Iterator
 from .chanpy_engine import analyze_once
 from .easy_tdx_provider import infer_market, normalize_symbol
 
-
 _SCAN_BSP_TYPES = ('1', '1p', '2', '2s', '3a', '3b')
 
 
@@ -76,6 +75,13 @@ def _parse_dt(value: Any) -> datetime | None:
         return None
 
 
+def _date_only(value: Any) -> datetime | None:
+    dt = _parse_dt(value)
+    if dt is None:
+        return None
+    return datetime(dt.year, dt.month, dt.day)
+
+
 def _market_enum(Market: Any, market: str) -> Any:
     name = 'SH' if market.upper() == 'SH' else 'SZ'
     if hasattr(Market, name):
@@ -98,7 +104,6 @@ def _call_stock_list(client: Any, method_name: str, market_value: Any, market_na
     method = getattr(client, method_name, None)
     if not callable(method):
         return []
-
     rows: list[Any] = []
     if method_name in {'get_security_list', 'get_stock_list'}:
         for offset in range(0, 100000, 1000):
@@ -119,7 +124,6 @@ def _call_stock_list(client: Any, method_name: str, market_value: Any, market_na
                 break
         if rows:
             return rows
-
     for args in ((market_value,), (market_name,), tuple()):
         try:
             return _iter_rows(method(*args))
@@ -130,47 +134,29 @@ def _call_stock_list(client: Any, method_name: str, market_value: Any, market_na
     return []
 
 
-def _load_easy_tdx_stock_rows(limit: int) -> list[dict[str, Any]]:
-    try:
-        from easy_tdx import MacClient, Market
-    except Exception as exc:  # pragma: no cover - environment dependent
-        raise RuntimeError('未安装 easy-tdx，或当前 Python 环境无法导入 easy_tdx / easy-tdx') from exc
-
-    client = MacClient.from_best_host()
-    try:
-        result: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for market_name in ('SH', 'SZ'):
-            market_value = _market_enum(Market, market_name)
-            rows: list[Any] = []
-            for method_name in (
-                'get_security_list',
-                'get_stock_list',
-                'get_all_stock',
-                'get_all_stocks',
-                'stock_list',
-                'stocks',
-                'securities',
-            ):
-                rows = _call_stock_list(client, method_name, market_value, market_name)
-                if rows:
-                    break
-            for row in rows:
-                normalized = _normalize_stock_row(row, market_name)
-                if normalized is None:
-                    continue
-                key = f"{normalized['code']}.{normalized['market']}"
-                if key in seen:
-                    continue
-                seen.add(key)
-                result.append(normalized)
-                if len(result) >= limit:
-                    return result
-        if result:
-            return result
-        return _fallback_candidate_stock_rows(limit)
-    finally:
-        _close_client(client)
+def _normalize_stock_row(row: Any, market_name: str) -> dict[str, Any] | None:
+    raw_code = _row_get(row, '代码', 'code', 'symbol', 'sec_code', 'stock_code', '证券代码')
+    if raw_code is None and isinstance(row, (list, tuple)) and row:
+        raw_code = row[0]
+    if raw_code is None:
+        return None
+    code = normalize_symbol(str(raw_code))
+    code = ''.join(ch for ch in code if ch.isdigit())[-6:]
+    if len(code) != 6:
+        return None
+    raw_name = _row_get(row, '名称', 'name', 'stock_name', 'sec_name', '证券简称', default=None)
+    if raw_name is None and isinstance(row, (list, tuple)) and len(row) > 1:
+        raw_name = row[1]
+    name = str(raw_name or code)
+    return {
+        'code': code,
+        'market': market_name,
+        'name': name,
+        'price': _to_float(_row_get(row, '最新价', 'price', 'last', 'close', default=None)),
+        'change': _to_float(_row_get(row, '涨跌幅', 'change', 'pct_chg', 'percent', default=None)),
+        'volume': _to_float(_row_get(row, '成交量', 'vol', 'volume', default=None)),
+        '_source': 'easy_tdx_list',
+    }
 
 
 def _fallback_candidate_stock_rows(limit: int) -> list[dict[str, Any]]:
@@ -199,43 +185,44 @@ def _fallback_candidate_stock_rows(limit: int) -> list[dict[str, Any]]:
             if key in seen:
                 continue
             seen.add(key)
-            rows.append({
-                'code': code,
-                'market': market,
-                'name': code,
-                'price': None,
-                'change': None,
-                'volume': None,
-                '_source': 'candidate_pool',
-            })
+            rows.append({'code': code, 'market': market, 'name': code, 'price': None, 'change': None, 'volume': None, '_source': 'candidate_pool'})
             if len(rows) >= limit:
                 return rows
     return rows
 
 
-def _normalize_stock_row(row: Any, market_name: str) -> dict[str, Any] | None:
-    raw_code = _row_get(row, '代码', 'code', 'symbol', 'sec_code', 'stock_code', '证券代码')
-    if raw_code is None and isinstance(row, (list, tuple)) and row:
-        raw_code = row[0]
-    if raw_code is None:
-        return None
-    code = normalize_symbol(str(raw_code))
-    code = ''.join(ch for ch in code if ch.isdigit())[-6:]
-    if len(code) != 6:
-        return None
-    raw_name = _row_get(row, '名称', 'name', 'stock_name', 'sec_name', '证券简称', default=None)
-    if raw_name is None and isinstance(row, (list, tuple)) and len(row) > 1:
-        raw_name = row[1]
-    name = str(raw_name or code)
-    return {
-        'code': code,
-        'market': market_name,
-        'name': name,
-        'price': _to_float(_row_get(row, '最新价', 'price', 'last', 'close', default=None)),
-        'change': _to_float(_row_get(row, '涨跌幅', 'change', 'pct_chg', 'percent', default=None)),
-        'volume': _to_float(_row_get(row, '成交量', 'vol', 'volume', default=None)),
-        '_source': 'easy_tdx_list',
-    }
+def _load_easy_tdx_stock_rows(limit: int) -> list[dict[str, Any]]:
+    try:
+        from easy_tdx import MacClient, Market
+    except Exception as exc:  # pragma: no cover - environment dependent
+        raise RuntimeError('未安装 easy-tdx，或当前 Python 环境无法导入 easy_tdx / easy-tdx') from exc
+    client = MacClient.from_best_host()
+    try:
+        result: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for market_name in ('SH', 'SZ'):
+            market_value = _market_enum(Market, market_name)
+            rows: list[Any] = []
+            for method_name in ('get_security_list', 'get_stock_list', 'get_all_stock', 'get_all_stocks', 'stock_list', 'stocks', 'securities'):
+                rows = _call_stock_list(client, method_name, market_value, market_name)
+                if rows:
+                    break
+            for row in rows:
+                normalized = _normalize_stock_row(row, market_name)
+                if normalized is None:
+                    continue
+                key = f"{normalized['code']}.{normalized['market']}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                result.append(normalized)
+                if len(result) >= limit:
+                    return result
+        if result:
+            return result
+        return _fallback_candidate_stock_rows(limit)
+    finally:
+        _close_client(client)
 
 
 def _passes_ashare_filter(row: dict[str, Any]) -> bool:
@@ -293,8 +280,6 @@ def get_tradable_stocks(*, symbols: Iterable[Any] | None = None, limit: int = 30
 
 
 def scanner_chan_config(*, bi_strict: bool = True, extra: dict[str, Any] | None = None) -> dict[str, Any]:
-    # Mirrors App/ashare_bsp_scanner_gui.py::get_chan_config, with easy-tdx bars
-    # feeding the existing chan.py export path. No Chan calculation is implemented here.
     result: dict[str, Any] = {
         'bi_strict': bi_strict,
         'trigger_step': False,
@@ -331,14 +316,7 @@ def _bar_change_pct(bars: list[dict[str, Any]]) -> float | None:
     return (last - prev) / prev * 100.0
 
 
-def _date_only(value: Any) -> datetime | None:
-    dt = _parse_dt(value)
-    if dt is None:
-        return None
-    return datetime(dt.year, dt.month, dt.day)
-
-
-def _scanner_result_from_buy(row: dict[str, Any], bars: list[dict[str, Any]], latest_buy: dict[str, Any]) -> dict[str, Any]:
+def _scanner_result_from_buy(row: dict[str, Any], bars: list[dict[str, Any]], latest_buy: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
     latest_price = _to_float(row.get('price')) or _to_float(bars[-1].get('close'))
     change = _to_float(row.get('change'))
     if change is None:
@@ -356,6 +334,7 @@ def _scanner_result_from_buy(row: dict[str, Any], bars: list[dict[str, Any]], la
         'raw_index': raw_index,
         'bsp_price': bsp_price,
         'level': str(latest_buy.get('level') or ''),
+        'analysis': analysis,
     }
 
 
@@ -400,29 +379,11 @@ def scan_bsp_events(
     except Exception as exc:
         message = f'获取股票列表失败: {exc}'
         yield {'type': 'error', 'message': message}
-        yield {
-            'type': 'done',
-            'ok': False,
-            'error': message,
-            'total': 0,
-            'success_count': 0,
-            'fail_count': 0,
-            'found_count': 0,
-            'results': [],
-            'config': _config_payload(bi_strict),
-        }
+        yield {'type': 'done', 'ok': False, 'error': message, 'total': 0, 'success_count': 0, 'fail_count': 0, 'found_count': 0, 'results': [], 'config': _config_payload(bi_strict)}
         return
 
-    source_hint = '候选代码池 + easy-tdx K线验证' if any(
-        row.get('_source') == 'candidate_pool' for row in stock_list
-    ) else 'easy-tdx股票列表'
-    yield {
-        'type': 'start',
-        'total': len(stock_list),
-        'source': 'easy-tdx',
-        'source_hint': source_hint,
-        'message': f'获取到 {len(stock_list)} 只可交易股票（{source_hint}），开始扫描...',
-    }
+    source_hint = '候选代码池 + easy-tdx K线验证' if any(row.get('_source') == 'candidate_pool' for row in stock_list) else 'easy-tdx股票列表'
+    yield {'type': 'start', 'total': len(stock_list), 'source': 'easy-tdx', 'source_hint': source_hint, 'message': f'获取到 {len(stock_list)} 只可交易股票（{source_hint}），开始扫描...'}
     if not stock_list:
         yield {'type': 'log', 'message': '⚠️ 股票列表为空：当前 easy-tdx 版本可能未暴露证券列表接口。'}
 
@@ -430,29 +391,10 @@ def scan_bsp_events(
         code = str(row['code'])
         market = str(row.get('market') or infer_market(code)).upper()
         name = str(row.get('name') or code)
-        yield {
-            'type': 'progress',
-            'index': idx + 1,
-            'total': len(stock_list),
-            'code': code,
-            'name': name,
-            'success_count': success_count,
-            'fail_count': fail_count,
-            'found_count': len(results),
-            'message': f'扫描 {idx + 1}/{len(stock_list)} {code} {name}',
-        }
+        yield {'type': 'progress', 'index': idx + 1, 'total': len(stock_list), 'code': code, 'name': name, 'success_count': success_count, 'fail_count': fail_count, 'found_count': len(results), 'message': f'扫描 {idx + 1}/{len(stock_list)} {code} {name}'}
         yield {'type': 'log', 'message': f'🔍 扫描 {idx + 1}/{len(stock_list)} {code} {name}...'}
         try:
-            analysis = analyze_once(
-                symbol=code,
-                market=market,
-                freq='DAILY',
-                adjust='QFQ',
-                start=begin_time,
-                end=end_time,
-                count=5000,
-                config=chan_config,
-            )
+            analysis = analyze_once(symbol=code, market=market, freq='DAILY', adjust='QFQ', start=begin_time, end=end_time, count=5000, config=chan_config)
             if not analysis.get('ok', False):
                 fail_count += 1
                 yield {'type': 'log', 'message': f"❌ {code} {name}: {str(analysis.get('error') or 'chan.py 计算失败')[:120]}"}
@@ -488,37 +430,16 @@ def scan_bsp_events(
                 continue
 
             buy_points.sort(key=lambda item: int(item.get('raw_index') or item.get('rawIndex') or -1), reverse=True)
-            latest_buy = buy_points[0]
-            result = _scanner_result_from_buy(row, bars, latest_buy)
+            result = _scanner_result_from_buy(row, bars, buy_points[0], analysis)
             results.append(result)
             yield {'type': 'log', 'message': f"✅ {code} {name}: 发现买点 {result['bsp_type']}"}
-            yield {
-                'type': 'result',
-                'row': result,
-                'index': idx + 1,
-                'total': len(stock_list),
-                'success_count': success_count,
-                'fail_count': fail_count,
-                'found_count': len(results),
-            }
+            yield {'type': 'result', 'row': result, 'analysis': analysis, 'index': idx + 1, 'total': len(stock_list), 'success_count': success_count, 'fail_count': fail_count, 'found_count': len(results)}
         except Exception as exc:
             fail_count += 1
             yield {'type': 'log', 'message': f'❌ {code} {name}: {str(exc)[:120]}'}
             continue
 
-    yield {
-        'type': 'done',
-        'ok': True,
-        'source': 'easy-tdx',
-        'days': days,
-        'recent_days': recent_days,
-        'total': len(stock_list),
-        'success_count': success_count,
-        'fail_count': fail_count,
-        'found_count': len(results),
-        'results': results,
-        'config': _config_payload(bi_strict),
-    }
+    yield {'type': 'done', 'ok': True, 'source': 'easy-tdx', 'days': days, 'recent_days': recent_days, 'total': len(stock_list), 'success_count': success_count, 'fail_count': fail_count, 'found_count': len(results), 'results': results, 'config': _config_payload(bi_strict)}
 
 
 def scan_bsp(
@@ -532,27 +453,8 @@ def scan_bsp(
 ) -> dict[str, Any]:
     logs: list[str] = []
     results: list[dict[str, Any]] = []
-    summary: dict[str, Any] = {
-        'ok': True,
-        'source': 'easy-tdx',
-        'days': days,
-        'recent_days': recent_days,
-        'total': 0,
-        'success_count': 0,
-        'fail_count': 0,
-        'found_count': 0,
-        'results': results,
-        'logs': logs,
-        'config': _config_payload(bi_strict),
-    }
-    for event in scan_bsp_events(
-        limit=limit,
-        days=days,
-        recent_days=recent_days,
-        bi_strict=bi_strict,
-        symbols=symbols,
-        config=config,
-    ):
+    summary: dict[str, Any] = {'ok': True, 'source': 'easy-tdx', 'days': days, 'recent_days': recent_days, 'total': 0, 'success_count': 0, 'fail_count': 0, 'found_count': 0, 'results': results, 'logs': logs, 'config': _config_payload(bi_strict)}
+    for event in scan_bsp_events(limit=limit, days=days, recent_days=recent_days, bi_strict=bi_strict, symbols=symbols, config=config):
         event_type = event.get('type')
         if event_type in {'log', 'start'} and event.get('message'):
             logs.append(str(event['message']))
