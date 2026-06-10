@@ -29,6 +29,10 @@ CHECKS = {
         'SLICE_INDICATORS_OLD = """      bsps:',
         '      indicators: source.indicators,',
         'slice snapshot indicators',
+        'APPLIED_SENTINELS = {',
+        "'chart panel host': [",
+        'def check_applied(text: str) -> list[str]:',
+        'APPLIED_SENTINELS.items()',
     ],
     'dry_runner': [
         'patch_text',
