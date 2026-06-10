@@ -23,3 +23,6 @@ jobs:
 
       - name: Dry run replay indicator patch
         run: python tools/dry_run_origin_replay_indicator_panes.py
+
+      - name: Check replay indicator patch result
+        run: python tools/check_replay_indicator_patch_result.py
