@@ -23,6 +23,9 @@ CHECKS = {
         'showMacd: _showMacdPane,',
         'windowSize: _windowSize,',
         'crosshairIndex: _crosshairIndex,',
+        'Icons.show_chart',
+        'selected: _showVolPane && _snapshot.indicators.vol.isNotEmpty',
+        'selected: _showMacdPane && _snapshot.indicators.macd.isNotEmpty',
     ],
     'dry_runner': [
         'patch_text',
@@ -38,6 +41,7 @@ CHECKS = {
         'class OriginIndicatorPaneHost extends StatelessWidget',
         'final Widget chart;',
         'OriginIndicatorPane(',
+        'bool get _hasBars => snapshot.rawBars.isNotEmpty;',
     ],
 }
 
