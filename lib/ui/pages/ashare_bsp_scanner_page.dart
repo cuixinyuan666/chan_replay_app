@@ -293,12 +293,18 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     ];
   }
 
-  void _panChartByBars(int bars) {
+  void _refresh(StateSetter? localSetState, VoidCallback action) {
+    if (!mounted) return;
+    setState(action);
+    localSetState?.call(() {});
+  }
+
+  void _panChartByBars(int bars, [StateSetter? localSetState]) {
     if (bars == 0 || _snapshot.rawBars.isEmpty) return;
     final maxEnd = _snapshot.rawBars.length - 1;
     final current = _viewEndIndex ?? maxEnd;
     final next = (current + bars).clamp(0, maxEnd).toInt();
-    if (next != current) setState(() => _viewEndIndex = next);
+    if (next != current) _refresh(localSetState, () => _viewEndIndex = next);
   }
 
   @override
@@ -518,7 +524,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         child: Column(children: [_chartToolbar(fullscreen: false), const SizedBox(height: 8), Expanded(child: _chartCanvas())]),
       );
 
-  Widget _chartCanvas() => DecoratedBox(
+  Widget _chartCanvas({StateSetter? localSetState}) => DecoratedBox(
         decoration: BoxDecoration(color: const Color(0xFF131722), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
@@ -544,15 +550,15 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                   priceScale: _priceScale,
                   viewEndIndex: _viewEndIndex,
                   crosshairIndex: _crosshairIndex,
-                  onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
-                  onPanBars: _panChartByBars,
-                  onWindowSizeChanged: (v) => setState(() => _windowSize = v),
-                  onPriceScaleChanged: (v) => setState(() => _priceScale = v),
+                  onCrosshairChanged: (v) => _refresh(localSetState, () => _crosshairIndex = v),
+                  onPanBars: (bars) => _panChartByBars(bars, localSetState),
+                  onWindowSizeChanged: (v) => _refresh(localSetState, () => _windowSize = v),
+                  onPriceScaleChanged: (v) => _refresh(localSetState, () => _priceScale = v),
                 ),
         ),
       );
 
-  Widget _chartToolbar({required bool fullscreen}) => Container(
+  Widget _chartToolbar({required bool fullscreen, StateSetter? localSetState}) => Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(color: const Color(0xFF131722), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
@@ -562,11 +568,11 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             _disabledCheck('K线', true, 'K线为主图基础层，当前不可关闭'),
-            _check('合并K线', _showMergedBars, (v) => setState(() => _showMergedBars = v)),
-            _check('笔', _showBi, (v) => setState(() => _showBi = v)),
-            _check('线段', _showSeg, (v) => setState(() => _showSeg = v)),
-            _check('中枢', _showZs, (v) => setState(() => _showZs = v)),
-            _check('买卖点', _showBsp, (v) => setState(() => _showBsp = v)),
+            _check('合并K线', _showMergedBars, (v) => _refresh(localSetState, () => _showMergedBars = v)),
+            _check('笔', _showBi, (v) => _refresh(localSetState, () => _showBi = v)),
+            _check('线段', _showSeg, (v) => _refresh(localSetState, () => _showSeg = v)),
+            _check('中枢', _showZs, (v) => _refresh(localSetState, () => _showZs = v)),
+            _check('买卖点', _showBsp, (v) => _refresh(localSetState, () => _showBsp = v)),
             _disabledCheck('MACD', true, 'MACD 副图当前未接入 OriginKlineChart，保留原扫描器入口占位'),
             if (!fullscreen) OutlinedButton.icon(onPressed: _snapshot.rawBars.isEmpty ? null : _openChartFullscreen, icon: const Icon(Icons.fullscreen, size: 16), label: const Text('全屏')),
             OutlinedButton.icon(
@@ -587,24 +593,26 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     if (_snapshot.rawBars.isEmpty) return;
     Navigator.of(context).push(MaterialPageRoute<void>(
       fullscreenDialog: true,
-      builder: (context) => Scaffold(
-        backgroundColor: const Color(0xFF0B0D10),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: Text(_chartSymbolLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
-                    IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close, color: Colors.white70), tooltip: '退出全屏'),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                _chartToolbar(fullscreen: true),
-                const SizedBox(height: 8),
-                Expanded(child: _chartCanvas()),
-              ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, fullscreenSetState) => Scaffold(
+          backgroundColor: const Color(0xFF0B0D10),
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Text(_chartSymbolLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+                      IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close, color: Colors.white70), tooltip: '退出全屏'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _chartToolbar(fullscreen: true, localSetState: fullscreenSetState),
+                  const SizedBox(height: 8),
+                  Expanded(child: _chartCanvas(localSetState: fullscreenSetState)),
+                ],
+              ),
             ),
           ),
         ),
