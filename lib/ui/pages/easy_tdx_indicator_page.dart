@@ -27,6 +27,9 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
   final _backend = TextEditingController(text: _defaultBackend);
   final _symbol = TextEditingController(text: '600340');
   final _count = TextEditingController(text: '320');
+  final _controlsScroll = ScrollController();
+  final _switchScroll = ScrollController();
+  final _sourceScroll = ScrollController();
 
   String _market = 'SH';
   String _freq = 'DAILY';
@@ -54,6 +57,9 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
     _backend.dispose();
     _symbol.dispose();
     _count.dispose();
+    _controlsScroll.dispose();
+    _switchScroll.dispose();
+    _sourceScroll.dispose();
     super.dispose();
   }
 
@@ -82,7 +88,7 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
         _bars = parsed;
         _crossIndex = parsed.length - 1;
         _shownIndicators.removeWhere((name) => !_availableIndicators.contains(name));
-        _status = '已加载 $symbol.$_market $_freq $_adjust K:${parsed.length}；已覆盖 easy-tdx 技术指标注册表，全部仅用于展示';
+        _status = '已加载 $symbol.$_market $_freq $_adjust K:${parsed.length}；指标区可横向拖动，副图区可上下拖动';
       });
     } catch (e) {
       setState(() => _status = '加载失败：$e');
@@ -106,25 +112,31 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
     final ma = {for (final entry in indicators.ma.entries) entry.key: {for (final p in entry.value) p.rawIndex: p.value}};
     final boll = {for (final p in indicators.boll) p.rawIndex: _Boll(p.upper, p.mid, p.lower)};
     final macd = {for (final p in indicators.macd) p.rawIndex: _Macd(p.dif, p.dea, p.hist)};
-    final named = {for (final entry in indicators.namedSeries.entries) entry.key: {for (final p in entry.value) p.rawIndex: p.values}};
+    final named = <String, Map<int, Map<String, double?>>>{};
+    for (final entry in indicators.namedSeries.entries) {
+      named[entry.key] = {for (final p in entry.value) p.rawIndex: p.values};
+    }
+
     final bars = <_Bar>[];
     for (final raw in snapshot.rawBars) {
       final rawIndex = raw.index;
-      bars.add(_Bar(
-        rawIndex: rawIndex,
-        time: _fmtTime(raw.time),
-        open: raw.open,
-        high: raw.high,
-        low: raw.low,
-        close: raw.close,
-        volume: vol[rawIndex] ?? raw.volume,
-        amount: amount[rawIndex],
-        turnover: turnover[rawIndex],
-        ma: {for (final entry in ma.entries) entry.key: entry.value[rawIndex]},
-        boll: boll[rawIndex],
-        macd: macd[rawIndex],
-        extra: {for (final entry in named.entries) entry.key: entry.value[rawIndex] ?? const <String, double?>{}},
-      ));
+      bars.add(
+        _Bar(
+          rawIndex: rawIndex,
+          time: _fmtTime(raw.time),
+          open: raw.open,
+          high: raw.high,
+          low: raw.low,
+          close: raw.close,
+          volume: vol[rawIndex] ?? raw.volume,
+          amount: amount[rawIndex],
+          turnover: turnover[rawIndex],
+          ma: {for (final entry in ma.entries) entry.key: entry.value[rawIndex]},
+          boll: boll[rawIndex],
+          macd: macd[rawIndex],
+          extra: {for (final entry in named.entries) entry.key: entry.value[rawIndex] ?? const <String, double?>{}},
+        ),
+      );
     }
     return bars;
   }
@@ -139,7 +151,10 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
   }
 
   List<String> get _availableIndicators {
-    final keys = <String>{for (final b in _bars) ...b.extra.keys};
+    final keys = <String>{};
+    for (final bar in _bars) {
+      keys.addAll(bar.extra.keys);
+    }
     return [
       for (final item in _indicatorOrder)
         if (keys.contains(item)) item,
@@ -166,11 +181,11 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
               _header(),
               const SizedBox(height: 10),
               _controls(),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               _switches(),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(_status, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               _sourceLine(),
               const SizedBox(height: 8),
               Expanded(
@@ -216,9 +231,9 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
         if (_loading) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
       ]);
 
-  Widget _controls() => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
+  Widget _controls() => _hScroll(
+        _controlsScroll,
+        Row(children: [
           _input(_backend, '后端/自动内置Python', 220),
           _gap(),
           _input(_symbol, '代码', 110),
@@ -235,9 +250,9 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
         ]),
       );
 
-  Widget _switches() => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
+  Widget _switches() => _hScroll(
+        _switchScroll,
+        Row(children: [
           _chip('MA', _showMa, (v) => setState(() => _showMa = v)),
           _chip('BOLL', _showBoll, (v) => setState(() => _showBoll = v)),
           _chip('VOL', _showVol, (v) => setState(() => _showVol = v)),
@@ -249,13 +264,28 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
         ]),
       );
 
-  Widget _sourceLine() => const SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Text(
+  Widget _sourceLine() => _hScroll(
+        _sourceScroll,
+        const Text(
           '来源：VOL/amount/turnover=easy-tdx K线原始字段；MA=easy-tdx OHLCV close 展示层均线；其余全部按 easy_tdx.indicator 注册表名称/outputs/默认参数，由 App 根据 easy-tdx OHLCV 展示层计算；不参与 chan.py 结构计算。',
           style: TextStyle(color: Colors.white54, fontSize: 11),
         ),
       );
+
+  Widget _hScroll(ScrollController controller, Widget child) {
+    return Scrollbar(
+      controller: controller,
+      thumbVisibility: true,
+      interactive: true,
+      scrollbarOrientation: ScrollbarOrientation.bottom,
+      child: SingleChildScrollView(
+        controller: controller,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.only(bottom: 10),
+        child: child,
+      ),
+    );
+  }
 
   Widget _gap() => const SizedBox(width: 8);
 
@@ -312,7 +342,7 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
       );
 }
 
-class _IndicatorCanvas extends StatelessWidget {
+class _IndicatorCanvas extends StatefulWidget {
   final List<_Bar> bars;
   final int? crossIndex;
   final bool showMa;
@@ -327,21 +357,52 @@ class _IndicatorCanvas extends StatelessWidget {
   const _IndicatorCanvas({required this.bars, required this.crossIndex, required this.showMa, required this.showBoll, required this.showVol, required this.showMacd, required this.showAmount, required this.showTurnover, required this.showExtra, required this.onCross});
 
   @override
+  State<_IndicatorCanvas> createState() => _IndicatorCanvasState();
+}
+
+class _IndicatorCanvasState extends State<_IndicatorCanvas> {
+  final _verticalScroll = ScrollController();
+
+  @override
+  void dispose() {
+    _verticalScroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, constraints) {
-        final size = Size(constraints.maxWidth, constraints.maxHeight);
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (d) => _setCross(d.localPosition, size),
-          onPanUpdate: (d) => _setCross(d.localPosition, size),
-          child: CustomPaint(size: const Size(double.infinity, double.infinity), painter: _IndicatorPainter(bars, crossIndex, showMa, showBoll, showVol, showMacd, showAmount, showTurnover, showExtra)),
+        final subCount = [widget.showVol, widget.showMacd, widget.showAmount, widget.showTurnover].where((e) => e).length + widget.showExtra.values.where((e) => e).length;
+        final contentHeight = math.max(constraints.maxHeight, 340.0 + subCount * 96.0);
+        final paintSize = Size(constraints.maxWidth, contentHeight);
+        return Scrollbar(
+          controller: _verticalScroll,
+          thumbVisibility: true,
+          interactive: true,
+          scrollbarOrientation: ScrollbarOrientation.right,
+          child: SingleChildScrollView(
+            controller: _verticalScroll,
+            child: SizedBox(
+              width: constraints.maxWidth,
+              height: contentHeight,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (d) => _setCross(d.localPosition, paintSize),
+                onHorizontalDragUpdate: (d) => _setCross(d.localPosition, paintSize),
+                child: CustomPaint(
+                  size: Size(constraints.maxWidth, contentHeight),
+                  painter: _IndicatorPainter(widget.bars, widget.crossIndex, widget.showMa, widget.showBoll, widget.showVol, widget.showMacd, widget.showAmount, widget.showTurnover, widget.showExtra),
+                ),
+              ),
+            ),
+          ),
         );
       });
 
   void _setCross(Offset position, Size size) {
     const left = 48.0;
     const right = 68.0;
-    final step = math.max(1.0, size.width - left - right) / math.max(1, bars.length);
-    onCross(((position.dx - left) / step).floor().clamp(0, bars.length - 1).toInt());
+    final step = math.max(1.0, size.width - left - right) / math.max(1, widget.bars.length);
+    widget.onCross(((position.dx - left) / step).floor().clamp(0, widget.bars.length - 1).toInt());
   }
 }
 
@@ -365,11 +426,12 @@ class _IndicatorPainter extends CustomPainter {
     const right = 68.0;
     const top = 24.0;
     const bottom = 22.0;
+    const subH = 86.0;
+    const gap = 8.0;
     final extraShown = showExtra.entries.where((e) => e.value).map((e) => e.key).toList();
     final subCount = [showVol, showMacd, showAmount, showTurnover].where((e) => e).length + extraShown.length;
-    final subH = subCount == 0 ? 0.0 : math.min(78.0, math.max(48.0, size.height * 0.14));
-    final gap = subCount == 0 ? 0.0 : 8.0;
-    final main = Rect.fromLTWH(left, top, math.max(1.0, size.width - left - right), math.max(80.0, size.height - top - bottom - subH * subCount - gap * subCount));
+    final mainH = math.max(240.0, size.height - top - bottom - subH * subCount - gap * subCount);
+    final main = Rect.fromLTWH(left, top, math.max(1.0, size.width - left - right), mainH);
     final step = main.width / math.max(1, bars.length);
     double x(int i) => main.left + (i + 0.5) * step;
 
@@ -383,8 +445,10 @@ class _IndicatorPainter extends CustomPainter {
     }
     if (showBoll) {
       for (final b in bars) {
-        if (b.boll?.upper != null) priceExtras.add(b.boll!.upper!);
-        if (b.boll?.lower != null) priceExtras.add(b.boll!.lower!);
+        final upper = b.boll?.upper;
+        final lower = b.boll?.lower;
+        if (upper != null) priceExtras.add(upper);
+        if (lower != null) priceExtras.add(lower);
       }
     }
     final minP = [bars.map((e) => e.low).reduce(math.min), ...priceExtras].reduce(math.min);
