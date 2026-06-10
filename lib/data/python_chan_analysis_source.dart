@@ -14,6 +14,7 @@ import '../core/models/merged_bar.dart';
 import '../core/models/raw_bar.dart';
 import '../core/models/seg.dart';
 import '../core/models/zs.dart';
+import '../core/services/replay_analysis_store.dart';
 
 class PythonChanAnalysis {
   final ChanSnapshot snapshot;
@@ -105,8 +106,7 @@ class PythonChanAnalysisSource {
     final sourceBase = await _readyBaseUrl();
     final uri = Uri.parse(_join(sourceBase, '/api/chan/analyze_bars'));
     final response = await _client.post(uri,
-        headers: {'content-type': 'application/json'},
-        body: jsonEncode(payload));
+        headers: {'content-type': 'application/json'}, body: jsonEncode(payload));
     return _decodeResponse(response);
   }
 
@@ -114,14 +114,17 @@ class PythonChanAnalysisSource {
       Map<String, dynamic> payload) async {
     final result = await _androidChanChannel
         .invokeMethod<String>('analyze', {'payload': jsonEncode(payload)});
-    if (result == null || result.trim().isEmpty)
+    if (result == null || result.trim().isEmpty) {
       throw Exception('Android Chaquopy chan.py 返回为空');
+    }
     final decoded = jsonDecode(result);
-    if (decoded is! Map<String, dynamic>)
+    if (decoded is! Map<String, dynamic>) {
       throw const FormatException('Android Chaquopy chan.py 返回结构不是 JSON 对象');
-    if (decoded['ok'] == false)
+    }
+    if (decoded['ok'] == false) {
       throw Exception(decoded['error'] ?? 'Android Chaquopy chan.py 计算失败');
-    return _parseAnalysis(decoded);
+    }
+    return _parseAnalysis(decoded, saveLatest: true);
   }
 
   Future<String> _readyBaseUrl() async {
@@ -137,8 +140,9 @@ class PythonChanAnalysisSource {
 
   Future<PythonChanAnalysis> _loadViaAutoLocalBackend(
       Map<String, String> query) async {
-    if (!Platform.isWindows)
+    if (!Platform.isWindows) {
       throw UnsupportedError('自动后台启动 Python chan.py 本地服务目前只支持 Windows');
+    }
     _localProcess = await _LocalPythonChanProcess.start();
     return _loadFromBase(_localProcess!.baseUrl, query);
   }
@@ -165,11 +169,13 @@ class PythonChanAnalysisSource {
       throw Exception('chan.py 引擎返回 ${response.statusCode}: $body');
     }
     final decoded = jsonDecode(body);
-    if (decoded is! Map<String, dynamic>)
+    if (decoded is! Map<String, dynamic>) {
       throw const FormatException('chan.py 引擎返回结构不是 JSON 对象');
-    if (decoded['ok'] == false)
+    }
+    if (decoded['ok'] == false) {
       throw Exception(decoded['error'] ?? 'chan.py 引擎计算失败');
-    return _parseAnalysis(decoded);
+    }
+    return _parseAnalysis(decoded, saveLatest: true);
   }
 
   Future<void> _assertCompatibleBackend(String sourceBaseUrl) async {
@@ -182,8 +188,9 @@ class PythonChanAnalysisSource {
           'localhost /health 返回 ${response.statusCode}: $body');
     }
     final decoded = jsonDecode(body);
-    if (decoded is! Map<String, dynamic>)
+    if (decoded is! Map<String, dynamic>) {
       throw const _PythonChanBackendMismatch('localhost /health 不是 JSON 对象');
+    }
     if (decoded['backend'] != 'origin_vespa_tdx' ||
         decoded['engine'] != 'chan.py') {
       throw _PythonChanBackendMismatch(
@@ -191,15 +198,19 @@ class PythonChanAnalysisSource {
     }
   }
 
-  PythonChanAnalysis _parseAnalysis(Map<String, dynamic> data) {
+  PythonChanAnalysis _parseAnalysis(Map<String, dynamic> data,
+      {bool saveLatest = false}) {
+    if (saveLatest) ReplayAnalysisStore.saveLatestAnalysis(data);
     final snapshot = _parseSnapshot(data);
     final frames = <ChanSnapshot>[];
     final rawFrames = data['frames'];
     if (rawFrames is List) {
       for (final frame in rawFrames) {
-        if (frame is Map<String, dynamic>) frames.add(_parseSnapshot(frame));
-        if (frame is Map && frame is! Map<String, dynamic>)
+        if (frame is Map<String, dynamic>) {
+          frames.add(_parseSnapshot(frame));
+        } else if (frame is Map) {
           frames.add(_parseSnapshot(Map<String, dynamic>.from(frame)));
+        }
       }
     }
     return PythonChanAnalysis(
@@ -514,8 +525,9 @@ class PythonChanAnalysisSource {
 
   MergedBar _mergedAt(List<MergedBar> bars, int rawIndex) {
     for (final bar in bars) {
-      if (rawIndex >= bar.startRawIndex && rawIndex <= bar.endRawIndex)
+      if (rawIndex >= bar.startRawIndex && rawIndex <= bar.endRawIndex) {
         return bar;
+      }
     }
     return bars[rawIndex.clamp(0, bars.length - 1).toInt()];
   }
@@ -659,13 +671,11 @@ class _LocalPythonChanProcess {
 
   static List<_PythonCandidate> _pythonCandidates(File appEngine) {
     final sep = Platform.pathSeparator;
-    final result = <_PythonCandidate>[];
     final bundledPython = File('${appEngine.parent.path}${sep}python.exe');
     if (!bundledPython.existsSync()) {
       throw Exception('找不到内置 Python：${bundledPython.path}');
     }
-    result.add(_PythonCandidate(bundledPython.path));
-    return result;
+    return [_PythonCandidate(bundledPython.path)];
   }
 
   Future<void> _waitUntilReady() async {
@@ -674,9 +684,10 @@ class _LocalPythonChanProcess {
     while (DateTime.now().isBefore(deadline)) {
       final exitCode = await process.exitCode
           .timeout(const Duration(milliseconds: 10), onTimeout: () => -999999);
-      if (exitCode != -999999)
+      if (exitCode != -999999) {
         throw Exception(
             'Python chan.py 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
+      }
       try {
         final client = HttpClient();
         final request = await client
