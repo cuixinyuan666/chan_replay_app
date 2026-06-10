@@ -18,6 +18,10 @@ class TradingViewToolboxHost extends StatefulWidget {
   final bool canExportDrawings;
   final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
   final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
+  final int easyTdxSubPanelCount;
+  final Set<String> enabledEasyTdxIndicators;
+  final ValueChanged<int>? onEasyTdxSubPanelCountChanged;
+  final ValueChanged<String>? onEasyTdxIndicatorToggled;
   final ValueChanged<TradingViewDrawingTool>? onQuickToolAdded;
   final ValueListenable<int>? openSignal;
   final int drawingCount;
@@ -36,6 +40,10 @@ class TradingViewToolboxHost extends StatefulWidget {
     this.canExportDrawings = false,
     this.isChanOverlayVisible,
     this.onChanOverlayToggled,
+    this.easyTdxSubPanelCount = 2,
+    this.enabledEasyTdxIndicators = const {'MA', 'BOLL', 'VOL', 'MACD'},
+    this.onEasyTdxSubPanelCountChanged,
+    this.onEasyTdxIndicatorToggled,
     this.onQuickToolAdded,
     this.openSignal,
     this.drawingCount = 0,
@@ -50,7 +58,8 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
   TradingViewDrawingTool _localSelectedTool = TradingViewDrawingTool.cursor;
   final List<TradingViewDrawingTool> _quickTools = [];
 
-  TradingViewDrawingTool get _effectiveSelectedTool => widget.selectedTool ?? _localSelectedTool;
+  TradingViewDrawingTool get _effectiveSelectedTool =>
+      widget.selectedTool ?? _localSelectedTool;
 
   @override
   void initState() {
@@ -83,7 +92,9 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
     final meta = TradingViewDrawingToolRegistry.metaOf(tool);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(meta.minPoints > 0 ? '已选择：${meta.label}。请在K线图上点击放置锚点。' : '已选择：${meta.label}。'),
+        content: Text(meta.minPoints > 0
+            ? '已选择：${meta.label}。请在K线图上点击放置锚点。'
+            : '已选择：${meta.label}。'),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
         backgroundColor: const Color(0xFF1E3A8A),
@@ -96,7 +107,8 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
     setState(() => _quickTools.add(tool));
   }
 
-  void _removeQuickTool(TradingViewDrawingTool tool) => setState(() => _quickTools.remove(tool));
+  void _removeQuickTool(TradingViewDrawingTool tool) =>
+      setState(() => _quickTools.remove(tool));
 
   void _handleQuickToolAdded(TradingViewDrawingTool tool) {
     final external = widget.onQuickToolAdded;
@@ -134,7 +146,8 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
             top: 8,
             child: _ToolboxButton(
               open: _open,
-              selectedLabel: TradingViewDrawingToolRegistry.metaOf(selected).label,
+              selectedLabel:
+                  TradingViewDrawingToolRegistry.metaOf(selected).label,
               drawingCount: widget.drawingCount,
               onPressed: () => setState(() => _open = !_open),
             ),
@@ -157,6 +170,11 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
               onExportDrawings: widget.onExportDrawings,
               isChanOverlayVisible: widget.isChanOverlayVisible,
               onChanOverlayToggled: widget.onChanOverlayToggled,
+              easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
+              enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
+              onEasyTdxSubPanelCountChanged:
+                  widget.onEasyTdxSubPanelCountChanged,
+              onEasyTdxIndicatorToggled: widget.onEasyTdxIndicatorToggled,
               onClose: () => setState(() => _open = false),
               onSelected: _selectTool,
               onQuickToolAdded: _handleQuickToolAdded,
@@ -174,7 +192,12 @@ class _QuickToolRail extends StatelessWidget {
   final ValueChanged<TradingViewDrawingTool> onRemoveTool;
   final ValueChanged<TradingViewDrawingTool> onSelected;
 
-  const _QuickToolRail({required this.tools, required this.selectedTool, required this.onAcceptTool, required this.onRemoveTool, required this.onSelected});
+  const _QuickToolRail(
+      {required this.tools,
+      required this.selectedTool,
+      required this.onAcceptTool,
+      required this.onRemoveTool,
+      required this.onSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -189,17 +212,25 @@ class _QuickToolRail extends StatelessWidget {
           decoration: BoxDecoration(
             color: active ? const Color(0xEE1E3A8A) : const Color(0xCC131722),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: active ? const Color(0xFF8AB4FF) : Colors.white12),
+            border: Border.all(
+                color: active ? const Color(0xFF8AB4FF) : Colors.white12),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Tooltip(waitDuration: _tooltipWait, message: '拖拽 TV 工具到这里，形成左侧快捷工具栏', child: Icon(active ? Icons.add_circle : Icons.push_pin_outlined, size: 18, color: Colors.white70)),
+              Tooltip(
+                  waitDuration: _tooltipWait,
+                  message: '拖拽 TV 工具到这里，形成左侧快捷工具栏',
+                  child: Icon(
+                      active ? Icons.add_circle : Icons.push_pin_outlined,
+                      size: 18,
+                      color: Colors.white70)),
               const SizedBox(height: 6),
               for (final tool in tools)
                 Tooltip(
                   waitDuration: _tooltipWait,
-                  message: '${TradingViewDrawingToolRegistry.metaOf(tool).label}\n右键/长按移出快捷栏',
+                  message:
+                      '${TradingViewDrawingToolRegistry.metaOf(tool).label}\n右键/长按移出快捷栏',
                   child: GestureDetector(
                     onTap: () => onSelected(tool),
                     onLongPress: () => onRemoveTool(tool),
@@ -208,8 +239,13 @@ class _QuickToolRail extends StatelessWidget {
                       width: 30,
                       height: 30,
                       margin: const EdgeInsets.only(bottom: 5),
-                      decoration: BoxDecoration(color: selectedTool == tool ? const Color(0xFF2962FF) : Colors.transparent, borderRadius: BorderRadius.circular(8)),
-                      child: Icon(_toolIcon(tool), size: 17, color: Colors.white70),
+                      decoration: BoxDecoration(
+                          color: selectedTool == tool
+                              ? const Color(0xFF2962FF)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Icon(_toolIcon(tool),
+                          size: 17, color: Colors.white70),
                     ),
                   ),
                 ),
@@ -227,7 +263,11 @@ class _ToolboxButton extends StatelessWidget {
   final int drawingCount;
   final VoidCallback onPressed;
 
-  const _ToolboxButton({required this.open, required this.selectedLabel, required this.drawingCount, required this.onPressed});
+  const _ToolboxButton(
+      {required this.open,
+      required this.selectedLabel,
+      required this.drawingCount,
+      required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -241,7 +281,11 @@ class _ToolboxButton extends StatelessWidget {
           onPressed: onPressed,
           icon: Icon(open ? Icons.close : Icons.architecture, size: 18),
           label: Text('TV工具$suffix'),
-          style: FilledButton.styleFrom(visualDensity: VisualDensity.compact, backgroundColor: const Color(0xDD1F2937), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+          style: FilledButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              backgroundColor: const Color(0xDD1F2937),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
         ),
       ),
     );
@@ -260,11 +304,33 @@ class _ToolboxPanel extends StatefulWidget {
   final VoidCallback? onExportDrawings;
   final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
   final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
+  final int easyTdxSubPanelCount;
+  final Set<String> enabledEasyTdxIndicators;
+  final ValueChanged<int>? onEasyTdxSubPanelCountChanged;
+  final ValueChanged<String>? onEasyTdxIndicatorToggled;
   final VoidCallback onClose;
   final ValueChanged<TradingViewDrawingTool> onSelected;
   final ValueChanged<TradingViewDrawingTool> onQuickToolAdded;
 
-  const _ToolboxPanel({required this.selectedTool, required this.hasBars, required this.hasChanSnapshot, required this.isToolAvailable, required this.drawingCount, required this.canExportDrawings, required this.onClearDrawings, required this.onImportDrawings, required this.onExportDrawings, required this.isChanOverlayVisible, required this.onChanOverlayToggled, required this.onClose, required this.onSelected, required this.onQuickToolAdded});
+  const _ToolboxPanel(
+      {required this.selectedTool,
+      required this.hasBars,
+      required this.hasChanSnapshot,
+      required this.isToolAvailable,
+      required this.drawingCount,
+      required this.canExportDrawings,
+      required this.onClearDrawings,
+      required this.onImportDrawings,
+      required this.onExportDrawings,
+      required this.isChanOverlayVisible,
+      required this.onChanOverlayToggled,
+      required this.easyTdxSubPanelCount,
+      required this.enabledEasyTdxIndicators,
+      required this.onEasyTdxSubPanelCountChanged,
+      required this.onEasyTdxIndicatorToggled,
+      required this.onClose,
+      required this.onSelected,
+      required this.onQuickToolAdded});
 
   @override
   State<_ToolboxPanel> createState() => _ToolboxPanelState();
@@ -273,9 +339,44 @@ class _ToolboxPanel extends StatefulWidget {
 class _ToolboxPanelState extends State<_ToolboxPanel> {
   final ScrollController _scrollController = ScrollController();
   final List<TradingViewDrawingGroup> _groupOrder = [];
-  final Map<TradingViewDrawingGroup, List<TradingViewDrawingToolMeta>> _toolOrder = {};
-  final Set<String> _enabledIndicators = {'MA', 'BOLL', 'VOL', 'MACD'};
-  static const List<String> _indicatorKeys = ['MA', 'BOLL', 'VOL', 'MACD', 'amount', 'turnover', 'KDJ', 'RSI', 'DMI', 'ATR', 'WR', 'CCI', 'BIAS', 'OBV', 'PSY', 'TRIX', 'DPO', 'MTM', 'ROC', 'EXPMA', 'BBI', 'DFMA', 'CR', 'KTN', 'XSII', 'VR', 'EMV', 'MASS', 'MFI', 'BRAR', 'ASI', 'ZHUOYAO', 'BIAS_SIGNAL', 'TAQ'];
+  final Map<TradingViewDrawingGroup, List<TradingViewDrawingToolMeta>>
+      _toolOrder = {};
+  static const List<String> _indicatorKeys = [
+    'MA',
+    'BOLL',
+    'VOL',
+    'MACD',
+    'amount',
+    'turnover',
+    'KDJ',
+    'RSI',
+    'DMI',
+    'ATR',
+    'WR',
+    'CCI',
+    'BIAS',
+    'OBV',
+    'PSY',
+    'TRIX',
+    'DPO',
+    'MTM',
+    'ROC',
+    'EXPMA',
+    'BBI',
+    'DFMA',
+    'CR',
+    'KTN',
+    'XSII',
+    'VR',
+    'EMV',
+    'MASS',
+    'MFI',
+    'BRAR',
+    'ASI',
+    'ZHUOYAO',
+    'BIAS_SIGNAL',
+    'TAQ'
+  ];
 
   @override
   void dispose() {
@@ -283,10 +384,12 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
     super.dispose();
   }
 
-  void _ensureOrder(Map<TradingViewDrawingGroup, List<TradingViewDrawingToolMeta>> grouped) {
+  void _ensureOrder(
+      Map<TradingViewDrawingGroup, List<TradingViewDrawingToolMeta>> grouped) {
     if (_groupOrder.isEmpty) {
       _groupOrder.add(TradingViewDrawingGroup.chanOverlay);
-      _groupOrder.addAll(grouped.keys.where((g) => g != TradingViewDrawingGroup.chanOverlay));
+      _groupOrder.addAll(
+          grouped.keys.where((g) => g != TradingViewDrawingGroup.chanOverlay));
     } else {
       for (final group in grouped.keys) {
         if (!_groupOrder.contains(group)) _groupOrder.add(group);
@@ -298,7 +401,8 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
       for (final meta in entry.value) {
         if (!current.any((item) => item.tool == meta.tool)) current.add(meta);
       }
-      current.removeWhere((item) => !entry.value.any((meta) => meta.tool == item.tool));
+      current.removeWhere(
+          (item) => !entry.value.any((meta) => meta.tool == item.tool));
     }
   }
 
@@ -308,8 +412,14 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF131722),
         title: const Text('TV 工具箱操作说明', style: TextStyle(color: Colors.white)),
-        content: const Text('1. 拖拽分类标题可调整分类顺序。\n2. 拖拽组内工具可调整该组工具顺序。\n3. 长按/拖拽工具到左侧快捷栏，可固定为快捷按钮。\n4. 缠论叠加来自后端/Vespa；easy-tdx 指标来自 easy-tdx OHLCV 展示层。\n5. 指标开关只控制指标展示，不参与 chan.py 缠论结构计算。', style: TextStyle(color: Colors.white70, height: 1.45)),
-        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('知道了'))],
+        content: const Text(
+            '1. 拖拽分类标题可调整分类顺序。\n2. 拖拽组内工具可调整该组工具顺序。\n3. 长按/拖拽工具到左侧快捷栏，可固定为快捷按钮。\n4. 缠论叠加来自后端/Vespa；easy-tdx 指标来自 easy-tdx OHLCV 展示层。\n5. 指标开关只控制指标展示，不参与 chan.py 缠论结构计算。',
+            style: TextStyle(color: Colors.white70, height: 1.45)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道了'))
+        ],
       ),
     );
   }
@@ -322,7 +432,16 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
       elevation: 18,
       color: Colors.transparent,
       child: DecoratedBox(
-        decoration: BoxDecoration(color: const Color(0xF2131722), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.12)), boxShadow: const [BoxShadow(blurRadius: 20, offset: Offset(0, 8), color: Color(0x99000000))]),
+        decoration: BoxDecoration(
+            color: const Color(0xF2131722),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            boxShadow: const [
+              BoxShadow(
+                  blurRadius: 20,
+                  offset: Offset(0, 8),
+                  color: Color(0x99000000))
+            ]),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -330,13 +449,51 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
               padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
               child: Row(
                 children: [
-                  IconButton(tooltip: '操作说明', onPressed: _showGuide, icon: const Icon(Icons.error_outline, size: 19), visualDensity: VisualDensity.compact, color: Colors.amberAccent),
+                  IconButton(
+                      tooltip: '操作说明',
+                      onPressed: _showGuide,
+                      icon: const Icon(Icons.error_outline, size: 19),
+                      visualDensity: VisualDensity.compact,
+                      color: Colors.amberAccent),
                   const SizedBox(width: 4),
-                  const Expanded(child: Text('TradingView 画线工具箱', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white))),
-                  IconButton(tooltip: '导入画线 JSON', onPressed: widget.onImportDrawings, icon: const Icon(Icons.file_upload_outlined, size: 18), visualDensity: VisualDensity.compact, color: Colors.white70, disabledColor: Colors.white24),
-                  IconButton(tooltip: widget.canExportDrawings ? '导出画线 JSON' : '暂无手动画线可导出', onPressed: widget.canExportDrawings ? widget.onExportDrawings : null, icon: const Icon(Icons.file_download_outlined, size: 18), visualDensity: VisualDensity.compact, color: Colors.white70, disabledColor: Colors.white24),
-                  IconButton(tooltip: widget.drawingCount > 0 ? '清空手动画线' : '暂无手动画线', onPressed: widget.drawingCount > 0 ? widget.onClearDrawings : null, icon: const Icon(Icons.delete_sweep, size: 18), visualDensity: VisualDensity.compact, color: Colors.white70, disabledColor: Colors.white24),
-                  IconButton(tooltip: '关闭工具箱', onPressed: widget.onClose, icon: const Icon(Icons.close, size: 18), visualDensity: VisualDensity.compact, color: Colors.white70),
+                  const Expanded(
+                      child: Text('TradingView 画线工具箱',
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white))),
+                  IconButton(
+                      tooltip: '导入画线 JSON',
+                      onPressed: widget.onImportDrawings,
+                      icon: const Icon(Icons.file_upload_outlined, size: 18),
+                      visualDensity: VisualDensity.compact,
+                      color: Colors.white70,
+                      disabledColor: Colors.white24),
+                  IconButton(
+                      tooltip:
+                          widget.canExportDrawings ? '导出画线 JSON' : '暂无手动画线可导出',
+                      onPressed: widget.canExportDrawings
+                          ? widget.onExportDrawings
+                          : null,
+                      icon: const Icon(Icons.file_download_outlined, size: 18),
+                      visualDensity: VisualDensity.compact,
+                      color: Colors.white70,
+                      disabledColor: Colors.white24),
+                  IconButton(
+                      tooltip: widget.drawingCount > 0 ? '清空手动画线' : '暂无手动画线',
+                      onPressed: widget.drawingCount > 0
+                          ? widget.onClearDrawings
+                          : null,
+                      icon: const Icon(Icons.delete_sweep, size: 18),
+                      visualDensity: VisualDensity.compact,
+                      color: Colors.white70,
+                      disabledColor: Colors.white24),
+                  IconButton(
+                      tooltip: '关闭工具箱',
+                      onPressed: widget.onClose,
+                      icon: const Icon(Icons.close, size: 18),
+                      visualDensity: VisualDensity.compact,
+                      color: Colors.white70),
                 ],
               ),
             ),
@@ -362,7 +519,8 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
                   }),
                   itemBuilder: (context, index) {
                     final group = _groupOrder[index];
-                    final tools = _toolOrder[group] ?? const <TradingViewDrawingToolMeta>[];
+                    final tools = _toolOrder[group] ??
+                        const <TradingViewDrawingToolMeta>[];
                     return _ToolGroupTile(
                       key: ValueKey('group_${group.name}'),
                       group: group,
@@ -376,9 +534,11 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
                       onSelected: widget.onSelected,
                       onQuickToolAdded: widget.onQuickToolAdded,
                       indicatorKeys: _indicatorKeys,
-                      enabledIndicators: _enabledIndicators,
-                      onIndicatorToggled: (key) => setState(() => _enabledIndicators.contains(key) ? _enabledIndicators.remove(key) : _enabledIndicators.add(key)),
-                      onToolReorder: (oldToolIndex, newToolIndex) => setState(() {
+                      enabledIndicators: widget.enabledEasyTdxIndicators,
+                      onIndicatorToggled:
+                          widget.onEasyTdxIndicatorToggled ?? (_) {},
+                      onToolReorder: (oldToolIndex, newToolIndex) =>
+                          setState(() {
                         if (newToolIndex > oldToolIndex) newToolIndex -= 1;
                         final list = _toolOrder[group];
                         if (list == null) return;
@@ -413,7 +573,22 @@ class _ToolGroupTile extends StatelessWidget {
   final Set<String> enabledIndicators;
   final ValueChanged<String> onIndicatorToggled;
 
-  const _ToolGroupTile({super.key, required this.group, required this.tools, required this.selectedTool, required this.hasBars, required this.hasChanSnapshot, required this.isToolAvailable, required this.isChanOverlayVisible, required this.onChanOverlayToggled, required this.onSelected, required this.onQuickToolAdded, required this.onToolReorder, required this.indicatorKeys, required this.enabledIndicators, required this.onIndicatorToggled});
+  const _ToolGroupTile(
+      {super.key,
+      required this.group,
+      required this.tools,
+      required this.selectedTool,
+      required this.hasBars,
+      required this.hasChanSnapshot,
+      required this.isToolAvailable,
+      required this.isChanOverlayVisible,
+      required this.onChanOverlayToggled,
+      required this.onSelected,
+      required this.onQuickToolAdded,
+      required this.onToolReorder,
+      required this.indicatorKeys,
+      required this.enabledIndicators,
+      required this.onIndicatorToggled});
 
   @override
   Widget build(BuildContext context) {
@@ -423,9 +598,14 @@ class _ToolGroupTile extends StatelessWidget {
       child: ExpansionTile(
         key: PageStorageKey('tv_tool_group_${group.name}'),
         maintainState: true,
-        initiallyExpanded: group == TradingViewDrawingGroup.chanOverlay || group == TradingViewDrawingGroup.lines,
+        initiallyExpanded: group == TradingViewDrawingGroup.chanOverlay ||
+            group == TradingViewDrawingGroup.lines,
         leading: Icon(_groupIcon(group), color: Colors.white70, size: 18),
-        title: Text(_groupLabel(group), style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600)),
+        title: Text(_groupLabel(group),
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600)),
         tilePadding: const EdgeInsets.symmetric(horizontal: 12),
         childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         collapsedIconColor: Colors.white54,
@@ -435,15 +615,21 @@ class _ToolGroupTile extends StatelessWidget {
             DragTarget<TradingViewDrawingTool>(
               onWillAcceptWithDetails: (_) => true,
               onAcceptWithDetails: (details) {
-                final fromIndex = tools.indexWhere((meta) => meta.tool == details.data);
-                if (fromIndex >= 0 && fromIndex != index) onToolReorder(fromIndex, index);
+                final fromIndex =
+                    tools.indexWhere((meta) => meta.tool == details.data);
+                if (fromIndex >= 0 && fromIndex != index)
+                  onToolReorder(fromIndex, index);
               },
               builder: (context, candidateData, rejectedData) {
                 final active = candidateData.isNotEmpty;
                 final meta = tools[index];
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 120),
-                  decoration: BoxDecoration(border: active ? Border.all(color: const Color(0xFF8AB4FF), width: 1) : null, borderRadius: BorderRadius.circular(8)),
+                  decoration: BoxDecoration(
+                      border: active
+                          ? Border.all(color: const Color(0xFF8AB4FF), width: 1)
+                          : null,
+                      borderRadius: BorderRadius.circular(8)),
                   child: _ToolTile(
                     key: ValueKey('tool_${meta.tool.name}'),
                     meta: meta,
@@ -469,7 +655,8 @@ class _ToolGroupTile extends StatelessWidget {
     if (!hasBars) return '当前没有K线数据';
     if (meta.requiresChanSnapshot && !hasChanSnapshot) return '当前没有后端快照';
     final isAvailable = isToolAvailable?.call(meta.tool) ?? true;
-    if (!isAvailable && meta.tool != TradingViewDrawingTool.easyTdxIndicators) return '当前后端快照未返回${meta.label}数据';
+    if (!isAvailable && meta.tool != TradingViewDrawingTool.easyTdxIndicators)
+      return '当前后端快照未返回${meta.label}数据';
     return null;
   }
 }
@@ -486,19 +673,36 @@ class _ToolTile extends StatelessWidget {
   final Set<String> enabledIndicators;
   final ValueChanged<String> onIndicatorToggled;
 
-  const _ToolTile({super.key, required this.meta, required this.selected, required this.disabledReason, required this.isChanOverlayVisible, required this.onChanOverlayToggled, required this.onSelected, required this.onQuickToolAdded, required this.indicatorKeys, required this.enabledIndicators, required this.onIndicatorToggled});
+  const _ToolTile(
+      {super.key,
+      required this.meta,
+      required this.selected,
+      required this.disabledReason,
+      required this.isChanOverlayVisible,
+      required this.onChanOverlayToggled,
+      required this.onSelected,
+      required this.onQuickToolAdded,
+      required this.indicatorKeys,
+      required this.enabledIndicators,
+      required this.onIndicatorToggled});
 
   @override
   Widget build(BuildContext context) {
     final enabled = disabledReason == null;
-    final isEasyIndicator = meta.tool == TradingViewDrawingTool.easyTdxIndicators;
-    final isChanSwitch = !isEasyIndicator && meta.group == TradingViewDrawingGroup.chanOverlay && meta.maxPoints == 0 && onChanOverlayToggled != null;
+    final isEasyIndicator =
+        meta.tool == TradingViewDrawingTool.easyTdxIndicators;
+    final isChanSwitch = !isEasyIndicator &&
+        meta.group == TradingViewDrawingGroup.chanOverlay &&
+        meta.maxPoints == 0 &&
+        onChanOverlayToggled != null;
     final visible = isChanOverlayVisible?.call(meta.tool) ?? selected;
     final tile = Opacity(
       opacity: enabled ? 1.0 : 0.42,
       child: Tooltip(
         waitDuration: _tooltipWait,
-        message: enabled ? '${meta.description}\n拖拽到左侧快捷栏可固定工具；拖拽列表项可改变顺序。' : '${meta.label}：$disabledReason',
+        message: enabled
+            ? '${meta.description}\n拖拽到左侧快捷栏可固定工具；拖拽列表项可改变顺序。'
+            : '${meta.label}：$disabledReason',
         child: Column(
           children: [
             ListTile(
@@ -507,12 +711,31 @@ class _ToolTile extends StatelessWidget {
               enabled: enabled,
               selected: selected || (isChanSwitch && visible),
               selectedTileColor: const Color(0x332962FF),
-              leading: Icon(_toolIcon(meta.tool), size: 18, color: selected || (isChanSwitch && visible) ? const Color(0xFF8AB4FF) : Colors.white60),
-              title: Text(meta.label, style: TextStyle(color: enabled ? Colors.white : Colors.white60, fontSize: 13)),
-              subtitle: Text(disabledReason ?? meta.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: enabled ? 0.50 : 0.36), fontSize: 11)),
+              leading: Icon(_toolIcon(meta.tool),
+                  size: 18,
+                  color: selected || (isChanSwitch && visible)
+                      ? const Color(0xFF8AB4FF)
+                      : Colors.white60),
+              title: Text(meta.label,
+                  style: TextStyle(
+                      color: enabled ? Colors.white : Colors.white60,
+                      fontSize: 13)),
+              subtitle: Text(disabledReason ?? meta.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color:
+                          Colors.white.withValues(alpha: enabled ? 0.50 : 0.36),
+                      fontSize: 11)),
               trailing: isChanSwitch
-                  ? Switch.adaptive(value: visible, onChanged: enabled ? (_) => onChanOverlayToggled?.call(meta.tool) : null)
-                  : Text(_pointLabel(meta), style: const TextStyle(color: Colors.white30, fontSize: 10)),
+                  ? Switch.adaptive(
+                      value: visible,
+                      onChanged: enabled
+                          ? (_) => onChanOverlayToggled?.call(meta.tool)
+                          : null)
+                  : Text(_pointLabel(meta),
+                      style:
+                          const TextStyle(color: Colors.white30, fontSize: 10)),
               onTap: enabled
                   ? () {
                       if (isChanSwitch) {
@@ -534,11 +757,14 @@ class _ToolTile extends StatelessWidget {
                     children: [
                       for (final key in indicatorKeys)
                         FilterChip(
-                          label: Text(key, style: const TextStyle(fontSize: 11)),
+                          label:
+                              Text(key, style: const TextStyle(fontSize: 11)),
                           selected: enabledIndicators.contains(key),
-                          onSelected: enabled ? (_) => onIndicatorToggled(key) : null,
+                          onSelected:
+                              enabled ? (_) => onIndicatorToggled(key) : null,
                           visualDensity: VisualDensity.compact,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
                         ),
                     ],
                   ),
@@ -553,10 +779,16 @@ class _ToolTile extends StatelessWidget {
       feedback: Material(
         color: Colors.transparent,
         child: DecoratedBox(
-          decoration: BoxDecoration(color: const Color(0xEE1E3A8A), borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(
+              color: const Color(0xEE1E3A8A),
+              borderRadius: BorderRadius.circular(8)),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(_toolIcon(meta.tool), size: 18, color: Colors.white), const SizedBox(width: 8), Text(meta.label, style: const TextStyle(color: Colors.white))]),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(_toolIcon(meta.tool), size: 18, color: Colors.white),
+              const SizedBox(width: 8),
+              Text(meta.label, style: const TextStyle(color: Colors.white))
+            ]),
           ),
         ),
       ),

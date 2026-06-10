@@ -3,12 +3,15 @@ class EasyIndicatorPoint {
   final int rawIndex;
   final double? value;
 
-  const EasyIndicatorPoint({required this.time, required this.rawIndex, required this.value});
+  const EasyIndicatorPoint(
+      {required this.time, required this.rawIndex, required this.value});
 
-  factory EasyIndicatorPoint.fromJson(Map<dynamic, dynamic> json, int fallbackIndex) {
+  factory EasyIndicatorPoint.fromJson(
+      Map<dynamic, dynamic> json, int fallbackIndex) {
     return EasyIndicatorPoint(
       time: _parseTime(json['time'] ?? json['dt'] ?? json['date']),
-      rawIndex: _parseInt(json['raw_index'] ?? json['rawIndex']) ?? fallbackIndex,
+      rawIndex:
+          _parseInt(json['raw_index'] ?? json['rawIndex']) ?? fallbackIndex,
       value: _parseDouble(json['value']),
     );
   }
@@ -19,9 +22,11 @@ class EasyNamedIndicatorPoint {
   final int rawIndex;
   final Map<String, double?> values;
 
-  const EasyNamedIndicatorPoint({required this.time, required this.rawIndex, required this.values});
+  const EasyNamedIndicatorPoint(
+      {required this.time, required this.rawIndex, required this.values});
 
-  factory EasyNamedIndicatorPoint.fromJson(Map<dynamic, dynamic> json, int fallbackIndex) {
+  factory EasyNamedIndicatorPoint.fromJson(
+      Map<dynamic, dynamic> json, int fallbackIndex) {
     final rawValues = json['values'];
     final values = <String, double?>{};
     if (rawValues is Map) {
@@ -31,13 +36,18 @@ class EasyNamedIndicatorPoint {
     } else {
       for (final entry in json.entries) {
         final key = '${entry.key}';
-        if (key == 'time' || key == 'dt' || key == 'date' || key == 'raw_index' || key == 'rawIndex') continue;
+        if (key == 'time' ||
+            key == 'dt' ||
+            key == 'date' ||
+            key == 'raw_index' ||
+            key == 'rawIndex') continue;
         values[key] = _parseDouble(entry.value);
       }
     }
     return EasyNamedIndicatorPoint(
       time: _parseTime(json['time'] ?? json['dt'] ?? json['date']),
-      rawIndex: _parseInt(json['raw_index'] ?? json['rawIndex']) ?? fallbackIndex,
+      rawIndex:
+          _parseInt(json['raw_index'] ?? json['rawIndex']) ?? fallbackIndex,
       values: values,
     );
   }
@@ -50,12 +60,19 @@ class EasyMacdPoint {
   final double? dea;
   final double? hist;
 
-  const EasyMacdPoint({required this.time, required this.rawIndex, required this.dif, required this.dea, required this.hist});
+  const EasyMacdPoint(
+      {required this.time,
+      required this.rawIndex,
+      required this.dif,
+      required this.dea,
+      required this.hist});
 
-  factory EasyMacdPoint.fromJson(Map<dynamic, dynamic> json, int fallbackIndex) {
+  factory EasyMacdPoint.fromJson(
+      Map<dynamic, dynamic> json, int fallbackIndex) {
     return EasyMacdPoint(
       time: _parseTime(json['time'] ?? json['dt'] ?? json['date']),
-      rawIndex: _parseInt(json['raw_index'] ?? json['rawIndex']) ?? fallbackIndex,
+      rawIndex:
+          _parseInt(json['raw_index'] ?? json['rawIndex']) ?? fallbackIndex,
       dif: _parseDouble(json['dif'] ?? json['diff'] ?? json['MACD_DIF']),
       dea: _parseDouble(json['dea'] ?? json['signal'] ?? json['MACD_DEA']),
       hist: _parseDouble(json['hist'] ?? json['macd'] ?? json['MACD_HIST']),
@@ -70,12 +87,19 @@ class EasyBollPoint {
   final double? mid;
   final double? lower;
 
-  const EasyBollPoint({required this.time, required this.rawIndex, required this.upper, required this.mid, required this.lower});
+  const EasyBollPoint(
+      {required this.time,
+      required this.rawIndex,
+      required this.upper,
+      required this.mid,
+      required this.lower});
 
-  factory EasyBollPoint.fromJson(Map<dynamic, dynamic> json, int fallbackIndex) {
+  factory EasyBollPoint.fromJson(
+      Map<dynamic, dynamic> json, int fallbackIndex) {
     return EasyBollPoint(
       time: _parseTime(json['time'] ?? json['dt'] ?? json['date']),
-      rawIndex: _parseInt(json['raw_index'] ?? json['rawIndex']) ?? fallbackIndex,
+      rawIndex:
+          _parseInt(json['raw_index'] ?? json['rawIndex']) ?? fallbackIndex,
       upper: _parseDouble(json['upper'] ?? json['BOLL_UPPER']),
       mid: _parseDouble(json['mid'] ?? json['middle'] ?? json['BOLL_MID']),
       lower: _parseDouble(json['lower'] ?? json['BOLL_LOWER']),
@@ -84,7 +108,14 @@ class EasyBollPoint {
 }
 
 class EasyTdxIndicators {
-  static const Set<String> _knownKeys = {'vol', 'amount', 'turnover', 'ma', 'boll', 'macd'};
+  static const Set<String> _knownKeys = {
+    'vol',
+    'amount',
+    'turnover',
+    'ma',
+    'boll',
+    'macd'
+  };
 
   final List<EasyIndicatorPoint> vol;
   final List<EasyIndicatorPoint> amount;
@@ -104,7 +135,37 @@ class EasyTdxIndicators {
     this.namedSeries = const {},
   });
 
-  bool get isEmpty => vol.isEmpty && amount.isEmpty && turnover.isEmpty && ma.isEmpty && boll.isEmpty && macd.isEmpty && namedSeries.values.every((rows) => rows.isEmpty);
+  bool get isEmpty =>
+      vol.isEmpty &&
+      amount.isEmpty &&
+      turnover.isEmpty &&
+      ma.isEmpty &&
+      boll.isEmpty &&
+      macd.isEmpty &&
+      namedSeries.values.every((rows) => rows.isEmpty);
+
+  List<EasyIndicatorPoint> visibleVol(int start, int end) =>
+      _visibleRange(vol, start, end, (row) => row.rawIndex);
+
+  List<EasyIndicatorPoint> visibleAmount(int start, int end) =>
+      _visibleRange(amount, start, end, (row) => row.rawIndex);
+
+  List<EasyIndicatorPoint> visibleTurnover(int start, int end) =>
+      _visibleRange(turnover, start, end, (row) => row.rawIndex);
+
+  Map<int, List<EasyIndicatorPoint>> visibleMa(int start, int end) {
+    return {
+      for (final entry in ma.entries)
+        entry.key:
+            _visibleRange(entry.value, start, end, (row) => row.rawIndex),
+    };
+  }
+
+  List<EasyBollPoint> visibleBoll(int start, int end) =>
+      _visibleRange(boll, start, end, (row) => row.rawIndex);
+
+  List<EasyMacdPoint> visibleMacd(int start, int end) =>
+      _visibleRange(macd, start, end, (row) => row.rawIndex);
 
   factory EasyTdxIndicators.empty() => const EasyTdxIndicators();
 
@@ -183,10 +244,24 @@ class EasyTdxIndicators {
     }
     return result;
   }
+
+  static List<T> _visibleRange<T>(
+    List<T> rows,
+    int start,
+    int end,
+    int Function(T row) rawIndexOf,
+  ) {
+    if (rows.isEmpty || end < start) return const [];
+    return rows.where((row) {
+      final rawIndex = rawIndexOf(row);
+      return rawIndex >= start && rawIndex <= end;
+    }).toList(growable: false);
+  }
 }
 
 DateTime? _parseTime(Object? value) {
-  final text = '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
+  final text =
+      '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
   if (text.isEmpty || text == 'null') return null;
   return DateTime.tryParse(text);
 }
@@ -194,7 +269,11 @@ DateTime? _parseTime(Object? value) {
 double? _parseDouble(Object? value) {
   if (value is num) return value.toDouble();
   final text = '${value ?? ''}'.trim().replaceAll(',', '');
-  if (text.isEmpty || text == '-' || text == '--' || text.toLowerCase() == 'nan' || text == 'null') return null;
+  if (text.isEmpty ||
+      text == '-' ||
+      text == '--' ||
+      text.toLowerCase() == 'nan' ||
+      text == 'null') return null;
   return double.tryParse(text);
 }
 

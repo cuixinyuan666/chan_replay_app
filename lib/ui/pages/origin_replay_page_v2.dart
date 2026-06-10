@@ -2158,17 +2158,31 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   }
 
   Widget _buildLayerStatusPanel() {
-    final biBspCnt = _fullSnapshot.bsps.where(_isBiBsp).length;
-    final segBspCnt = _fullSnapshot.bsps.where(_isSegBsp).length;
+    final stepMode = _isStepMode;
+    final visibleSnapshot = stepMode ? _snapshot : _fullSnapshot;
+    final biBspCnt = visibleSnapshot.bsps.where(_isBiBsp).length;
+    final segBspCnt = visibleSnapshot.bsps.where(_isSegBsp).length;
+    final totalBiBspCnt = _fullSnapshot.bsps.where(_isBiBsp).length;
+    final totalSegBspCnt = _fullSnapshot.bsps.where(_isSegBsp).length;
     final rows = [
-      _LayerStatusRow('FX', _fullSnapshot.fxs.length, _showFx),
-      _LayerStatusRow('BI', _fullSnapshot.bis.length, _showBi),
-      _LayerStatusRow('SEG', _fullSnapshot.segs.length, _showSeg),
-      _LayerStatusRow('ZS', _fullSnapshot.zss.length, _showZs),
-      _LayerStatusRow('笔BSP', biBspCnt, _showBiBsp),
-      _LayerStatusRow('段BSP', segBspCnt, _showSegBsp),
-      _LayerStatusRow('合并K线', _fullSnapshot.mergedBars.length, _showMergedBars),
+      _LayerStatusRow('K', visibleSnapshot.rawBars.length,
+          _fullSnapshot.rawBars.length, true, stepMode),
+      _LayerStatusRow('FX', visibleSnapshot.fxs.length,
+          _fullSnapshot.fxs.length, _showFx, stepMode),
+      _LayerStatusRow('BI', visibleSnapshot.bis.length,
+          _fullSnapshot.bis.length, _showBi, stepMode),
+      _LayerStatusRow('SEG', visibleSnapshot.segs.length,
+          _fullSnapshot.segs.length, _showSeg, stepMode),
+      _LayerStatusRow('ZS', visibleSnapshot.zss.length,
+          _fullSnapshot.zss.length, _showZs, stepMode),
+      _LayerStatusRow('BI BSP', biBspCnt, totalBiBspCnt, _showBiBsp, stepMode),
+      _LayerStatusRow(
+          'SEG BSP', segBspCnt, totalSegBspCnt, _showSegBsp, stepMode),
+      _LayerStatusRow('Merged K', visibleSnapshot.mergedBars.length,
+          _fullSnapshot.mergedBars.length, _showMergedBars, stepMode),
     ];
+    final modeColor =
+        stepMode ? const Color(0xFFFFD54F) : const Color(0xFF8AB4FF);
 
     return Positioned(
       top: 8,
@@ -2193,18 +2207,20 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.layers, size: 15, color: Colors.white70),
-                  SizedBox(width: 6),
-                  Text(
-                    '图层状态',
+                  const Icon(Icons.layers, size: 15, color: Colors.white70),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Layer Status',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  const Spacer(),
+                  _layerStatusChip(stepMode ? 'Step' : 'Full', modeColor),
                 ],
               ),
               const SizedBox(height: 6),
@@ -2217,12 +2233,19 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   }
 
   Widget _layerStatusLine(_LayerStatusRow row) {
-    final hasBackend = row.count > 0;
-    final effective = hasBackend && row.enabled;
-    final dataColor =
-        hasBackend ? const Color(0xFF66BB6A) : const Color(0xFFEF5350);
+    final hasBackend = row.totalCount > 0;
+    final hasCurrent = row.currentCount > 0;
+    final effective = row.enabled && (row.stepMode ? hasCurrent : hasBackend);
+    final dataColor = !hasBackend
+        ? const Color(0xFFEF5350)
+        : row.stepMode && !hasCurrent
+            ? Colors.white38
+            : const Color(0xFF66BB6A);
     final showColor = row.enabled ? const Color(0xFF8AB4FF) : Colors.white38;
     final effectiveColor = effective ? const Color(0xFF66BB6A) : Colors.white38;
+    final countText = row.stepMode
+        ? 'Current ${row.currentCount}/${row.totalCount}'
+        : 'Total ${row.totalCount}';
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -2237,12 +2260,12 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
             ),
           ),
           _layerStatusChip(
-            '后端 ${row.count}',
+            countText,
             dataColor,
           ),
           const SizedBox(width: 5),
           _layerStatusChip(
-            row.enabled ? '显示 开' : '显示 关',
+            row.enabled ? 'On' : 'Off',
             showColor,
           ),
           const SizedBox(width: 5),
@@ -2586,10 +2609,13 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
 
 class _LayerStatusRow {
   final String label;
-  final int count;
+  final int currentCount;
+  final int totalCount;
   final bool enabled;
+  final bool stepMode;
 
-  const _LayerStatusRow(this.label, this.count, this.enabled);
+  const _LayerStatusRow(this.label, this.currentCount, this.totalCount,
+      this.enabled, this.stepMode);
 }
 
 class _Symbol {

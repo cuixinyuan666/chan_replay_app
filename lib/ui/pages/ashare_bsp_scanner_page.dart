@@ -814,11 +814,11 @@ class _ScannerLayoutMetrics {
     final narrow = width < 430;
     final scanHeight = narrow ? 170.0 : 146.0;
     final singleHeight = narrow ? 154.0 : 112.0;
-    final paramsMin = 150.0;
+    const paramsMin = 150.0;
     final paramsIdeal = preferredParamsHeight.clamp(paramsMin, 260.0).toDouble();
-    final logMin = 120.0;
+    const logMin = 120.0;
     final logIdeal = preferredLogHeight.clamp(logMin, 260.0).toDouble();
-    final gapsAndPadding = sidePadding * 2 + panelGap * 4 + 34.0;
+    const gapsAndPadding = sidePadding * 2 + panelGap * 4 + 34.0;
     final minNonResults = scanHeight + paramsMin + singleHeight + logMin + gapsAndPadding;
     final compact = height < compactHeightBreakPoint || height < minNonResults + 180.0;
 
