@@ -2,9 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 class ScannerBackendClient {
+  static const MethodChannel _androidChanChannel =
+      MethodChannel('chan_replay_app/python_chan');
+
   final String baseUrl;
   final http.Client _client;
   _ScannerLocalPythonProcess? _localProcess;
@@ -19,10 +23,6 @@ class ScannerBackendClient {
     required bool biStrict,
     required Map<String, dynamic> config,
   }) async {
-    if (Platform.isAndroid) {
-      throw UnsupportedError(
-          '扫描器当前需要 FastAPI 后端；Android Chaquopy 暂未接入批量 BSP 扫描');
-    }
     final payload = _payload(
       limit: limit,
       days: days,
@@ -30,6 +30,8 @@ class ScannerBackendClient {
       biStrict: biStrict,
       config: config,
     );
+    if (Platform.isAndroid) return _postAndroidScan(payload);
+
     final sourceBase = await _readyBaseUrl();
     try {
       return await _postScan(sourceBase, payload);
@@ -59,10 +61,6 @@ class ScannerBackendClient {
     required bool biStrict,
     required Map<String, dynamic> config,
   }) async* {
-    if (Platform.isAndroid) {
-      throw UnsupportedError(
-          '扫描器当前需要 FastAPI 后端；Android Chaquopy 暂未接入批量 BSP 扫描');
-    }
     final payload = _payload(
       limit: limit,
       days: days,
@@ -70,6 +68,55 @@ class ScannerBackendClient {
       biStrict: biStrict,
       config: config,
     );
+    if (Platform.isAndroid) {
+      yield {'type': 'log', 'message': 'Android Chaquopy 批量 BSP 扫描启动...'};
+      final decoded = await _postAndroidScan(payload);
+      final total = _toInt(decoded['total']) ?? 0;
+      yield {
+        'type': 'start',
+        'total': total,
+        'source': decoded['source'] ?? 'android-chaquopy/easy-tdx',
+        'message': 'Android 扫描完成，正在回放结果事件...'
+      };
+      final logs = decoded['logs'];
+      if (logs is List) {
+        for (final item in logs) {
+          yield {'type': 'log', 'message': '$item'};
+        }
+      }
+      final rows = decoded['results'];
+      var index = 0;
+      if (rows is List) {
+        for (final row in rows.whereType<Map>()) {
+          index++;
+          yield {
+            'type': 'result',
+            'row': Map<String, dynamic>.from(row),
+            'analysis': row['analysis'],
+            'index': index,
+            'total': total,
+            'success_count': decoded['success_count'],
+            'fail_count': decoded['fail_count'],
+            'found_count': index,
+          };
+        }
+      }
+      yield {
+        'type': 'done',
+        'ok': decoded['ok'] != false,
+        'source': decoded['source'] ?? 'android-chaquopy/easy-tdx',
+        'days': decoded['days'] ?? days,
+        'recent_days': decoded['recent_days'] ?? recentDays,
+        'total': total,
+        'success_count': decoded['success_count'] ?? 0,
+        'fail_count': decoded['fail_count'] ?? 0,
+        'found_count': decoded['found_count'] ?? index,
+        'results': decoded['results'] ?? const [],
+        'config': decoded['config'],
+      };
+      return;
+    }
+
     final sourceBase = await _readyBaseUrl();
     try {
       yield* _postScanStream(sourceBase, payload);
@@ -104,8 +151,27 @@ class ScannerBackendClient {
         'recent_days': recentDays,
         'limit': limit,
         'bi_strict': biStrict,
+        'include_analysis': true,
         'config': config,
       };
+
+  Future<Map<String, dynamic>> _postAndroidScan(Map<String, dynamic> payload) async {
+    final result = await _androidChanChannel.invokeMethod<String>(
+      'scanBsp',
+      {'payload': jsonEncode(payload)},
+    );
+    if (result == null || result.trim().isEmpty) {
+      throw Exception('Android Chaquopy 批量扫描返回为空');
+    }
+    final decoded = jsonDecode(result);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Android Chaquopy 批量扫描返回结构不是 JSON 对象');
+    }
+    if (decoded['ok'] == false) {
+      throw Exception(decoded['error'] ?? 'Android Chaquopy 批量扫描失败');
+    }
+    return decoded;
+  }
 
   Future<String> _readyBaseUrl() async {
     try {
@@ -213,6 +279,12 @@ class ScannerBackendClient {
         msg.contains('connection reset') ||
         msg.contains('connection closed') ||
         msg.contains('远程计算机拒绝网络连接');
+  }
+
+  int? _toInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('${value ?? ''}'.trim());
   }
 
   String _join(String base, String path) =>
