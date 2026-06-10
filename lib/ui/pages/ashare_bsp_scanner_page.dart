@@ -19,6 +19,11 @@ class AshareBspScannerPage extends StatefulWidget {
 }
 
 class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
+  static const double _panelGap = 8;
+  static const double _sidePadding = 10;
+  static const double _minLeftWidth = 340;
+  static const double _defaultLeftWidth = 520;
+
   static bool get _isAndroidApp => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   static String get _defaultBackendBaseUrl => _isAndroidApp ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
 
@@ -40,8 +45,8 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   int _scanFoundCount = 0;
   String _scanCurrent = '';
 
-  double _leftWidth = 500;
-  double _settingsHeight = 180;
+  double _leftWidth = _defaultLeftWidth;
+  double _paramsHeight = 184;
   double _logHeight = 190;
 
   _ScanResult? _selectedResult;
@@ -311,14 +316,14 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final maxLeft = math.max(380.0, constraints.maxWidth - 420.0);
-        final leftWidth = _leftWidth.clamp(340.0, maxLeft).toDouble();
+        final maxLeft = math.max(_minLeftWidth, constraints.maxWidth - 420.0);
+        final leftWidth = _leftWidth.clamp(_minLeftWidth, maxLeft).toDouble();
         return Container(
           color: const Color(0xFF0B0D10),
           child: Row(
             children: [
               SizedBox(width: leftWidth, child: _buildLeftPanel()),
-              _resizeHandle(vertical: true, onDelta: (delta) => setState(() => _leftWidth = (_leftWidth + delta).clamp(340.0, maxLeft).toDouble())),
+              _resizeHandle(vertical: true, onDelta: (delta) => setState(() => _leftWidth = (_leftWidth + delta).clamp(_minLeftWidth, maxLeft).toDouble())),
               Expanded(child: _buildChartPanel()),
             ],
           ),
@@ -330,33 +335,26 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   Widget _buildLeftPanel() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final available = constraints.maxHeight.isFinite ? constraints.maxHeight : 900.0;
-        final compact = available < 720;
-        final scanHeight = constraints.maxWidth < 430 ? 170.0 : 146.0;
-        final singleHeight = constraints.maxWidth < 430 ? 154.0 : 112.0;
-        final paramsHeight = _settingsHeight.clamp(150.0, math.max(150.0, available - scanHeight - singleHeight - 360.0)).toDouble();
-        final logHeight = _logHeight.clamp(120.0, math.max(140.0, available - scanHeight - paramsHeight - singleHeight - 210.0)).toDouble();
+        final width = constraints.maxWidth;
+        final height = constraints.maxHeight.isFinite ? constraints.maxHeight : 900.0;
+        final metrics = _ScannerLayoutMetrics.resolve(width: width, height: height, preferredParamsHeight: _paramsHeight, preferredLogHeight: _logHeight);
+        final status = _statusLine();
 
-        final status = Align(
-          alignment: Alignment.centerLeft,
-          child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-        );
-
-        if (compact) {
+        if (metrics.scrollAll) {
           return Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(_sidePadding),
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  SizedBox(height: scanHeight, child: _scanControlPanel()),
-                  const SizedBox(height: 8),
-                  SizedBox(height: 170, child: _settingsPanel()),
-                  const SizedBox(height: 8),
-                  SizedBox(height: singleHeight, child: _singleAnalysisPanel()),
-                  const SizedBox(height: 8),
-                  SizedBox(height: 260, child: _resultsPanel()),
-                  const SizedBox(height: 8),
-                  SizedBox(height: 180, child: _logsPanel()),
+                  SizedBox(height: metrics.scanHeight, child: _scanControlPanel()),
+                  const SizedBox(height: _panelGap),
+                  SizedBox(height: metrics.paramsHeight, child: _settingsPanel()),
+                  const SizedBox(height: _panelGap),
+                  SizedBox(height: metrics.singleHeight, child: _singleAnalysisPanel()),
+                  const SizedBox(height: _panelGap),
+                  SizedBox(height: metrics.resultsHeight, child: _resultsPanel()),
+                  const SizedBox(height: _panelGap),
+                  SizedBox(height: metrics.logHeight, child: _logsPanel()),
                   const SizedBox(height: 6),
                   status,
                 ],
@@ -366,18 +364,24 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         }
 
         return Padding(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(_sidePadding),
           child: Column(
             children: [
-              SizedBox(height: scanHeight, child: _scanControlPanel()),
-              const SizedBox(height: 8),
-              SizedBox(height: paramsHeight, child: _settingsPanel()),
-              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _settingsHeight = (_settingsHeight + delta).clamp(150.0, math.max(150.0, available - scanHeight - singleHeight - 300.0)).toDouble())),
-              SizedBox(height: singleHeight, child: _singleAnalysisPanel()),
-              const SizedBox(height: 8),
+              SizedBox(height: metrics.scanHeight, child: _scanControlPanel()),
+              const SizedBox(height: _panelGap),
+              SizedBox(height: metrics.paramsHeight, child: _settingsPanel()),
+              _resizeHandle(
+                vertical: false,
+                onDelta: (delta) => setState(() => _paramsHeight = (_paramsHeight + delta).clamp(metrics.paramsMin, metrics.paramsMax).toDouble()),
+              ),
+              SizedBox(height: metrics.singleHeight, child: _singleAnalysisPanel()),
+              const SizedBox(height: _panelGap),
               Expanded(child: _resultsPanel()),
-              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _logHeight = (_logHeight - delta).clamp(110.0, math.max(110.0, available - scanHeight - paramsHeight - singleHeight - 180.0)).toDouble())),
-              SizedBox(height: logHeight, child: _logsPanel()),
+              _resizeHandle(
+                vertical: false,
+                onDelta: (delta) => setState(() => _logHeight = (_logHeight - delta).clamp(metrics.logMin, metrics.logMax).toDouble()),
+              ),
+              SizedBox(height: metrics.logHeight, child: _logsPanel()),
               const SizedBox(height: 6),
               status,
             ],
@@ -386,6 +390,11 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       },
     );
   }
+
+  Widget _statusLine() => Align(
+        alignment: Alignment.centerLeft,
+        child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+      );
 
   Widget _scanControlPanel() => _panel(
         '扫描控制',
@@ -425,32 +434,30 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
 
   Widget _settingsPanel() => _panel(
         '扫描参数',
-        child: LayoutBuilder(
-          builder: (context, constraints) => SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CheckboxListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  value: _biStrict,
-                  onChanged: _scanning ? null : (v) => setState(() => _biStrict = v ?? _biStrict),
-                  title: const Text('笔严格模式'),
-                ),
-                TextField(
-                  controller: _backendUrlController,
-                  enabled: !_scanning && !_isAndroidApp,
-                  decoration: const InputDecoration(labelText: 'Windows Python chan.py 服务地址', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _limitController,
-                  enabled: !_scanning,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: '扫描数量上限', helperText: '默认 300；支持最大 5000', border: OutlineInputBorder()),
-                ),
-              ],
-            ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: _biStrict,
+                onChanged: _scanning ? null : (v) => setState(() => _biStrict = v ?? _biStrict),
+                title: const Text('笔严格模式'),
+              ),
+              TextField(
+                controller: _backendUrlController,
+                enabled: !_scanning && !_isAndroidApp,
+                decoration: const InputDecoration(labelText: 'Windows Python chan.py 服务地址', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _limitController,
+                enabled: !_scanning,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: '扫描数量上限', helperText: '默认 300；支持最大 5000', border: OutlineInputBorder()),
+              ),
+            ],
           ),
         ),
       );
@@ -502,7 +509,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       children: [
         LinearProgressIndicator(value: progressValue),
         const SizedBox(height: 6),
-        Text('进度 $percent  $_scanIndex/$_scanTotal  成功$_scanSuccessCount  跳过$_scanFailCount  买点$_scanFoundCount', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        Text('进度 $percent  $_scanIndex/$_scanTotal  成功$_scanSuccessCount  跳过$_scanFailCount  买点$_scanFoundCount', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
         if (_scanCurrent.isNotEmpty) Text('当前: $_scanCurrent', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 11)),
       ],
     );
@@ -767,6 +774,86 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   static String _fmtDate(DateTime? value) {
     if (value == null) return '-';
     return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+  }
+}
+
+class _ScannerLayoutMetrics {
+  final bool scrollAll;
+  final double scanHeight;
+  final double paramsHeight;
+  final double singleHeight;
+  final double resultsHeight;
+  final double logHeight;
+  final double paramsMin;
+  final double paramsMax;
+  final double logMin;
+  final double logMax;
+
+  const _ScannerLayoutMetrics({
+    required this.scrollAll,
+    required this.scanHeight,
+    required this.paramsHeight,
+    required this.singleHeight,
+    required this.resultsHeight,
+    required this.logHeight,
+    required this.paramsMin,
+    required this.paramsMax,
+    required this.logMin,
+    required this.logMax,
+  });
+
+  static _ScannerLayoutMetrics resolve({
+    required double width,
+    required double height,
+    required double preferredParamsHeight,
+    required double preferredLogHeight,
+  }) {
+    const compactHeightBreakPoint = 760.0;
+    const sidePadding = 10.0;
+    const panelGap = 8.0;
+    final narrow = width < 430;
+    final scanHeight = narrow ? 170.0 : 146.0;
+    final singleHeight = narrow ? 154.0 : 112.0;
+    final paramsMin = 150.0;
+    final paramsIdeal = preferredParamsHeight.clamp(paramsMin, 260.0).toDouble();
+    final logMin = 120.0;
+    final logIdeal = preferredLogHeight.clamp(logMin, 260.0).toDouble();
+    final gapsAndPadding = sidePadding * 2 + panelGap * 4 + 34.0;
+    final minNonResults = scanHeight + paramsMin + singleHeight + logMin + gapsAndPadding;
+    final compact = height < compactHeightBreakPoint || height < minNonResults + 180.0;
+
+    if (compact) {
+      return _ScannerLayoutMetrics(
+        scrollAll: true,
+        scanHeight: scanHeight,
+        paramsHeight: math.max(paramsMin, math.min(paramsIdeal, 190.0)),
+        singleHeight: singleHeight,
+        resultsHeight: 280.0,
+        logHeight: 180.0,
+        paramsMin: paramsMin,
+        paramsMax: 260.0,
+        logMin: logMin,
+        logMax: 260.0,
+      );
+    }
+
+    final fixedWithoutResults = scanHeight + paramsIdeal + singleHeight + logIdeal + gapsAndPadding;
+    final availableForResults = math.max(180.0, height - fixedWithoutResults);
+    final paramsMax = math.max(paramsMin, height - scanHeight - singleHeight - logMin - 240.0);
+    final logMax = math.max(logMin, height - scanHeight - paramsMin - singleHeight - 240.0);
+
+    return _ScannerLayoutMetrics(
+      scrollAll: false,
+      scanHeight: scanHeight,
+      paramsHeight: paramsIdeal,
+      singleHeight: singleHeight,
+      resultsHeight: availableForResults,
+      logHeight: logIdeal,
+      paramsMin: paramsMin,
+      paramsMax: paramsMax,
+      logMin: logMin,
+      logMax: logMax,
+    );
   }
 }
 
