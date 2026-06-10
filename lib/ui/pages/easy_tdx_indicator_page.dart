@@ -13,27 +13,26 @@ class EasyTdxIndicatorPage extends StatefulWidget {
 }
 
 class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
-  final TextEditingController _backendController = TextEditingController(text: _defaultBackendBaseUrl);
-  final TextEditingController _symbolController = TextEditingController(text: '600340');
-  final TextEditingController _countController = TextEditingController(text: '320');
+  static bool get _isAndroidApp => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  static String get _defaultBackend => _isAndroidApp ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
+
+  final _backend = TextEditingController(text: _defaultBackend);
+  final _symbol = TextEditingController(text: '600340');
+  final _count = TextEditingController(text: '320');
 
   String _market = 'SH';
   String _freq = 'DAILY';
   String _adjust = 'QFQ';
-  bool _loading = false;
   String _status = '等待加载 easy-tdx 指标';
-  List<_IndicatorBar> _bars = const [];
-  int? _crossIndex;
-
+  bool _loading = false;
   bool _showMa = true;
   bool _showBoll = true;
   bool _showVol = true;
   bool _showMacd = true;
   bool _showAmount = false;
   bool _showTurnover = false;
-
-  static bool get _isAndroidApp => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-  static String get _defaultBackendBaseUrl => _isAndroidApp ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
+  int? _crossIndex;
+  List<_Bar> _bars = const [];
 
   @override
   void initState() {
@@ -43,250 +42,211 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
 
   @override
   void dispose() {
-    _backendController.dispose();
-    _symbolController.dispose();
-    _countController.dispose();
+    _backend.dispose();
+    _symbol.dispose();
+    _count.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
     if (_loading) return;
-    final symbol = _symbolController.text.trim();
-    if (symbol.isEmpty) {
-      _showMessage('请输入股票代码');
-      return;
-    }
-    final count = int.tryParse(_countController.text.trim())?.clamp(30, 5000).toInt() ?? 320;
+    final symbol = _symbol.text.trim();
+    if (symbol.isEmpty) return;
     setState(() {
       _loading = true;
-      _status = '正在请求 easy-tdx 指标 $symbol $_freq ...';
+      _status = '正在加载 $symbol.$_market $_freq 指标...';
     });
     try {
-      final base = _backendController.text.trim().replaceAll(RegExp(r'/+$'), '');
+      final base = _backend.text.trim().replaceAll(RegExp(r'/+$'), '');
       final uri = Uri.parse('$base/api/tdx/kline').replace(queryParameters: {
         'symbol': symbol,
         'market': _market,
         'freq': _freq,
         'adjust': _adjust,
-        'count': '$count',
+        'count': '${int.tryParse(_count.text.trim())?.clamp(30, 5000).toInt() ?? 320}',
       });
-      final response = await http.get(uri).timeout(const Duration(seconds: 45));
-      final body = utf8.decode(response.bodyBytes);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('HTTP ${response.statusCode}: $body');
-      }
-      final decoded = jsonDecode(body);
-      if (decoded is! Map<String, dynamic>) throw const FormatException('后端返回不是 JSON 对象');
-      if (decoded['ok'] == false) throw Exception(decoded['error'] ?? 'easy-tdx 请求失败');
-      final bars = _parseBars(decoded);
-      if (bars.isEmpty) throw const FormatException('后端没有返回有效 K线');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 45));
+      final body = utf8.decode(resp.bodyBytes);
+      if (resp.statusCode < 200 || resp.statusCode >= 300) throw Exception('HTTP ${resp.statusCode}: $body');
+      final json = jsonDecode(body);
+      if (json is! Map<String, dynamic>) throw const FormatException('后端返回不是 JSON 对象');
+      if (json['ok'] == false) throw Exception(json['error'] ?? 'easy-tdx 请求失败');
+      final parsed = _parse(json);
+      if (parsed.isEmpty) throw const FormatException('没有有效 K线');
       setState(() {
-        _bars = bars;
-        _crossIndex = bars.length - 1;
-        _status = '已加载 $symbol.$_market $_freq $_adjust K:${bars.length} '
-            'MA:${_hasAnyMa(bars) ? "有" : "无"} BOLL:${_hasAnyBoll(bars) ? "有" : "无"} '
-            'VOL:${_hasAnyVol(bars) ? "有" : "无"} MACD:${_hasAnyMacd(bars) ? "有" : "无"}';
+        _bars = parsed;
+        _crossIndex = parsed.length - 1;
+        _status = '已加载 $symbol.$_market $_freq $_adjust K:${parsed.length}；MA/BOLL/MACD 支持后端返回，缺失时本页展示层本地补算';
       });
     } catch (e) {
       setState(() => _status = '加载失败：$e');
-      _showMessage('加载 easy-tdx 指标失败：$e');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('加载失败：$e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  List<_IndicatorBar> _parseBars(Map<String, dynamic> root) {
-    final rawBars = root['bars'];
-    if (rawBars is! List) return const [];
-    final indicators = root['indicators'] is Map ? root['indicators'] as Map : const {};
-    final vol = _pointSeries(indicators['vol']);
-    final amount = _pointSeries(indicators['amount']);
-    final turnover = _pointSeries(indicators['turnover']);
-    final ma = _maSeries(indicators['ma']);
-    final boll = _bollSeries(indicators['boll']);
-    final macd = _macdSeries(indicators['macd']);
-
-    final bars = <_IndicatorBar>[];
-    for (var i = 0; i < rawBars.length; i++) {
-      final row = rawBars[i];
-      if (row is! Map) continue;
-      final open = _num(row['open'] ?? row['o']);
-      final high = _num(row['high'] ?? row['h']);
-      final low = _num(row['low'] ?? row['l']);
-      final close = _num(row['close'] ?? row['c']);
-      final time = _timeText(row['time'] ?? row['dt'] ?? row['date'] ?? row['datetime']);
-      if (open == null || high == null || low == null || close == null || time.isEmpty) continue;
-      final rawIndex = _int(row['raw_index'] ?? row['rawIndex'] ?? row['id']) ?? bars.length;
-      bars.add(_IndicatorBar(
-        rawIndex: rawIndex,
-        time: time,
-        open: open,
-        high: math.max(high, math.max(open, close)),
-        low: math.min(low, math.min(open, close)),
-        close: close,
-        volume: vol[rawIndex] ?? _num(row['volume'] ?? row['vol'] ?? row['v']),
-        amount: amount[rawIndex] ?? _num(row['amount'] ?? row['money']),
-        turnover: turnover[rawIndex] ?? _num(row['turnover'] ?? row['turnover_rate']),
-        ma: {for (final entry in ma.entries) entry.key: entry.value[rawIndex]},
-        boll: boll[rawIndex],
-        macd: macd[rawIndex],
+  List<_Bar> _parse(Map<String, dynamic> root) {
+    final rows = root['bars'];
+    if (rows is! List) return const [];
+    final ind = root['indicators'] is Map ? root['indicators'] as Map : const {};
+    final vol = _point(ind['vol']);
+    final amount = _point(ind['amount']);
+    final turnover = _point(ind['turnover']);
+    final ma = _maMap(ind['ma']);
+    final boll = _bollMap(ind['boll']);
+    final macd = _macdMap(ind['macd']);
+    final out = <_Bar>[];
+    for (var i = 0; i < rows.length; i++) {
+      final r = rows[i];
+      if (r is! Map) continue;
+      final o = _num(r['open'] ?? r['o']);
+      final h = _num(r['high'] ?? r['h']);
+      final l = _num(r['low'] ?? r['l']);
+      final c = _num(r['close'] ?? r['c']);
+      if (o == null || h == null || l == null || c == null) continue;
+      final raw = _int(r['raw_index'] ?? r['rawIndex'] ?? r['id']) ?? out.length;
+      out.add(_Bar(
+        rawIndex: raw,
+        time: _time(r['time'] ?? r['dt'] ?? r['date'] ?? r['datetime']),
+        open: o,
+        high: math.max(h, math.max(o, c)),
+        low: math.min(l, math.min(o, c)),
+        close: c,
+        volume: vol[raw] ?? _num(r['volume'] ?? r['vol'] ?? r['v']),
+        amount: amount[raw] ?? _num(r['amount'] ?? r['money']),
+        turnover: turnover[raw] ?? _num(r['turnover'] ?? r['turnover_rate']),
+        ma: {for (final e in ma.entries) e.key: e.value[raw]},
+        boll: boll[raw],
+        macd: macd[raw],
       ));
     }
-    return _withLocalIndicatorFallback(bars);
+    return _fallbackIndicators(out);
   }
 
-  List<_IndicatorBar> _withLocalIndicatorFallback(List<_IndicatorBar> source) {
-    if (source.isEmpty) return source;
-    final closes = [for (final bar in source) bar.close];
+  List<_Bar> _fallbackIndicators(List<_Bar> bars) {
+    if (bars.isEmpty) return bars;
+    final closes = [for (final b in bars) b.close];
     final ma = {5: _ma(closes, 5), 10: _ma(closes, 10), 20: _ma(closes, 20), 60: _ma(closes, 60)};
     final boll = _boll(closes, 20);
     final macd = _macd(closes, 12, 26, 9);
     return [
-      for (var i = 0; i < source.length; i++)
-        source[i].copyWith(
-          ma: {
-            for (final period in const [5, 10, 20, 60])
-              period: source[i].ma[period] ?? ma[period]?[i],
-          },
-          boll: source[i].boll ?? boll[i],
-          macd: source[i].macd ?? macd[i],
+      for (var i = 0; i < bars.length; i++)
+        bars[i].copyWith(
+          ma: {for (final p in const [5, 10, 20, 60]) p: bars[i].ma[p] ?? ma[p]?[i]},
+          boll: bars[i].boll ?? boll[i],
+          macd: bars[i].macd ?? macd[i],
         ),
     ];
   }
 
-  Map<int, double?> _pointSeries(Object? value) {
-    if (value is! List) return const {};
-    final result = <int, double?>{};
-    for (var i = 0; i < value.length; i++) {
-      final row = value[i];
-      if (row is! Map) continue;
-      result[_int(row['raw_index'] ?? row['rawIndex']) ?? i] = _num(row['value']);
+  Map<int, double?> _point(Object? v) {
+    if (v is! List) return const {};
+    final out = <int, double?>{};
+    for (var i = 0; i < v.length; i++) {
+      final r = v[i];
+      if (r is Map) out[_int(r['raw_index'] ?? r['rawIndex']) ?? i] = _num(r['value']);
     }
-    return result;
+    return out;
   }
 
-  Map<int, Map<int, double?>> _maSeries(Object? value) {
-    if (value is! Map) return const {};
-    final result = <int, Map<int, double?>>{};
-    for (final entry in value.entries) {
-      final period = _int(entry.key);
-      if (period == null) continue;
-      result[period] = _pointSeries(entry.value);
-    }
-    return result;
+  Map<int, Map<int, double?>> _maMap(Object? v) {
+    if (v is! Map) return const {};
+    return {for (final e in v.entries) if (_int(e.key) != null) _int(e.key)!: _point(e.value)};
   }
 
-  Map<int, _BollValue> _bollSeries(Object? value) {
-    if (value is! List) return const {};
-    final result = <int, _BollValue>{};
-    for (var i = 0; i < value.length; i++) {
-      final row = value[i];
-      if (row is! Map) continue;
-      final rawIndex = _int(row['raw_index'] ?? row['rawIndex']) ?? i;
-      result[rawIndex] = _BollValue(
-        upper: _num(row['upper']),
-        mid: _num(row['mid'] ?? row['middle']),
-        lower: _num(row['lower']),
-      );
+  Map<int, _Boll> _bollMap(Object? v) {
+    if (v is! List) return const {};
+    final out = <int, _Boll>{};
+    for (var i = 0; i < v.length; i++) {
+      final r = v[i];
+      if (r is Map) out[_int(r['raw_index'] ?? r['rawIndex']) ?? i] = _Boll(_num(r['upper']), _num(r['mid']), _num(r['lower']));
     }
-    return result;
+    return out;
   }
 
-  Map<int, _MacdValue> _macdSeries(Object? value) {
-    if (value is! List) return const {};
-    final result = <int, _MacdValue>{};
-    for (var i = 0; i < value.length; i++) {
-      final row = value[i];
-      if (row is! Map) continue;
-      final rawIndex = _int(row['raw_index'] ?? row['rawIndex']) ?? i;
-      result[rawIndex] = _MacdValue(
-        dif: _num(row['dif'] ?? row['diff']),
-        dea: _num(row['dea'] ?? row['signal']),
-        hist: _num(row['hist'] ?? row['macd']),
-      );
+  Map<int, _Macd> _macdMap(Object? v) {
+    if (v is! List) return const {};
+    final out = <int, _Macd>{};
+    for (var i = 0; i < v.length; i++) {
+      final r = v[i];
+      if (r is Map) out[_int(r['raw_index'] ?? r['rawIndex']) ?? i] = _Macd(_num(r['dif'] ?? r['diff']), _num(r['dea']), _num(r['hist'] ?? r['macd']));
     }
-    return result;
+    return out;
   }
 
-  List<double?> _ma(List<double> values, int window) {
-    final result = <double?>[];
-    final queue = <double>[];
-    for (final value in values) {
-      queue.add(value);
-      if (queue.length > window) queue.removeAt(0);
-      result.add(queue.length < window ? null : queue.reduce((a, b) => a + b) / window);
+  List<double?> _ma(List<double> values, int n) {
+    final out = <double?>[];
+    final q = <double>[];
+    for (final v in values) {
+      q.add(v);
+      if (q.length > n) q.removeAt(0);
+      out.add(q.length < n ? null : q.reduce((a, b) => a + b) / n);
     }
-    return result;
+    return out;
   }
 
-  List<_BollValue> _boll(List<double> values, int window) {
-    final result = <_BollValue>[];
-    final queue = <double>[];
-    for (final value in values) {
-      queue.add(value);
-      if (queue.length > window) queue.removeAt(0);
-      if (queue.length < window) {
-        result.add(const _BollValue());
+  List<_Boll> _boll(List<double> values, int n) {
+    final out = <_Boll>[];
+    final q = <double>[];
+    for (final v in values) {
+      q.add(v);
+      if (q.length > n) q.removeAt(0);
+      if (q.length < n) {
+        out.add(const _Boll(null, null, null));
         continue;
       }
-      final mid = queue.reduce((a, b) => a + b) / queue.length;
-      final std = math.sqrt(queue.map((e) => math.pow(e - mid, 2)).reduce((a, b) => a + b) / queue.length);
-      result.add(_BollValue(upper: mid + 2 * std, mid: mid, lower: mid - 2 * std));
+      final mid = q.reduce((a, b) => a + b) / q.length;
+      final variance = q.map((e) => (e - mid) * (e - mid)).reduce((a, b) => a + b) / q.length;
+      final delta = 2 * math.sqrt(variance);
+      out.add(_Boll(mid + delta, mid, mid - delta));
     }
-    return result;
+    return out;
   }
 
-  List<_MacdValue> _macd(List<double> values, int fast, int slow, int signal) {
-    final result = <_MacdValue>[];
-    double? emaFast;
-    double? emaSlow;
+  List<_Macd> _macd(List<double> values, int fast, int slow, int signal) {
+    final out = <_Macd>[];
+    double? ef;
+    double? es;
     double? dea;
-    double ema(double? prev, double value, int n) {
-      final alpha = 2.0 / (n + 1.0);
-      return prev == null ? value : alpha * value + (1 - alpha) * prev;
+    double ema(double? prev, double v, int n) {
+      final a = 2.0 / (n + 1.0);
+      return prev == null ? v : a * v + (1 - a) * prev;
     }
 
     for (final close in values) {
-      emaFast = ema(emaFast, close, fast);
-      emaSlow = ema(emaSlow, close, slow);
-      final dif = emaFast - emaSlow;
+      ef = ema(ef, close, fast);
+      es = ema(es, close, slow);
+      final dif = ef - es;
       dea = ema(dea, dif, signal);
-      result.add(_MacdValue(dif: dif, dea: dea, hist: dif - dea));
+      out.add(_Macd(dif, dea, dif - dea));
     }
-    return result;
+    return out;
   }
 
-  bool _hasAnyMa(List<_IndicatorBar> bars) => bars.any((bar) => bar.ma.values.any((v) => v != null));
-  bool _hasAnyBoll(List<_IndicatorBar> bars) => bars.any((bar) => bar.boll?.mid != null);
-  bool _hasAnyVol(List<_IndicatorBar> bars) => bars.any((bar) => bar.volume != null);
-  bool _hasAnyMacd(List<_IndicatorBar> bars) => bars.any((bar) => bar.macd?.dif != null || bar.macd?.hist != null);
-
-  double? _num(Object? value) {
-    if (value is num) return value.toDouble();
-    final text = '${value ?? ''}'.trim().replaceAll(',', '');
-    if (text.isEmpty || text == '-' || text == '--' || text.toLowerCase() == 'nan' || text == 'null') return null;
+  double? _num(Object? v) {
+    if (v is num) return v.toDouble();
+    final text = '${v ?? ''}'.trim().replaceAll(',', '');
+    if (text.isEmpty || text == '-' || text == '--' || text == 'null' || text.toLowerCase() == 'nan') return null;
     return double.tryParse(text);
   }
 
-  int? _int(Object? value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse('${value ?? ''}'.trim());
+  int? _int(Object? v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse('${v ?? ''}'.trim());
   }
 
-  String _timeText(Object? value) {
-    final text = '${value ?? ''}'.trim();
-    if (text.length >= 10) return text.substring(0, math.min(19, text.length));
-    return text;
-  }
-
-  void _showMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  String _time(Object? v) {
+    final text = '${v ?? ''}'.trim();
+    return text.length > 19 ? text.substring(0, 19) : text;
   }
 
   @override
   Widget build(BuildContext context) {
+    final visible = _bars.length > 260 ? _bars.sublist(_bars.length - 260) : _bars;
+    final offset = _bars.length > 260 ? _bars.length - 260 : 0;
+    final cross = _crossIndex == null ? null : (_crossIndex! - offset).clamp(0, math.max(0, visible.length - 1)).toInt();
     return Container(
       color: const Color(0xFF0B0F16),
       child: SafeArea(
@@ -295,35 +255,31 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(),
+              _header(),
               const SizedBox(height: 10),
-              _buildControls(),
+              _controls(),
               const SizedBox(height: 10),
-              _buildSwitches(),
+              _switches(),
               const SizedBox(height: 8),
               Text(_status, style: const TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(height: 8),
               Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF101722),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: _bars.isEmpty
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: const Color(0xFF101722), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: visible.isEmpty
                         ? const Center(child: Text('暂无指标数据', style: TextStyle(color: Colors.white54)))
-                        : _IndicatorChart(
-                            bars: _bars.length > 260 ? _bars.sublist(_bars.length - 260) : _bars,
+                        : _IndicatorCanvas(
+                            bars: visible,
+                            crossIndex: cross,
                             showMa: _showMa,
                             showBoll: _showBoll,
                             showVol: _showVol,
                             showMacd: _showMacd,
                             showAmount: _showAmount,
                             showTurnover: _showTurnover,
-                            crossIndex: _crossIndex,
-                            onCrossIndexChanged: (index) => setState(() => _crossIndex = index),
+                            onCross: (i) => setState(() => _crossIndex = offset + i),
                           ),
                   ),
                 ),
@@ -335,42 +291,38 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _header() {
     return Row(
       children: [
         const Icon(Icons.insights, color: Color(0xFF8AB4FF), size: 26),
         const SizedBox(width: 8),
         const Text('easy-tdx 指标', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
         const SizedBox(width: 10),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(color: const Color(0xFF2962FF).withValues(alpha: 0.18), borderRadius: BorderRadius.circular(999)),
-          child: const Text('展示指标，不参与 chan.py 缠论计算', style: TextStyle(color: Color(0xFF8AB4FF), fontSize: 11)),
-        ),
+        const Text('展示指标，不参与 chan.py 缠论计算', style: TextStyle(color: Colors.white54, fontSize: 12)),
         const Spacer(),
         if (_loading) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
       ],
     );
   }
 
-  Widget _buildControls() {
+  Widget _controls() {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        _input(_backendController, '后端', width: 220),
-        _input(_symbolController, '代码', width: 110),
-        _dropdown('市场', _market, const ['SH', 'SZ'], (v) => setState(() => _market = v)),
-        _dropdown('周期', _freq, const ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY', 'WEEKLY', 'MONTHLY'], (v) => setState(() => _freq = v)),
-        _dropdown('复权', _adjust, const ['QFQ', 'HFQ', 'NONE'], (v) => setState(() => _adjust = v)),
-        _input(_countController, '数量', width: 82),
+        _input(_backend, '后端', 220),
+        _input(_symbol, '代码', 110),
+        _drop('市场', _market, const ['SH', 'SZ'], (v) => setState(() => _market = v)),
+        _drop('周期', _freq, const ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY', 'WEEKLY', 'MONTHLY'], (v) => setState(() => _freq = v), width: 116),
+        _drop('复权', _adjust, const ['QFQ', 'HFQ', 'NONE'], (v) => setState(() => _adjust = v)),
+        _input(_count, '数量', 82),
         FilledButton.icon(onPressed: _loading ? null : _load, icon: const Icon(Icons.refresh), label: const Text('加载指标')),
       ],
     );
   }
 
-  Widget _buildSwitches() {
+  Widget _switches() {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -385,281 +337,252 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
     );
   }
 
-  Widget _input(TextEditingController controller, String label, {required double width}) {
-    return SizedBox(
-      width: width,
-      height: 42,
-      child: TextField(
-        controller: controller,
-        style: const TextStyle(color: Colors.white, fontSize: 13),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(color: Colors.white54),
-          filled: true,
-          fillColor: const Color(0xFF151B26),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+  Widget _input(TextEditingController c, String label, double width) => SizedBox(
+        width: width,
+        height: 42,
+        child: TextField(
+          controller: c,
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+          decoration: InputDecoration(labelText: label, labelStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: const Color(0xFF151B26), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
         ),
-      ),
-    );
-  }
+      );
 
-  Widget _dropdown(String label, String value, List<String> items, ValueChanged<String> onChanged) {
-    return SizedBox(
-      width: label == '周期' ? 116 : 86,
-      height: 42,
-      child: DropdownButtonFormField<String>(
-        value: value,
-        dropdownColor: const Color(0xFF151B26),
-        style: const TextStyle(color: Colors.white, fontSize: 13),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(color: Colors.white54),
-          filled: true,
-          fillColor: const Color(0xFF151B26),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+  Widget _drop(String label, String value, List<String> items, ValueChanged<String> onChanged, {double width = 86}) => SizedBox(
+        width: width,
+        height: 42,
+        child: DropdownButtonFormField<String>(
+          value: value,
+          dropdownColor: const Color(0xFF151B26),
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+          decoration: InputDecoration(labelText: label, labelStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: const Color(0xFF151B26), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5)),
+          items: [for (final item in items) DropdownMenuItem(value: item, child: Text(item))],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
         ),
-        items: [for (final item in items) DropdownMenuItem(value: item, child: Text(item))],
-        onChanged: (v) {
-          if (v != null) onChanged(v);
-        },
-      ),
-    );
-  }
+      );
 
-  Widget _chip(String label, bool selected, ValueChanged<bool> onSelected) {
-    return FilterChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: onSelected,
-      labelStyle: TextStyle(color: selected ? Colors.white : Colors.white70, fontWeight: FontWeight.w700),
-      backgroundColor: const Color(0xFF151B26),
-      selectedColor: const Color(0xFF2962FF),
-      side: BorderSide(color: selected ? const Color(0xFF8AB4FF) : Colors.white.withValues(alpha: 0.12)),
-      checkmarkColor: Colors.white,
-    );
-  }
+  Widget _chip(String label, bool selected, ValueChanged<bool> onSelected) => FilterChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: onSelected,
+        backgroundColor: const Color(0xFF151B26),
+        selectedColor: const Color(0xFF2962FF),
+        checkmarkColor: Colors.white,
+        labelStyle: TextStyle(color: selected ? Colors.white : Colors.white70, fontWeight: FontWeight.w700),
+      );
 }
 
-class _IndicatorChart extends StatelessWidget {
-  final List<_IndicatorBar> bars;
+class _IndicatorCanvas extends StatelessWidget {
+  final List<_Bar> bars;
+  final int? crossIndex;
   final bool showMa;
   final bool showBoll;
   final bool showVol;
   final bool showMacd;
   final bool showAmount;
   final bool showTurnover;
-  final int? crossIndex;
-  final ValueChanged<int> onCrossIndexChanged;
+  final ValueChanged<int> onCross;
 
-  const _IndicatorChart({
-    required this.bars,
-    required this.showMa,
-    required this.showBoll,
-    required this.showVol,
-    required this.showMacd,
-    required this.showAmount,
-    required this.showTurnover,
-    required this.crossIndex,
-    required this.onCrossIndexChanged,
-  });
+  const _IndicatorCanvas({required this.bars, required this.crossIndex, required this.showMa, required this.showBoll, required this.showVol, required this.showMacd, required this.showAmount, required this.showTurnover, required this.onCross});
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = Size(constraints.maxWidth, constraints.maxHeight);
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (details) => _updateCross(details.localPosition, size),
-          onPanUpdate: (details) => _updateCross(details.localPosition, size),
-          child: CustomPaint(
-            size: Size.infinite,
-            painter: _IndicatorPainter(
-              bars: bars,
-              showMa: showMa,
-              showBoll: showBoll,
-              showVol: showVol,
-              showMacd: showMacd,
-              showAmount: showAmount,
-              showTurnover: showTurnover,
-              crossIndex: crossIndex,
-            ),
-          ),
-        );
-      },
-    );
+    return LayoutBuilder(builder: (context, constraints) {
+      final size = Size(constraints.maxWidth, constraints.maxHeight);
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (d) => _setCross(d.localPosition, size),
+        onPanUpdate: (d) => _setCross(d.localPosition, size),
+        child: CustomPaint(size: Size.infinite, painter: _IndicatorPainter(bars, crossIndex, showMa, showBoll, showVol, showMacd, showAmount, showTurnover)),
+      );
+    });
   }
 
-  void _updateCross(Offset point, Size size) {
-    const leftPad = 48.0;
-    const rightPad = 68.0;
-    final width = math.max(1.0, size.width - leftPad - rightPad);
+  void _setCross(Offset p, Size s) {
+    const left = 48.0;
+    const right = 68.0;
+    final width = math.max(1.0, s.width - left - right);
     final step = width / math.max(1, bars.length);
-    final idx = ((point.dx - leftPad) / step).floor().clamp(0, bars.length - 1).toInt();
-    onCrossIndexChanged(idx);
+    onCross(((p.dx - left) / step).floor().clamp(0, bars.length - 1).toInt());
   }
 }
 
 class _IndicatorPainter extends CustomPainter {
-  final List<_IndicatorBar> bars;
+  final List<_Bar> bars;
+  final int? cross;
   final bool showMa;
   final bool showBoll;
   final bool showVol;
   final bool showMacd;
   final bool showAmount;
   final bool showTurnover;
-  final int? crossIndex;
 
-  const _IndicatorPainter({
-    required this.bars,
-    required this.showMa,
-    required this.showBoll,
-    required this.showVol,
-    required this.showMacd,
-    required this.showAmount,
-    required this.showTurnover,
-    required this.crossIndex,
-  });
+  _IndicatorPainter(this.bars, this.cross, this.showMa, this.showBoll, this.showVol, this.showMacd, this.showAmount, this.showTurnover);
 
   @override
   void paint(Canvas canvas, Size size) {
     if (bars.isEmpty) return;
-    const leftPad = 48.0;
-    const rightPad = 68.0;
-    const topPad = 24.0;
-    const bottomPad = 22.0;
+    const left = 48.0;
+    const right = 68.0;
+    const top = 24.0;
+    const bottom = 22.0;
     final subCount = [showVol, showMacd, showAmount, showTurnover].where((e) => e).length;
-    final subHeight = subCount == 0 ? 0.0 : math.min(86.0, math.max(54.0, size.height * 0.16));
-    final subGap = subCount == 0 ? 0.0 : 8.0;
-    final mainHeight = math.max(80.0, size.height - topPad - bottomPad - subHeight * subCount - subGap * subCount);
-    final mainRect = Rect.fromLTWH(leftPad, topPad, math.max(1, size.width - leftPad - rightPad), mainHeight);
-    final step = mainRect.width / math.max(1, bars.length);
-    double xOf(int i) => mainRect.left + (i + 0.5) * step;
+    final subH = subCount == 0 ? 0.0 : math.min(82.0, math.max(52.0, size.height * 0.16));
+    final gap = subCount == 0 ? 0.0 : 8.0;
+    final mainH = math.max(80.0, size.height - top - bottom - subH * subCount - gap * subCount);
+    final main = Rect.fromLTWH(left, top, math.max(1.0, size.width - left - right), mainH);
+    final step = main.width / math.max(1, bars.length);
+    double x(int i) => main.left + (i + 0.5) * step;
 
-    final priceMin = bars.map((e) => e.low).reduce(math.min);
-    final priceMax = bars.map((e) => e.high).reduce(math.max);
-    final extraValues = <double>[];
+    final priceExtras = <double>[];
     if (showMa) {
-      for (final bar in bars) {
-        for (final value in bar.ma.values) {
-          if (value != null) extraValues.add(value);
+      for (final b in bars) {
+        for (final v in b.ma.values) {
+          if (v != null) priceExtras.add(v);
         }
       }
     }
     if (showBoll) {
-      for (final bar in bars) {
-        final boll = bar.boll;
-        if (boll != null) {
-          if (boll.upper != null) extraValues.add(boll.upper!);
-          if (boll.lower != null) extraValues.add(boll.lower!);
-        }
+      for (final b in bars) {
+        if (b.boll?.upper != null) priceExtras.add(b.boll!.upper!);
+        if (b.boll?.lower != null) priceExtras.add(b.boll!.lower!);
       }
     }
-    final minPrice = [priceMin, ...extraValues].reduce(math.min);
-    final maxPrice = [priceMax, ...extraValues].reduce(math.max);
-    final range = math.max(maxPrice - minPrice, maxPrice.abs() * 0.01);
-    final yMin = minPrice - range * 0.06;
-    final yMax = maxPrice + range * 0.06;
-    double priceToY(double price) => mainRect.bottom - (price - yMin) / math.max(0.0000001, yMax - yMin) * mainRect.height;
+    final minP = [bars.map((e) => e.low).reduce(math.min), ...priceExtras].reduce(math.min);
+    final maxP = [bars.map((e) => e.high).reduce(math.max), ...priceExtras].reduce(math.max);
+    final pad = math.max(maxP - minP, maxP.abs() * 0.01) * 0.08;
+    double py(double v) => main.bottom - (v - minP + pad) / math.max(0.000001, maxP - minP + pad * 2) * main.height;
 
-    _drawPanel(canvas, mainRect, 'PRICE');
-    _drawPriceAxis(canvas, mainRect, yMin, yMax);
-    _drawCandles(canvas, mainRect, step, xOf, priceToY);
-    if (showBoll) _drawBoll(canvas, mainRect, xOf, priceToY);
-    if (showMa) _drawMa(canvas, mainRect, xOf, priceToY);
+    _panel(canvas, main, 'PRICE');
+    _axis(canvas, main, minP - pad, maxP + pad);
+    _candles(canvas, main, step, x, py);
+    if (showBoll) _bollLines(canvas, x, py);
+    if (showMa) _maLines(canvas, x, py);
 
-    var top = mainRect.bottom + subGap;
+    var y = main.bottom + gap;
     if (showVol) {
-      final rect = Rect.fromLTWH(leftPad, top, mainRect.width, subHeight);
-      _drawVol(canvas, rect, step, xOf);
-      top += subHeight + subGap;
+      _vol(canvas, Rect.fromLTWH(left, y, main.width, subH), step, x);
+      y += subH + gap;
     }
     if (showMacd) {
-      final rect = Rect.fromLTWH(leftPad, top, mainRect.width, subHeight);
-      _drawMacd(canvas, rect, step, xOf);
-      top += subHeight + subGap;
+      _macd(canvas, Rect.fromLTWH(left, y, main.width, subH), step, x);
+      y += subH + gap;
     }
     if (showAmount) {
-      final rect = Rect.fromLTWH(leftPad, top, mainRect.width, subHeight);
-      _drawSingleLinePanel(canvas, rect, xOf, 'AMOUNT', (bar) => bar.amount);
-      top += subHeight + subGap;
+      _linePanel(canvas, Rect.fromLTWH(left, y, main.width, subH), x, 'AMOUNT', (b) => b.amount);
+      y += subH + gap;
     }
-    if (showTurnover) {
-      final rect = Rect.fromLTWH(leftPad, top, mainRect.width, subHeight);
-      _drawSingleLinePanel(canvas, rect, xOf, 'TURNOVER', (bar) => bar.turnover);
-    }
+    if (showTurnover) _linePanel(canvas, Rect.fromLTWH(left, y, main.width, subH), x, 'TURNOVER', (b) => b.turnover);
 
-    _drawDates(canvas, mainRect);
-    _drawLegend(canvas, mainRect);
-    _drawCrosshair(canvas, size, mainRect, xOf, priceToY);
+    _text(canvas, bars.first.time.substring(0, math.min(10, bars.first.time.length)), Offset(main.left, main.bottom + 6), 10, Colors.white38);
+    _text(canvas, bars.last.time.substring(0, math.min(10, bars.last.time.length)), Offset(main.right - 66, main.bottom + 6), 10, Colors.white38);
+    _text(canvas, [if (showMa) 'MA', if (showBoll) 'BOLL', if (showVol) 'VOL', if (showMacd) 'MACD', if (showAmount) 'amount', if (showTurnover) 'turnover'].join('  '), Offset(main.left + 64, main.top + 4), 10, Colors.white54);
+    _cross(canvas, size, main, x, py);
   }
 
-  void _drawPanel(Canvas canvas, Rect rect, String title) {
-    final grid = Paint()..color = Colors.white.withValues(alpha: 0.08)..strokeWidth = 0.7;
-    canvas.drawRect(rect, Paint()..color = const Color(0xFF0D1320));
-    canvas.drawRect(rect, Paint()..color = Colors.white.withValues(alpha: 0.08)..style = PaintingStyle.stroke);
-    for (var i = 1; i < 4; i++) {
-      final y = rect.top + rect.height * i / 4;
-      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), grid);
-    }
-    _text(canvas, title, Offset(rect.left + 6, rect.top + 4), 10, Colors.white54);
+  void _panel(Canvas c, Rect r, String title) {
+    c.drawRect(r, Paint()..color = const Color(0xFF0D1320));
+    c.drawRect(r, Paint()..color = Colors.white.withValues(alpha: 0.08)..style = PaintingStyle.stroke);
+    final p = Paint()..color = Colors.white.withValues(alpha: 0.08)..strokeWidth = 0.7;
+    for (var i = 1; i < 4; i++) c.drawLine(Offset(r.left, r.top + r.height * i / 4), Offset(r.right, r.top + r.height * i / 4), p);
+    _text(c, title, Offset(r.left + 6, r.top + 4), 10, Colors.white54);
   }
 
-  void _drawPriceAxis(Canvas canvas, Rect rect, double minPrice, double maxPrice) {
-    for (var i = 0; i <= 4; i++) {
-      final y = rect.top + rect.height * i / 4;
-      final price = maxPrice - (maxPrice - minPrice) * i / 4;
-      _text(canvas, price.toStringAsFixed(2), Offset(rect.right + 5, y - 6), 10, Colors.white54);
-    }
+  void _axis(Canvas c, Rect r, double min, double max) {
+    for (var i = 0; i <= 4; i++) _text(c, (max - (max - min) * i / 4).toStringAsFixed(2), Offset(r.right + 5, r.top + r.height * i / 4 - 6), 10, Colors.white54);
   }
 
-  void _drawCandles(Canvas canvas, Rect rect, double step, double Function(int) xOf, double Function(double) priceToY) {
+  void _candles(Canvas c, Rect r, double step, double Function(int) x, double Function(double) py) {
     final up = Paint()..color = const Color(0xFF26A69A);
     final down = Paint()..color = const Color(0xFFEF5350);
     final wick = Paint()..strokeWidth = math.max(0.8, step * 0.08);
-    final bodyWidth = math.max(1.0, math.min(step * 0.66, step - 1));
+    final w = math.max(1.0, math.min(step * 0.66, step - 1));
     for (var i = 0; i < bars.length; i++) {
-      final bar = bars[i];
-      final x = xOf(i);
-      final paint = bar.close >= bar.open ? up : down;
-      wick.color = paint.color;
-      canvas.drawLine(Offset(x, priceToY(bar.high)), Offset(x, priceToY(bar.low)), wick);
-      final openY = priceToY(bar.open);
-      final closeY = priceToY(bar.close);
-      canvas.drawRect(Rect.fromLTRB(x - bodyWidth / 2, math.min(openY, closeY), x + bodyWidth / 2, math.max(math.min(openY, closeY) + 1, math.max(openY, closeY))), paint);
+      final b = bars[i];
+      final p = b.close >= b.open ? up : down;
+      final cx = x(i);
+      wick.color = p.color;
+      c.drawLine(Offset(cx, py(b.high)), Offset(cx, py(b.low)), wick);
+      final o = py(b.open);
+      final cl = py(b.close);
+      c.drawRect(Rect.fromLTRB(cx - w / 2, math.min(o, cl), cx + w / 2, math.max(math.min(o, cl) + 1, math.max(o, cl))), p);
     }
   }
 
-  void _drawMa(Canvas canvas, Rect rect, double Function(int) xOf, double Function(double) priceToY) {
+  void _maLines(Canvas c, double Function(int) x, double Function(double) y) {
     final colors = {5: const Color(0xFFFFD54F), 10: const Color(0xFF64B5F6), 20: const Color(0xFFBA68C8), 60: const Color(0xFFFF8A65)};
-    for (final period in const [5, 10, 20, 60]) {
-      _drawLine(canvas, xOf, priceToY, (bar) => bar.ma[period], Paint()..color = colors[period]!..strokeWidth = 1.1..style = PaintingStyle.stroke);
+    for (final p in const [5, 10, 20, 60]) _series(c, x, y, (b) => b.ma[p], colors[p] ?? Colors.white, 1.1);
+  }
+
+  void _bollLines(Canvas c, double Function(int) x, double Function(double) y) {
+    _series(c, x, y, (b) => b.boll?.upper, const Color(0xFF90CAF9), 0.9);
+    _series(c, x, y, (b) => b.boll?.mid, Colors.white54, 0.8);
+    _series(c, x, y, (b) => b.boll?.lower, const Color(0xFF90CAF9), 0.9);
+  }
+
+  void _vol(Canvas c, Rect r, double step, double Function(int) x) {
+    _panel(c, r, 'VOL');
+    final maxV = bars.map((e) => e.volume ?? 0.0).fold<double>(0.0, (a, b) => math.max(a, b));
+    if (maxV <= 0) return;
+    final w = math.max(1.0, math.min(step * 0.62, step - 1));
+    for (var i = 0; i < bars.length; i++) {
+      final b = bars[i];
+      final h = (b.volume ?? 0.0) / maxV * (r.height - 18);
+      c.drawRect(Rect.fromLTRB(x(i) - w / 2, r.bottom - h, x(i) + w / 2, r.bottom), Paint()..color = (b.close >= b.open ? const Color(0xFF26A69A) : const Color(0xFFEF5350)).withValues(alpha: 0.72));
     }
+    _text(c, _compact(maxV), Offset(r.right + 5, r.top + 2), 10, Colors.white38);
   }
 
-  void _drawBoll(Canvas canvas, Rect rect, double Function(int) xOf, double Function(double) priceToY) {
-    final upperPaint = Paint()..color = const Color(0xFF90CAF9).withValues(alpha: 0.85)..strokeWidth = 0.9..style = PaintingStyle.stroke;
-    final midPaint = Paint()..color = Colors.white.withValues(alpha: 0.45)..strokeWidth = 0.8..style = PaintingStyle.stroke;
-    final lowerPaint = Paint()..color = const Color(0xFF90CAF9).withValues(alpha: 0.85)..strokeWidth = 0.9..style = PaintingStyle.stroke;
-    _drawLine(canvas, xOf, priceToY, (bar) => bar.boll?.upper, upperPaint);
-    _drawLine(canvas, xOf, priceToY, (bar) => bar.boll?.mid, midPaint);
-    _drawLine(canvas, xOf, priceToY, (bar) => bar.boll?.lower, lowerPaint);
+  void _macd(Canvas c, Rect r, double step, double Function(int) x) {
+    _panel(c, r, 'MACD');
+    final vals = <double>[];
+    for (final b in bars) {
+      if (b.macd?.dif != null) vals.add(b.macd!.dif!);
+      if (b.macd?.dea != null) vals.add(b.macd!.dea!);
+      if (b.macd?.hist != null) vals.add(b.macd!.hist!);
+    }
+    if (vals.isEmpty) return;
+    final maxAbs = math.max(0.0000001, vals.map((e) => e.abs()).reduce(math.max));
+    final zero = r.top + r.height / 2;
+    double y(double v) => zero - v / maxAbs * (r.height * 0.42);
+    c.drawLine(Offset(r.left, zero), Offset(r.right, zero), Paint()..color = Colors.white.withValues(alpha: 0.16));
+    final w = math.max(1.0, math.min(step * 0.58, step - 1));
+    for (var i = 0; i < bars.length; i++) {
+      final h = bars[i].macd?.hist;
+      if (h == null) continue;
+      final yy = y(h);
+      c.drawRect(Rect.fromLTRB(x(i) - w / 2, math.min(zero, yy), x(i) + w / 2, math.max(zero, yy)), Paint()..color = (h >= 0 ? const Color(0xFF26A69A) : const Color(0xFFEF5350)).withValues(alpha: 0.78));
+    }
+    _series(c, x, y, (b) => b.macd?.dif, const Color(0xFFFFD54F), 1.0);
+    _series(c, x, y, (b) => b.macd?.dea, const Color(0xFF64B5F6), 1.0);
   }
 
-  void _drawLine(Canvas canvas, double Function(int) xOf, double Function(double) yOf, double? Function(_IndicatorBar) valueOf, Paint paint) {
+  void _linePanel(Canvas c, Rect r, double Function(int) x, String title, double? Function(_Bar) val) {
+    _panel(c, r, title);
+    final vals = bars.map(val).whereType<double>().toList();
+    if (vals.isEmpty) {
+      _text(c, '--', Offset(r.center.dx - 8, r.center.dy - 7), 11, Colors.white38);
+      return;
+    }
+    final minV = vals.reduce(math.min);
+    final maxV = vals.reduce(math.max);
+    final range = math.max(0.0000001, maxV - minV);
+    double y(double v) => r.bottom - (v - minV) / range * (r.height - 18) - 4;
+    _series(c, x, y, val, const Color(0xFF81C784), 1.0);
+    _text(c, _compact(maxV), Offset(r.right + 5, r.top + 2), 10, Colors.white38);
+  }
+
+  void _series(Canvas c, double Function(int) x, double Function(double) y, double? Function(_Bar) val, Color color, double width) {
     final path = Path();
     var started = false;
     for (var i = 0; i < bars.length; i++) {
-      final value = valueOf(bars[i]);
-      if (value == null) {
+      final v = val(bars[i]);
+      if (v == null) {
         started = false;
         continue;
       }
-      final p = Offset(xOf(i), yOf(value));
+      final p = Offset(x(i), y(v));
       if (!started) {
         path.moveTo(p.dx, p.dy);
         started = true;
@@ -667,144 +590,55 @@ class _IndicatorPainter extends CustomPainter {
         path.lineTo(p.dx, p.dy);
       }
     }
-    canvas.drawPath(path, paint);
+    c.drawPath(path, Paint()..color = color..strokeWidth = width..style = PaintingStyle.stroke);
   }
 
-  void _drawVol(Canvas canvas, Rect rect, double step, double Function(int) xOf) {
-    _drawPanel(canvas, rect, 'VOL');
-    final maxVol = bars.map((e) => e.volume ?? 0).fold<double>(0, math.max);
-    if (maxVol <= 0) return;
-    final width = math.max(1.0, math.min(step * 0.62, step - 1));
-    for (var i = 0; i < bars.length; i++) {
-      final bar = bars[i];
-      final value = bar.volume ?? 0;
-      final x = xOf(i);
-      final h = value / maxVol * (rect.height - 18);
-      final paint = Paint()..color = (bar.close >= bar.open ? const Color(0xFF26A69A) : const Color(0xFFEF5350)).withValues(alpha: 0.72);
-      canvas.drawRect(Rect.fromLTRB(x - width / 2, rect.bottom - h, x + width / 2, rect.bottom), paint);
-    }
-    _text(canvas, _compact(maxVol), Offset(rect.right + 5, rect.top + 2), 10, Colors.white38);
-  }
-
-  void _drawMacd(Canvas canvas, Rect rect, double step, double Function(int) xOf) {
-    _drawPanel(canvas, rect, 'MACD');
-    final values = <double>[];
-    for (final bar in bars) {
-      final macd = bar.macd;
-      if (macd == null) continue;
-      if (macd.dif != null) values.add(macd.dif!);
-      if (macd.dea != null) values.add(macd.dea!);
-      if (macd.hist != null) values.add(macd.hist!);
-    }
-    if (values.isEmpty) return;
-    final maxAbs = math.max(0.0000001, values.map((e) => e.abs()).reduce(math.max));
-    final zeroY = rect.top + rect.height / 2;
-    double yOf(double v) => zeroY - v / maxAbs * (rect.height * 0.42);
-    canvas.drawLine(Offset(rect.left, zeroY), Offset(rect.right, zeroY), Paint()..color = Colors.white.withValues(alpha: 0.16)..strokeWidth = 0.8);
-    final histWidth = math.max(1.0, math.min(step * 0.58, step - 1));
-    for (var i = 0; i < bars.length; i++) {
-      final hist = bars[i].macd?.hist;
-      if (hist == null) continue;
-      final x = xOf(i);
-      final y = yOf(hist);
-      final paint = Paint()..color = (hist >= 0 ? const Color(0xFF26A69A) : const Color(0xFFEF5350)).withValues(alpha: 0.78);
-      canvas.drawRect(Rect.fromLTRB(x - histWidth / 2, math.min(zeroY, y), x + histWidth / 2, math.max(zeroY, y)), paint);
-    }
-    _drawLine(canvas, xOf, yOf, (bar) => bar.macd?.dif, Paint()..color = const Color(0xFFFFD54F)..strokeWidth = 1.0..style = PaintingStyle.stroke);
-    _drawLine(canvas, xOf, yOf, (bar) => bar.macd?.dea, Paint()..color = const Color(0xFF64B5F6)..strokeWidth = 1.0..style = PaintingStyle.stroke);
-  }
-
-  void _drawSingleLinePanel(Canvas canvas, Rect rect, double Function(int) xOf, String title, double? Function(_IndicatorBar) valueOf) {
-    _drawPanel(canvas, rect, title);
-    final values = bars.map(valueOf).whereType<double>().toList();
-    if (values.isEmpty) {
-      _text(canvas, '--', Offset(rect.center.dx - 8, rect.center.dy - 7), 11, Colors.white38);
-      return;
-    }
-    final minValue = values.reduce(math.min);
-    final maxValue = values.reduce(math.max);
-    final range = math.max(0.0000001, maxValue - minValue);
-    double yOf(double value) => rect.bottom - (value - minValue) / range * (rect.height - 18) - 4;
-    _drawLine(canvas, xOf, yOf, valueOf, Paint()..color = const Color(0xFF81C784)..strokeWidth = 1.0..style = PaintingStyle.stroke);
-    _text(canvas, _compact(maxValue), Offset(rect.right + 5, rect.top + 2), 10, Colors.white38);
-  }
-
-  void _drawDates(Canvas canvas, Rect rect) {
-    _text(canvas, bars.first.time.length > 10 ? bars.first.time.substring(0, 10) : bars.first.time, Offset(rect.left, rect.bottom + 6), 10, Colors.white38);
-    final last = bars.last.time.length > 10 ? bars.last.time.substring(0, 10) : bars.last.time;
-    _text(canvas, last, Offset(rect.right - 66, rect.bottom + 6), 10, Colors.white38);
-  }
-
-  void _drawLegend(Canvas canvas, Rect rect) {
-    final parts = <String>[];
-    if (showMa) parts.add('MA5/10/20/60');
-    if (showBoll) parts.add('BOLL');
-    if (showVol) parts.add('VOL');
-    if (showMacd) parts.add('MACD');
-    if (showAmount) parts.add('amount');
-    if (showTurnover) parts.add('turnover');
-    _text(canvas, parts.join('  '), Offset(rect.left + 60, rect.top + 4), 10, Colors.white54);
-  }
-
-  void _drawCrosshair(Canvas canvas, Size size, Rect mainRect, double Function(int) xOf, double Function(double) priceToY) {
-    final idx = crossIndex;
-    if (idx == null || idx < 0 || idx >= bars.length) return;
-    final bar = bars[idx];
-    final x = xOf(idx);
-    canvas.drawLine(Offset(x, 0), Offset(x, size.height), Paint()..color = Colors.white.withValues(alpha: 0.22)..strokeWidth = 0.8);
-    final y = priceToY(bar.close);
-    canvas.drawLine(Offset(mainRect.left, y), Offset(mainRect.right, y), Paint()..color = Colors.white.withValues(alpha: 0.16)..strokeWidth = 0.8);
+  void _cross(Canvas c, Size s, Rect main, double Function(int) x, double Function(double) py) {
+    final i = cross;
+    if (i == null || i < 0 || i >= bars.length) return;
+    final b = bars[i];
+    final cx = x(i);
+    c.drawLine(Offset(cx, 0), Offset(cx, s.height), Paint()..color = Colors.white.withValues(alpha: 0.22));
+    c.drawLine(Offset(main.left, py(b.close)), Offset(main.right, py(b.close)), Paint()..color = Colors.white.withValues(alpha: 0.16));
     final lines = <String>[
-      bar.time,
-      'O:${bar.open.toStringAsFixed(2)} H:${bar.high.toStringAsFixed(2)} L:${bar.low.toStringAsFixed(2)} C:${bar.close.toStringAsFixed(2)}',
-      if (showMa) 'MA5:${_fmt(bar.ma[5])} MA10:${_fmt(bar.ma[10])} MA20:${_fmt(bar.ma[20])} MA60:${_fmt(bar.ma[60])}',
-      if (showBoll) 'BOLL U:${_fmt(bar.boll?.upper)} M:${_fmt(bar.boll?.mid)} L:${_fmt(bar.boll?.lower)}',
-      if (showVol) 'VOL:${_compact(bar.volume)}',
-      if (showMacd) 'MACD DIF:${_fmt(bar.macd?.dif)} DEA:${_fmt(bar.macd?.dea)} HIST:${_fmt(bar.macd?.hist)}',
-      if (showAmount) 'amount:${_compact(bar.amount)}',
-      if (showTurnover) 'turnover:${_fmt(bar.turnover)}',
+      b.time,
+      'O:${b.open.toStringAsFixed(2)} H:${b.high.toStringAsFixed(2)} L:${b.low.toStringAsFixed(2)} C:${b.close.toStringAsFixed(2)}',
+      if (showMa) 'MA5:${_fmt(b.ma[5])} MA10:${_fmt(b.ma[10])} MA20:${_fmt(b.ma[20])} MA60:${_fmt(b.ma[60])}',
+      if (showBoll) 'BOLL U:${_fmt(b.boll?.upper)} M:${_fmt(b.boll?.mid)} L:${_fmt(b.boll?.lower)}',
+      if (showVol) 'VOL:${_compact(b.volume)}',
+      if (showMacd) 'MACD DIF:${_fmt(b.macd?.dif)} DEA:${_fmt(b.macd?.dea)} HIST:${_fmt(b.macd?.hist)}',
+      if (showAmount) 'amount:${_compact(b.amount)}',
+      if (showTurnover) 'turnover:${_fmt(b.turnover)}',
     ];
-    final boxWidth = 318.0;
-    final boxHeight = 18.0 + lines.length * 16.0;
-    final left = x + boxWidth + 16 < size.width ? x + 10 : x - boxWidth - 10;
-    final top = math.max(8.0, mainRect.top + 8);
-    final rect = Rect.fromLTWH(left.clamp(4.0, math.max(4.0, size.width - boxWidth - 4)).toDouble(), top, boxWidth, boxHeight);
-    canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(8)), Paint()..color = const Color(0xE6111722));
-    canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(8)), Paint()..color = const Color(0xFF2962FF).withValues(alpha: 0.34)..style = PaintingStyle.stroke);
-    for (var i = 0; i < lines.length; i++) {
-      _text(canvas, lines[i], Offset(rect.left + 8, rect.top + 8 + i * 16), 11, i == 0 ? const Color(0xFF8AB4FF) : Colors.white70);
-    }
+    const boxW = 318.0;
+    final boxH = 18.0 + lines.length * 16.0;
+    final rawLeft = cx + boxW + 16 < s.width ? cx + 10 : cx - boxW - 10;
+    final left = rawLeft.clamp(4.0, math.max(4.0, s.width - boxW - 4)).toDouble();
+    final r = Rect.fromLTWH(left, main.top + 8, boxW, boxH);
+    c.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(8)), Paint()..color = const Color(0xE6111722));
+    c.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(8)), Paint()..color = const Color(0xFF2962FF).withValues(alpha: 0.34)..style = PaintingStyle.stroke);
+    for (var n = 0; n < lines.length; n++) _text(c, lines[n], Offset(r.left + 8, r.top + 8 + n * 16), 11, n == 0 ? const Color(0xFF8AB4FF) : Colors.white70);
   }
 
-  String _fmt(double? value) => value == null ? '--' : value.toStringAsFixed(value.abs() >= 100 ? 2 : 3);
-  String _compact(double? value) {
-    if (value == null) return '--';
-    final abs = value.abs();
-    if (abs >= 100000000) return '${(value / 100000000).toStringAsFixed(2)}亿';
-    if (abs >= 10000) return '${(value / 10000).toStringAsFixed(2)}万';
-    return value.toStringAsFixed(2);
+  String _fmt(double? v) => v == null ? '--' : v.toStringAsFixed(v.abs() >= 100 ? 2 : 3);
+  String _compact(double? v) {
+    if (v == null) return '--';
+    final a = v.abs();
+    if (a >= 100000000) return '${(v / 100000000).toStringAsFixed(2)}亿';
+    if (a >= 10000) return '${(v / 10000).toStringAsFixed(2)}万';
+    return v.toStringAsFixed(2);
   }
 
-  void _text(Canvas canvas, String text, Offset offset, double size, Color color) {
-    final span = TextSpan(text: text, style: TextStyle(color: color, fontSize: size));
-    final painter = TextPainter(text: span, textDirection: TextDirection.ltr, maxLines: 1)..layout(maxWidth: 420);
-    painter.paint(canvas, offset);
+  void _text(Canvas c, String text, Offset o, double size, Color color) {
+    final tp = TextPainter(text: TextSpan(text: text, style: TextStyle(color: color, fontSize: size)), textDirection: TextDirection.ltr, maxLines: 1)..layout(maxWidth: 420);
+    tp.paint(c, o);
   }
 
   @override
-  bool shouldRepaint(covariant _IndicatorPainter oldDelegate) {
-    return oldDelegate.bars != bars ||
-        oldDelegate.showMa != showMa ||
-        oldDelegate.showBoll != showBoll ||
-        oldDelegate.showVol != showVol ||
-        oldDelegate.showMacd != showMacd ||
-        oldDelegate.showAmount != showAmount ||
-        oldDelegate.showTurnover != showTurnover ||
-        oldDelegate.crossIndex != crossIndex;
-  }
+  bool shouldRepaint(covariant _IndicatorPainter old) => old.bars != bars || old.cross != cross || old.showMa != showMa || old.showBoll != showBoll || old.showVol != showVol || old.showMacd != showMacd || old.showAmount != showAmount || old.showTurnover != showTurnover;
 }
 
-class _IndicatorBar {
+class _Bar {
   final int rawIndex;
   final String time;
   final double open;
@@ -815,52 +649,24 @@ class _IndicatorBar {
   final double? amount;
   final double? turnover;
   final Map<int, double?> ma;
-  final _BollValue? boll;
-  final _MacdValue? macd;
+  final _Boll? boll;
+  final _Macd? macd;
 
-  const _IndicatorBar({
-    required this.rawIndex,
-    required this.time,
-    required this.open,
-    required this.high,
-    required this.low,
-    required this.close,
-    required this.volume,
-    required this.amount,
-    required this.turnover,
-    required this.ma,
-    required this.boll,
-    required this.macd,
-  });
+  const _Bar({required this.rawIndex, required this.time, required this.open, required this.high, required this.low, required this.close, required this.volume, required this.amount, required this.turnover, required this.ma, required this.boll, required this.macd});
 
-  _IndicatorBar copyWith({Map<int, double?>? ma, _BollValue? boll, _MacdValue? macd}) {
-    return _IndicatorBar(
-      rawIndex: rawIndex,
-      time: time,
-      open: open,
-      high: high,
-      low: low,
-      close: close,
-      volume: volume,
-      amount: amount,
-      turnover: turnover,
-      ma: ma ?? this.ma,
-      boll: boll ?? this.boll,
-      macd: macd ?? this.macd,
-    );
-  }
+  _Bar copyWith({Map<int, double?>? ma, _Boll? boll, _Macd? macd}) => _Bar(rawIndex: rawIndex, time: time, open: open, high: high, low: low, close: close, volume: volume, amount: amount, turnover: turnover, ma: ma ?? this.ma, boll: boll ?? this.boll, macd: macd ?? this.macd);
 }
 
-class _BollValue {
+class _Boll {
   final double? upper;
   final double? mid;
   final double? lower;
-  const _BollValue({this.upper, this.mid, this.lower});
+  const _Boll(this.upper, this.mid, this.lower);
 }
 
-class _MacdValue {
+class _Macd {
   final double? dif;
   final double? dea;
   final double? hist;
-  const _MacdValue({this.dif, this.dea, this.hist});
+  const _Macd(this.dif, this.dea, this.hist);
 }
