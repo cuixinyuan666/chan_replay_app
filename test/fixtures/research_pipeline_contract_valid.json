@@ -1,0 +1,68 @@
+{
+  "ok": true,
+  "bars": [
+    {"time":"2024-01-01","open":10.00,"high":10.20,"low":9.80,"close":10.00,"vol":1000},
+    {"time":"2024-01-02","open":10.00,"high":10.35,"low":9.95,"close":10.25,"vol":1100},
+    {"time":"2024-01-03","open":10.25,"high":10.30,"low":9.70,"close":9.90,"vol":1300},
+    {"time":"2024-01-04","open":9.95,"high":10.45,"low":9.90,"close":10.35,"vol":1500},
+    {"time":"2024-01-05","open":10.35,"high":10.70,"low":10.25,"close":10.60,"vol":1600},
+    {"time":"2024-01-06","open":10.60,"high":10.90,"low":10.45,"close":10.75,"vol":1700},
+    {"time":"2024-01-07","open":10.75,"high":11.05,"low":10.60,"close":10.95,"vol":1800},
+    {"time":"2024-01-08","open":10.95,"high":11.20,"low":10.80,"close":11.05,"vol":1900},
+    {"time":"2024-01-09","open":11.05,"high":11.10,"low":10.55,"close":10.70,"vol":1800},
+    {"time":"2024-01-10","open":10.70,"high":10.85,"low":10.30,"close":10.45,"vol":1700},
+    {"time":"2024-01-11","open":10.45,"high":10.55,"low":10.05,"close":10.20,"vol":1600},
+    {"time":"2024-01-12","open":10.20,"high":10.35,"low":9.95,"close":10.10,"vol":1500}
+  ],
+  "merged_bars": [],
+  "fx": [],
+  "bi": [
+    {"index":0,"start_raw_index":0,"end_raw_index":2,"start_price":10.20,"end_price":9.70,"direction":"down","is_sure":true},
+    {"index":1,"start_raw_index":2,"end_raw_index":7,"start_price":9.70,"end_price":11.20,"direction":"up","is_sure":true},
+    {"index":2,"start_raw_index":7,"end_raw_index":11,"start_price":11.20,"end_price":9.95,"direction":"down","is_sure":true}
+  ],
+  "seg": [
+    {"index":0,"start_raw_index":0,"end_raw_index":7,"start_price":10.20,"end_price":11.20,"direction":"up","is_sure":true}
+  ],
+  "zs": [
+    {"index":0,"start_raw_index":2,"end_raw_index":7,"start_bi_index":0,"end_bi_index":1,"zg":10.60,"zd":10.10,"gg":11.20,"dd":9.70,"confirmed":true}
+  ],
+  "bsp": [
+    {"index":0,"raw_index":2,"time":"2024-01-03","price":9.70,"type":"B1","level":"bi","is_buy":true,"is_sure":true},
+    {"index":1,"raw_index":7,"time":"2024-01-08","price":11.20,"type":"S1","level":"bi","is_buy":false,"is_sure":true}
+  ],
+  "indicators": {
+    "ma": {
+      "5": [
+        {"time":"2024-01-01","raw_index":0,"value":null},
+        {"time":"2024-01-02","raw_index":1,"value":null},
+        {"time":"2024-01-03","raw_index":2,"value":null},
+        {"time":"2024-01-04","raw_index":3,"value":null},
+        {"time":"2024-01-05","raw_index":4,"value":10.22},
+        {"time":"2024-01-06","raw_index":5,"value":10.37},
+        {"time":"2024-01-07","raw_index":6,"value":10.51},
+        {"time":"2024-01-08","raw_index":7,"value":10.74},
+        {"time":"2024-01-09","raw_index":8,"value":10.81},
+        {"time":"2024-01-10","raw_index":9,"value":10.78},
+        {"time":"2024-01-11","raw_index":10,"value":10.67},
+        {"time":"2024-01-12","raw_index":11,"value":10.50}
+      ]
+    },
+    "macd": [
+      {"time":"2024-01-01","raw_index":0,"dif":0.00,"dea":0.00,"hist":0.00},
+      {"time":"2024-01-02","raw_index":1,"dif":0.02,"dea":0.01,"hist":0.02},
+      {"time":"2024-01-03","raw_index":2,"dif":-0.01,"dea":0.00,"hist":-0.02},
+      {"time":"2024-01-04","raw_index":3,"dif":0.03,"dea":0.01,"hist":0.04},
+      {"time":"2024-01-05","raw_index":4,"dif":0.05,"dea":0.02,"hist":0.06},
+      {"time":"2024-01-06","raw_index":5,"dif":0.07,"dea":0.03,"hist":0.08},
+      {"time":"2024-01-07","raw_index":6,"dif":0.09,"dea":0.04,"hist":0.10},
+      {"time":"2024-01-08","raw_index":7,"dif":0.10,"dea":0.05,"hist":0.10},
+      {"time":"2024-01-09","raw_index":8,"dif":0.06,"dea":0.05,"hist":0.02},
+      {"time":"2024-01-10","raw_index":9,"dif":0.02,"dea":0.04,"hist":-0.04},
+      {"time":"2024-01-11","raw_index":10,"dif":-0.02,"dea":0.02,"hist":-0.08},
+      {"time":"2024-01-12","raw_index":11,"dif":-0.03,"dea":0.01,"hist":-0.08}
+    ]
+  },
+  "frames": [],
+  "meta": {"engine":"chan.py","symbol":"TEST.LOCAL"}
+}
