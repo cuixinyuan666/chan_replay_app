@@ -169,7 +169,7 @@ POST /api/research/pipeline
 lib/ui/pages/research_backtest_page.dart
 ```
 
-该页面通过左下角同列路由按钮进入，首次点击后才构造；输入为 chan.py analysis JSON，输出为 features / scores / backtest / pipeline JSON。
+该页面通过左下角同列路由按钮进入，首次点击后才构造；输入为 chan.py analysis JSON，输出为 features / scores / backtest / pipeline 结果。当前已支持 summary 卡片、BSP 特征预览、ML Score 预览、回测交易预览和原始 JSON 折叠查看。
 
 ### 当前离线合同校验
 
@@ -325,6 +325,7 @@ python tools/validate_research_pipeline_contract.py build/real_analysis.json
 8. 已新增 research pipeline 最小 fixture：`test/fixtures/research_pipeline_contract_valid.json`。
 9. research pipeline fixture 与真实 `build/real_analysis.json` 都已通过合同校验。
 10. research pipeline fixture 校验已加入 GitHub Actions。
+11. 研究页已支持结构化结果展示：summary 卡片、features / scores / trades 表格预览、原始 JSON 折叠查看。
 
 #### 6. 本地验证与 CI 护栏
 
@@ -361,7 +362,7 @@ python tools/validate_research_pipeline_contract.py build/real_analysis.json
 #### P3：研究 / 回测 UI
 
 1. 将研究页与当前复盘页的最新 analysis JSON 自动打通，减少手动粘贴。
-2. UI 展示 BSP 特征表、ML score、回测交易列表和 summary，而不是只显示原始 JSON。
+2. 用真实 `build/real_analysis.json` 操作研究页，验收 features / scores / backtest / pipeline 的结构化 UI 输出。
 3. 后续支持外部模型文件导入，但不得让重依赖污染默认启动链路。
 
 #### P4：K线图最终显示验收
@@ -375,10 +376,11 @@ python tools/validate_research_pipeline_contract.py build/real_analysis.json
 ## 下一批建议任务
 
 1. 等本次 push 后，复核 GitHub Actions 远端运行结果。
-2. 开始 Flutter VOL 副图和 MACD / MA / BOLL 显示。
+2. 运行 `flutter analyze`，重点检查研究页结构化表格新增代码。
 3. 用 `build/real_analysis.json` 操作研究页，验收 features / scores / backtest / pipeline UI 输出。
-4. 运行 Android 真机，复验 MethodChannel indicators 输出合同。
-5. 扩大真实样本：随机 5 只股票、3 个周期跑合同校验。
+4. 开始 Flutter VOL 副图和 MACD / MA / BOLL 显示。
+5. 运行 Android 真机，复验 MethodChannel indicators 输出合同。
+6. 扩大真实样本：随机 5 只股票、3 个周期跑合同校验。
 
 ## 当前注意事项
 
