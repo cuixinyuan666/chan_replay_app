@@ -19,17 +19,12 @@ class AshareBspScannerPage extends StatefulWidget {
 }
 
 class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
-  static bool get _isAndroidApp =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-  static String get _defaultBackendBaseUrl =>
-      _isAndroidApp ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
+  static bool get _isAndroidApp => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  static String get _defaultBackendBaseUrl => _isAndroidApp ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
 
-  final TextEditingController _backendUrlController =
-      TextEditingController(text: _defaultBackendBaseUrl);
-  final TextEditingController _codeController =
-      TextEditingController(text: '000001');
-  final TextEditingController _limitController =
-      TextEditingController(text: '300');
+  final TextEditingController _backendUrlController = TextEditingController(text: _defaultBackendBaseUrl);
+  final TextEditingController _codeController = TextEditingController(text: '000001');
+  final TextEditingController _limitController = TextEditingController(text: '300');
 
   final List<_ScanResult> _results = <_ScanResult>[];
   final List<String> _logs = <String>[];
@@ -106,9 +101,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       _status = '正在启动/连接 Python chan.py 后端...';
     });
 
-    final client = ScannerBackendClient(
-      baseUrl: _backendUrlController.text.trim(),
-    );
+    final client = ScannerBackendClient(baseUrl: _backendUrlController.text.trim());
     try {
       await for (final event in client.scanBspStream(
         days: 365,
@@ -128,9 +121,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       });
     } finally {
       client.close();
-      if (mounted && serial == _scanSerial) {
-        setState(() => _scanning = false);
-      }
+      if (mounted && serial == _scanSerial) setState(() => _scanning = false);
     }
   }
 
@@ -161,9 +152,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         final row = event['row'];
         if (row is Map) {
           final result = _ScanResult.fromJson(Map<String, dynamic>.from(row));
-          if (!_results.any((e) => e.sameSignal(result))) {
-            _results.add(result);
-          }
+          if (!_results.any((item) => item.sameSignal(result))) _results.add(result);
         }
         _scanIndex = _toInt(event['index']) ?? _scanIndex;
         _scanTotal = _toInt(event['total']) ?? _scanTotal;
@@ -185,9 +174,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         _scanFoundCount = _toInt(event['found_count']) ?? _results.length;
         final rows = event['results'];
         if (_results.isEmpty && rows is List) {
-          _results.addAll(rows
-              .whereType<Map>()
-              .map((e) => _ScanResult.fromJson(Map<String, dynamic>.from(e))));
+          _results.addAll(rows.whereType<Map>().map((e) => _ScanResult.fromJson(Map<String, dynamic>.from(e))));
         }
         _scanIndex = _scanTotal;
         _status = '扫描完成: 成功$_scanSuccessCount只, 跳过$_scanFailCount只, 发现$_scanFoundCount只买点股票';
@@ -199,9 +186,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     final text = message.trim();
     if (text.isEmpty) return;
     _logs.add(text);
-    if (_logs.length > 1400) {
-      _logs.removeRange(0, _logs.length - 1400);
-    }
+    if (_logs.length > 1400) _logs.removeRange(0, _logs.length - 1400);
   }
 
   void _stopScan() {
@@ -227,15 +212,9 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     await _loadChartFor(code: result.code, market: result.market, target: result);
   }
 
-  Future<void> _loadChartFor({
-    required String code,
-    required String market,
-    required _ScanResult? target,
-  }) async {
+  Future<void> _loadChartFor({required String code, required String market, required _ScanResult? target}) async {
     if (_analyzing) return;
-    final source = PythonChanAnalysisSource(
-      baseUrl: _backendUrlController.text.trim(),
-    );
+    final source = PythonChanAnalysisSource(baseUrl: _backendUrlController.text.trim());
     setState(() {
       _analyzing = true;
       _status = '正在分析 $code...';
@@ -264,8 +243,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
           final maxEnd = snapshot.rawBars.length - 1;
           final focus = rawIndex.clamp(0, maxEnd).toInt();
           _crosshairIndex = focus;
-          _viewEndIndex =
-              (focus + math.max(20, _windowSize ~/ 2)).clamp(0, maxEnd).toInt();
+          _viewEndIndex = (focus + math.max(20, _windowSize ~/ 2)).clamp(0, maxEnd).toInt();
         } else {
           _crosshairIndex = null;
           _viewEndIndex = null;
@@ -285,9 +263,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   BspPoint? _matchBsp(ChanSnapshot snapshot, _ScanResult result) {
     for (final bsp in snapshot.bsps) {
       if (bsp.rawIndex == result.rawIndex &&
-          (result.bspType.isEmpty ||
-              bsp.type == result.bspType ||
-              bsp.type.contains(result.bspType))) {
+          (result.bspType.isEmpty || bsp.type == result.bspType || bsp.type.contains(result.bspType))) {
         return bsp;
       }
     }
@@ -312,7 +288,6 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     if (result == null || _snapshot.rawBars.isEmpty) return const [];
     final bsp = _matchBsp(_snapshot, result);
     if (bsp == null) return const [];
-
     final maxRaw = _snapshot.rawBars.length - 1;
     final leftRaw = math.max(0, bsp.rawIndex - 1).toInt();
     final rightRaw = math.min(maxRaw, bsp.rawIndex + 1).toInt();
@@ -359,12 +334,9 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
           child: Row(
             children: [
               SizedBox(width: leftWidth, child: _buildLeftPanel()),
-              _resizeHandle(
-                vertical: true,
-                onDelta: (delta) => setState(() {
-                  _leftWidth = (_leftWidth + delta).clamp(340.0, maxLeft).toDouble();
-                }),
-              ),
+              _resizeHandle(vertical: true, onDelta: (delta) => setState(() {
+                    _leftWidth = (_leftWidth + delta).clamp(340.0, maxLeft).toDouble();
+                  })),
               Expanded(child: _buildChartPanel()),
             ],
           ),
@@ -377,36 +349,27 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final available = constraints.maxHeight.isFinite ? constraints.maxHeight : 900.0;
-        final settingsHeight = _settingsHeight.clamp(190.0, math.max(220.0, available - 360.0)).toDouble();
-        final logHeight = _logHeight.clamp(120.0, math.max(140.0, available - settingsHeight - 190.0)).toDouble();
+        final settingsMax = math.max(220.0, available - 360.0);
+        final logMax = math.max(140.0, available - _settingsHeight - 190.0);
+        final settingsHeight = _settingsHeight.clamp(190.0, settingsMax).toDouble();
+        final logHeight = _logHeight.clamp(120.0, logMax).toDouble();
         return Padding(
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-              SizedBox(height: settingsHeight, child: _buildSettingsSection()),
-              _resizeHandle(
-                vertical: false,
-                onDelta: (delta) => setState(() {
-                  _settingsHeight = (_settingsHeight + delta).clamp(170.0, available - 280.0).toDouble();
-                }),
-              ),
-              Expanded(child: _buildResultSection()),
-              _resizeHandle(
-                vertical: false,
-                onDelta: (delta) => setState(() {
-                  _logHeight = (_logHeight - delta).clamp(110.0, available - 260.0).toDouble();
-                }),
-              ),
-              SizedBox(height: logHeight, child: _buildLogSection()),
+              SizedBox(height: settingsHeight, child: _settingsPanel()),
+              _resizeHandle(vertical: false, onDelta: (delta) => setState(() {
+                    _settingsHeight = (_settingsHeight + delta).clamp(170.0, math.max(170.0, available - 280.0)).toDouble();
+                  })),
+              Expanded(child: _resultsPanel()),
+              _resizeHandle(vertical: false, onDelta: (delta) => setState(() {
+                    _logHeight = (_logHeight - delta).clamp(110.0, math.max(110.0, available - 260.0)).toDouble();
+                  })),
+              SizedBox(height: logHeight, child: _logsPanel()),
               const SizedBox(height: 6),
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text(
-                  _status,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
+                child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
               ),
             ],
           ),
@@ -415,448 +378,320 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     );
   }
 
-  Widget _buildSettingsSection() {
-    return _section(
-      '扫描设置',
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                CheckboxListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  value: _biStrict,
-                  onChanged: _scanning
-                      ? null
-                      : (v) => setState(() => _biStrict = v ?? _biStrict),
-                  title: const Text('笔严格模式'),
-                ),
-                TextField(
-                  controller: _backendUrlController,
-                  enabled: !_scanning && !_isAndroidApp,
-                  decoration: const InputDecoration(
-                    labelText: 'Windows Python chan.py 服务地址',
-                    border: OutlineInputBorder(),
+  Widget _settingsPanel() => _panel(
+        '扫描设置',
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: _biStrict,
+                onChanged: _scanning ? null : (v) => setState(() => _biStrict = v ?? _biStrict),
+                title: const Text('笔严格模式'),
+              ),
+              TextField(
+                controller: _backendUrlController,
+                enabled: !_scanning && !_isAndroidApp,
+                decoration: const InputDecoration(labelText: 'Windows Python chan.py 服务地址', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _limitController,
+                enabled: !_scanning,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: '扫描数量上限', helperText: '默认 300；支持最大 5000', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _scanning ? null : _startScan,
+                      icon: _scanning ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow),
+                      label: const Text('开始扫描'),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _limitController,
-                  enabled: !_scanning,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '扫描数量上限',
-                    helperText: '默认 300；支持最大 5000',
-                    border: OutlineInputBorder(),
+                  const SizedBox(width: 8),
+                  Expanded(child: FilledButton.tonalIcon(onPressed: _scanning ? _stopScan : null, icon: const Icon(Icons.stop), label: const Text('停止'))),
+                ],
+              ),
+              const SizedBox(height: 8),
+              _progressBlock(),
+              const Divider(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _codeController,
+                      enabled: !_analyzing,
+                      decoration: const InputDecoration(labelText: '单股分析代码', hintText: '如: 000001', border: OutlineInputBorder()),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _scanning ? null : _startScan,
-                        icon: _scanning
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.play_arrow),
-                        label: const Text('开始扫描'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton.tonalIcon(
-                        onPressed: _scanning ? _stopScan : null,
-                        icon: const Icon(Icons.stop),
-                        label: const Text('停止'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                _buildProgressBlock(),
-                const Divider(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _codeController,
-                        enabled: !_analyzing,
-                        decoration: const InputDecoration(
-                          labelText: '单股分析代码',
-                          hintText: '如: 000001',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _analyzing ? null : _analyzeSingle,
-                      child: _analyzing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('分析'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _analyzing ? null : _analyzeSingle,
+                    child: _analyzing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('分析'),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-      ],
-    );
-  }
+      );
 
-  Widget _buildProgressBlock() {
+  Widget _progressBlock() {
     final progress = _scanTotal > 0 ? (_scanIndex / _scanTotal).clamp(0.0, 1.0).toDouble() : null;
+    final progressValue = _scanning ? progress : (_scanTotal > 0 ? progress : 0.0);
     final percent = progress == null ? '--' : '${(progress * 100).toStringAsFixed(1)}%';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        LinearProgressIndicator(value: _scanning ? progress : (_scanTotal > 0 ? progress : 0)),
+        LinearProgressIndicator(value: progressValue),
         const SizedBox(height: 6),
-        Text(
-          '进度 $percent  $_scanIndex/$_scanTotal  成功$_scanSuccessCount  跳过$_scanFailCount  买点$_scanFoundCount',
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
-        ),
+        Text('进度 $percent  $_scanIndex/$_scanTotal  成功$_scanSuccessCount  跳过$_scanFailCount  买点$_scanFoundCount', style: const TextStyle(color: Colors.white70, fontSize: 12)),
         if (_scanCurrent.isNotEmpty)
-          Text(
-            '当前: $_scanCurrent',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white54, fontSize: 11),
-          ),
+          Text('当前: $_scanCurrent', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 11)),
       ],
     );
   }
 
-  Widget _buildResultSection() {
-    return _section(
-      '买点股票列表',
-      trailing: TextButton.icon(
-        onPressed: _results.isEmpty
-            ? null
-            : () => setState(() {
-                  _results.clear();
-                  _selectedResult = null;
-                  _scanFoundCount = 0;
-                }),
-        icon: const Icon(Icons.clear_all, size: 16),
-        label: const Text('清空列表'),
-      ),
-      children: [
-        Expanded(
-          child: _results.isEmpty
-              ? const Center(
-                  child: Text('暂无买点结果；扫描中一旦发现会实时出现在这里', style: TextStyle(color: Colors.white54)),
-                )
-              : Scrollbar(
+  Widget _resultsPanel() => _panel(
+        '买点股票列表',
+        trailing: TextButton.icon(
+          onPressed: _results.isEmpty ? null : () => setState(() {
+                _results.clear();
+                _selectedResult = null;
+                _scanFoundCount = 0;
+              }),
+          icon: const Icon(Icons.clear_all, size: 16),
+          label: const Text('清空列表'),
+        ),
+        child: _results.isEmpty
+            ? const Center(child: Text('暂无买点结果；扫描中一旦发现会实时出现在这里', style: TextStyle(color: Colors.white54)))
+            : Scrollbar(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
                   child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SingleChildScrollView(
-                      child: DataTable(
-                        showCheckboxColumn: false,
-                        headingRowHeight: 32,
-                        dataRowMinHeight: 34,
-                        dataRowMaxHeight: 42,
-                        columnSpacing: 14,
-                        columns: const [
-                          DataColumn(label: Text('代码')),
-                          DataColumn(label: Text('名称')),
-                          DataColumn(label: Text('现价')),
-                          DataColumn(label: Text('涨跌%')),
-                          DataColumn(label: Text('买点')),
-                        ],
-                        rows: [
-                          for (final result in _results)
-                            DataRow(
-                              selected: result.sameSignal(_selectedResult),
-                              onSelectChanged: (_) => _openResult(result),
-                              cells: [
-                                DataCell(Text(result.code)),
-                                DataCell(Text(result.name, overflow: TextOverflow.ellipsis)),
-                                DataCell(Text(_fmtNum(result.price))),
-                                DataCell(Text(_fmtNum(result.change))),
-                                DataCell(Text('${result.bspType} (${_fmtDate(result.bspTime)})')),
-                              ],
-                            ),
-                        ],
-                      ),
+                    child: DataTable(
+                      showCheckboxColumn: false,
+                      headingRowHeight: 32,
+                      dataRowMinHeight: 34,
+                      dataRowMaxHeight: 42,
+                      columnSpacing: 14,
+                      columns: const [
+                        DataColumn(label: Text('代码')),
+                        DataColumn(label: Text('名称')),
+                        DataColumn(label: Text('现价')),
+                        DataColumn(label: Text('涨跌%')),
+                        DataColumn(label: Text('买点')),
+                      ],
+                      rows: [
+                        for (final result in _results)
+                          DataRow(
+                            selected: result.sameSignal(_selectedResult),
+                            onSelectChanged: (_) => _openResult(result),
+                            cells: [
+                              DataCell(Text(result.code)),
+                              DataCell(Text(result.name, overflow: TextOverflow.ellipsis)),
+                              DataCell(Text(_fmtNum(result.price))),
+                              DataCell(Text(_fmtNum(result.change))),
+                              DataCell(Text('${result.bspType} (${_fmtDate(result.bspTime)})')),
+                            ],
+                          ),
+                      ],
                     ),
                   ),
                 ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLogSection() {
-    return _section(
-      '扫描日志',
-      trailing: TextButton.icon(
-        onPressed: _logs.isEmpty ? null : () => setState(() => _logs.clear()),
-        icon: const Icon(Icons.delete_outline, size: 16),
-        label: const Text('清空日志'),
-      ),
-      children: [
-        Expanded(
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0B0D10),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-            ),
-            child: SingleChildScrollView(
-              reverse: true,
-              child: SelectableText(
-                _logs.isEmpty ? '暂无日志' : _logs.join('\n'),
-                style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
               ),
-            ),
+      );
+
+  Widget _logsPanel() => _panel(
+        '扫描日志',
+        trailing: TextButton.icon(
+          onPressed: _logs.isEmpty ? null : () => setState(() => _logs.clear()),
+          icon: const Icon(Icons.delete_outline, size: 16),
+          label: const Text('清空日志'),
+        ),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0B0D10),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          child: SingleChildScrollView(
+            reverse: true,
+            child: SelectableText(_logs.isEmpty ? '暂无日志' : _logs.join('\n'), style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35)),
           ),
         ),
-      ],
-    );
-  }
+      );
 
-  Widget _buildChartPanel() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-      child: Column(
-        children: [
-          _buildChartToolbar(fullscreen: false),
-          const SizedBox(height: 8),
-          Expanded(child: _buildChartCanvas()),
-        ],
-      ),
-    );
-  }
+  Widget _buildChartPanel() => Padding(
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+        child: Column(children: [_chartToolbar(fullscreen: false), const SizedBox(height: 8), Expanded(child: _chartCanvas())]),
+      );
 
-  Widget _buildChartCanvas() {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFF131722),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: _snapshot.rawBars.isEmpty
-            ? const Center(
-                child: Text(
-                  '点击扫描结果或单股分析后显示 chan.py 图表',
-                  style: TextStyle(color: Colors.white70),
+  Widget _chartCanvas() => DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFF131722),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: _snapshot.rawBars.isEmpty
+              ? const Center(child: Text('点击扫描结果或单股分析后显示 chan.py 图表', style: TextStyle(color: Colors.white70)))
+              : OriginKlineChart(
+                  snapshot: _snapshot,
+                  showFx: false,
+                  showFxLine: false,
+                  showFxText: false,
+                  showBi: _showBi,
+                  showBiText: false,
+                  showSeg: _showSeg,
+                  showSegText: true,
+                  showZs: _showZs,
+                  showBiBsp: _showBsp,
+                  showSegBsp: _showBsp,
+                  showMergedBars: _showMergedBars,
+                  drawingObjects: _highlightObjects(),
+                  drawingStorageKey: _drawingStorageKey,
+                  symbolLabel: _chartSymbolLabel,
+                  windowSize: _windowSize,
+                  priceScale: _priceScale,
+                  viewEndIndex: _viewEndIndex,
+                  crosshairIndex: _crosshairIndex,
+                  onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
+                  onPanBars: _panChartByBars,
+                  onWindowSizeChanged: (v) => setState(() => _windowSize = v),
+                  onPriceScaleChanged: (v) => setState(() => _priceScale = v),
                 ),
-              )
-            : OriginKlineChart(
-                snapshot: _snapshot,
-                showFx: false,
-                showFxLine: false,
-                showFxText: false,
-                showBi: _showBi,
-                showBiText: false,
-                showSeg: _showSeg,
-                showSegText: true,
-                showZs: _showZs,
-                showBiBsp: _showBsp,
-                showSegBsp: _showBsp,
-                showMergedBars: _showMergedBars,
-                drawingObjects: _highlightObjects(),
-                drawingStorageKey: _drawingStorageKey,
-                symbolLabel: _chartSymbolLabel,
-                windowSize: _windowSize,
-                priceScale: _priceScale,
-                viewEndIndex: _viewEndIndex,
-                crosshairIndex: _crosshairIndex,
-                onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
-                onPanBars: _panChartByBars,
-                onWindowSizeChanged: (v) => setState(() => _windowSize = v),
-                onPriceScaleChanged: (v) => setState(() => _priceScale = v),
-              ),
-      ),
-    );
-  }
+        ),
+      );
 
-  Widget _buildChartToolbar({required bool fullscreen}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF131722),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        children: [
-          _disabledCheck('K线', true, 'K线为主图基础层，当前不可关闭'),
-          _check('合并K线', _showMergedBars, (v) => setState(() => _showMergedBars = v)),
-          _check('笔', _showBi, (v) => setState(() => _showBi = v)),
-          _check('线段', _showSeg, (v) => setState(() => _showSeg = v)),
-          _check('中枢', _showZs, (v) => setState(() => _showZs = v)),
-          _check('买卖点', _showBsp, (v) => setState(() => _showBsp = v)),
-          _disabledCheck('MACD', true, 'MACD 副图当前未接入 OriginKlineChart，保留原扫描器入口占位'),
-          const Spacer(),
-          if (!fullscreen)
+  Widget _chartToolbar({required bool fullscreen}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF131722),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Row(
+          children: [
+            _disabledCheck('K线', true, 'K线为主图基础层，当前不可关闭'),
+            _check('合并K线', _showMergedBars, (v) => setState(() => _showMergedBars = v)),
+            _check('笔', _showBi, (v) => setState(() => _showBi = v)),
+            _check('线段', _showSeg, (v) => setState(() => _showSeg = v)),
+            _check('中枢', _showZs, (v) => setState(() => _showZs = v)),
+            _check('买卖点', _showBsp, (v) => setState(() => _showBsp = v)),
+            _disabledCheck('MACD', true, 'MACD 副图当前未接入 OriginKlineChart，保留原扫描器入口占位'),
+            const Spacer(),
+            if (!fullscreen)
+              OutlinedButton.icon(onPressed: _snapshot.rawBars.isEmpty ? null : _openChartFullscreen, icon: const Icon(Icons.fullscreen, size: 16), label: const Text('全屏')),
+            if (!fullscreen) const SizedBox(width: 8),
             OutlinedButton.icon(
-              onPressed: _snapshot.rawBars.isEmpty ? null : _openChartFullscreen,
-              icon: const Icon(Icons.fullscreen, size: 16),
-              label: const Text('全屏'),
+              onPressed: _snapshot.rawBars.isEmpty || _analyzing
+                  ? null
+                  : () {
+                      final result = _selectedResult;
+                      result == null ? _analyzeSingle() : _openResult(result);
+                    },
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('刷新图表'),
             ),
-          if (!fullscreen) const SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: _snapshot.rawBars.isEmpty || _analyzing
-                ? null
-                : () {
-                    final result = _selectedResult;
-                    if (result == null) {
-                      _analyzeSingle();
-                    } else {
-                      _openResult(result);
-                    }
-                  },
-            icon: const Icon(Icons.refresh, size: 16),
-            label: const Text('刷新图表'),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
 
   void _openChartFullscreen() {
     if (_snapshot.rawBars.isEmpty) return;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (context) => Scaffold(
-          backgroundColor: const Color(0xFF0B0D10),
-          body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _chartSymbolLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close, color: Colors.white70),
-                        tooltip: '退出全屏',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(child: _buildChartCanvas()),
-                ],
-              ),
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (context) => Scaffold(
+        backgroundColor: const Color(0xFF0B0D10),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: Text(_chartSymbolLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+                    IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close, color: Colors.white70), tooltip: '退出全屏'),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Expanded(child: _chartCanvas()),
+              ],
             ),
           ),
         ),
       ),
-    );
+    ));
   }
 
-  Widget _section(String title, {required List<Widget> children, Widget? trailing}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF131722),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-              const Spacer(),
-              if (trailing != null) trailing,
-            ],
-          ),
-          const SizedBox(height: 8),
-          ...children,
-        ],
-      ),
-    );
-  }
-
-  Widget _resizeHandle({required bool vertical, required ValueChanged<double> onDelta}) {
-    return MouseRegion(
-      cursor: vertical ? SystemMouseCursors.resizeColumn : SystemMouseCursors.resizeRow,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragUpdate: vertical ? (d) => onDelta(d.delta.dx) : null,
-        onVerticalDragUpdate: vertical ? null : (d) => onDelta(d.delta.dy),
-        child: SizedBox(
-          width: vertical ? 8 : double.infinity,
-          height: vertical ? double.infinity : 8,
-          child: Center(
-            child: Container(
-              width: vertical ? 2 : 54,
-              height: vertical ? 54 : 2,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(99),
-              ),
-            ),
-          ),
+  Widget _panel(String title, {required Widget child, Widget? trailing}) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF131722),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
-      ),
-    );
-  }
-
-  Widget _check(String label, bool value, ValueChanged<bool> onChanged) {
-    return InkWell(
-      onTap: () => onChanged(!value),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Checkbox(
-              value: value,
-              onChanged: (v) => onChanged(v ?? value),
-              visualDensity: VisualDensity.compact,
-            ),
-            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            Row(children: [Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)), const Spacer(), if (trailing != null) trailing]),
+            const SizedBox(height: 8),
+            Expanded(child: child),
           ],
         ),
-      ),
-    );
-  }
+      );
 
-  Widget _disabledCheck(String label, bool value, String tooltip) {
-    return Tooltip(
-      message: tooltip,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+  Widget _resizeHandle({required bool vertical, required ValueChanged<double> onDelta}) => MouseRegion(
+        cursor: vertical ? SystemMouseCursors.resizeColumn : SystemMouseCursors.resizeRow,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragUpdate: vertical ? (d) => onDelta(d.delta.dx) : null,
+          onVerticalDragUpdate: vertical ? null : (d) => onDelta(d.delta.dy),
+          child: SizedBox(
+            width: vertical ? 8 : double.infinity,
+            height: vertical ? double.infinity : 8,
+            child: Center(
+              child: Container(
+                width: vertical ? 2 : 54,
+                height: vertical ? 54 : 2,
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(99)),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  Widget _check(String label, bool value, ValueChanged<bool> onChanged) => InkWell(
+        onTap: () => onChanged(!value),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Checkbox(value: value, onChanged: (v) => onChanged(v ?? value), visualDensity: VisualDensity.compact),
+            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          ]),
+        ),
+      );
+
+  Widget _disabledCheck(String label, bool value, String tooltip) => Tooltip(
+        message: tooltip,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
             Checkbox(value: value, onChanged: null, visualDensity: VisualDensity.compact),
             Text(label, style: const TextStyle(color: Colors.white38, fontSize: 12)),
-          ],
+          ]),
         ),
-      ),
-    );
-  }
+      );
 
   String get _drawingStorageKey {
     final result = _selectedResult;
@@ -872,29 +707,21 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF1E3A8A),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      duration: const Duration(seconds: 2),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: const Color(0xFF1E3A8A),
+    ));
   }
 
   static String? _normalizeCode(String value) {
-    final code = value
-        .trim()
-        .toUpperCase()
-        .replaceAll('.SZ', '')
-        .replaceAll('.SH', '')
-        .replaceAll(RegExp(r'[^0-9]'), '');
+    final code = value.trim().toUpperCase().replaceAll('.SZ', '').replaceAll('.SH', '').replaceAll(RegExp(r'[^0-9]'), '');
     if (code.length < 6) return null;
     return code.substring(code.length - 6);
   }
 
-  static String _inferMarket(String code) =>
-      code.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ';
+  static String _inferMarket(String code) => code.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ';
 
   static int? _toInt(Object? value) {
     if (value is int) return value;
@@ -954,11 +781,7 @@ class _ScanResult {
 
   bool sameSignal(_ScanResult? other) {
     if (other == null) return false;
-    return code == other.code &&
-        market == other.market &&
-        rawIndex == other.rawIndex &&
-        bspType == other.bspType &&
-        level == other.level;
+    return code == other.code && market == other.market && rawIndex == other.rawIndex && bspType == other.bspType && level == other.level;
   }
 
   static String _string(Object? value) => '${value ?? ''}'.trim();
@@ -977,14 +800,10 @@ class _ScanResult {
   }
 
   static DateTime? _date(Object? value) {
-    final text = '${value ?? ''}'
-        .trim()
-        .replaceFirst(' ', 'T')
-        .replaceAll('/', '-');
+    final text = '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
     if (text.isEmpty || text.toLowerCase() == 'null') return null;
     return DateTime.tryParse(text);
   }
 
-  static String _inferMarket(String code) =>
-      code.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ';
+  static String _inferMarket(String code) => code.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ';
 }
