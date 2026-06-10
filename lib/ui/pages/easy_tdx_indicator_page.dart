@@ -351,7 +351,7 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
         width: width,
         height: 42,
         child: DropdownButtonFormField<String>(
-          value: value,
+          initialValue: value,
           dropdownColor: const Color(0xFF151B26),
           style: const TextStyle(color: Colors.white, fontSize: 13),
           decoration: InputDecoration(labelText: label, labelStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: const Color(0xFF151B26), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5)),
