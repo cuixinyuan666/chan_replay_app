@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 from .chanpy_engine import analyze_once
 from .easy_tdx_provider import infer_market, normalize_symbol
@@ -100,8 +100,6 @@ def _call_stock_list(client: Any, method_name: str, market_value: Any, market_na
         return []
 
     rows: list[Any] = []
-    # pytdx-style APIs usually page by offset. easy-tdx wrappers may also expose
-    # a one-shot stock list method. Try both shapes without changing Chan logic.
     if method_name in {'get_security_list', 'get_stock_list'}:
         for offset in range(0, 100000, 1000):
             page: list[Any] = []
@@ -170,10 +168,6 @@ def _load_easy_tdx_stock_rows(limit: int) -> list[dict[str, Any]]:
                     return result
         if result:
             return result
-        # Some easy-tdx builds expose K-line APIs but do not expose a security-list
-        # API. In that case scanner must not silently return an empty universe.
-        # Fall back to a deterministic A-share candidate pool; every candidate is
-        # still validated by easy-tdx K-line loading inside analyze_once().
         return _fallback_candidate_stock_rows(limit)
     finally:
         _close_client(client)
@@ -183,16 +177,16 @@ def _fallback_candidate_stock_rows(limit: int) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     ranges = (
-        ('SZ', 1, 999),        # 000001-000999 主板
+        ('SZ', 1, 999),
         ('SH', 600000, 600999),
-        ('SZ', 1000, 1999),    # 001000-001999
+        ('SZ', 1000, 1999),
         ('SH', 601000, 601999),
-        ('SZ', 2000, 2999),    # 002000-002999 中小板历史代码段
+        ('SZ', 2000, 2999),
         ('SH', 603000, 603999),
         ('SZ', 300000, 300999),
         ('SH', 605000, 605999),
         ('SZ', 301000, 301999),
-        ('SZ', 3000, 3999),    # 003000-003999
+        ('SZ', 3000, 3999),
     )
     max_span = max(end - start for _, start, end in ranges)
     for offset in range(max_span + 1):
@@ -344,7 +338,45 @@ def _date_only(value: Any) -> datetime | None:
     return datetime(dt.year, dt.month, dt.day)
 
 
-def scan_bsp(
+def _scanner_result_from_buy(row: dict[str, Any], bars: list[dict[str, Any]], latest_buy: dict[str, Any]) -> dict[str, Any]:
+    latest_price = _to_float(row.get('price')) or _to_float(bars[-1].get('close'))
+    change = _to_float(row.get('change'))
+    if change is None:
+        change = _bar_change_pct(bars)
+    raw_index = int(latest_buy.get('raw_index') or latest_buy.get('rawIndex') or 0)
+    bsp_price = _to_float(latest_buy.get('price')) or latest_price
+    return {
+        'code': str(row['code']),
+        'market': str(row.get('market') or infer_market(str(row['code']))).upper(),
+        'name': str(row.get('name') or row['code']),
+        'price': latest_price,
+        'change': change,
+        'bsp_type': str(latest_buy.get('type') or 'BSP'),
+        'bsp_time': str(latest_buy.get('time') or ''),
+        'raw_index': raw_index,
+        'bsp_price': bsp_price,
+        'level': str(latest_buy.get('level') or ''),
+    }
+
+
+def _config_payload(bi_strict: bool) -> dict[str, Any]:
+    return {
+        'bi_strict': bi_strict,
+        'trigger_step': False,
+        'skip_step': 0,
+        'divergence_rate': 'inf',
+        'bsp2_follow_1': False,
+        'bsp3_follow_1': False,
+        'min_zs_cnt': 0,
+        'bs1_peak': False,
+        'macd_algo': 'peak',
+        'bs_type': ','.join(_SCAN_BSP_TYPES),
+        'print_warning': False,
+        'zs_algo': 'normal',
+    }
+
+
+def scan_bsp_events(
     *,
     limit: int = 300,
     days: int = 365,
@@ -352,42 +384,64 @@ def scan_bsp(
     bi_strict: bool = True,
     symbols: Iterable[Any] | None = None,
     config: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    logs: list[str] = []
+) -> Iterator[dict[str, Any]]:
     begin_time = (datetime.now() - timedelta(days=max(1, int(days)))).strftime('%Y-%m-%d')
     end_time = datetime.now().strftime('%Y-%m-%d')
     cutoff_date = datetime.now() - timedelta(days=max(1, int(recent_days)))
     chan_config = scanner_chan_config(bi_strict=bi_strict, extra=config)
 
+    success_count = 0
+    fail_count = 0
+    results: list[dict[str, Any]] = []
+
+    yield {'type': 'log', 'message': '正在获取股票列表...'}
     try:
         stock_list = get_tradable_stocks(symbols=symbols, limit=limit)
     except Exception as exc:
-        return {
+        message = f'获取股票列表失败: {exc}'
+        yield {'type': 'error', 'message': message}
+        yield {
+            'type': 'done',
             'ok': False,
-            'error': f'获取股票列表失败: {exc}',
-            'source': 'easy-tdx',
-            'results': [],
-            'logs': [f'❌ 获取股票列表失败: {exc}'],
+            'error': message,
+            'total': 0,
             'success_count': 0,
             'fail_count': 0,
             'found_count': 0,
+            'results': [],
+            'config': _config_payload(bi_strict),
         }
+        return
 
     source_hint = '候选代码池 + easy-tdx K线验证' if any(
         row.get('_source') == 'candidate_pool' for row in stock_list
     ) else 'easy-tdx股票列表'
-    logs.append(f'获取到 {len(stock_list)} 只可交易股票（{source_hint}），开始扫描...')
+    yield {
+        'type': 'start',
+        'total': len(stock_list),
+        'source': 'easy-tdx',
+        'source_hint': source_hint,
+        'message': f'获取到 {len(stock_list)} 只可交易股票（{source_hint}），开始扫描...',
+    }
     if not stock_list:
-        logs.append('⚠️ 股票列表为空：当前 easy-tdx 版本可能未暴露证券列表接口。')
-    success_count = 0
-    fail_count = 0
-    results: list[dict[str, Any]] = []
+        yield {'type': 'log', 'message': '⚠️ 股票列表为空：当前 easy-tdx 版本可能未暴露证券列表接口。'}
 
     for idx, row in enumerate(stock_list):
         code = str(row['code'])
         market = str(row.get('market') or infer_market(code)).upper()
         name = str(row.get('name') or code)
-        logs.append(f'🔍 扫描 {idx + 1}/{len(stock_list)} {code} {name}...')
+        yield {
+            'type': 'progress',
+            'index': idx + 1,
+            'total': len(stock_list),
+            'code': code,
+            'name': name,
+            'success_count': success_count,
+            'fail_count': fail_count,
+            'found_count': len(results),
+            'message': f'扫描 {idx + 1}/{len(stock_list)} {code} {name}',
+        }
+        yield {'type': 'log', 'message': f'🔍 扫描 {idx + 1}/{len(stock_list)} {code} {name}...'}
         try:
             analysis = analyze_once(
                 symbol=code,
@@ -401,22 +455,22 @@ def scan_bsp(
             )
             if not analysis.get('ok', False):
                 fail_count += 1
-                logs.append(f"❌ {code} {name}: {str(analysis.get('error') or 'chan.py 计算失败')[:80]}")
+                yield {'type': 'log', 'message': f"❌ {code} {name}: {str(analysis.get('error') or 'chan.py 计算失败')[:120]}"}
                 continue
             bars = analysis.get('bars') if isinstance(analysis.get('bars'), list) else []
             if not bars:
                 fail_count += 1
-                logs.append(f'⏭️ {code} {name}: 无K线数据')
+                yield {'type': 'log', 'message': f'⏭️ {code} {name}: 无K线数据'}
                 continue
             last_date = _date_only(bars[-1].get('dt') or bars[-1].get('time') or bars[-1].get('date'))
             if last_date is None or (datetime.now() - last_date).days > 15:
                 fail_count += 1
-                logs.append(f'⏸️ {code} {name}: 停牌超过15天')
+                yield {'type': 'log', 'message': f'⏸️ {code} {name}: 停牌超过15天'}
                 continue
             last_volume = _to_float(bars[-1].get('vol') or bars[-1].get('volume'))
             if last_volume is not None and last_volume <= 0:
                 fail_count += 1
-                logs.append(f'⏸️ {code} {name}: 成交量为0')
+                yield {'type': 'log', 'message': f'⏸️ {code} {name}: 成交量为0'}
                 continue
 
             success_count += 1
@@ -430,38 +484,30 @@ def scan_bsp(
                     buy_points.append(bsp)
 
             if not buy_points:
-                logs.append(f'➖ {code} {name}: 无近期买点')
+                yield {'type': 'log', 'message': f'➖ {code} {name}: 无近期买点'}
                 continue
 
             buy_points.sort(key=lambda item: int(item.get('raw_index') or item.get('rawIndex') or -1), reverse=True)
             latest_buy = buy_points[0]
-            latest_price = _to_float(row.get('price')) or _to_float(bars[-1].get('close'))
-            change = _to_float(row.get('change'))
-            if change is None:
-                change = _bar_change_pct(bars)
-            raw_index = int(latest_buy.get('raw_index') or latest_buy.get('rawIndex') or 0)
-            bsp_price = _to_float(latest_buy.get('price')) or latest_price
-            bsp_type = str(latest_buy.get('type') or 'BSP')
-            bsp_time = str(latest_buy.get('time') or '')
-            logs.append(f'✅ {code} {name}: 发现买点 {bsp_type}')
-            results.append({
-                'code': code,
-                'market': market,
-                'name': name,
-                'price': latest_price,
-                'change': change,
-                'bsp_type': bsp_type,
-                'bsp_time': bsp_time,
-                'raw_index': raw_index,
-                'bsp_price': bsp_price,
-                'level': str(latest_buy.get('level') or ''),
-            })
+            result = _scanner_result_from_buy(row, bars, latest_buy)
+            results.append(result)
+            yield {'type': 'log', 'message': f"✅ {code} {name}: 发现买点 {result['bsp_type']}"}
+            yield {
+                'type': 'result',
+                'row': result,
+                'index': idx + 1,
+                'total': len(stock_list),
+                'success_count': success_count,
+                'fail_count': fail_count,
+                'found_count': len(results),
+            }
         except Exception as exc:
             fail_count += 1
-            logs.append(f'❌ {code} {name}: {str(exc)[:80]}')
+            yield {'type': 'log', 'message': f'❌ {code} {name}: {str(exc)[:120]}'}
             continue
 
-    return {
+    yield {
+        'type': 'done',
         'ok': True,
         'source': 'easy-tdx',
         'days': days,
@@ -471,19 +517,51 @@ def scan_bsp(
         'fail_count': fail_count,
         'found_count': len(results),
         'results': results,
-        'logs': logs,
-        'config': {
-            'bi_strict': bi_strict,
-            'trigger_step': False,
-            'skip_step': 0,
-            'divergence_rate': 'inf',
-            'bsp2_follow_1': False,
-            'bsp3_follow_1': False,
-            'min_zs_cnt': 0,
-            'bs1_peak': False,
-            'macd_algo': 'peak',
-            'bs_type': ','.join(_SCAN_BSP_TYPES),
-            'print_warning': False,
-            'zs_algo': 'normal',
-        },
+        'config': _config_payload(bi_strict),
     }
+
+
+def scan_bsp(
+    *,
+    limit: int = 300,
+    days: int = 365,
+    recent_days: int = 3,
+    bi_strict: bool = True,
+    symbols: Iterable[Any] | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    logs: list[str] = []
+    results: list[dict[str, Any]] = []
+    summary: dict[str, Any] = {
+        'ok': True,
+        'source': 'easy-tdx',
+        'days': days,
+        'recent_days': recent_days,
+        'total': 0,
+        'success_count': 0,
+        'fail_count': 0,
+        'found_count': 0,
+        'results': results,
+        'logs': logs,
+        'config': _config_payload(bi_strict),
+    }
+    for event in scan_bsp_events(
+        limit=limit,
+        days=days,
+        recent_days=recent_days,
+        bi_strict=bi_strict,
+        symbols=symbols,
+        config=config,
+    ):
+        event_type = event.get('type')
+        if event_type in {'log', 'start'} and event.get('message'):
+            logs.append(str(event['message']))
+        elif event_type == 'error':
+            logs.append(f"❌ {event.get('message') or '扫描失败'}")
+        elif event_type == 'result' and isinstance(event.get('row'), dict):
+            results.append(dict(event['row']))
+        elif event_type == 'done':
+            summary.update({k: v for k, v in event.items() if k != 'type'})
+            summary['results'] = results if results else list(event.get('results') or [])
+            summary['logs'] = logs
+    return summary
