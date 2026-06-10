@@ -23,6 +23,24 @@ lib/ui/widgets/origin_indicator_pane.dart
 4. crosshair 命中时显示当前 `VOL / DIF / DEA / HIST`。
 5. 不在图面常驻堆叠指标数值。
 
+## 组件测试
+
+```text
+test/origin_indicator_pane_test.dart
+```
+
+测试覆盖：
+
+1. synthetic `ChanSnapshot + EasyTdxIndicators` 可构建 `OriginIndicatorPane`。
+2. `VOL + MACD` 同时打开时 widget 可渲染且无 Flutter 异常。
+3. `showVol=false / showMacd=false` 时副图折叠，不渲染 `CustomPaint`。
+
+CI 已加入：
+
+```bash
+flutter test test/origin_indicator_pane_test.dart
+```
+
 ## 页面接入补丁脚本
 
 由于 `lib/ui/pages/origin_replay_page_v2.dart` 体量较大，页面接入通过确定性锚点补丁脚本完成：
@@ -49,9 +67,10 @@ python tools/patch_origin_replay_indicator_panes.py --check
 
 ```bash
 python tools/patch_origin_replay_indicator_panes.py --check-anchors
+flutter test test/origin_indicator_pane_test.dart
 ```
 
-该步骤只检查补丁锚点是否仍存在或已被接入，不强制页面已经接入；目的是防止后续大文件改动导致补丁脚本失效。
+`--check-anchors` 只检查补丁锚点是否仍存在或已被接入，不强制页面已经接入；目的是防止后续大文件改动导致补丁脚本失效。
 
 ## 后续验收
 
