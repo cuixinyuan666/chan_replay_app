@@ -11,26 +11,33 @@ class RootPage extends StatefulWidget {
 }
 
 class _RootPageState extends State<RootPage> {
-  int _index = 0;
+  static const int _replayIndex = 0;
+  static const int _scannerIndex = 1;
+
+  int _index = _replayIndex;
+
+  bool get _showingScanner => _index == _scannerIndex;
+
+  void _openReplay() => setState(() => _index = _replayIndex);
+  void _openScanner() => setState(() => _index = _scannerIndex);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Row(
+      body: Stack(
         children: [
-          _RootLeftToolbar(
+          IndexedStack(
             index: _index,
-            onChanged: (value) => setState(() => _index = value),
+            children: const [
+              OriginReplayPageV2(),
+              AshareBspScannerPage(),
+            ],
           ),
-          const VerticalDivider(width: 1, color: Colors.white12),
-          Expanded(
-            child: IndexedStack(
-              index: _index,
-              children: const [
-                OriginReplayPageV2(),
-                AshareBspScannerPage(),
-              ],
-            ),
+          _RouteToolButton(
+            tooltip: _showingScanner ? '返回复盘' : '扫描器',
+            icon: _showingScanner ? Icons.candlestick_chart : Icons.radar,
+            selected: _showingScanner,
+            onPressed: _showingScanner ? _openReplay : _openScanner,
           ),
         ],
       ),
@@ -38,79 +45,48 @@ class _RootPageState extends State<RootPage> {
   }
 }
 
-class _RootLeftToolbar extends StatelessWidget {
-  final int index;
-  final ValueChanged<int> onChanged;
+class _RouteToolButton extends StatelessWidget {
+  final String tooltip;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onPressed;
 
-  const _RootLeftToolbar({required this.index, required this.onChanged});
+  const _RouteToolButton({
+    required this.tooltip,
+    required this.icon,
+    required this.selected,
+    required this.onPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 72,
-      color: const Color(0xFF10141D),
-      child: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            _item(
-              context,
-              value: 0,
-              icon: Icons.candlestick_chart,
-              label: '复盘',
-            ),
-            const SizedBox(height: 8),
-            _item(
-              context,
-              value: 1,
-              icon: Icons.radar,
-              label: '扫描器',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _item(
-    BuildContext context, {
-    required int value,
-    required IconData icon,
-    required String label,
-  }) {
-    final selected = index == value;
-    return Tooltip(
-      message: label,
-      child: InkWell(
-        onTap: () => onChanged(value),
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          width: 58,
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFF2962FF) : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected
-                  ? const Color(0xFF8AB4FF)
-                  : Colors.white.withValues(alpha: 0.08),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 20, color: selected ? Colors.white : Colors.white60),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? Colors.white : Colors.white60,
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+    return Positioned(
+      left: 3,
+      bottom: 18,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.transparent,
+          child: SizedBox(
+            width: 42,
+            height: 38,
+            child: IconButton(
+              onPressed: onPressed,
+              icon: Icon(icon, size: 19),
+              color: selected ? Colors.white : Colors.white70,
+              disabledColor: Colors.white24,
+              style: IconButton.styleFrom(
+                backgroundColor: selected
+                    ? const Color(0xFF2962FF)
+                    : const Color(0xEE131722),
+                side: BorderSide(
+                  color: selected
+                      ? const Color(0xFF8AB4FF)
+                      : Colors.white.withValues(alpha: 0.10),
                 ),
+                visualDensity: VisualDensity.compact,
               ),
-            ],
+            ),
           ),
         ),
       ),
