@@ -13,6 +13,7 @@ Flutter 不把指标、ML、回测结果写回 chan.py 结构
 
 ```text
 lib/ui/widgets/origin_indicator_pane.dart
+lib/ui/widgets/origin_indicator_pane_host.dart
 ```
 
 当前支持：
@@ -21,7 +22,8 @@ lib/ui/widgets/origin_indicator_pane.dart
 2. `MACD` 副图：读取 `snapshot.indicators.macd` 的 `dif / dea / hist`。
 3. 与主图共享 `windowSize / viewEndIndex / crosshairIndex`。
 4. crosshair 命中时显示当前 `VOL / DIF / DEA / HIST`。
-5. 不在图面常驻堆叠指标数值。
+5. `OriginIndicatorPaneHost` 负责主图区域与指标副图区域组合，页面接入时只需包裹现有主图。
+6. 不在图面常驻堆叠指标数值。
 
 ## 组件测试
 
@@ -47,7 +49,7 @@ flutter test test/origin_indicator_pane_test.dart
 tools/audit_indicator_pane_boundary.py
 ```
 
-该脚本检查 `OriginIndicatorPane` 只能依赖展示模型，禁止引入旧 Dart 缠论算法引擎、backend、HTTP、MethodChannel、Python 运行期胶水和研究训练层字段。
+该脚本检查 `OriginIndicatorPane` 与 `OriginIndicatorPaneHost` 只能依赖展示模型，禁止引入旧 Dart 缠论算法引擎、backend、HTTP、MethodChannel、Python 运行期胶水和研究训练层字段。
 
 独立 CI workflow：
 
@@ -68,18 +70,18 @@ python tools/audit_indicator_pane_boundary.py
 ```bash
 python tools/patch_origin_replay_indicator_panes.py --check-anchors
 python tools/patch_origin_replay_indicator_panes.py
-dart format lib/ui/pages/origin_replay_page_v2.dart lib/ui/widgets/origin_indicator_pane.dart
+dart format lib/ui/pages/origin_replay_page_v2.dart lib/ui/widgets/origin_indicator_pane.dart lib/ui/widgets/origin_indicator_pane_host.dart
 flutter analyze
 python tools/patch_origin_replay_indicator_panes.py --check
 ```
 
 补丁会做以下改动：
 
-1. 在 `OriginReplayPageV2` 引入 `OriginIndicatorPane`。
+1. 在 `OriginReplayPageV2` 引入 `OriginIndicatorPaneHost`。
 2. 增加 `_showVolPane / _showMacdPane` 状态。
 3. 左侧工具栏增加 `VOL副图 / MACD副图` 开关。
 4. 图层状态面板增加 `VOL / MACD` 数据量与显示状态。
-5. `_buildChartPanel()` 改为主图 + 指标副图的 `Column` 布局。
+5. `_buildChartPanel()` 中用 `OriginIndicatorPaneHost` 包裹现有 `OriginKlineChart`。
 
 ## CI 护栏
 
