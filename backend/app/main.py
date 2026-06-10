@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import Body, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
-from .a_bsp_scanner import scan_bsp
+from .a_bsp_scanner import scan_bsp, scan_bsp_events
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
-app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.5.0')
+app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.5.1')
 
 app.add_middleware(
     CORSMiddleware,
@@ -183,6 +185,19 @@ def _payload_symbols(value: Any) -> list[Any] | None:
     return None
 
 
+def _scanner_args(payload: dict[str, Any] | None) -> dict[str, Any]:
+    body = payload or {}
+    config = body.get('config') if isinstance(body.get('config'), dict) else {}
+    return {
+        'limit': _payload_int(body, 'limit', 300, minimum=1, maximum=5000),
+        'days': _payload_int(body, 'days', 365, minimum=30, maximum=5000),
+        'recent_days': _payload_int(body, 'recent_days', 3, minimum=1, maximum=120),
+        'bi_strict': _payload_bool(body, 'bi_strict', True),
+        'symbols': _payload_symbols(body.get('symbols')),
+        'config': config,
+    }
+
+
 @app.get('/health')
 def health() -> dict[str, object]:
     return {
@@ -190,7 +205,7 @@ def health() -> dict[str, object]:
         'backend': 'origin_vespa_tdx',
         'data_source': 'easy-tdx',
         'engine': 'chan.py',
-        'version': '0.5.0',
+        'version': '0.5.1',
     }
 
 
@@ -199,7 +214,7 @@ def root() -> dict[str, object]:
     return {
         'ok': True,
         'backend': 'origin_vespa_tdx',
-        'version': '0.5.0',
+        'version': '0.5.1',
         'note': 'Python chan.py is the only Chan calculation source. Flutter only renders JSON results.',
         'endpoints': [
             '/health',
@@ -207,6 +222,7 @@ def root() -> dict[str, object]:
             '/api/chan/analyze',
             '/api/chan/analyze_bars',
             '/api/scanner/bsp/scan',
+            '/api/scanner/bsp/scan_stream',
             '/docs',
         ],
     }
@@ -353,16 +369,18 @@ def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
 
 @app.post('/api/scanner/bsp/scan')
 def scanner_bsp_scan(payload: dict[str, Any] | None = Body(None)) -> dict[str, object]:
-    body = payload or {}
-    config = body.get('config') if isinstance(body.get('config'), dict) else {}
-    return scan_bsp(
-        limit=_payload_int(body, 'limit', 300, minimum=1, maximum=5000),
-        days=_payload_int(body, 'days', 365, minimum=30, maximum=5000),
-        recent_days=_payload_int(body, 'recent_days', 3, minimum=1, maximum=120),
-        bi_strict=_payload_bool(body, 'bi_strict', True),
-        symbols=_payload_symbols(body.get('symbols')),
-        config=config,
-    )
+    return scan_bsp(**_scanner_args(payload))
+
+
+@app.post('/api/scanner/bsp/scan_stream')
+def scanner_bsp_scan_stream(payload: dict[str, Any] | None = Body(None)) -> StreamingResponse:
+    args = _scanner_args(payload)
+
+    def body_iter():
+        for event in scan_bsp_events(**args):
+            yield json.dumps(event, ensure_ascii=False, allow_nan=False) + '\n'
+
+    return StreamingResponse(body_iter(), media_type='application/x-ndjson; charset=utf-8')
 
 
 @app.get('/api/tdx/kline')
