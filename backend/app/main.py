@@ -169,7 +169,7 @@ def chan_analyze(
     market: str | None = Query(None, description='SZ / SH；留空时按代码自动推断'),
     freq: str = Query('DAILY', description='MIN1/MIN5/MIN15/MIN30/MIN60/DAILY/WEEKLY/MONTHLY'),
     adjust: str = Query('QFQ', description='QFQ/HFQ/NONE'),
-    count: int = Query(5000, ge=10, le=5000),
+    count: int = Query(800, ge=10, le=5000),
     start: str | None = Query(None, description='yyyy-MM-dd，可选'),
     end: str | None = Query(None, description='yyyy-MM-dd，可选'),
 ) -> dict[str, object]:

@@ -43,7 +43,7 @@ class PythonChanAnalysisSource {
     required String period,
     required String adjust,
     required Map<String, dynamic> config,
-    int count = 5000,
+    int count = 800,
     DateTime? startDate,
     DateTime? endDate,
   }) async {
@@ -482,7 +482,7 @@ class _LocalPythonChanProcess {
       try {
         final process = await Process.start(
           candidate.executable,
-          [...candidate.prefixArgs, appEngine.path, '--host', '127.0.0.1', '--port', '$port'],
+          [appEngine.path, '--host', '127.0.0.1', '--port', '$port'],
           workingDirectory: appEngine.parent.parent.path,
           runInShell: false,
           environment: {'PYTHONIOENCODING': 'utf-8'},
@@ -492,10 +492,10 @@ class _LocalPythonChanProcess {
         await runner._waitUntilReady();
         return runner;
       } catch (e) {
-        lastError = e;
+        lastError = '${candidate.executable}: $e';
       }
     }
-    throw Exception('无法后台启动 Python chan.py 本地服务。最后错误：$lastError');
+    throw Exception('无法后台启动 Python chan.py 本地服务。仅允许使用内置 Python：python/python.exe。最后错误：$lastError');
   }
 
   static Future<File> _findAppEngine() async {
@@ -530,14 +530,12 @@ class _LocalPythonChanProcess {
 
   static List<_PythonCandidate> _pythonCandidates(File appEngine) {
     final sep = Platform.pathSeparator;
-    final root = appEngine.parent.parent;
     final result = <_PythonCandidate>[];
     final bundledPython = File('${appEngine.parent.path}${sep}python.exe');
-    final venvPython = File('${root.path}${sep}backend${sep}.venv${sep}Scripts${sep}python.exe');
-    if (bundledPython.existsSync()) result.add(_PythonCandidate(bundledPython.path));
-    if (venvPython.existsSync()) result.add(_PythonCandidate(venvPython.path));
-    result.add(const _PythonCandidate('python'));
-    result.add(const _PythonCandidate('py', ['-3']));
+    if (!bundledPython.existsSync()) {
+      throw Exception('找不到内置 Python：${bundledPython.path}');
+    }
+    result.add(_PythonCandidate(bundledPython.path));
     return result;
   }
 
@@ -571,8 +569,7 @@ class _LocalPythonChanProcess {
 
 class _PythonCandidate {
   final String executable;
-  final List<String> prefixArgs;
-  const _PythonCandidate(this.executable, [this.prefixArgs = const []]);
+  const _PythonCandidate(this.executable);
 }
 
 class _PythonChanBackendMismatch implements Exception {

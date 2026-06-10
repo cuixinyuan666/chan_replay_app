@@ -235,7 +235,7 @@ class _ScannerLocalPythonProcess {
       try {
         final process = await Process.start(
           candidate.executable,
-          [...candidate.prefixArgs, appEngine.path, '--host', '127.0.0.1', '--port', '$port'],
+          [appEngine.path, '--host', '127.0.0.1', '--port', '$port'],
           workingDirectory: appEngine.parent.parent.path,
           runInShell: false,
           environment: {'PYTHONIOENCODING': 'utf-8'},
@@ -245,10 +245,10 @@ class _ScannerLocalPythonProcess {
         await runner._waitUntilReady();
         return runner;
       } catch (e) {
-        lastError = e;
+        lastError = '${candidate.executable}: $e';
       }
     }
-    throw Exception('无法后台启动 Python chan.py 本地服务。最后错误：$lastError');
+    throw Exception('无法后台启动 Python chan.py 本地服务。仅允许使用内置 Python：python/python.exe。最后错误：$lastError');
   }
 
   static Future<File> _findAppEngine() async {
@@ -290,14 +290,12 @@ class _ScannerLocalPythonProcess {
 
   static List<_ScannerPythonCandidate> _pythonCandidates(File appEngine) {
     final sep = Platform.pathSeparator;
-    final root = appEngine.parent.parent;
     final result = <_ScannerPythonCandidate>[];
     final bundledPython = File('${appEngine.parent.path}${sep}python.exe');
-    final venvPython = File('${root.path}${sep}backend${sep}.venv${sep}Scripts${sep}python.exe');
-    if (bundledPython.existsSync()) result.add(_ScannerPythonCandidate(bundledPython.path));
-    if (venvPython.existsSync()) result.add(_ScannerPythonCandidate(venvPython.path));
-    result.add(const _ScannerPythonCandidate('python'));
-    result.add(const _ScannerPythonCandidate('py', ['-3']));
+    if (!bundledPython.existsSync()) {
+      throw Exception('找不到内置 Python：${bundledPython.path}');
+    }
+    result.add(_ScannerPythonCandidate(bundledPython.path));
     return result;
   }
 
@@ -338,9 +336,8 @@ class _ScannerLocalPythonProcess {
 
 class _ScannerPythonCandidate {
   final String executable;
-  final List<String> prefixArgs;
 
-  const _ScannerPythonCandidate(this.executable, [this.prefixArgs = const []]);
+  const _ScannerPythonCandidate(this.executable);
 }
 
 class _ScannerBackendMismatch implements Exception {

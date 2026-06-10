@@ -122,13 +122,13 @@ class _OriginIndicatorPanePainter extends CustomPainter {
         if (showVol) 'VOL:${_fmt(vol)}',
         if (showMacd) 'DIF:${_fmt(macd?.dif)} DEA:${_fmt(macd?.dea)} HIST:${_fmt(macd?.hist)}',
       ];
-      _drawText(canvas, parts.join('  '), Offset(_leftPad + 6, 2), 11, Colors.white70, maxWidth: size.width - 12);
+      _drawText(canvas, parts.join('  '), const Offset(_leftPad + 6, 2), 11, Colors.white70, maxWidth: size.width - 12);
     } else {
       final parts = <String>[
         if (showVol) 'VOL:${snapshot.indicators.vol.length}',
         if (showMacd) 'MACD:${snapshot.indicators.macd.length}',
       ];
-      _drawText(canvas, parts.join('  |  '), Offset(_leftPad + 6, 2), 11, Colors.white54, maxWidth: size.width - 12);
+      _drawText(canvas, parts.join('  |  '), const Offset(_leftPad + 6, 2), 11, Colors.white54, maxWidth: size.width - 12);
     }
   }
 

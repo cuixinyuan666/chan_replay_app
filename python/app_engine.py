@@ -57,7 +57,7 @@ def _run_json_request() -> int:
         'adjust': str(payload.get('adjust') or 'QFQ'),
         'start': payload.get('start'),
         'end': payload.get('end'),
-        'count': int(payload.get('count') or 5000),
+        'count': int(payload.get('count') or 800),
         'config': config,
     }
     result = analyze_step(**kwargs) if mode == 'step' else analyze_once(**kwargs)

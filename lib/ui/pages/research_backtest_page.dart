@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,6 +20,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   "analysis": {}
 }''');
   final ScrollController _resultScrollController = ScrollController();
+  _ResearchLocalPythonProcess? _localProcess;
 
   bool _running = false;
   String _status = '粘贴 chan.py analysis JSON 后，可调用研究接口。';
@@ -28,6 +31,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     _backendUrlController.dispose();
     _jsonController.dispose();
     _resultScrollController.dispose();
+    _localProcess?.dispose();
     super.dispose();
   }
 
@@ -39,7 +43,8 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     });
     try {
       final payload = _parsePayload();
-      final uri = Uri.parse(_join(_backendUrlController.text.trim(), endpoint));
+      final sourceBaseUrl = await _readyBaseUrl();
+      final uri = Uri.parse(_join(sourceBaseUrl, endpoint));
       final response = await http
           .post(uri,
               headers: const {'content-type': 'application/json'},
@@ -74,7 +79,8 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   }
 
   String _summaryOf(String endpoint, Map<String, dynamic> result) {
-    if (result['ok'] == false) return '接口返回失败：${result['error'] ?? 'unknown error'}';
+    if (result['ok'] == false)
+      return '接口返回失败：${result['error'] ?? 'unknown error'}';
     if (endpoint.endsWith('/pipeline')) {
       final backtest = result['backtest'];
       final summary = backtest is Map ? backtest['summary'] : null;
@@ -122,6 +128,43 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   String _join(String base, String path) =>
       '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}$path';
 
+  Future<String> _readyBaseUrl() async {
+    final configured = _backendUrlController.text.trim();
+    try {
+      await _assertCompatibleBackend(configured);
+      return configured;
+    } catch (_) {
+      if (!Platform.isWindows) rethrow;
+      _localProcess?.dispose();
+      _localProcess = await _ResearchLocalPythonProcess.start();
+      return _localProcess!.baseUrl;
+    }
+  }
+
+  Future<void> _assertCompatibleBackend(String sourceBaseUrl) async {
+    final uri = Uri.tryParse(sourceBaseUrl);
+    if (uri == null ||
+        uri.scheme != 'http' ||
+        !(uri.host == '127.0.0.1' ||
+            uri.host == 'localhost' ||
+            uri.host == '::1')) {
+      return;
+    }
+    final response = await http
+        .get(Uri.parse(_join(sourceBaseUrl, '/health')))
+        .timeout(const Duration(seconds: 3));
+    final body = utf8.decode(response.bodyBytes);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('localhost /health 返回 ${response.statusCode}: $body');
+    }
+    final decoded = jsonDecode(body);
+    if (decoded is! Map ||
+        decoded['backend'] != 'origin_vespa_tdx' ||
+        decoded['engine'] != 'chan.py') {
+      throw Exception('localhost 服务不是 origin_vespa_tdx chan.py 后端: $body');
+    }
+  }
+
   String get _prettyResult {
     final result = _lastResult;
     if (result == null) return '暂无结果';
@@ -143,7 +186,8 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   Future<void> _copyResult() async {
     await Clipboard.setData(ClipboardData(text: _prettyResult));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('研究结果已复制')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('研究结果已复制')));
   }
 
   @override
@@ -220,7 +264,8 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                         minLines: null,
                         keyboardType: TextInputType.multiline,
                         textAlignVertical: TextAlignVertical.top,
-                        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                        style: const TextStyle(
+                            fontFamily: 'monospace', fontSize: 12),
                         decoration: const InputDecoration(
                           alignLabelWithHint: true,
                           border: InputBorder.none,
@@ -260,7 +305,8 @@ class _ResearchResultView extends StatelessWidget {
   final ScrollController scrollController;
   final String Function(Object? value) valueText;
   final String Function(Object? value) pctText;
-  final List<Map<String, dynamic>> Function(Object? value, {String? nestedKey}) rowsFrom;
+  final List<Map<String, dynamic>> Function(Object? value, {String? nestedKey})
+      rowsFrom;
   final Map<String, dynamic> Function(Object? value) mapFrom;
 
   const _ResearchResultView({
@@ -300,33 +346,66 @@ class _ResearchResultView extends StatelessWidget {
               _ErrorBanner(message: '${data['error'] ?? 'unknown error'}')
             else ...[
               _SummaryGrid(cards: [
-                _SummaryCardData('Features', '${features.length}', Icons.table_chart),
-                _SummaryCardData('Scores', '${scores.length}', Icons.psychology),
-                _SummaryCardData('Trades', '${summary['trade_count'] ?? trades.length}', Icons.show_chart),
-                _SummaryCardData('Win rate', pctText(summary['win_rate']), Icons.percent),
-                _SummaryCardData('Total return', pctText(summary['total_return']), Icons.trending_up),
-                _SummaryCardData('Final equity', valueText(summary['final_equity']), Icons.account_balance_wallet),
+                _SummaryCardData(
+                    'Features', '${features.length}', Icons.table_chart),
+                _SummaryCardData(
+                    'Scores', '${scores.length}', Icons.psychology),
+                _SummaryCardData(
+                    'Trades',
+                    '${summary['trade_count'] ?? trades.length}',
+                    Icons.show_chart),
+                _SummaryCardData(
+                    'Win rate', pctText(summary['win_rate']), Icons.percent),
+                _SummaryCardData('Total return',
+                    pctText(summary['total_return']), Icons.trending_up),
+                _SummaryCardData(
+                    'Final equity',
+                    valueText(summary['final_equity']),
+                    Icons.account_balance_wallet),
               ]),
               const SizedBox(height: 12),
               if (features.isNotEmpty)
                 _PreviewTable(
                   title: 'BSP 特征预览',
                   rows: features,
-                  columns: const ['raw_index', 'time', 'level', 'type', 'is_buy', 'price', 'close'],
+                  columns: const [
+                    'raw_index',
+                    'time',
+                    'level',
+                    'type',
+                    'is_buy',
+                    'price',
+                    'close'
+                  ],
                   valueText: valueText,
                 ),
               if (scores.isNotEmpty)
                 _PreviewTable(
                   title: 'ML Score 预览',
                   rows: scores,
-                  columns: const ['raw_index', 'time', 'level', 'type', 'is_buy', 'ml_score', 'ml_signal'],
+                  columns: const [
+                    'raw_index',
+                    'time',
+                    'level',
+                    'type',
+                    'is_buy',
+                    'ml_score',
+                    'ml_signal'
+                  ],
                   valueText: valueText,
                 ),
               if (trades.isNotEmpty)
                 _PreviewTable(
                   title: '回测交易预览',
                   rows: trades,
-                  columns: const ['entry_time', 'exit_time', 'net_return', 'exit_reason', 'hold_bars', 'ml_score'],
+                  columns: const [
+                    'entry_time',
+                    'exit_time',
+                    'net_return',
+                    'exit_reason',
+                    'hold_bars',
+                    'ml_score'
+                  ],
                   valueText: valueText,
                 ),
               if (features.isEmpty && scores.isEmpty && trades.isEmpty)
@@ -341,13 +420,18 @@ class _ResearchResultView extends StatelessWidget {
               tilePadding: EdgeInsets.zero,
               collapsedIconColor: Colors.white54,
               iconColor: Colors.white70,
-              title: const Text('原始 JSON', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+              title: const Text('原始 JSON',
+                  style: TextStyle(
+                      color: Colors.white70, fontWeight: FontWeight.bold)),
               children: [
                 Align(
                   alignment: Alignment.centerLeft,
                   child: SelectableText(
                     rawJson,
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.white70),
+                    style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        color: Colors.white70),
                   ),
                 ),
               ],
@@ -407,11 +491,14 @@ class _SummaryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(card.label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                Text(card.label,
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 11)),
                 const SizedBox(height: 3),
                 Text(card.value,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700)),
               ],
             ),
           ),
@@ -443,12 +530,14 @@ class _PreviewTable extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('$title（显示 ${previewRows.length}/${rows.length}）',
-              style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+              style: const TextStyle(
+                  color: Colors.white70, fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: DecoratedBox(
-              decoration: BoxDecoration(border: Border.all(color: Colors.white10)),
+              decoration:
+                  BoxDecoration(border: Border.all(color: Colors.white10)),
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: DataTable(
@@ -458,13 +547,18 @@ class _PreviewTable extends StatelessWidget {
                   columnSpacing: 18,
                   columns: [
                     for (final col in columns)
-                      DataColumn(label: Text(col, style: const TextStyle(color: Colors.white70, fontSize: 12))),
+                      DataColumn(
+                          label: Text(col,
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 12))),
                   ],
                   rows: [
                     for (final row in previewRows)
                       DataRow(cells: [
                         for (final col in columns)
-                          DataCell(Text(valueText(row[col]), style: const TextStyle(color: Colors.white60, fontSize: 12))),
+                          DataCell(Text(valueText(row[col]),
+                              style: const TextStyle(
+                                  color: Colors.white60, fontSize: 12))),
                       ]),
                   ],
                 ),
@@ -490,7 +584,8 @@ class _ErrorBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF7F1D1D).withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFFCA5A5).withValues(alpha: 0.32)),
+        border:
+            Border.all(color: const Color(0xFFFCA5A5).withValues(alpha: 0.32)),
       ),
       child: Text(message, style: const TextStyle(color: Colors.white)),
     );
@@ -515,10 +610,128 @@ class _ActionButton extends StatelessWidget {
     return FilledButton.icon(
       onPressed: running ? null : onPressed,
       icon: running
-          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2))
           : Icon(icon, size: 18),
       label: Text(label),
     );
+  }
+}
+
+class _ResearchLocalPythonProcess {
+  final Process process;
+  final String baseUrl;
+  final StringBuffer _stderr = StringBuffer();
+
+  _ResearchLocalPythonProcess._(this.process, this.baseUrl) {
+    process.stderr.transform(utf8.decoder).listen(_stderr.write);
+    process.stdout.transform(utf8.decoder).listen((_) {});
+  }
+
+  static Future<_ResearchLocalPythonProcess> start() async {
+    final appEngine = await _findAppEngine();
+    final port = await _pickFreePort();
+    final baseUrl = 'http://127.0.0.1:$port';
+    final python = _bundledPython(appEngine);
+    try {
+      final process = await Process.start(
+        python.path,
+        [appEngine.path, '--host', '127.0.0.1', '--port', '$port'],
+        workingDirectory: appEngine.parent.parent.path,
+        runInShell: false,
+        environment: {'PYTHONIOENCODING': 'utf-8'},
+        mode: ProcessStartMode.normal,
+      );
+      final runner = _ResearchLocalPythonProcess._(process, baseUrl);
+      await runner._waitUntilReady();
+      return runner;
+    } catch (e) {
+      throw Exception(
+          '无法后台启动 Python chan.py 本地服务。仅允许使用内置 Python：python/python.exe。最后错误：${python.path}: $e');
+    }
+  }
+
+  static Future<File> _findAppEngine() async {
+    final checked = <String>{};
+    final starts = <Directory>[
+      Directory.current,
+      File(Platform.resolvedExecutable).parent,
+    ];
+    for (final start in starts) {
+      var dir = start.absolute;
+      for (var i = 0; i < 8; i++) {
+        if (!checked.add(dir.path)) break;
+        for (final candidate in _appEngineCandidatesFrom(dir)) {
+          if (await candidate.exists()) return candidate;
+        }
+        final parent = dir.parent;
+        if (parent.path == dir.path) break;
+        dir = parent;
+      }
+    }
+    throw Exception('找不到 python/app_engine.py');
+  }
+
+  static List<File> _appEngineCandidatesFrom(Directory dir) {
+    final sep = Platform.pathSeparator;
+    return [
+      File('${dir.path}${sep}python${sep}app_engine.py'),
+      File('${dir.path}${sep}data${sep}python${sep}app_engine.py'),
+      File('${dir.path}${sep}app_engine.py'),
+    ];
+  }
+
+  static File _bundledPython(File appEngine) {
+    final sep = Platform.pathSeparator;
+    final python = File('${appEngine.parent.path}${sep}python.exe');
+    if (!python.existsSync()) throw Exception('找不到内置 Python：${python.path}');
+    return python;
+  }
+
+  static Future<int> _pickFreePort() async {
+    final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = socket.port;
+    await socket.close();
+    return port;
+  }
+
+  Future<void> _waitUntilReady() async {
+    final deadline = DateTime.now().add(const Duration(seconds: 25));
+    Object? lastError;
+    while (DateTime.now().isBefore(deadline)) {
+      final exitCode = await process.exitCode.timeout(
+        const Duration(milliseconds: 10),
+        onTimeout: () => -999999,
+      );
+      if (exitCode != -999999) {
+        throw Exception(
+            'Python chan.py 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
+      }
+      try {
+        final client = HttpClient();
+        final request = await client
+            .getUrl(Uri.parse('$baseUrl/health'))
+            .timeout(const Duration(milliseconds: 700));
+        final response =
+            await request.close().timeout(const Duration(milliseconds: 700));
+        client.close(force: true);
+        if (response.statusCode >= 200 && response.statusCode < 300) return;
+      } catch (e) {
+        lastError = e;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+    dispose();
+    throw Exception(
+        'Python chan.py 本地服务启动超时：$lastError，stderr=${_stderr.toString()}');
+  }
+
+  void dispose() {
+    try {
+      process.kill(ProcessSignal.sigterm);
+    } catch (_) {}
   }
 }
 
@@ -541,7 +754,8 @@ class _JsonPanel extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-            child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+            child: Text(title,
+                style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
           const Divider(height: 1),
           Expanded(child: child),
