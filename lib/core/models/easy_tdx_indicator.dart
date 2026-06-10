@@ -56,9 +56,9 @@ class EasyMacdPoint {
     return EasyMacdPoint(
       time: _parseTime(json['time'] ?? json['dt'] ?? json['date']),
       rawIndex: _parseInt(json['raw_index'] ?? json['rawIndex']) ?? fallbackIndex,
-      dif: _parseDouble(json['dif'] ?? json['diff']),
-      dea: _parseDouble(json['dea'] ?? json['signal']),
-      hist: _parseDouble(json['hist'] ?? json['macd']),
+      dif: _parseDouble(json['dif'] ?? json['diff'] ?? json['MACD_DIF']),
+      dea: _parseDouble(json['dea'] ?? json['signal'] ?? json['MACD_DEA']),
+      hist: _parseDouble(json['hist'] ?? json['macd'] ?? json['MACD_HIST']),
     );
   }
 }
@@ -76,28 +76,23 @@ class EasyBollPoint {
     return EasyBollPoint(
       time: _parseTime(json['time'] ?? json['dt'] ?? json['date']),
       rawIndex: _parseInt(json['raw_index'] ?? json['rawIndex']) ?? fallbackIndex,
-      upper: _parseDouble(json['upper']),
-      mid: _parseDouble(json['mid'] ?? json['middle']),
-      lower: _parseDouble(json['lower']),
+      upper: _parseDouble(json['upper'] ?? json['BOLL_UPPER']),
+      mid: _parseDouble(json['mid'] ?? json['middle'] ?? json['BOLL_MID']),
+      lower: _parseDouble(json['lower'] ?? json['BOLL_LOWER']),
     );
   }
 }
 
 class EasyTdxIndicators {
+  static const Set<String> _knownKeys = {'vol', 'amount', 'turnover', 'ma', 'boll', 'macd'};
+
   final List<EasyIndicatorPoint> vol;
   final List<EasyIndicatorPoint> amount;
   final List<EasyIndicatorPoint> turnover;
   final Map<int, List<EasyIndicatorPoint>> ma;
   final List<EasyBollPoint> boll;
   final List<EasyMacdPoint> macd;
-  final List<EasyNamedIndicatorPoint> kdj;
-  final List<EasyNamedIndicatorPoint> rsi;
-  final List<EasyNamedIndicatorPoint> dmi;
-  final List<EasyNamedIndicatorPoint> atr;
-  final List<EasyNamedIndicatorPoint> wr;
-  final List<EasyNamedIndicatorPoint> cci;
-  final List<EasyNamedIndicatorPoint> bias;
-  final List<EasyNamedIndicatorPoint> obv;
+  final Map<String, List<EasyNamedIndicatorPoint>> namedSeries;
 
   const EasyTdxIndicators({
     this.vol = const [],
@@ -106,47 +101,22 @@ class EasyTdxIndicators {
     this.ma = const {},
     this.boll = const [],
     this.macd = const [],
-    this.kdj = const [],
-    this.rsi = const [],
-    this.dmi = const [],
-    this.atr = const [],
-    this.wr = const [],
-    this.cci = const [],
-    this.bias = const [],
-    this.obv = const [],
+    this.namedSeries = const {},
   });
 
-  bool get isEmpty =>
-      vol.isEmpty &&
-      amount.isEmpty &&
-      turnover.isEmpty &&
-      ma.isEmpty &&
-      boll.isEmpty &&
-      macd.isEmpty &&
-      kdj.isEmpty &&
-      rsi.isEmpty &&
-      dmi.isEmpty &&
-      atr.isEmpty &&
-      wr.isEmpty &&
-      cci.isEmpty &&
-      bias.isEmpty &&
-      obv.isEmpty;
-
-  Map<String, List<EasyNamedIndicatorPoint>> get namedSeries => {
-        'KDJ': kdj,
-        'RSI': rsi,
-        'DMI': dmi,
-        'ATR': atr,
-        'WR': wr,
-        'CCI': cci,
-        'BIAS': bias,
-        'OBV': obv,
-      };
+  bool get isEmpty => vol.isEmpty && amount.isEmpty && turnover.isEmpty && ma.isEmpty && boll.isEmpty && macd.isEmpty && namedSeries.values.every((rows) => rows.isEmpty);
 
   factory EasyTdxIndicators.empty() => const EasyTdxIndicators();
 
   factory EasyTdxIndicators.fromJson(Object? value) {
     if (value is! Map) return const EasyTdxIndicators();
+    final named = <String, List<EasyNamedIndicatorPoint>>{};
+    for (final entry in value.entries) {
+      final key = '${entry.key}';
+      final lower = key.toLowerCase();
+      if (_knownKeys.contains(lower) || entry.value is! List) continue;
+      named[_displayName(lower)] = _parseNamedList(entry.value);
+    }
     return EasyTdxIndicators(
       vol: _parsePointList(value['vol']),
       amount: _parsePointList(value['amount']),
@@ -154,15 +124,13 @@ class EasyTdxIndicators {
       ma: _parseMa(value['ma']),
       boll: _parseBollList(value['boll']),
       macd: _parseMacdList(value['macd']),
-      kdj: _parseNamedList(value['kdj']),
-      rsi: _parseNamedList(value['rsi']),
-      dmi: _parseNamedList(value['dmi']),
-      atr: _parseNamedList(value['atr']),
-      wr: _parseNamedList(value['wr']),
-      cci: _parseNamedList(value['cci']),
-      bias: _parseNamedList(value['bias']),
-      obv: _parseNamedList(value['obv']),
+      namedSeries: named,
     );
+  }
+
+  static String _displayName(String key) {
+    if (key == 'bias_signal') return 'BIAS_SIGNAL';
+    return key.toUpperCase();
   }
 
   static List<EasyIndicatorPoint> _parsePointList(Object? value) {
