@@ -4,7 +4,7 @@
 The goal is not to force every widget to use Dart deferred imports.  The goal is
 that app-wide entry/shell files do not import legacy algorithm engines or heavy
 research/scanner pages in a way that reintroduces production coupling.  Actual
-research pages may remain normal imports inside their own feature boundary.
+research pages may remain normal imports inside an explicit lazy route boundary.
 """
 from __future__ import annotations
 
@@ -32,18 +32,28 @@ LEGACY_ENGINE_PATTERNS = (
 )
 HEAVY_PAGE_PATTERNS = (
     'scanner_page.dart',
+    'ashare_bsp_scanner_page.dart',
     'backtest_page.dart',
     'machine_learning_page.dart',
     'research_page.dart',
+    'research_backtest_page.dart',
 )
 ALLOWED_GLOBAL_IMPORTS = {
     'lib/ui/pages/root_page.dart': {
         'ashare_bsp_scanner_page.dart',
         'origin_replay_page_v2.dart',
+        'research_backtest_page.dart',
     },
     'lib/ui/pages/replay_page.dart': {
         'origin_replay_page_v2.dart',
     },
+}
+REQUIRED_LAZY_MARKERS = {
+    'lib/ui/pages/root_page.dart': (
+        '_LazyRouteStack',
+        '_visited',
+        'visited.contains',
+    ),
 }
 
 
@@ -65,9 +75,20 @@ def _scan_file(path: Path, *, strict: bool) -> list[Finding]:
     full = ROOT / path
     if not full.exists():
         return []
+    text = full.read_text(encoding='utf-8')
     findings: list[Finding] = []
     allowed = ALLOWED_GLOBAL_IMPORTS.get(path.as_posix(), set())
-    for lineno, line in enumerate(full.read_text(encoding='utf-8').splitlines(), start=1):
+    for marker in REQUIRED_LAZY_MARKERS.get(path.as_posix(), ()):  # explicit lazy route contract
+        if marker not in text:
+            findings.append(Finding(
+                path=path,
+                line=1,
+                kind='missing_lazy_route_marker',
+                text=marker,
+                blocking=True,
+                reason='global route shell must construct feature pages only after first visit',
+            ))
+    for lineno, line in enumerate(text.splitlines(), start=1):
         stripped = line.strip()
         for pattern in LEGACY_ENGINE_PATTERNS:
             if pattern in stripped:
