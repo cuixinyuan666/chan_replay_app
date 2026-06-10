@@ -51,6 +51,9 @@ jobs:
       - name: Check global chart label layout patch anchors
         run: python tools/patch_origin_kline_global_label_layout.py --check
 
+      - name: Check indicator pane patch anchors
+        run: python tools/patch_origin_replay_indicator_panes.py --check-anchors
+
       - name: Audit BSP label layout migration
         run: python tools/audit_bsp_label_layout_usage.py --strict
 
