@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/bsp.dart';
 import '../../core/models/chan_snapshot.dart';
+import '../../core/models/easy_tdx_indicator.dart';
 import '../../core/models/fx.dart';
 import '../../core/models/raw_bar.dart';
 import '../drawing/drawing_object.dart';
@@ -30,6 +31,9 @@ class OriginKlineChart extends StatefulWidget {
   final bool showBiBsp;
   final bool showSegBsp;
   final bool showMergedBars;
+  final bool showEasyTdxIndicators;
+  final int easyTdxSubPanelCount;
+  final Set<String> enabledEasyTdxIndicators;
   final List<DrawingObject> drawingObjects;
   final String drawingStorageKey;
   final String symbolLabel;
@@ -46,6 +50,8 @@ class OriginKlineChart extends StatefulWidget {
   final ValueChanged<int>? onPanBars;
   final ValueChanged<int>? onWindowSizeChanged;
   final ValueChanged<double>? onPriceScaleChanged;
+  final ValueChanged<int>? onEasyTdxSubPanelCountChanged;
+  final ValueChanged<String>? onEasyTdxIndicatorToggled;
 
   const OriginKlineChart({
     super.key,
@@ -61,6 +67,9 @@ class OriginKlineChart extends StatefulWidget {
     required this.showBiBsp,
     required this.showSegBsp,
     this.showMergedBars = false,
+    this.showEasyTdxIndicators = false,
+    this.easyTdxSubPanelCount = 2,
+    this.enabledEasyTdxIndicators = const {'MA', 'BOLL', 'VOL', 'MACD'},
     this.drawingObjects = const [],
     this.drawingStorageKey = '',
     this.symbolLabel = '',
@@ -77,6 +86,8 @@ class OriginKlineChart extends StatefulWidget {
     this.onPanBars,
     this.onWindowSizeChanged,
     this.onPriceScaleChanged,
+    this.onEasyTdxSubPanelCountChanged,
+    this.onEasyTdxIndicatorToggled,
   });
 
   @override
@@ -111,6 +122,15 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   List<DrawingAnchor> _pendingAnchors = const [];
   _DrawingDragState? _dragState;
   String _loadedStorageKey = '';
+  bool _crosshairActive = false;
+  int? _localCrosshairIndex;
+  double? _localCrosshairPrice;
+
+  int? get _effectiveCrosshairIndex =>
+      _crosshairActive ? (_localCrosshairIndex ?? widget.crosshairIndex) : null;
+
+  double? get _effectiveCrosshairPrice =>
+      _crosshairActive ? _localCrosshairPrice : null;
 
   String get _effectiveStorageKey {
     final explicit = widget.drawingStorageKey.trim();
@@ -177,15 +197,35 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   void didUpdateWidget(covariant OriginKlineChart oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (_effectiveStorageKey != _loadedStorageKey) _loadPersistedDrawings();
-    if (oldWidget.toolboxSelectedToolSignal != widget.toolboxSelectedToolSignal) {
-      oldWidget.toolboxSelectedToolSignal?.removeListener(_handleExternalToolSelection);
-      widget.toolboxSelectedToolSignal?.addListener(_handleExternalToolSelection);
+    if (oldWidget.toolboxSelectedToolSignal !=
+        widget.toolboxSelectedToolSignal) {
+      oldWidget.toolboxSelectedToolSignal
+          ?.removeListener(_handleExternalToolSelection);
+      widget.toolboxSelectedToolSignal
+          ?.addListener(_handleExternalToolSelection);
     }
+    if (!_isSameBarRange(oldWidget.snapshot.rawBars, widget.snapshot.rawBars)) {
+      _clearLocalCrosshairState();
+    }
+  }
+
+  bool _isSameBarRange(List<RawBar> a, List<RawBar> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    if (a.isEmpty) return true;
+    return a.first.time == b.first.time && a.last.time == b.last.time;
+  }
+
+  void _clearLocalCrosshairState() {
+    _crosshairActive = false;
+    _localCrosshairIndex = null;
+    _localCrosshairPrice = null;
   }
 
   @override
   void dispose() {
-    widget.toolboxSelectedToolSignal?.removeListener(_handleExternalToolSelection);
+    widget.toolboxSelectedToolSignal
+        ?.removeListener(_handleExternalToolSelection);
     super.dispose();
   }
 
@@ -221,6 +261,10 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       canExportDrawings: _drawings.objects.isNotEmpty,
       isChanOverlayVisible: widget.isChanOverlayVisible,
       onChanOverlayToggled: widget.onChanOverlayToggled,
+      easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
+      enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
+      onEasyTdxSubPanelCountChanged: widget.onEasyTdxSubPanelCountChanged,
+      onEasyTdxIndicatorToggled: widget.onEasyTdxIndicatorToggled,
       onQuickToolAdded: widget.onToolboxQuickToolAdded,
       child: Stack(
         children: [
@@ -230,45 +274,58 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
               onPointerSignal: (event) {
                 if (event is PointerScrollEvent) _handleWheel(event, size);
               },
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (details) => _handleTap(details.localPosition, size),
-                onLongPressStart: (details) =>
-                    _updateCrosshair(details.localPosition, size),
-                onLongPressMoveUpdate: (details) =>
-                    _updateCrosshair(details.localPosition, size),
-                onScaleStart: (details) {
-                  _scaleStartWindow = widget.windowSize;
-                  _panRemainder = 0;
-                  if (!_interactiveDrawingTools
-                      .contains(_selectedDrawingTool)) {
-                    _startDrawingDrag(details.localFocalPoint, size);
-                  }
-                },
-                onScaleUpdate: (details) => _handleScale(details, size),
-                onScaleEnd: (_) => _endDrawingDrag(),
-                child: CustomPaint(
-                  painter: _OriginChartPainter(
-                    snapshot: widget.snapshot,
-                    symbolLabel: widget.symbolLabel,
-                    showFx: widget.showFx,
-                    showFxLine: widget.showFxLine,
-                    showFxText: widget.showFxText,
-                    showBi: widget.showBi,
-                    showBiText: widget.showBiText,
-                    showSeg: widget.showSeg,
-                    showSegText: widget.showSegText,
-                    showZs: widget.showZs,
-                    showBiBsp: widget.showBiBsp,
-                    showSegBsp: widget.showSegBsp,
-                    showMergedBars: widget.showMergedBars,
-                    drawingObjects: _effectiveDrawingObjects,
-                    windowSize: widget.windowSize,
-                    priceScale: widget.priceScale,
-                    viewEndIndex: widget.viewEndIndex,
-                    crosshairIndex: widget.crosshairIndex,
+              child: MouseRegion(
+                cursor: _crosshairActive
+                    ? SystemMouseCursors.precise
+                    : SystemMouseCursors.basic,
+                onHover: (event) => _updateCrosshair(event.localPosition, size),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onDoubleTapDown: (details) =>
+                      _toggleCrosshair(details.localPosition, size),
+                  onTapDown: (details) =>
+                      _handleTap(details.localPosition, size),
+                  onLongPressStart: (details) =>
+                      _updateCrosshair(details.localPosition, size),
+                  onLongPressMoveUpdate: (details) =>
+                      _updateCrosshair(details.localPosition, size),
+                  onScaleStart: (details) {
+                    _scaleStartWindow = widget.windowSize;
+                    _panRemainder = 0;
+                    if (!_interactiveDrawingTools
+                        .contains(_selectedDrawingTool)) {
+                      _startDrawingDrag(details.localFocalPoint, size);
+                    }
+                  },
+                  onScaleUpdate: (details) => _handleScale(details, size),
+                  onScaleEnd: (_) => _endDrawingDrag(),
+                  child: CustomPaint(
+                    painter: _OriginChartPainter(
+                      snapshot: widget.snapshot,
+                      symbolLabel: widget.symbolLabel,
+                      showFx: widget.showFx,
+                      showFxLine: widget.showFxLine,
+                      showFxText: widget.showFxText,
+                      showBi: widget.showBi,
+                      showBiText: widget.showBiText,
+                      showSeg: widget.showSeg,
+                      showSegText: widget.showSegText,
+                      showZs: widget.showZs,
+                      showBiBsp: widget.showBiBsp,
+                      showSegBsp: widget.showSegBsp,
+                      showMergedBars: widget.showMergedBars,
+                      showEasyTdxIndicators: widget.showEasyTdxIndicators,
+                      easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
+                      enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
+                      drawingObjects: _effectiveDrawingObjects,
+                      windowSize: widget.windowSize,
+                      priceScale: widget.priceScale,
+                      viewEndIndex: widget.viewEndIndex,
+                      crosshairIndex: _effectiveCrosshairIndex,
+                      crosshairPrice: _effectiveCrosshairPrice,
+                    ),
+                    size: Size.infinite,
                   ),
-                  size: Size.infinite,
                 ),
               ),
             );
@@ -628,7 +685,27 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
         backgroundColor: const Color(0xFF1E3A8A)));
   }
 
+  int get _activeEasyTdxSubPanelCount {
+    if (!widget.showEasyTdxIndicators || widget.snapshot.indicators.isEmpty) {
+      return 0;
+    }
+    return widget.easyTdxSubPanelCount.clamp(0, 4).toInt();
+  }
+
+  _ChartLayout _chartLayout(Size size) =>
+      _OriginChartPainter.layoutFor(size, _activeEasyTdxSubPanelCount);
+
   void _handleWheel(PointerScrollEvent event, Size size) {
+    final layout = _chartLayout(size);
+    if (layout.subRects.any((rect) => rect.contains(event.localPosition))) {
+      if (event.scrollDelta.dy == 0) return;
+      final delta = event.scrollDelta.dy < 0 ? 1 : -1;
+      final next = (widget.easyTdxSubPanelCount + delta).clamp(0, 4).toInt();
+      if (next != widget.easyTdxSubPanelCount) {
+        widget.onEasyTdxSubPanelCountChanged?.call(next);
+      }
+      return;
+    }
     final meta = _visibleMeta(size);
     if (meta == null ||
         !meta.chartRect.contains(event.localPosition) ||
@@ -674,19 +751,38 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     }
   }
 
+  void _toggleCrosshair(Offset p, Size size) {
+    if (_crosshairActive) {
+      setState(() => _clearLocalCrosshairState());
+      return;
+    }
+    _setCrosshairAt(p, size, activate: true);
+  }
+
   void _updateCrosshair(Offset p, Size size) {
+    _setCrosshairAt(p, size, activate: false);
+  }
+
+  void _setCrosshairAt(Offset p, Size size, {required bool activate}) {
+    if (!_crosshairActive && !activate) return;
     final meta = _visibleMeta(size);
     if (meta == null || !meta.chartRect.contains(p)) return;
     final local = ((p.dx - meta.chartRect.left) / meta.step).floor();
-    widget.onCrosshairChanged?.call((meta.startIndex + local)
-        .clamp(meta.startIndex, meta.endIndex)
-        .toInt());
+    final rawIndex =
+        (meta.startIndex + local).clamp(meta.startIndex, meta.endIndex).toInt();
+    final price = meta.priceAtY(p.dy);
+    setState(() {
+      if (activate) _crosshairActive = true;
+      _localCrosshairIndex = rawIndex;
+      _localCrosshairPrice = price;
+    });
+    widget.onCrosshairChanged?.call(rawIndex);
   }
 
   _VisibleMeta? _visibleMeta(Size size) {
     final bars = widget.snapshot.rawBars;
     if (bars.isEmpty || size.width <= 0 || size.height <= 0) return null;
-    final rect = _OriginChartPainter.chartRectFor(size);
+    final rect = _chartLayout(size).mainRect;
     if (rect.width <= 0 || rect.height <= 0) return null;
     final end = (widget.viewEndIndex ?? bars.length - 1)
         .clamp(0, bars.length - 1)
@@ -778,6 +874,18 @@ class _SelectedDrawingBar extends StatelessWidget {
                   const BoxConstraints.tightFor(width: 28, height: 28)));
 }
 
+class _ChartLayout {
+  final Rect mainRect;
+  final List<Rect> subRects;
+
+  const _ChartLayout({
+    required this.mainRect,
+    required this.subRects,
+  });
+}
+
+enum _EasySubPanelSpec { vol, macd, amount, turnover }
+
 class _VisibleMeta {
   final Rect chartRect;
   final int startIndex;
@@ -811,6 +919,8 @@ class _OriginChartPainter extends CustomPainter {
   static const double _bottomPad = 28;
   static const double _leftPad = 4;
   static const double _rightPad = 58;
+  static const double _subPanelHeight = 74;
+  static const double _panelGap = 6;
 
   final ChanSnapshot snapshot;
   final String symbolLabel;
@@ -825,11 +935,15 @@ class _OriginChartPainter extends CustomPainter {
   final bool showBiBsp;
   final bool showSegBsp;
   final bool showMergedBars;
+  final bool showEasyTdxIndicators;
+  final int easyTdxSubPanelCount;
+  final Set<String> enabledEasyTdxIndicators;
   final List<DrawingObject> drawingObjects;
   final int windowSize;
   final double priceScale;
   final int? viewEndIndex;
   final int? crosshairIndex;
+  final double? crosshairPrice;
 
   _OriginChartPainter(
       {required this.snapshot,
@@ -845,23 +959,51 @@ class _OriginChartPainter extends CustomPainter {
       required this.showBiBsp,
       required this.showSegBsp,
       required this.showMergedBars,
+      required this.showEasyTdxIndicators,
+      required this.easyTdxSubPanelCount,
+      required this.enabledEasyTdxIndicators,
       required this.drawingObjects,
       required this.windowSize,
       required this.priceScale,
       this.viewEndIndex,
-      this.crosshairIndex});
+      this.crosshairIndex,
+      this.crosshairPrice});
 
-  static Rect chartRectFor(Size size) => Rect.fromLTWH(
-      _leftPad,
-      _topPad,
-      math.max(0.0, size.width - _leftPad - _rightPad),
-      math.max(0.0, size.height - _topPad - _bottomPad));
+  static _ChartLayout layoutFor(Size size, int subPanelCount) {
+    final safeSubPanelCount = subPanelCount.clamp(0, 4).toInt();
+    final totalSubHeight = safeSubPanelCount == 0
+        ? 0.0
+        : safeSubPanelCount * _subPanelHeight +
+            (safeSubPanelCount - 1) * _panelGap;
+    final contentWidth = math.max(0.0, size.width - _leftPad - _rightPad);
+    final mainHeight = math.max(
+      0.0,
+      size.height -
+          _topPad -
+          _bottomPad -
+          totalSubHeight -
+          (safeSubPanelCount > 0 ? _panelGap : 0),
+    );
+    final mainRect = Rect.fromLTWH(_leftPad, _topPad, contentWidth, mainHeight);
+    final subRects = <Rect>[];
+    var top = mainRect.bottom + _panelGap;
+    for (var i = 0; i < safeSubPanelCount; i++) {
+      subRects.add(Rect.fromLTWH(_leftPad, top, contentWidth, _subPanelHeight));
+      top += _subPanelHeight + _panelGap;
+    }
+    return _ChartLayout(mainRect: mainRect, subRects: subRects);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
     final bars = snapshot.rawBars;
     if (bars.isEmpty) return;
-    final rect = chartRectFor(size);
+    final activeSubPanelCount =
+        showEasyTdxIndicators && !snapshot.indicators.isEmpty
+            ? easyTdxSubPanelCount.clamp(0, 4).toInt()
+            : 0;
+    final layout = layoutFor(size, activeSubPanelCount);
+    final rect = layout.mainRect;
     if (rect.width <= 0 || rect.height <= 0) return;
     final end =
         (viewEndIndex ?? bars.length - 1).clamp(0, bars.length - 1).toInt();
@@ -897,6 +1039,9 @@ class _OriginChartPainter extends CustomPainter {
 
     _drawGrid(canvas, rect, minPrice, maxPrice, visible);
     _drawCandles(canvas, rect, visible, rawToX, priceToY, step);
+    if (showEasyTdxIndicators) {
+      _drawEasyTdxMainIndicators(canvas, rect, start, end, rawToX, priceToY);
+    }
     if (showMergedBars)
       _drawMergedBars(canvas, rect, start, end, rawToX, priceToY, step);
     if (showZs) _drawZs(canvas, rect, start, end, rawToX, priceToY);
@@ -926,7 +1071,8 @@ class _OriginChartPainter extends CustomPainter {
     paintLaidOutChartLabels(canvas, laidOutLabels);
     final cross = crosshairIndex;
     if (cross != null && cross >= start && cross <= end) {
-      _drawCrosshair(canvas, rect, bars[cross], rawToX, priceToY);
+      _drawCrosshair(
+          canvas, rect, bars[cross], rawToX, priceToY, crosshairPrice);
     } else {
       final biBspCnt = snapshot.bsps.where(_isBiBsp).length;
       final segBspCnt = snapshot.bsps.where(_isSegBsp).length;
@@ -937,6 +1083,341 @@ class _OriginChartPainter extends CustomPainter {
           11,
           Colors.white70);
     }
+    if (showEasyTdxIndicators) {
+      _drawEasyTdxSubPanels(canvas, layout.subRects, start, end, rawToX);
+    }
+  }
+
+  bool _indicatorOn(String key) {
+    return enabledEasyTdxIndicators.contains(key) ||
+        enabledEasyTdxIndicators.contains(key.toLowerCase());
+  }
+
+  void _drawEasyTdxMainIndicators(
+    Canvas canvas,
+    Rect rect,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+    double Function(double price) priceToY,
+  ) {
+    if (snapshot.indicators.isEmpty) return;
+    canvas.save();
+    canvas.clipRect(rect);
+    if (_indicatorOn('MA')) {
+      _drawEasyMa(canvas, rect, start, end, rawToX, priceToY);
+    }
+    if (_indicatorOn('BOLL')) {
+      _drawEasyBoll(canvas, rect, start, end, rawToX, priceToY);
+    }
+    canvas.restore();
+  }
+
+  void _drawEasyMa(
+    Canvas canvas,
+    Rect rect,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+    double Function(double price) priceToY,
+  ) {
+    final colors = <int, Color>{
+      5: const Color(0xFFFFD54F),
+      10: const Color(0xFF64B5F6),
+      20: const Color(0xFFBA68C8),
+      60: const Color(0xFFFF8A65),
+    };
+    final visibleMa = snapshot.indicators.visibleMa(start, end);
+    final keys = visibleMa.keys.toList()..sort();
+    for (final period in keys) {
+      _drawEasyPointLine(
+        canvas,
+        rect,
+        visibleMa[period] ?? const <EasyIndicatorPoint>[],
+        rawToX,
+        priceToY,
+        colors[period] ?? const Color(0xFFB0BEC5),
+        strokeWidth: period <= 10 ? 1.05 : 0.95,
+      );
+    }
+    if (keys.isNotEmpty) _drawPanelText(canvas, rect, 'MA ${keys.join('/')}');
+  }
+
+  void _drawEasyBoll(
+    Canvas canvas,
+    Rect rect,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+    double Function(double price) priceToY,
+  ) {
+    final upper = <EasyIndicatorPoint>[];
+    final mid = <EasyIndicatorPoint>[];
+    final lower = <EasyIndicatorPoint>[];
+    for (final row in snapshot.indicators.visibleBoll(start, end)) {
+      upper.add(EasyIndicatorPoint(
+          time: row.time, rawIndex: row.rawIndex, value: row.upper));
+      mid.add(EasyIndicatorPoint(
+          time: row.time, rawIndex: row.rawIndex, value: row.mid));
+      lower.add(EasyIndicatorPoint(
+          time: row.time, rawIndex: row.rawIndex, value: row.lower));
+    }
+    _drawEasyPointLine(
+        canvas, rect, upper, rawToX, priceToY, const Color(0xFF90CAF9),
+        strokeWidth: 0.85);
+    _drawEasyPointLine(
+        canvas, rect, mid, rawToX, priceToY, const Color(0xFFE0E0E0),
+        strokeWidth: 0.75);
+    _drawEasyPointLine(
+        canvas, rect, lower, rawToX, priceToY, const Color(0xFF90CAF9),
+        strokeWidth: 0.85);
+    if (upper.isNotEmpty || mid.isNotEmpty || lower.isNotEmpty) {
+      _drawPanelText(canvas, rect, 'BOLL', dy: 15);
+    }
+  }
+
+  void _drawEasyPointLine(
+    Canvas canvas,
+    Rect rect,
+    List<EasyIndicatorPoint> rows,
+    double Function(int rawIndex) rawToX,
+    double Function(double price) priceToY,
+    Color color, {
+    double strokeWidth = 1.0,
+  }) {
+    final path = Path();
+    var started = false;
+    var hasPoint = false;
+    for (final row in rows) {
+      final value = row.value;
+      if (value == null) {
+        started = false;
+        continue;
+      }
+      final p = Offset(
+        rawToX(row.rawIndex).clamp(rect.left, rect.right).toDouble(),
+        priceToY(value).clamp(rect.top, rect.bottom).toDouble(),
+      );
+      if (!started) {
+        path.moveTo(p.dx, p.dy);
+        started = true;
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+      hasPoint = true;
+    }
+    if (!hasPoint) return;
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: 0.92)
+        ..strokeWidth = strokeWidth
+        ..style = PaintingStyle.stroke,
+    );
+  }
+
+  void _drawEasyTdxSubPanels(
+    Canvas canvas,
+    List<Rect> subRects,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+  ) {
+    if (subRects.isEmpty || snapshot.indicators.isEmpty) return;
+    final panels = <_EasySubPanelSpec>[
+      if (_indicatorOn('VOL')) _EasySubPanelSpec.vol,
+      if (_indicatorOn('MACD')) _EasySubPanelSpec.macd,
+      if (_indicatorOn('amount')) _EasySubPanelSpec.amount,
+      if (_indicatorOn('turnover')) _EasySubPanelSpec.turnover,
+    ];
+    for (var i = 0; i < math.min(subRects.length, panels.length); i++) {
+      final rect = subRects[i];
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      canvas.save();
+      canvas.clipRect(rect);
+      switch (panels[i]) {
+        case _EasySubPanelSpec.vol:
+          _drawEasyValueBars(canvas, rect, 'VOL',
+              snapshot.indicators.visibleVol(start, end), start, end, rawToX);
+          break;
+        case _EasySubPanelSpec.macd:
+          _drawEasyMacd(canvas, rect,
+              snapshot.indicators.visibleMacd(start, end), start, end, rawToX);
+          break;
+        case _EasySubPanelSpec.amount:
+          _drawEasyValueBars(
+              canvas,
+              rect,
+              'AMOUNT',
+              snapshot.indicators.visibleAmount(start, end),
+              start,
+              end,
+              rawToX);
+          break;
+        case _EasySubPanelSpec.turnover:
+          _drawEasyValueBars(
+              canvas,
+              rect,
+              'TURNOVER',
+              snapshot.indicators.visibleTurnover(start, end),
+              start,
+              end,
+              rawToX);
+          break;
+      }
+      canvas.restore();
+    }
+  }
+
+  void _drawEasyValueBars(
+    Canvas canvas,
+    Rect rect,
+    String title,
+    List<EasyIndicatorPoint> rows,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+  ) {
+    _drawSubPanelBackground(canvas, rect, title);
+    final values = rows.where((row) => row.value != null).toList();
+    if (values.isEmpty) return;
+    final maxValue = values.map((row) => row.value!.abs()).reduce(math.max);
+    if (maxValue <= 0) return;
+    final barWidth =
+        math.max(1.0, rect.width / math.max(1, end - start + 1) * 0.58);
+    final paint = Paint()
+      ..color = const Color(0xFF78909C).withValues(alpha: 0.76);
+    for (final row in values) {
+      final x = rawToX(row.rawIndex).clamp(rect.left, rect.right).toDouble();
+      final h = row.value!.abs() / maxValue * (rect.height - 18);
+      canvas.drawRect(
+        Rect.fromLTWH(x - barWidth / 2, rect.bottom - h - 2, barWidth, h),
+        paint,
+      );
+    }
+  }
+
+  void _drawEasyMacd(
+    Canvas canvas,
+    Rect rect,
+    List<EasyMacdPoint> rows,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+  ) {
+    _drawSubPanelBackground(canvas, rect, 'MACD');
+    if (rows.isEmpty) return;
+    final values = <double>[];
+    for (final row in rows) {
+      if (row.dif != null) values.add(row.dif!);
+      if (row.dea != null) values.add(row.dea!);
+      if (row.hist != null) values.add(row.hist!);
+    }
+    if (values.isEmpty) return;
+    final maxAbs = math.max(
+        values.map((value) => value.abs()).reduce(math.max), 0.0000001);
+    final zeroY = rect.center.dy;
+    double valueToY(double value) =>
+        zeroY - value / maxAbs * (rect.height * 0.42);
+    final barWidth =
+        math.max(1.0, rect.width / math.max(1, end - start + 1) * 0.52);
+    final histPos = Paint()
+      ..color = const Color(0xFFE53935).withValues(alpha: 0.58);
+    final histNeg = Paint()
+      ..color = const Color(0xFF26A69A).withValues(alpha: 0.58);
+    for (final row in rows) {
+      final hist = row.hist;
+      if (hist == null) continue;
+      final x = rawToX(row.rawIndex).clamp(rect.left, rect.right).toDouble();
+      final y = valueToY(hist);
+      canvas.drawRect(
+        Rect.fromLTRB(
+          x - barWidth / 2,
+          math.min(zeroY, y),
+          x + barWidth / 2,
+          math.max(zeroY, y),
+        ),
+        hist >= 0 ? histPos : histNeg,
+      );
+    }
+    _drawEasyMacdLine(canvas, rect, rows, rawToX, valueToY, (row) => row.dif,
+        const Color(0xFFFFD54F));
+    _drawEasyMacdLine(canvas, rect, rows, rawToX, valueToY, (row) => row.dea,
+        const Color(0xFF64B5F6));
+    canvas.drawLine(
+      Offset(rect.left, zeroY),
+      Offset(rect.right, zeroY),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.16)
+        ..strokeWidth = 0.8,
+    );
+  }
+
+  void _drawEasyMacdLine(
+    Canvas canvas,
+    Rect rect,
+    List<EasyMacdPoint> rows,
+    double Function(int rawIndex) rawToX,
+    double Function(double value) valueToY,
+    double? Function(EasyMacdPoint row) selector,
+    Color color,
+  ) {
+    final path = Path();
+    var started = false;
+    var hasPoint = false;
+    for (final row in rows) {
+      final value = selector(row);
+      if (value == null) {
+        started = false;
+        continue;
+      }
+      final p = Offset(
+        rawToX(row.rawIndex).clamp(rect.left, rect.right).toDouble(),
+        valueToY(value).clamp(rect.top, rect.bottom).toDouble(),
+      );
+      if (!started) {
+        path.moveTo(p.dx, p.dy);
+        started = true;
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+      hasPoint = true;
+    }
+    if (!hasPoint) return;
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: 0.88)
+        ..strokeWidth = 0.9
+        ..style = PaintingStyle.stroke,
+    );
+  }
+
+  void _drawSubPanelBackground(Canvas canvas, Rect rect, String title) {
+    canvas.drawRect(rect, Paint()..color = const Color(0xAA0B1220));
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.10)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8,
+    );
+    _drawPanelText(canvas, rect, title);
+  }
+
+  void _drawPanelText(Canvas canvas, Rect rect, String text, {double dy = 0}) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.58),
+          fontSize: 10.5,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(maxWidth: math.max(0, rect.width - 12));
+    painter.paint(canvas, Offset(rect.left + 8, rect.top + 6 + dy));
   }
 
   void _drawGrid(Canvas canvas, Rect rect, double minPrice, double maxPrice,
@@ -1235,10 +1716,16 @@ class _OriginChartPainter extends CustomPainter {
         (!level.contains('seg') && level != 'segment');
   }
 
-  void _drawCrosshair(Canvas canvas, Rect rect, RawBar bar,
-      double Function(int) rawToX, double Function(double) priceToY) {
+  void _drawCrosshair(
+      Canvas canvas,
+      Rect rect,
+      RawBar bar,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
+      double? pointerPrice) {
     final x = rawToX(bar.index).clamp(rect.left, rect.right).toDouble();
-    final y = priceToY(bar.close).clamp(rect.top, rect.bottom).toDouble();
+    final price = pointerPrice ?? bar.close;
+    final y = priceToY(price).clamp(rect.top, rect.bottom).toDouble();
     final paint = Paint()
       ..color = Colors.white.withValues(alpha: 0.52)
       ..strokeWidth = 0.8;
@@ -1246,10 +1733,12 @@ class _OriginChartPainter extends CustomPainter {
     canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
     _drawText(
         canvas,
-        'O:${bar.open.toStringAsFixed(2)} H:${bar.high.toStringAsFixed(2)} L:${bar.low.toStringAsFixed(2)} C:${bar.close.toStringAsFixed(2)} V:${bar.volume.toStringAsFixed(0)}',
+        'O:${bar.open.toStringAsFixed(2)} H:${bar.high.toStringAsFixed(2)} L:${bar.low.toStringAsFixed(2)} C:${bar.close.toStringAsFixed(2)} 光标:${price.toStringAsFixed(2)} V:${bar.volume.toStringAsFixed(0)}',
         Offset(rect.left + 6, rect.top - 20),
         11,
         Colors.white);
+    _drawText(canvas, price.toStringAsFixed(2), Offset(rect.right + 5, y - 7),
+        10, Colors.white);
   }
 
   void _drawText(
