@@ -37,14 +37,14 @@ TOOLBAR_NEW = """                        _toolIcon(
                             _hasBars && _snapshot.indicators.vol.isNotEmpty
                                 ? () => setState(() => _showVolPane = !_showVolPane)
                                 : null,
-                            selected: _showVolPane),
+                            selected: _showVolPane && _snapshot.indicators.vol.isNotEmpty),
                         _toolIcon(
                             'MACD副图',
-                            Icons.stacked_line_chart,
+                            Icons.show_chart,
                             _hasBars && _snapshot.indicators.macd.isNotEmpty
                                 ? () => setState(() => _showMacdPane = !_showMacdPane)
                                 : null,
-                            selected: _showMacdPane),
+                            selected: _showMacdPane && _snapshot.indicators.macd.isNotEmpty),
                         _toolIcon('本地CSV上传', Icons.upload_file,
                             _loading ? null : _pickCsv),"""
 
