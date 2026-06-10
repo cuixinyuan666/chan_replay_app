@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/models/bsp.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
@@ -72,7 +71,8 @@ class OriginKlineChart extends StatelessWidget {
     this.onPriceScaleChanged,
   });
 
-  bool get _showEasyTdxIndicators => isChanOverlayVisible?.call(TradingViewDrawingTool.easyTdxIndicators) ?? false;
+  bool get _showEasyTdxIndicators =>
+      isChanOverlayVisible?.call(TradingViewDrawingTool.easyTdxIndicators) ?? false;
 
   @override
   Widget build(BuildContext context) {
@@ -108,7 +108,7 @@ class OriginKlineChart extends StatelessWidget {
           onWindowSizeChanged: onWindowSizeChanged,
           onPriceScaleChanged: onPriceScaleChanged,
         ),
-        if (_showEasyTdxIndicators && snapshot.indicators.isNotEmpty)
+        if (_showEasyTdxIndicators && !snapshot.indicators.isEmpty)
           Positioned.fill(
             child: IgnorePointer(
               child: CustomPaint(
@@ -155,7 +155,9 @@ class _EasyTdxOverlayPainter extends CustomPainter {
       math.max(0.0, size.height - _topPad - _bottomPad),
     );
     if (rect.width <= 0 || rect.height <= 0) return;
-    final end = (viewEndIndex ?? bars.length - 1).clamp(0, bars.length - 1).toInt();
+    final end = (viewEndIndex ?? bars.length - 1)
+        .clamp(0, bars.length - 1)
+        .toInt();
     final start = math.max(0, end - windowSize + 1).toInt();
     final visible = bars.sublist(start, end + 1);
     final low = visible.map((e) => e.low).reduce(math.min);
@@ -168,7 +170,11 @@ class _EasyTdxOverlayPainter extends CustomPainter {
     final maxPrice = center + scaledRange / 2 + padding;
     final step = rect.width / math.max(1, visible.length);
 
-    double priceToY(double price) => rect.bottom - (price - minPrice) / math.max(maxPrice - minPrice, 0.0000001) * rect.height;
+    double priceToY(double price) =>
+        rect.bottom -
+        (price - minPrice) /
+            math.max(maxPrice - minPrice, 0.0000001) *
+            rect.height;
     double rawToX(int rawIndex) => rect.left + (rawIndex - start + 0.5) * step;
 
     EasyTdxIndicatorPainter(
