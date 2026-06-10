@@ -46,6 +46,17 @@ class MainActivity : FlutterActivity() {
                         result.error("PYTHON_CHAN_ERROR", e.message, e.stackTraceToString())
                     }
                 }
+                "scanBsp" -> {
+                    val payload = call.argument<String>("payload") ?: "{}"
+                    try {
+                        val py = ensurePython()
+                        val module = py.getModule("android_bsp_scanner")
+                        val response = module.callAttr("scan_bsp_json", payload).toString()
+                        result.success(response)
+                    } catch (e: Exception) {
+                        result.error("PYTHON_CHAN_SCANNER_ERROR", e.message, e.stackTraceToString())
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
