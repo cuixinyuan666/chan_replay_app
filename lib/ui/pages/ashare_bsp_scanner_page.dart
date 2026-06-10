@@ -41,7 +41,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   String _scanCurrent = '';
 
   double _leftWidth = 500;
-  double _settingsHeight = 220;
+  double _settingsHeight = 180;
   double _logHeight = 190;
 
   _ScanResult? _selectedResult;
@@ -331,25 +331,55 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final available = constraints.maxHeight.isFinite ? constraints.maxHeight : 900.0;
+        final compact = available < 720;
+        final scanHeight = constraints.maxWidth < 430 ? 170.0 : 146.0;
         final singleHeight = constraints.maxWidth < 430 ? 154.0 : 112.0;
-        final settingsHeight = _settingsHeight.clamp(180.0, math.max(190.0, available - singleHeight - 380.0)).toDouble();
-        final logHeight = _logHeight.clamp(120.0, math.max(140.0, available - settingsHeight - singleHeight - 210.0)).toDouble();
+        final paramsHeight = _settingsHeight.clamp(150.0, math.max(150.0, available - scanHeight - singleHeight - 360.0)).toDouble();
+        final logHeight = _logHeight.clamp(120.0, math.max(140.0, available - scanHeight - paramsHeight - singleHeight - 210.0)).toDouble();
+
+        final status = Align(
+          alignment: Alignment.centerLeft,
+          child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        );
+
+        if (compact) {
+          return Padding(
+            padding: const EdgeInsets.all(10),
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  SizedBox(height: scanHeight, child: _scanControlPanel()),
+                  const SizedBox(height: 8),
+                  SizedBox(height: 170, child: _settingsPanel()),
+                  const SizedBox(height: 8),
+                  SizedBox(height: singleHeight, child: _singleAnalysisPanel()),
+                  const SizedBox(height: 8),
+                  SizedBox(height: 260, child: _resultsPanel()),
+                  const SizedBox(height: 8),
+                  SizedBox(height: 180, child: _logsPanel()),
+                  const SizedBox(height: 6),
+                  status,
+                ],
+              ),
+            ),
+          );
+        }
+
         return Padding(
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-              SizedBox(height: settingsHeight, child: _settingsPanel()),
-              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _settingsHeight = (_settingsHeight + delta).clamp(170.0, math.max(170.0, available - singleHeight - 300.0)).toDouble())),
+              SizedBox(height: scanHeight, child: _scanControlPanel()),
+              const SizedBox(height: 8),
+              SizedBox(height: paramsHeight, child: _settingsPanel()),
+              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _settingsHeight = (_settingsHeight + delta).clamp(150.0, math.max(150.0, available - scanHeight - singleHeight - 300.0)).toDouble())),
               SizedBox(height: singleHeight, child: _singleAnalysisPanel()),
               const SizedBox(height: 8),
               Expanded(child: _resultsPanel()),
-              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _logHeight = (_logHeight - delta).clamp(110.0, math.max(110.0, available - settingsHeight - singleHeight - 180.0)).toDouble())),
+              _resizeHandle(vertical: false, onDelta: (delta) => setState(() => _logHeight = (_logHeight - delta).clamp(110.0, math.max(110.0, available - scanHeight - paramsHeight - singleHeight - 180.0)).toDouble())),
               SizedBox(height: logHeight, child: _logsPanel()),
               const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              ),
+              status,
             ],
           ),
         );
@@ -357,8 +387,44 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     );
   }
 
+  Widget _scanControlPanel() => _panel(
+        '扫描控制',
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    SizedBox(
+                      width: constraints.maxWidth < 380 ? constraints.maxWidth : (constraints.maxWidth - 8) / 2,
+                      height: 42,
+                      child: FilledButton.icon(
+                        onPressed: _scanning ? null : _startScan,
+                        icon: _scanning ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow),
+                        label: const Text('开始扫描'),
+                      ),
+                    ),
+                    SizedBox(
+                      width: constraints.maxWidth < 380 ? constraints.maxWidth : (constraints.maxWidth - 8) / 2,
+                      height: 42,
+                      child: FilledButton.tonalIcon(onPressed: _scanning ? _stopScan : null, icon: const Icon(Icons.stop), label: const Text('停止')),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _progressBlock(),
+              ],
+            ),
+          ),
+        ),
+      );
+
   Widget _settingsPanel() => _panel(
-        '扫描设置',
+        '扫描参数',
         child: LayoutBuilder(
           builder: (context, constraints) => SingleChildScrollView(
             child: Column(
@@ -383,27 +449,6 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: '扫描数量上限', helperText: '默认 300；支持最大 5000', border: OutlineInputBorder()),
                 ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    SizedBox(
-                      width: constraints.maxWidth < 380 ? constraints.maxWidth : (constraints.maxWidth - 8) / 2,
-                      child: FilledButton.icon(
-                        onPressed: _scanning ? null : _startScan,
-                        icon: _scanning ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow),
-                        label: const Text('开始扫描'),
-                      ),
-                    ),
-                    SizedBox(
-                      width: constraints.maxWidth < 380 ? constraints.maxWidth : (constraints.maxWidth - 8) / 2,
-                      child: FilledButton.tonalIcon(onPressed: _scanning ? _stopScan : null, icon: const Icon(Icons.stop), label: const Text('停止')),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                _progressBlock(),
               ],
             ),
           ),
