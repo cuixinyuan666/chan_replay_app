@@ -86,6 +86,23 @@ PATCHES = [
     ('slice snapshot indicators', SLICE_INDICATORS_OLD, SLICE_INDICATORS_NEW),
 ]
 
+APPLIED_SENTINELS = {
+    'import OriginIndicatorPaneHost': ["import '../widgets/origin_indicator_pane_host.dart';"],
+    'indicator pane state flags': ['bool _showVolPane = true;', 'bool _showMacdPane = false;'],
+    'layer status rows': ["_LayerStatusRow('VOL'", "_LayerStatusRow('MACD'"],
+    'toolbar indicator toggles': ["'VOL副图'", "'MACD副图'", 'Icons.show_chart'],
+    'chart panel host': [
+        'OriginIndicatorPaneHost(',
+        'snapshot: _snapshot,',
+        'showVol: _showVolPane,',
+        'showMacd: _showMacdPane,',
+        'windowSize: _windowSize,',
+        'crosshairIndex: _crosshairIndex,',
+        'chart: OriginKlineChart(',
+    ],
+    'slice snapshot indicators': ['indicators: source.indicators,'],
+}
+
 
 def replace_once(text: str, name: str, old: str, new: str) -> tuple[str, str]:
     if new in text:
@@ -105,7 +122,7 @@ def patch_text(text: str) -> tuple[str, list[tuple[str, str]]]:
 
 
 def check_applied(text: str) -> list[str]:
-    return [name for name, _old, new in PATCHES if new not in text]
+    return [name for name, snippets in APPLIED_SENTINELS.items() if any(snippet not in text for snippet in snippets)]
 
 
 def check_anchors(text: str) -> list[str]:
