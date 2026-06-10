@@ -65,10 +65,18 @@ python tools/audit_indicator_pane_boundary.py
 
 ## 页面接入补丁脚本
 
-由于 `lib/ui/pages/origin_replay_page_v2.dart` 体量较大，页面接入通过确定性锚点补丁脚本完成：
+由于 `lib/ui/pages/origin_replay_page_v2.dart` 体量较大，页面接入通过确定性锚点补丁脚本完成。
+
+先执行只读预检：
 
 ```bash
 python tools/patch_origin_replay_indicator_panes.py --check-anchors
+python tools/dry_run_origin_replay_indicator_panes.py
+```
+
+预检通过后再应用：
+
+```bash
 python tools/patch_origin_replay_indicator_panes.py
 dart format lib/ui/pages/origin_replay_page_v2.dart lib/ui/widgets/origin_indicator_pane.dart lib/ui/widgets/origin_indicator_pane_host.dart
 flutter analyze
