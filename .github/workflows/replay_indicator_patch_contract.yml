@@ -1,0 +1,19 @@
+name: Replay indicator patch contract
+
+on:
+  push:
+    branches:
+      - origin_vespa_tdx
+  pull_request:
+    branches:
+      - origin_vespa_tdx
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check replay indicator patch contract
+        run: python tools/check_replay_indicator_patch_contract.py
