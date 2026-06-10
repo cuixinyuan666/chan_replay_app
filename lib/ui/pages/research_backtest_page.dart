@@ -13,7 +13,9 @@ class ResearchBacktestPage extends StatefulWidget {
 
 class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   final TextEditingController _backendUrlController = TextEditingController(text: 'http://127.0.0.1:8000');
-  final TextEditingController _jsonController = TextEditingController(text: '{\n  "analysis": {}\n}');
+  final TextEditingController _jsonController = TextEditingController(text: '''{
+  "analysis": {}
+}''');
   final ScrollController _resultScrollController = ScrollController();
 
   bool _running = false;
