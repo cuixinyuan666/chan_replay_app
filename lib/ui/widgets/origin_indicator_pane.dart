@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/chan_snapshot.dart';
 import '../../core/models/easy_tdx_indicator.dart';
+import '../../core/models/raw_bar.dart';
 
 class OriginIndicatorPane extends StatelessWidget {
   final ChanSnapshot snapshot;
@@ -146,7 +147,7 @@ class _OriginIndicatorPanePainter extends CustomPainter {
   void _drawVol(
     Canvas canvas,
     Rect rect,
-    List<dynamic> visible,
+    List<RawBar> visible,
     Map<int, double?> volByRaw,
     double Function(int) rawToX,
     double step,
@@ -176,7 +177,7 @@ class _OriginIndicatorPanePainter extends CustomPainter {
   void _drawMacd(
     Canvas canvas,
     Rect rect,
-    List<dynamic> visible,
+    List<RawBar> visible,
     Map<int, EasyMacdPoint> macdByRaw,
     double Function(int) rawToX,
     double step,
@@ -186,7 +187,11 @@ class _OriginIndicatorPanePainter extends CustomPainter {
         if (macdByRaw[bar.index] != null) macdByRaw[bar.index]!,
     ];
     final values = <double>[
-      for (final row in rows) ...[?row.dif == null ? const [] : [row.dif!], ?row.dea == null ? const [] : [row.dea!], ?row.hist == null ? const [] : [row.hist!]],
+      for (final row in rows) ...[
+        if (row.dif != null) row.dif!,
+        if (row.dea != null) row.dea!,
+        if (row.hist != null) row.hist!,
+      ],
     ];
     if (values.isEmpty) {
       _drawText(canvas, '无 MACD 指标数据', Offset(rect.left + 6, rect.center.dy - 7), 11, Colors.white38, maxWidth: rect.width);
