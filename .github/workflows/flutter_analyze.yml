@@ -36,6 +36,9 @@ jobs:
       - name: Test BSP chart label adapter
         run: flutter test test/bsp_chart_label_adapter_test.dart
 
+      - name: Test indicator pane widget
+        run: flutter test test/origin_indicator_pane_test.dart
+
       - name: Audit Dart algorithm boundary
         run: python tools/audit_dart_algorithm_usage.py
 
