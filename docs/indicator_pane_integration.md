@@ -83,6 +83,12 @@ flutter analyze
 python tools/patch_origin_replay_indicator_panes.py --check
 ```
 
+页面接入后的专用验收：
+
+```bash
+python tools/audit_origin_replay_indicator_pane_wiring.py
+```
+
 补丁会做以下改动：
 
 1. 在 `OriginReplayPageV2` 引入 `OriginIndicatorPaneHost`。
@@ -108,6 +114,8 @@ python tools/audit_indicator_pane_boundary.py
 
 `--check-anchors` 只检查补丁锚点是否仍存在或已被接入，不强制页面已经接入；目的是防止后续大文件改动导致补丁脚本失效。
 
+`audit_origin_replay_indicator_pane_wiring.py` 用于页面补丁应用后的本地验收，不在当前 CI 强制执行，避免未接入页面阶段误报失败。
+
 ## 后续验收
 
 页面接入并 format 后，需要验证：
@@ -117,6 +125,7 @@ flutter analyze
 python tools/audit_dart_algorithm_usage.py
 python tools/audit_global_lazy_loading.py --strict
 python tools/audit_indicator_pane_boundary.py
+python tools/audit_origin_replay_indicator_pane_wiring.py
 python tools/validate_easy_tdx_indicator_contract.py build/real_analysis.json
 ```
 
