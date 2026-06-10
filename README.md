@@ -171,6 +171,14 @@ lib/ui/pages/research_backtest_page.dart
 
 该页面通过左下角同列路由按钮进入，首次点击后才构造；输入为 chan.py analysis JSON，输出为 features / scores / backtest / pipeline JSON。
 
+### 当前离线合同校验
+
+```bash
+python tools/validate_research_pipeline_contract.py test/fixtures/research_pipeline_contract_valid.json --require-features
+```
+
+该脚本离线串起 `extract_bsp_features -> score_bsp_features -> run_bsp_backtest`，检查 `chan_py_polluted=false`、`ml_score` 范围、`ml_signal` 合法性、回测 `same_bar_lookahead=false` 和 summary 字段。
+
 约束：
 
 1. 输入为 chan.py analysis JSON。
@@ -212,6 +220,7 @@ python tools/audit_bsp_label_layout_usage.py --strict
 python tools/audit_origin_kline_global_label_layout_usage.py --strict
 python tools/validate_chanpy_output_contract.py path/to/analysis.json
 python tools/validate_easy_tdx_indicator_contract.py path/to/analysis.json
+python tools/validate_research_pipeline_contract.py path/to/analysis.json
 ```
 
 新增全局懒加载 / 生产耦合审计：
@@ -283,6 +292,8 @@ tools/audit_global_lazy_loading.py
 4. 已新增 research API：`features / score / backtest / pipeline`。
 5. 已新增研究扩展文档：`docs/vespa_research_extension_plan.md`。
 6. 已新增 Flutter 研究 / 回测页面：`lib/ui/pages/research_backtest_page.dart`。
+7. 已新增 research pipeline 合同校验脚本：`tools/validate_research_pipeline_contract.py`。
+8. 已新增 research pipeline 最小 fixture：`test/fixtures/research_pipeline_contract_valid.json`。
 
 #### 6. 本地验证与 CI 护栏
 
@@ -291,15 +302,17 @@ tools/audit_global_lazy_loading.py
 3. 本轮已修复上述 blocking 源文件，但仍需用户重新执行审计确认。
 4. 已新增 `tools/audit_global_lazy_loading.py --strict`。
 5. 全局懒加载审计已加入 GitHub Actions。
+6. research pipeline 合同脚本已完成；GitHub Actions 接入本轮未完成，因为工作流文件更新被平台安全检查拦截。
 
 ### 已完成但仍需复验
 
 1. `audit_dart_algorithm_usage.py` 需重新执行，确认 blocking_count 归零。
 2. `audit_global_lazy_loading.py --strict` 需本地执行。
-3. Windows `flutter run -d windows` 需确认启动后复盘页面、扫描器入口、研究 / 回测入口、Python 后端自动启动都可用。
-4. Android `flutter run` 需重新验收，重点确认 MethodChannel indicators 合同和 frames indicators。
-5. Research API 和 Flutter 研究页需用真实 analysis JSON 复验。
-6. 合同校验脚本需用真实导出的 analysis JSON，而不是占位路径 `path/to/analysis.json`。
+3. `validate_research_pipeline_contract.py` 需本地执行 fixture 与真实 analysis JSON。
+4. Windows `flutter run -d windows` 需确认启动后复盘页面、扫描器入口、研究 / 回测入口、Python 后端自动启动都可用。
+5. Android `flutter run` 需重新验收，重点确认 MethodChannel indicators 合同和 frames indicators。
+6. Research API 和 Flutter 研究页需用真实 analysis JSON 复验。
+7. 合同校验脚本需用真实导出的 analysis JSON，而不是占位路径 `path/to/analysis.json`。
 
 ### 未完成
 
@@ -330,7 +343,7 @@ tools/audit_global_lazy_loading.py
 1. 将研究页与当前复盘页的最新 analysis JSON 自动打通，减少手动粘贴。
 2. UI 展示 BSP 特征表、ML score、回测交易列表和 summary，而不是只显示原始 JSON。
 3. 后续支持外部模型文件导入，但不得让重依赖污染默认启动链路。
-4. 增加 research API fixture 和合同校验。
+4. 将 research pipeline 合同校验接入 GitHub Actions。
 
 #### P4：K线图最终显示验收
 
@@ -348,6 +361,7 @@ tools/audit_global_lazy_loading.py
 flutter analyze
 python tools/audit_dart_algorithm_usage.py
 python tools/audit_global_lazy_loading.py --strict
+python tools/validate_research_pipeline_contract.py test/fixtures/research_pipeline_contract_valid.json --require-features
 ```
 
 2. 导出一份真实 analysis JSON，执行：
@@ -355,6 +369,7 @@ python tools/audit_global_lazy_loading.py --strict
 ```bash
 python tools/validate_chanpy_output_contract.py path/to/real_analysis.json
 python tools/validate_easy_tdx_indicator_contract.py path/to/real_analysis.json
+python tools/validate_research_pipeline_contract.py path/to/real_analysis.json
 ```
 
 3. 用同一份 JSON 调用：
