@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'ashare_bsp_scanner_page.dart';
+import 'ashare_bsp_scanner_page_v2.dart';
 import 'origin_replay_page_v2.dart';
 import 'research_backtest_page.dart';
 
