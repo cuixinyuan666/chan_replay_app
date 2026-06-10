@@ -26,7 +26,8 @@ CHECKS = {
         'Icons.show_chart',
         'selected: _showVolPane && _snapshot.indicators.vol.isNotEmpty',
         'selected: _showMacdPane && _snapshot.indicators.macd.isNotEmpty',
-        'indicators: source.indicators,',
+        'SLICE_INDICATORS_OLD = """      bsps:',
+        '      indicators: source.indicators,',
         'slice snapshot indicators',
     ],
     'dry_runner': [
