@@ -94,6 +94,18 @@ def _row_get(row: Any, *keys: str, default: Any = None) -> Any:
     return default
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in {'none', 'null', 'nan', '--', '-'}:
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
 def _iter_rows(df: Any):
     if hasattr(df, 'to_dict'):
         return df.to_dict('records')
@@ -141,9 +153,11 @@ def load_easy_tdx_bars(
 
     code = normalize_symbol(symbol)
     market_name = (market or infer_market(code)).upper()
+    period_name = period.upper()
+    adjust_name = adjust.upper()
     market_enum = _market_value(market_name, Market)
-    period_enum = _period_value(period, Period)
-    adjust_enum = _adjust_value(adjust, Adjust)
+    period_enum = _period_value(period_name, Period)
+    adjust_enum = _adjust_value(adjust_name, Adjust)
     safe_count = max(1, min(int(count), 5000))
 
     try:
@@ -178,19 +192,29 @@ def load_easy_tdx_bars(
         high = float(_row_get(row, 'high', 'h'))
         low = float(_row_get(row, 'low', 'l'))
         close = float(_row_get(row, 'close', 'c'))
-        volume = float(_row_get(row, 'vol', 'volume', default=0) or 0)
-        amount = float(_row_get(row, 'amount', 'money', default=0) or 0)
+        volume = _optional_float(_row_get(row, 'vol', 'volume', default=0)) or 0.0
+        amount = _optional_float(_row_get(row, 'amount', 'money', default=None))
+        turnover = _optional_float(_row_get(row, 'turnover', 'turnover_rate', 'turnrate', default=None))
+        raw_index = len(bars)
         bars.append(
             {
-                'id': len(bars),
+                'id': raw_index,
+                'raw_index': raw_index,
                 'dt': dt.isoformat(sep=' '),
+                'time': dt.isoformat(sep=' '),
                 'open': open_,
-                'high': high,
-                'low': low,
+                'high': max(open_, high, low, close),
+                'low': min(open_, high, low, close),
                 'close': close,
                 'vol': volume,
+                'volume': volume,
                 'amount': amount,
+                'turnover': turnover,
                 'symbol': f'{code}.{market_name}',
+                'market': market_name,
+                'code': code,
+                'period': period_name,
+                'adjust': adjust_name,
             }
         )
     return bars
