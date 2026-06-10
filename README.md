@@ -251,49 +251,128 @@ python tools/audit_origin_kline_global_label_layout_usage.py --strict
 python tools/validate_easy_tdx_indicator_contract.py test/fixtures/easy_tdx_indicator_contract_valid.json
 ```
 
-## 当前完成度
+## 当前监督状态
 
-```text
-已完成：
-1. origin_vespa_tdx 分支建立。
-2. App 根页面切到 OriginReplayPageV2。
-3. 删除 App 内 Vespa 对齐页面。
-4. Windows Python app_engine.py 入口。
-5. /api/chan/analyze 后端接口。
-6. /api/chan/analyze_bars 本地 bars 分析接口。
-7. Windows Flutter 自动后台启动 Python chan.py 本地服务。
-8. Android 真机已验证 python/chan.py 进入 APK，且 fx/bi/seg/zs 返回非空。
-9. Windows 便携 Python 已完成本地实测，Flutter 会优先使用 python/python.exe。
-10. 后端 once 模式调用 chan.py 导出 FX / BI / SEG / ZS / BSP / merged_bars。
-11. 后端 step 模式调用 CChan.step_load() 并返回 frames。
-12. Android Chaquopy 新增 python_chan MethodChannel。
-13. Android chanpy_runtime.py 已接入 CChan，导出 FX / BI / SEG / ZS / BSP / merged_bars / frames。
-14. Flutter V2 页面直接消费 step frames。
-15. Flutter V2 页面支持 BSP 显示开关与图上绘制。
-16. Flutter V2 页面支持 BSP 相关 CChanConfig 配置项。
-17. Flutter V2 页面支持本地 CSV 上传到 Python chan.py。
-18. Flutter V2 页面支持 CChanConfig 设置，加载前/加载后修改都会重新请求 Python chan.py。
-19. 用户本地执行 flutter analyze，结果 No issues found。
-20. 已新增 Dart 算法边界审计、chan.py a_ 护栏、输出合同校验工具。
-21. 已新增 quick_guide 对齐矩阵、easy-tdx 指标合同、标签避让策略文档。
-22. 已新增 Flutter 通用标签避让布局器 `lib/ui/widgets/chart_label_layout.dart`。
-23. 已新增 easy-tdx / indicators 合同校验脚本 `tools/validate_easy_tdx_indicator_contract.py`。
-24. 已新增 BSP 到 ChartLabel 的 UI 适配层 `lib/ui/widgets/bsp_chart_label_adapter.dart`。
-25. 已新增 chart label 与 BSP label adapter 单元测试，并纳入 GitHub Actions。
-26. 已新增 BSP label layout 迁移审计脚本 `tools/audit_bsp_label_layout_usage.py`，并切换为 strict 护栏。
-27. 已将 `bsp_chart_label_adapter.dart` 和 `chart_label_layout.dart` 接入 `OriginKlineChart` 的 BSP 文本绘制。
-28. 用户本地验证通过：`flutter analyze` 为 No issues found，`audit_bsp_label_layout_usage.py --strict` 通过，两个 label 相关 Flutter test 全部通过。
-29. 已将 `OriginKlineChart` 内 FX / BI / SEG / BSP 结构文字统一接入 `ChartLabelLayout`，全局结构文字进入同一避让队列。
-30. 已新增全局结构文字布局审计脚本 `tools/audit_origin_kline_global_label_layout_usage.py`，并纳入 GitHub Actions strict 护栏。
+最后更新：2026-06-09。
 
-待完成：
-1. Windows / Android flutter run 实机验收。
-2. BSP 导出字段仍需用真实样本校验是否覆盖 chan.py 当前版本的所有买卖点对象形态。
-3. merged_bars 字段已返回，但仍需用长样本核对 raw_index/high/low/open/close 与 chan.py 预期是否完全一致。
-4. 删除或隔离旧 Dart 算法层中的生产链路入口。
-5. easy-tdx VOL / amount / turnover / indicators 输出与 Flutter 副图显示。
-6. 进一步把 README 中 CChan / CChanConfig 说明链接到 Vespa quick_guide 对应章节。
+### 已完成
+
+#### 1. 主架构与单一计算源
+
+1. `origin_vespa_tdx` 分支建立。
+2. App 根页面切到 `OriginReplayPageV2`。
+3. 删除 App 内 Vespa 对齐页面；App 入口直接进入复盘界面。
+4. Windows Python `app_engine.py` 入口已建立。
+5. Windows Flutter 会优先使用 `python/python.exe`，并自动后台启动 Python chan.py 本地服务。
+6. Android Chaquopy 已新增 `python_chan` MethodChannel。
+7. Android 侧 `chanpy_runtime.py` 已接入 `CChan`，导出 FX / BI / SEG / ZS / BSP / merged_bars / frames。
+8. 已确认 Android 真机可以把 `python/chan.py` 打入 APK，且 fx / bi / seg / zs 返回非空。
+9. 后端 once 模式调用 Python chan.py 导出 FX / BI / SEG / ZS / BSP / merged_bars。
+10. 后端 step 模式调用 `CChan.step_load()` 并返回 frames。
+11. Flutter V2 页面直接消费 Python step frames，不再用前端切片模拟逐K。
+12. Flutter V2 页面支持本地 CSV 上传到 Python chan.py。
+13. Flutter V2 页面支持加载前 / 加载后修改 CChanConfig，并重新请求 Python chan.py 刷新结构。
+
+#### 2. API 与输出合同
+
+1. 已提供 `/api/chan/analyze` 后端接口。
+2. 已提供 `/api/chan/analyze_bars` 本地 bars 分析接口。
+3. 已新增 `tools/validate_chanpy_output_contract.py`，用于校验 Python 输出结构。
+4. 已新增 `tools/validate_easy_tdx_indicator_contract.py`，用于校验 easy-tdx / indicators 输出合同。
+5. 已新增 easy-tdx 与指标输出合同文档：`docs/easy_tdx_indicator_contract.md`。
+6. 已新增 Vespa quick_guide 对齐矩阵：`docs/vespa_quick_guide_alignment_matrix.md`。
+
+#### 3. BSP 与结构显示
+
+1. Flutter V2 页面支持 BSP 显示开关与图上绘制。
+2. Flutter V2 页面支持 BSP 相关 CChanConfig 配置项。
+3. 已新增 BSP 到 ChartLabel 的 UI 适配层：`lib/ui/widgets/bsp_chart_label_adapter.dart`。
+4. 已将 `bsp_chart_label_adapter.dart` 和 `chart_label_layout.dart` 接入 `OriginKlineChart` 的 BSP 文本绘制。
+5. 已将 `OriginKlineChart` 内 FX / BI / SEG / BSP 结构文字统一接入 `ChartLabelLayout`，全局结构文字进入同一避让队列。
+6. 已新增 BSP label layout 迁移审计脚本：`tools/audit_bsp_label_layout_usage.py`。
+7. 已新增全局结构文字布局审计脚本：`tools/audit_origin_kline_global_label_layout_usage.py`。
+
+#### 4. K线图文字避让与 UI 护栏
+
+1. 已新增 Flutter 通用标签避让布局器：`lib/ui/widgets/chart_label_layout.dart`。
+2. 已新增 K线图文字与标签避让策略文档：`docs/label_overlap_policy.md`。
+3. 已新增 chart label 与 BSP label adapter 单元测试。
+4. 已将 label 相关测试和审计脚本纳入 GitHub Actions。
+5. 已将 BSP label layout 审计切换为 strict 护栏。
+6. 已将全局结构文字布局审计纳入 GitHub Actions strict 护栏。
+
+#### 5. 本地验证与 CI 护栏
+
+1. 用户本地执行 `flutter analyze`，结果为 `No issues found`。
+2. 用户本地验证 `audit_bsp_label_layout_usage.py --strict` 通过。
+3. 用户本地验证两个 label 相关 Flutter test 全部通过。
+4. GitHub Actions 已加入 `flutter analyze`、label tests、Dart 算法边界审计、chan.py a_ 护栏、输出合同校验。
+
+### 已完成但仍需复验
+
+这些项目已有实现或护栏，但不能直接视为最终完成，需要真实样本和真机复验：
+
+1. BSP 绘制链路已接入，但仍需用真实样本确认 `1 / 1p / 2 / 2s / 3a / 3b`、`level=bi / level=seg`、`is_sure` 等字段全部覆盖。
+2. `merged_bars` 已返回，但仍需用长样本确认 `raw_index / start_raw_index / end_raw_index / open / high / low / close` 与 chan.py 内部结果一致。
+3. 标签避让已接入统一布局器，但仍需在 300 / 1000 / 3000 根 K 线窗口下做截图验收。
+4. CI 护栏已加入，但仍需观察远端 Actions 实际运行结果。
+5. Android 曾验证 Python 入包和结构返回，但本轮 label / contract / indicator 文档变更后仍需重新 `flutter run` 实机验收。
+
+### 未完成
+
+#### P0：生产链路收口
+
+1. Windows `flutter run` 实机验收。
+2. Android `flutter run` 实机验收。
+3. 确认 App 生产链路完全不再 import / 调用旧 Dart FX / BI / SEG / ZS 算法。
+4. 旧 Dart 算法层如需保留，只能作为 `legacy`、`tools`、`compare` 或测试用途。
+5. 对 GitHub Actions 的真实运行结果做一次完整复核。
+
+#### P1：chan.py 输出真实性校验
+
+1. BSP 导出字段真实样本覆盖测试。
+2. `merged_bars` 长样本一致性核对。
+3. once 模式与 step 模式最终帧一致性核对。
+4. `is_sure=false` 的 FX / BI / SEG / ZS / BSP 虚线或弱化显示统一检查。
+5. 随机 5 只股票、3 个周期执行字段合同校验。
+
+#### P2：easy-tdx 与指标显示
+
+1. easy-tdx 后端 bars 增加 `volume / amount / turnover` 透传。
+2. 后端增加 `indicators.vol` 输出。
+3. Flutter 增加 VOL 副图。
+4. 后端增加 MACD / MA / BOLL 展示指标输出。
+5. Flutter 增加指标开关、crosshair 联动和 tooltip。
+6. Android MethodChannel 输出合同与 Windows HTTP 输出合同保持一致。
+7. easy-tdx 缺失字段必须写入 `meta.warning`，不得伪造 turnover、amount 等字段。
+
+#### P3：K线图最终显示验收
+
+1. 300 根、1000 根、3000 根 K线窗口截图验收。
+2. FX / BI / SEG / ZS / BSP 文本开启时不允许明显重叠。
+3. 缩放、拖动、逐K回放时 label lane 不应跳乱或遮挡主结构。
+4. 密集区域应自动隐藏低优先级文字，保留结构点位。
+5. OHLC、VOL、指标数值应优先放到 crosshair / tooltip / 侧栏，不应在图面常驻堆叠。
+
+#### P4：README 与 Vespa 文档索引继续补强
+
+1. 将 README 中 CChan / CChanConfig 说明继续链接到 Vespa quick_guide 对应章节。
+2. 在 README 或 docs 中补充 `trigger_step / step_load / trigger_load` 的区别和当前分支支持范围。
+3. 明确 segseg / segzs / segbsp 暂作为增强项，不进入当前主流程强制显示。
+4. 明确策略、机器学习、AutoML、交易引擎不属于本轮任务范围。
+
+### 下一批建议任务
+
+1. 先跑 Windows / Android `flutter run`，确认当前 README 所列完成项不是只停留在代码层。
+2. 用真实 easy-tdx 或本地长样本导出一次完整 analysis JSON，执行：
+
+```bash
+python tools/validate_chanpy_output_contract.py path/to/analysis.json
+python tools/validate_easy_tdx_indicator_contract.py path/to/analysis.json
 ```
+
+3. 对 `OriginKlineChart` 做 300 / 1000 / 3000 根窗口截图验收，确认 label lane 实际解决重叠问题。
+4. 开始实现 easy-tdx 的 VOL / amount / turnover / indicators 输出与 Flutter 副图显示。
 
 ## 当前注意事项
 
