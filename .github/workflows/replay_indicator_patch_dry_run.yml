@@ -1,0 +1,25 @@
+name: Replay indicator patch dry run
+
+on:
+  push:
+    branches:
+      - origin_vespa_tdx
+  pull_request:
+    branches:
+      - origin_vespa_tdx
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check replay indicator patch contract
+        run: python tools/check_replay_indicator_patch_contract.py
+
+      - name: Check replay indicator patch anchors
+        run: python tools/patch_origin_replay_indicator_panes.py --check-anchors
+
+      - name: Dry run replay indicator patch
+        run: python tools/dry_run_origin_replay_indicator_panes.py
