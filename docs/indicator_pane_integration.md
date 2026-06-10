@@ -41,6 +41,26 @@ CI 已加入：
 flutter test test/origin_indicator_pane_test.dart
 ```
 
+## 展示边界审计
+
+```text
+tools/audit_indicator_pane_boundary.py
+```
+
+该脚本检查 `OriginIndicatorPane` 只能依赖展示模型，禁止引入旧 Dart 缠论算法引擎、backend、HTTP、MethodChannel、Python 运行期胶水和研究训练层字段。
+
+独立 CI workflow：
+
+```text
+.github/workflows/indicator_pane_boundary.yml
+```
+
+运行：
+
+```bash
+python tools/audit_indicator_pane_boundary.py
+```
+
 ## 页面接入补丁脚本
 
 由于 `lib/ui/pages/origin_replay_page_v2.dart` 体量较大，页面接入通过确定性锚点补丁脚本完成：
@@ -70,6 +90,12 @@ python tools/patch_origin_replay_indicator_panes.py --check-anchors
 flutter test test/origin_indicator_pane_test.dart
 ```
 
+另有独立 workflow：
+
+```bash
+python tools/audit_indicator_pane_boundary.py
+```
+
 `--check-anchors` 只检查补丁锚点是否仍存在或已被接入，不强制页面已经接入；目的是防止后续大文件改动导致补丁脚本失效。
 
 ## 后续验收
@@ -80,6 +106,7 @@ flutter test test/origin_indicator_pane_test.dart
 flutter analyze
 python tools/audit_dart_algorithm_usage.py
 python tools/audit_global_lazy_loading.py --strict
+python tools/audit_indicator_pane_boundary.py
 python tools/validate_easy_tdx_indicator_contract.py build/real_analysis.json
 ```
 
