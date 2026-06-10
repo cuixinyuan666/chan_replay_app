@@ -29,16 +29,17 @@ class OriginIndicatorPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (snapshot.rawBars.isEmpty || !hasVisiblePane) return const SizedBox.shrink();
-    return CustomPaint(
-      painter: _OriginIndicatorPanePainter(
-        snapshot: snapshot,
-        showVol: showVol,
-        showMacd: showMacd,
-        windowSize: windowSize,
-        viewEndIndex: viewEndIndex,
-        crosshairIndex: crosshairIndex,
+    return SizedBox.expand(
+      child: CustomPaint(
+        painter: _OriginIndicatorPanePainter(
+          snapshot: snapshot,
+          showVol: showVol,
+          showMacd: showMacd,
+          windowSize: windowSize,
+          viewEndIndex: viewEndIndex,
+          crosshairIndex: crosshairIndex,
+        ),
       ),
-      size: Size.infinite,
     );
   }
 }
