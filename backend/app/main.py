@@ -7,12 +7,15 @@ from fastapi import Body, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from .a_backtest_engine import run_bsp_backtest
+from .a_bsp_feature_engine import extract_bsp_features
 from .a_bsp_scanner import scan_bsp, scan_bsp_events
 from .a_indicator_export import build_display_indicators, indicator_source_meta
+from .a_ml_bridge import score_bsp_features
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
-app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.5.2')
+app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.6.0')
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,35 +25,40 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
-_BSP_ADVANCED_QUERY_KEYS = {
-    'divergence_rate',
-    'min_zs_cnt',
-    'bsp1_only_multibi_zs',
-    'max_bs2_rate',
-    'macd_algo',
-    'bs1_peak',
-    'bs_type',
-    'bsp2_follow_1',
-    'bsp3_follow_1',
-    'bsp3_peak',
-    'bsp2s_follow_2',
-    'max_bsp2s_lv',
-    'strict_bsp3',
-    'bsp3a_max_zs_cnt',
-}
-_BSP_ADVANCED_QUERY_SUFFIXES = {'buy', 'sell', 'segbuy', 'segsell', 'seg'}
+_CONTROL_QUERY_KEYS = {'mode', 'symbol', 'market', 'freq', 'period', 'adjust', 'count', 'start', 'end'}
+_BOOL_TRUE = {'1', 'true', 'yes', 'y', 'on'}
+_BOOL_FALSE = {'0', 'false', 'no', 'n', 'off'}
 
 
-def _bsp_advanced_config_from_query(request: Request) -> dict[str, Any]:
-    result: dict[str, Any] = {}
+def _boolish(value: Any) -> Any:
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in _BOOL_TRUE:
+        return True
+    if text in _BOOL_FALSE:
+        return False
+    return value
+
+
+def _intish(value: Any, default: int, *, minimum: int, maximum: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    return max(minimum, min(number, maximum))
+
+
+def _config_from_request(request: Request) -> dict[str, Any]:
+    config: dict[str, Any] = {}
     for key, value in request.query_params.items():
-        if '-' not in key:
+        if key in _CONTROL_QUERY_KEYS:
             continue
-        name, suffix = key.rsplit('-', 1)
-        if name in _BSP_ADVANCED_QUERY_KEYS and suffix in _BSP_ADVANCED_QUERY_SUFFIXES:
-            if str(value).strip():
-                result[key] = value
-    return result
+        text = str(value).strip()
+        if not text:
+            continue
+        config[key] = _boolish(text)
+    return config
 
 
 def _with_display_indicators(result: dict[str, object], config: dict[str, Any] | None) -> dict[str, object]:
@@ -80,128 +88,15 @@ def _with_display_indicators(result: dict[str, object], config: dict[str, Any] |
     return result
 
 
-def _config_from_query(
-    *,
-    skip_step: int,
-    bi_algo: str,
-    bi_strict: bool,
-    bi_fx_check: str,
-    gap_as_kl: bool,
-    bi_end_is_peak: bool,
-    bi_allow_sub_peak: bool,
-    seg_algo: str,
-    left_seg_method: str,
-    zs_algo: str,
-    zs_combine: bool,
-    zs_combine_mode: str,
-    one_bi_zs: bool,
-    kl_data_check: bool,
-    max_kl_misalgin_cnt: int,
-    max_kl_inconsistent_cnt: int,
-    auto_skip_illegal_sub_lv: bool,
-    print_warning: bool,
-    print_err_time: bool,
-    mean_metrics: str,
-    trend_metrics: str,
-    macd_fast: int,
-    macd_slow: int,
-    macd_signal: int,
-    cal_demark: bool,
-    cal_rsi: bool,
-    cal_kdj: bool,
-    rsi_cycle: int,
-    kdj_cycle: int,
-    demark_len: int,
-    demark_setup_bias: int,
-    demark_countdown_bias: int,
-    demark_max_countdown: int,
-    demark_tiaokong_st: bool,
-    demark_setup_cmp2close: bool,
-    demark_countdown_cmp2close: bool,
-    boll_n: int,
-    bs_type: str,
-    divergence_rate: float,
-    min_zs_cnt: int,
-    bsp1_only_multibi_zs: bool,
-    max_bs2_rate: float,
-    bs1_peak: bool,
-    bsp2_follow_1: bool,
-    bsp3_follow_1: bool,
-    bsp3_peak: bool,
-    bsp2s_follow_2: bool,
-    max_bsp2s_lv: str | None,
-    strict_bsp3: bool,
-    bsp3a_max_zs_cnt: int,
-    macd_algo: str,
-) -> dict[str, Any]:
-    return {
-        'skip_step': skip_step,
-        'bi_algo': bi_algo,
-        'bi_strict': bi_strict,
-        'bi_fx_check': bi_fx_check,
-        'gap_as_kl': gap_as_kl,
-        'bi_end_is_peak': bi_end_is_peak,
-        'bi_allow_sub_peak': bi_allow_sub_peak,
-        'seg_algo': seg_algo,
-        'left_seg_method': left_seg_method,
-        'zs_algo': zs_algo,
-        'zs_combine': zs_combine,
-        'zs_combine_mode': zs_combine_mode,
-        'one_bi_zs': one_bi_zs,
-        'kl_data_check': kl_data_check,
-        'max_kl_misalgin_cnt': max_kl_misalgin_cnt,
-        'max_kl_inconsistent_cnt': max_kl_inconsistent_cnt,
-        'auto_skip_illegal_sub_lv': auto_skip_illegal_sub_lv,
-        'print_warning': print_warning,
-        'print_err_time': print_err_time,
-        'mean_metrics': mean_metrics,
-        'trend_metrics': trend_metrics,
-        'macd_fast': macd_fast,
-        'macd_slow': macd_slow,
-        'macd_signal': macd_signal,
-        'cal_demark': cal_demark,
-        'cal_rsi': cal_rsi,
-        'cal_kdj': cal_kdj,
-        'rsi_cycle': rsi_cycle,
-        'kdj_cycle': kdj_cycle,
-        'demark_len': demark_len,
-        'demark_setup_bias': demark_setup_bias,
-        'demark_countdown_bias': demark_countdown_bias,
-        'demark_max_countdown': demark_max_countdown,
-        'demark_tiaokong_st': demark_tiaokong_st,
-        'demark_setup_cmp2close': demark_setup_cmp2close,
-        'demark_countdown_cmp2close': demark_countdown_cmp2close,
-        'boll_n': boll_n,
-        'bs_type': bs_type,
-        'divergence_rate': divergence_rate,
-        'min_zs_cnt': min_zs_cnt,
-        'bsp1_only_multibi_zs': bsp1_only_multibi_zs,
-        'max_bs2_rate': max_bs2_rate,
-        'bs1_peak': bs1_peak,
-        'bsp2_follow_1': bsp2_follow_1,
-        'bsp3_follow_1': bsp3_follow_1,
-        'bsp3_peak': bsp3_peak,
-        'bsp2s_follow_2': bsp2s_follow_2,
-        'max_bsp2s_lv': max_bsp2s_lv,
-        'strict_bsp3': strict_bsp3,
-        'bsp3a_max_zs_cnt': bsp3a_max_zs_cnt,
-        'macd_algo': macd_algo,
-    }
-
-
 def _payload_int(payload: dict[str, Any], key: str, default: int, *, minimum: int, maximum: int) -> int:
-    try:
-        value = int(payload.get(key, default))
-    except (TypeError, ValueError):
-        value = default
-    return max(minimum, min(value, maximum))
+    return _intish(payload.get(key, default), default, minimum=minimum, maximum=maximum)
 
 
 def _payload_bool(payload: dict[str, Any], key: str, default: bool) -> bool:
     value = payload.get(key, default)
     if isinstance(value, bool):
         return value
-    return str(value).strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+    return str(value).strip().lower() in _BOOL_TRUE
 
 
 def _payload_symbols(value: Any) -> list[Any] | None:
@@ -226,6 +121,11 @@ def _scanner_args(payload: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def _analysis_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    analysis = payload.get('analysis')
+    return analysis if isinstance(analysis, dict) else payload
+
+
 @app.get('/health')
 def health() -> dict[str, object]:
     return {
@@ -233,7 +133,8 @@ def health() -> dict[str, object]:
         'backend': 'origin_vespa_tdx',
         'data_source': 'easy-tdx',
         'engine': 'chan.py',
-        'version': '0.5.2',
+        'version': '0.6.0',
+        'research_api': True,
     }
 
 
@@ -242,13 +143,17 @@ def root() -> dict[str, object]:
     return {
         'ok': True,
         'backend': 'origin_vespa_tdx',
-        'version': '0.5.2',
+        'version': '0.6.0',
         'note': 'Python chan.py is the only Chan calculation source. Flutter only renders JSON results.',
         'endpoints': [
             '/health',
             '/api/tdx/kline',
             '/api/chan/analyze',
             '/api/chan/analyze_bars',
+            '/api/research/bsp/features',
+            '/api/research/ml/score',
+            '/api/research/backtest',
+            '/api/research/pipeline',
             '/api/scanner/bsp/scan',
             '/api/scanner/bsp/scan_stream',
             '/docs',
@@ -267,112 +172,8 @@ def chan_analyze(
     count: int = Query(5000, ge=10, le=5000),
     start: str | None = Query(None, description='yyyy-MM-dd，可选'),
     end: str | None = Query(None, description='yyyy-MM-dd，可选'),
-    skip_step: int = Query(0, ge=0, description='CChanConfig.skip_step'),
-    bi_algo: str = Query('normal', description='CBiConfig.bi_algo: normal / fx'),
-    bi_strict: bool = Query(True, description='CBiConfig.bi_strict'),
-    bi_fx_check: str = Query('strict', description='CBiConfig.bi_fx_check: strict/loss/half/totally'),
-    gap_as_kl: bool = Query(False, description='CBiConfig.gap_as_kl'),
-    bi_end_is_peak: bool = Query(True, description='CBiConfig.bi_end_is_peak'),
-    bi_allow_sub_peak: bool = Query(True, description='CBiConfig.bi_allow_sub_peak'),
-    seg_algo: str = Query('chan', description='CSegConfig.seg_algo: chan/1+1/break'),
-    left_seg_method: str = Query('peak', description='CSegConfig.left_seg_method: peak/all'),
-    zs_algo: str = Query('normal', description='CZSConfig.zs_algo'),
-    zs_combine: bool = Query(True, description='CZSConfig.zs_combine'),
-    zs_combine_mode: str = Query('zs', description='CZSConfig.zs_combine_mode: zs/peak'),
-    one_bi_zs: bool = Query(False, description='CZSConfig.one_bi_zs'),
-    kl_data_check: bool = Query(True, description='CChanConfig.kl_data_check'),
-    max_kl_misalgin_cnt: int = Query(2, ge=0, description='CChanConfig.max_kl_misalgin_cnt'),
-    max_kl_inconsistent_cnt: int = Query(5, ge=0, description='CChanConfig.max_kl_inconsistent_cnt'),
-    auto_skip_illegal_sub_lv: bool = Query(False, description='CChanConfig.auto_skip_illegal_sub_lv'),
-    print_warning: bool = Query(True, description='CChanConfig.print_warning'),
-    print_err_time: bool = Query(True, description='CChanConfig.print_err_time'),
-    mean_metrics: str = Query('', description='CChanConfig.mean_metrics，逗号分隔整数'),
-    trend_metrics: str = Query('', description='CChanConfig.trend_metrics，逗号分隔整数'),
-    macd_fast: int = Query(12, ge=1, description='CChanConfig.macd.fast'),
-    macd_slow: int = Query(26, ge=1, description='CChanConfig.macd.slow'),
-    macd_signal: int = Query(9, ge=1, description='CChanConfig.macd.signal'),
-    cal_demark: bool = Query(False, description='CChanConfig.cal_demark'),
-    cal_rsi: bool = Query(False, description='CChanConfig.cal_rsi'),
-    cal_kdj: bool = Query(False, description='CChanConfig.cal_kdj'),
-    rsi_cycle: int = Query(14, ge=1, description='CChanConfig.rsi_cycle'),
-    kdj_cycle: int = Query(9, ge=1, description='CChanConfig.kdj_cycle'),
-    demark_len: int = Query(9, ge=1, description='CChanConfig.demark.demark_len'),
-    demark_setup_bias: int = Query(4, ge=1, description='CChanConfig.demark.setup_bias'),
-    demark_countdown_bias: int = Query(2, ge=1, description='CChanConfig.demark.countdown_bias'),
-    demark_max_countdown: int = Query(13, ge=1, description='CChanConfig.demark.max_countdown'),
-    demark_tiaokong_st: bool = Query(True, description='CChanConfig.demark.tiaokong_st'),
-    demark_setup_cmp2close: bool = Query(True, description='CChanConfig.demark.setup_cmp2close'),
-    demark_countdown_cmp2close: bool = Query(True, description='CChanConfig.demark.countdown_cmp2close'),
-    boll_n: int = Query(20, ge=1, description='CChanConfig.boll_n'),
-    bs_type: str = Query('1,1p,2,2s,3a,3b', description='CBSPointConfig.bs_type'),
-    divergence_rate: float = Query(1.0e18, description='CBSPointConfig.divergence_rate'),
-    min_zs_cnt: int = Query(1, ge=0, description='CBSPointConfig.min_zs_cnt'),
-    bsp1_only_multibi_zs: bool = Query(True, description='CBSPointConfig.bsp1_only_multibi_zs'),
-    max_bs2_rate: float = Query(0.9999, description='CBSPointConfig.max_bs2_rate'),
-    bs1_peak: bool = Query(True, description='CBSPointConfig.bs1_peak'),
-    bsp2_follow_1: bool = Query(True, description='CBSPointConfig.bsp2_follow_1'),
-    bsp3_follow_1: bool = Query(True, description='CBSPointConfig.bsp3_follow_1'),
-    bsp3_peak: bool = Query(False, description='CBSPointConfig.bsp3_peak'),
-    bsp2s_follow_2: bool = Query(False, description='CBSPointConfig.bsp2s_follow_2'),
-    max_bsp2s_lv: str | None = Query(None, description='CBSPointConfig.max_bsp2s_lv，空为 None'),
-    strict_bsp3: bool = Query(False, description='CBSPointConfig.strict_bsp3'),
-    bsp3a_max_zs_cnt: int = Query(1, ge=1, description='CBSPointConfig.bsp3a_max_zs_cnt'),
-    macd_algo: str = Query('peak', description='CBSPointConfig.macd_algo'),
 ) -> dict[str, object]:
-    config = _config_from_query(
-        skip_step=skip_step,
-        bi_algo=bi_algo,
-        bi_strict=bi_strict,
-        bi_fx_check=bi_fx_check,
-        gap_as_kl=gap_as_kl,
-        bi_end_is_peak=bi_end_is_peak,
-        bi_allow_sub_peak=bi_allow_sub_peak,
-        seg_algo=seg_algo,
-        left_seg_method=left_seg_method,
-        zs_algo=zs_algo,
-        zs_combine=zs_combine,
-        zs_combine_mode=zs_combine_mode,
-        one_bi_zs=one_bi_zs,
-        kl_data_check=kl_data_check,
-        max_kl_misalgin_cnt=max_kl_misalgin_cnt,
-        max_kl_inconsistent_cnt=max_kl_inconsistent_cnt,
-        auto_skip_illegal_sub_lv=auto_skip_illegal_sub_lv,
-        print_warning=print_warning,
-        print_err_time=print_err_time,
-        mean_metrics=mean_metrics,
-        trend_metrics=trend_metrics,
-        macd_fast=macd_fast,
-        macd_slow=macd_slow,
-        macd_signal=macd_signal,
-        cal_demark=cal_demark,
-        cal_rsi=cal_rsi,
-        cal_kdj=cal_kdj,
-        rsi_cycle=rsi_cycle,
-        kdj_cycle=kdj_cycle,
-        demark_len=demark_len,
-        demark_setup_bias=demark_setup_bias,
-        demark_countdown_bias=demark_countdown_bias,
-        demark_max_countdown=demark_max_countdown,
-        demark_tiaokong_st=demark_tiaokong_st,
-        demark_setup_cmp2close=demark_setup_cmp2close,
-        demark_countdown_cmp2close=demark_countdown_cmp2close,
-        boll_n=boll_n,
-        bs_type=bs_type,
-        divergence_rate=divergence_rate,
-        min_zs_cnt=min_zs_cnt,
-        bsp1_only_multibi_zs=bsp1_only_multibi_zs,
-        max_bs2_rate=max_bs2_rate,
-        bs1_peak=bs1_peak,
-        bsp2_follow_1=bsp2_follow_1,
-        bsp3_follow_1=bsp3_follow_1,
-        bsp3_peak=bsp3_peak,
-        bsp2s_follow_2=bsp2s_follow_2,
-        max_bsp2s_lv=max_bsp2s_lv,
-        strict_bsp3=strict_bsp3,
-        bsp3a_max_zs_cnt=bsp3a_max_zs_cnt,
-        macd_algo=macd_algo,
-    )
-    config.update(_bsp_advanced_config_from_query(request))
+    config = _config_from_request(request)
     if mode.lower() == 'step':
         result = analyze_step(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
     else:
@@ -397,6 +198,65 @@ def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
         config=config,
     )
     return _with_display_indicators(result, config)
+
+
+@app.post('/api/research/bsp/features')
+def research_bsp_features(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
+    analysis = _analysis_from_payload(payload)
+    return extract_bsp_features(
+        analysis,
+        label_horizon=_payload_int(payload, 'label_horizon', 5, minimum=1, maximum=250),
+        include_labels=_payload_bool(payload, 'include_labels', True),
+    )
+
+
+@app.post('/api/research/ml/score')
+def research_ml_score(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
+    raw_features = payload.get('features')
+    if not isinstance(raw_features, list):
+        analysis = _analysis_from_payload(payload)
+        raw_features = extract_bsp_features(
+            analysis,
+            label_horizon=_payload_int(payload, 'label_horizon', 5, minimum=1, maximum=250),
+            include_labels=_payload_bool(payload, 'include_labels', False),
+        )['features']
+    model = payload.get('model') if isinstance(payload.get('model'), dict) else None
+    return score_bsp_features([row for row in raw_features if isinstance(row, dict)], model=model)
+
+
+@app.post('/api/research/backtest')
+def research_backtest(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
+    analysis = _analysis_from_payload(payload)
+    if isinstance(payload.get('scores'), list):
+        analysis = {**analysis, 'scores': payload['scores']}
+    elif isinstance(payload.get('features'), list):
+        analysis = {**analysis, 'features': payload['features']}
+    options = payload.get('options') if isinstance(payload.get('options'), dict) else {}
+    return run_bsp_backtest(analysis, options=options)
+
+
+@app.post('/api/research/pipeline')
+def research_pipeline(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
+    analysis = _analysis_from_payload(payload)
+    feature_result = extract_bsp_features(
+        analysis,
+        label_horizon=_payload_int(payload, 'label_horizon', 5, minimum=1, maximum=250),
+        include_labels=_payload_bool(payload, 'include_labels', True),
+    )
+    model = payload.get('model') if isinstance(payload.get('model'), dict) else None
+    score_result = score_bsp_features(feature_result['features'], model=model)
+    options = payload.get('options') if isinstance(payload.get('options'), dict) else {}
+    backtest_result = run_bsp_backtest({**analysis, 'scores': score_result['scores']}, options=options)
+    return {
+        'ok': True,
+        'features': feature_result['features'],
+        'scores': score_result['scores'],
+        'backtest': backtest_result,
+        'meta': {
+            'source': 'origin_vespa_tdx.backend.research_pipeline',
+            'chan_py_polluted': False,
+        },
+    }
 
 
 @app.post('/api/scanner/bsp/scan')
