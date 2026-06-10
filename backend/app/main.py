@@ -6,10 +6,11 @@ from fastapi import Body, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .a_bsp_scanner import scan_bsp
+from .a_easy_tdx_indicators import build_easy_tdx_indicators, easy_tdx_indicator_meta
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
-app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.5.0')
+app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.5.1')
 
 app.add_middleware(
     CORSMiddleware,
@@ -183,6 +184,60 @@ def _payload_symbols(value: Any) -> list[Any] | None:
     return None
 
 
+def _config_int(config: dict[str, Any], key: str, default: int) -> int:
+    try:
+        return int(config.get(key) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _merge_indicator_meta(result: dict[str, Any]) -> None:
+    patch = easy_tdx_indicator_meta()
+    meta = result.get('meta')
+    if not isinstance(meta, dict):
+        result['meta'] = patch
+        return
+    indicator_sources = patch.get('indicator_sources')
+    if isinstance(indicator_sources, dict):
+        meta['indicator_sources'] = indicator_sources
+    if 'indicator_warning' in patch:
+        meta['indicator_warning'] = patch['indicator_warning']
+
+
+def _append_warning(result: dict[str, Any], warning: str) -> None:
+    meta = result.setdefault('meta', {})
+    if not isinstance(meta, dict):
+        result['meta'] = {'warnings': [warning]}
+        return
+    warnings = meta.setdefault('warnings', [])
+    if isinstance(warnings, list):
+        warnings.append(warning)
+    else:
+        meta['warnings'] = [warning]
+
+
+def _with_easy_tdx_indicators(result: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
+    bars = result.get('bars')
+    if not isinstance(bars, list):
+        result.setdefault('indicators', {})
+        return result
+    rows = [row for row in bars if isinstance(row, dict)]
+    cfg = config or {}
+    try:
+        result['indicators'] = build_easy_tdx_indicators(
+            rows,
+            boll_window=_config_int(cfg, 'boll_n', 20),
+            macd_fast=_config_int(cfg, 'macd_fast', 12),
+            macd_slow=_config_int(cfg, 'macd_slow', 26),
+            macd_signal=_config_int(cfg, 'macd_signal', 9),
+        )
+        _merge_indicator_meta(result)
+    except Exception as exc:  # pragma: no cover - defensive display fallback
+        result['indicators'] = {}
+        _append_warning(result, f'easy-tdx indicator build failed: {exc}')
+    return result
+
+
 @app.get('/health')
 def health() -> dict[str, object]:
     return {
@@ -190,7 +245,7 @@ def health() -> dict[str, object]:
         'backend': 'origin_vespa_tdx',
         'data_source': 'easy-tdx',
         'engine': 'chan.py',
-        'version': '0.5.0',
+        'version': '0.5.1',
     }
 
 
@@ -199,7 +254,7 @@ def root() -> dict[str, object]:
     return {
         'ok': True,
         'backend': 'origin_vespa_tdx',
-        'version': '0.5.0',
+        'version': '0.5.1',
         'note': 'Python chan.py is the only Chan calculation source. Flutter only renders JSON results.',
         'endpoints': [
             '/health',
@@ -330,17 +385,31 @@ def chan_analyze(
     )
     config.update(_bsp_advanced_config_from_query(request))
     if mode.lower() == 'step':
-        return analyze_step(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
-    return analyze_once(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
+        result = analyze_step(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
+    else:
+        result = analyze_once(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
+    return _with_easy_tdx_indicators(result, config)
 
 
 @app.post('/api/chan/analyze_bars')
 def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
     bars = payload.get('bars') or []
     if not isinstance(bars, list):
-        return {'ok': False, 'error': 'bars 必须是数组', 'bars': [], 'merged_bars': [], 'fx': [], 'bi': [], 'seg': [], 'zs': [], 'bsp': [], 'frames': []}
+        return {
+            'ok': False,
+            'error': 'bars 必须是数组',
+            'bars': [],
+            'merged_bars': [],
+            'fx': [],
+            'bi': [],
+            'seg': [],
+            'zs': [],
+            'bsp': [],
+            'indicators': {},
+            'frames': [],
+        }
     config = payload.get('config') if isinstance(payload.get('config'), dict) else {}
-    return analyze_bars(
+    result = analyze_bars(
         bars=bars,
         symbol=str(payload.get('symbol') or 'local_csv'),
         market=str(payload.get('market') or 'LOCAL'),
@@ -349,6 +418,7 @@ def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
         mode=str(payload.get('mode') or 'once'),
         config=config,
     )
+    return _with_easy_tdx_indicators(result, config)
 
 
 @app.post('/api/scanner/bsp/scan')
@@ -388,7 +458,7 @@ def kline(
         start=start,
         end=end,
     )
-    return {
+    result: dict[str, Any] = {
         'ok': True,
         'engine': 'chan.py',
         'source': {
@@ -402,3 +472,4 @@ def kline(
         },
         'bars': bars,
     }
+    return _with_easy_tdx_indicators(result, {'boll_n': 20, 'macd_fast': 12, 'macd_slow': 26, 'macd_signal': 9})
