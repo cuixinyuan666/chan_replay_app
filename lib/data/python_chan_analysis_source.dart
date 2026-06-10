@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import '../core/models/bi.dart';
 import '../core/models/bsp.dart';
 import '../core/models/chan_snapshot.dart';
+import '../core/models/easy_tdx_indicator.dart';
 import '../core/models/fx.dart';
 import '../core/models/merged_bar.dart';
 import '../core/models/raw_bar.dart';
@@ -289,6 +290,7 @@ class PythonChanAnalysisSource {
       segs: segs,
       zss: zss,
       bsps: bsps,
+      indicators: EasyTdxIndicators.fromJson(data['indicators']),
     );
   }
 
