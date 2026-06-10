@@ -33,10 +33,10 @@ class EasyTdxIndicatorPage extends StatelessWidget {
                 style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70, height: 1.5),
               ),
               const SizedBox(height: 18),
-              Wrap(
+              const Wrap(
                 spacing: 12,
                 runSpacing: 12,
-                children: const [
+                children: [
                   _IndicatorCard(title: 'VOL', desc: '成交量副图，raw_index 与 K线对齐'),
                   _IndicatorCard(title: 'amount', desc: '成交额，缺失时显示 --，不伪造 0'),
                   _IndicatorCard(title: 'turnover', desc: '换手率，easy-tdx 缺失时保持 null'),
