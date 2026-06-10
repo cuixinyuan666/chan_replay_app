@@ -161,6 +161,14 @@ POST /api/research/backtest
 POST /api/research/pipeline
 ```
 
+### 当前 Flutter 入口
+
+```text
+lib/ui/pages/research_backtest_page.dart
+```
+
+该页面通过左下角同列路由按钮进入，首次点击后才构造；输入为 chan.py analysis JSON，输出为 features / scores / backtest / pipeline JSON。
+
 约束：
 
 1. 输入为 chan.py analysis JSON。
@@ -179,13 +187,17 @@ docs/vespa_research_extension_plan.md
 
 App 入口应直接呈现复盘界面，不再显示“本地复盘 / Vespa对齐” Tab。Vespa 对齐工具可保留在 `tools/chanpy_compare` 作为开发工具，但不再作为 App 页面。
 
-兼容 wrapper：
+当前根页面：
 
 ```text
-lib/ui/pages/replay_page.dart -> OriginReplayPageV2
+lib/ui/pages/root_page.dart
 ```
 
-该 wrapper 不再 import 或实例化旧 Dart `ChanReplayEngine`。
+约束：
+
+1. 默认只构造复盘页。
+2. 扫描器、研究 / 回测页面必须首次访问后才构造并缓存。
+3. `lib/ui/pages/replay_page.dart` 只是 `OriginReplayPageV2` 兼容 wrapper，不再 import 或实例化旧 Dart `ChanReplayEngine`。
 
 ## 护栏与验证命令
 
@@ -211,6 +223,7 @@ tools/audit_global_lazy_loading.py
 1. `main.dart / app.dart / root_page.dart / replay_page.dart` 等全局入口不引用旧 Dart 缠论算法引擎。
 2. 生产 Dart 文件不 import `core/engine/` 旧算法。
 3. 重页面 import 必须位于明确边界或白名单内。
+4. `root_page.dart` 必须保留 lazy route marker，防止回退到 eager `IndexedStack`。
 
 ## 当前监督状态
 
@@ -231,6 +244,7 @@ tools/audit_global_lazy_loading.py
 9. Flutter V2 页面直接消费 Python step frames，不再用前端切片模拟逐K。
 10. Flutter V2 页面支持本地 CSV 上传到 Python chan.py。
 11. `lib/ui/pages/replay_page.dart` 已改为 V2 wrapper，不再 import / 实例化旧 Dart 算法引擎。
+12. `RootPage` 已从 eager `IndexedStack` 改为 lazy route stack，扫描器和研究页首次访问后才构造。
 
 #### 2. API 与输出合同
 
@@ -265,6 +279,7 @@ tools/audit_global_lazy_loading.py
 3. 已新增 BSP 研究回测引擎：`backend/app/a_backtest_engine.py`。
 4. 已新增 research API：`features / score / backtest / pipeline`。
 5. 已新增研究扩展文档：`docs/vespa_research_extension_plan.md`。
+6. 已新增 Flutter 研究 / 回测页面：`lib/ui/pages/research_backtest_page.dart`。
 
 #### 6. 本地验证与 CI 护栏
 
@@ -272,14 +287,15 @@ tools/audit_global_lazy_loading.py
 2. 用户本地执行 `python tools/audit_dart_algorithm_usage.py` 时发现 3 个 blocking，均来自旧 `replay_page.dart` 生产链路 import / 实例化旧 Dart 引擎。
 3. 本轮已修复上述 blocking 源文件，但仍需用户重新执行审计确认。
 4. 已新增 `tools/audit_global_lazy_loading.py --strict`。
+5. 全局懒加载审计已加入 GitHub Actions。
 
 ### 已完成但仍需复验
 
 1. `audit_dart_algorithm_usage.py` 需重新执行，确认 blocking_count 归零。
 2. `audit_global_lazy_loading.py --strict` 需本地执行。
-3. Windows `flutter run -d windows` 需确认启动后复盘页面、扫描器入口、Python 后端自动启动都可用。
+3. Windows `flutter run -d windows` 需确认启动后复盘页面、扫描器入口、研究 / 回测入口、Python 后端自动启动都可用。
 4. Android `flutter run` 需重新验收。
-5. Research API 需用真实 analysis JSON 复验。
+5. Research API 和 Flutter 研究页需用真实 analysis JSON 复验。
 6. 合同校验脚本需用真实导出的 analysis JSON，而不是占位路径 `path/to/analysis.json`。
 
 ### 未完成
@@ -308,10 +324,10 @@ tools/audit_global_lazy_loading.py
 
 #### P3：研究 / 回测 UI
 
-1. Flutter 增加“研究 / 回测”入口。
-2. 研究入口必须懒加载或保持独立 feature boundary。
-3. UI 展示 BSP 特征表、ML score、回测交易列表和 summary。
-4. 后续支持外部模型文件导入，但不得让重依赖污染默认启动链路。
+1. 将研究页与当前复盘页的最新 analysis JSON 自动打通，减少手动粘贴。
+2. UI 展示 BSP 特征表、ML score、回测交易列表和 summary，而不是只显示原始 JSON。
+3. 后续支持外部模型文件导入，但不得让重依赖污染默认启动链路。
+4. 增加 research API fixture 和合同校验。
 
 #### P4：K线图最终显示验收
 
@@ -348,6 +364,7 @@ POST /api/research/pipeline
 ```
 
 4. 开始 Flutter VOL 副图和 MACD / MA / BOLL 显示。
+5. 补齐 Android MethodChannel indicators 输出合同。
 
 ## 当前注意事项
 
