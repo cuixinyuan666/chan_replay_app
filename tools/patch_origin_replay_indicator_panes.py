@@ -70,6 +70,12 @@ CHART_END_NEW = """                  onPriceScaleChanged: (v) => setState(() => 
               ),
               if (_showLayerStatusPanel) _buildLayerStatusPanel(),"""
 
+SLICE_INDICATORS_OLD = """  bsps: source.bsps.where((e) => inCursor(e.rawIndex)).toList(),
+);"""
+SLICE_INDICATORS_NEW = """  bsps: source.bsps.where((e) => inCursor(e.rawIndex)).toList(),
+  indicators: source.indicators,
+);"""
+
 PATCHES = [
     ('import OriginIndicatorPaneHost', IMPORT_OLD, IMPORT_NEW),
     ('indicator pane state flags', STATE_OLD, STATE_NEW),
@@ -77,6 +83,7 @@ PATCHES = [
     ('toolbar indicator toggles', TOOLBAR_OLD, TOOLBAR_NEW),
     ('chart panel host start', CHART_START_OLD, CHART_START_NEW),
     ('chart panel host end', CHART_END_OLD, CHART_END_NEW),
+    ('slice snapshot indicators', SLICE_INDICATORS_OLD, SLICE_INDICATORS_NEW),
 ]
 
 
