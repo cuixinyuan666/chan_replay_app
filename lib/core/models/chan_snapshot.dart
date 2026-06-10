@@ -6,6 +6,7 @@ import 'seg.dart';
 import 'zs.dart';
 import 'bsp.dart';
 import 'plot_layer_item.dart';
+import 'easy_tdx_indicator.dart';
 
 class ChanSnapshot {
   final List<RawBar> rawBars;
@@ -18,6 +19,7 @@ class ChanSnapshot {
   final List<ZS> segZss;
   final List<PlotLayerItem> eigenBoxes;
   final List<PlotLayerItem> segEigenBoxes;
+  final EasyTdxIndicators indicators;
 
   const ChanSnapshot({
     required this.rawBars,
@@ -30,6 +32,7 @@ class ChanSnapshot {
     this.segZss = const [],
     this.eigenBoxes = const [],
     this.segEigenBoxes = const [],
+    this.indicators = const EasyTdxIndicators(),
   });
 
   factory ChanSnapshot.empty() => const ChanSnapshot(
@@ -43,5 +46,6 @@ class ChanSnapshot {
         segZss: [],
         eigenBoxes: [],
         segEigenBoxes: [],
+        indicators: EasyTdxIndicators(),
       );
 }
