@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+import math
+import re
 import sys
 import types
 from typing import Any, Iterable
@@ -217,6 +219,18 @@ def _to_float(value: Any) -> Any:
         return value
 
 
+def _num(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(number) or math.isinf(number):
+        return None
+    return number
+
+
 def _idx(obj: Any) -> int | None:
     value = _attr(obj, ('idx', 'klu_idx', 'index', 'id'), None)
     return value if isinstance(value, int) else None
@@ -225,6 +239,162 @@ def _idx(obj: Any) -> int | None:
 def _time(obj: Any) -> str | None:
     value = _attr(obj, ('time', 'time_begin', 'date', 'dt'), None)
     return None if value is None else str(value)
+
+
+def _bar_time(bar: dict[str, Any]) -> Any:
+    return bar.get('time') or bar.get('dt') or bar.get('datetime') or bar.get('date')
+
+
+def _bar_index(bar: dict[str, Any], fallback: int) -> int:
+    value = bar.get('raw_index', bar.get('rawIndex', bar.get('id', bar.get('index', fallback))))
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _bar_value(bar: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        if key in bar:
+            value = _num(bar.get(key))
+            if value is not None:
+                return value
+    return None
+
+
+def _point(bar: dict[str, Any], fallback_index: int, value: float | None) -> dict[str, Any]:
+    return {'time': _bar_time(bar), 'raw_index': _bar_index(bar, fallback_index), 'value': value}
+
+
+def _point_series(bars: list[dict[str, Any]], *keys: str) -> list[dict[str, Any]]:
+    return [_point(bar, i, _bar_value(bar, *keys)) for i, bar in enumerate(bars)]
+
+
+def _parse_periods(value: Any, defaults: list[int] | None = None) -> list[int]:
+    defaults = defaults or [5, 10, 20]
+    if value is None or str(value).strip() == '':
+        return defaults
+    if isinstance(value, int):
+        rows = [value]
+    elif isinstance(value, (list, tuple)):
+        rows = []
+        for item in value:
+            try:
+                rows.append(int(item))
+            except (TypeError, ValueError):
+                pass
+    else:
+        rows = []
+        for part in re.split(r'[,，\s]+', str(value).strip()):
+            if not part:
+                continue
+            try:
+                rows.append(int(part))
+            except ValueError:
+                pass
+    result: list[int] = []
+    for period in rows:
+        if 1 <= period <= 500 and period not in result:
+            result.append(period)
+    return result or defaults
+
+
+def _close_values(bars: list[dict[str, Any]]) -> list[float | None]:
+    return [_bar_value(bar, 'close', 'c') for bar in bars]
+
+
+def _moving_average(bars: list[dict[str, Any]], period: int) -> list[dict[str, Any]]:
+    closes = _close_values(bars)
+    result: list[dict[str, Any]] = []
+    for i, bar in enumerate(bars):
+        if i + 1 < period:
+            value = None
+        else:
+            window = closes[i + 1 - period:i + 1]
+            value = None if any(v is None for v in window) else sum(v for v in window if v is not None) / period
+        result.append(_point(bar, i, value))
+    return result
+
+
+def _ema(prev: float | None, value: float, period: int) -> float:
+    alpha = 2.0 / (period + 1.0)
+    return value if prev is None else alpha * value + (1.0 - alpha) * prev
+
+
+def _macd_series(bars: list[dict[str, Any]], *, fast: int, slow: int, signal: int) -> list[dict[str, Any]]:
+    fast_ema = slow_ema = dea = None
+    result: list[dict[str, Any]] = []
+    for i, bar in enumerate(bars):
+        close = _bar_value(bar, 'close', 'c')
+        if close is None:
+            result.append({'time': _bar_time(bar), 'raw_index': _bar_index(bar, i), 'dif': None, 'dea': None, 'hist': None})
+            continue
+        fast_ema = _ema(fast_ema, close, max(1, fast))
+        slow_ema = _ema(slow_ema, close, max(1, slow))
+        dif = fast_ema - slow_ema
+        dea = _ema(dea, dif, max(1, signal))
+        hist = (dif - dea) * 2.0
+        result.append({'time': _bar_time(bar), 'raw_index': _bar_index(bar, i), 'dif': dif, 'dea': dea, 'hist': hist})
+    return result
+
+
+def _boll_series(bars: list[dict[str, Any]], *, period: int) -> list[dict[str, Any]]:
+    closes = _close_values(bars)
+    result: list[dict[str, Any]] = []
+    for i, bar in enumerate(bars):
+        if i + 1 < period:
+            mid = upper = lower = None
+        else:
+            window = closes[i + 1 - period:i + 1]
+            if any(v is None for v in window):
+                mid = upper = lower = None
+            else:
+                values = [v for v in window if v is not None]
+                mid = sum(values) / period
+                variance = sum((v - mid) ** 2 for v in values) / period
+                std = variance ** 0.5
+                upper = mid + 2.0 * std
+                lower = mid - 2.0 * std
+        result.append({'time': _bar_time(bar), 'raw_index': _bar_index(bar, i), 'upper': upper, 'mid': mid, 'lower': lower})
+    return result
+
+
+def _cfg_int(config: dict[str, Any] | None, key: str, default: int, *, minimum: int = 1, maximum: int = 500) -> int:
+    value = (config or {}).get(key, default)
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    return max(minimum, min(maximum, number))
+
+
+def _build_display_indicators(bars: list[dict[str, Any]], config: dict[str, Any] | None) -> dict[str, Any]:
+    cfg = config or {}
+    ma_periods = _parse_periods(cfg.get('mean_metrics'), defaults=[5, 10, 20])
+    return {
+        'vol': _point_series(bars, 'vol', 'volume', 'v'),
+        'amount': _point_series(bars, 'amount', 'money'),
+        'turnover': _point_series(bars, 'turnover', 'turnover_rate', 'turnrate'),
+        'ma': {str(period): _moving_average(bars, period) for period in ma_periods},
+        'boll': _boll_series(bars, period=_cfg_int(cfg, 'boll_n', 20)),
+        'macd': _macd_series(
+            bars,
+            fast=_cfg_int(cfg, 'macd_fast', 12),
+            slow=_cfg_int(cfg, 'macd_slow', 26),
+            signal=_cfg_int(cfg, 'macd_signal', 9),
+        ),
+    }
+
+
+def _indicator_source_meta() -> dict[str, str]:
+    return {
+        'vol': 'bars.volume/easy_tdx',
+        'amount': 'bars.amount/easy_tdx_when_available',
+        'turnover': 'bars.turnover/easy_tdx_when_available_null_not_estimated',
+        'ma': 'android_display_only_from_close',
+        'boll': 'android_display_only_from_close',
+        'macd': 'android_display_only_from_close',
+    }
 
 
 def _dir_text(value: Any) -> str:
@@ -438,15 +608,17 @@ def _run_chanpy(bars: list[dict[str, Any]], code: str, freq: str, adjust: str, m
         frames = []
         latest = {'merged_bars': [], 'fx': [], 'bi': [], 'seg': [], 'zs': [], 'bsp': []}
         for i, cur_chan in enumerate(chan.step_load()):
+            frame_bars = bars[: min(i + 1, len(bars))]
             latest = _snapshot(cur_chan, kl_type)
-            frames.append({'bars': bars[: min(i + 1, len(bars))], **latest})
+            frames.append({'bars': frame_bars, **latest, 'indicators': _build_display_indicators(frame_bars, config)})
         return {**latest, 'frames': frames}
     return {**_snapshot(chan, kl_type), 'frames': []}
 
 
 def _result(ok: bool, *, bars: list[dict[str, Any]], code: str, market: str, freq: str, adjust: str, mode: str, warning: str | None = None, error: str | None = None, structures: dict[str, Any] | None = None, config: dict[str, Any] | None = None) -> str:
     structures = structures or {}
-    data = {'ok': ok, 'bars': bars, 'merged_bars': structures.get('merged_bars', []), 'fx': structures.get('fx', []), 'bi': structures.get('bi', []), 'seg': structures.get('seg', []), 'zs': structures.get('zs', []), 'bsp': structures.get('bsp', []), 'frames': structures.get('frames', []), 'meta': {'engine': 'chan.py', 'platform': 'android-chaquopy', 'symbol': f'{code}.{market}', 'name': code, 'freq': freq, 'adjust': adjust, 'mode': mode, 'config': config or {}}}
+    meta = {'engine': 'chan.py', 'platform': 'android-chaquopy', 'symbol': f'{code}.{market}', 'name': code, 'freq': freq, 'adjust': adjust, 'mode': mode, 'config': config or {}, 'indicator_sources': _indicator_source_meta()}
+    data = {'ok': ok, 'bars': bars, 'merged_bars': structures.get('merged_bars', []), 'fx': structures.get('fx', []), 'bi': structures.get('bi', []), 'seg': structures.get('seg', []), 'zs': structures.get('zs', []), 'bsp': structures.get('bsp', []), 'indicators': _build_display_indicators(bars, config), 'frames': structures.get('frames', []), 'meta': meta}
     if warning:
         data['meta']['warning'] = warning
     if error:
