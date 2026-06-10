@@ -59,3 +59,6 @@ jobs:
 
       - name: Validate easy-tdx indicator contract fixture
         run: python tools/validate_easy_tdx_indicator_contract.py test/fixtures/easy_tdx_indicator_contract_valid.json
+
+      - name: Validate research pipeline contract fixture
+        run: python tools/validate_research_pipeline_contract.py test/fixtures/research_pipeline_contract_valid.json --require-features
