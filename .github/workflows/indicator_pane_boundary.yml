@@ -1,0 +1,19 @@
+name: Indicator pane boundary
+
+on:
+  push:
+    branches:
+      - origin_vespa_tdx
+  pull_request:
+    branches:
+      - origin_vespa_tdx
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Audit indicator pane display boundary
+        run: python tools/audit_indicator_pane_boundary.py
