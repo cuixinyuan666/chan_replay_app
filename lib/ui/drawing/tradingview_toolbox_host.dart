@@ -50,8 +50,7 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
   TradingViewDrawingTool _localSelectedTool = TradingViewDrawingTool.cursor;
   final List<TradingViewDrawingTool> _quickTools = [];
 
-  TradingViewDrawingTool get _effectiveSelectedTool =>
-      widget.selectedTool ?? _localSelectedTool;
+  TradingViewDrawingTool get _effectiveSelectedTool => widget.selectedTool ?? _localSelectedTool;
 
   @override
   void initState() {
@@ -84,9 +83,7 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
     final meta = TradingViewDrawingToolRegistry.metaOf(tool);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(meta.minPoints > 0
-            ? '已选择：${meta.label}。请在K线图上点击放置锚点。'
-            : '已选择：${meta.label}。'),
+        content: Text(meta.minPoints > 0 ? '已选择：${meta.label}。请在K线图上点击放置锚点。' : '已选择：${meta.label}。'),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
         backgroundColor: const Color(0xFF1E3A8A),
@@ -99,9 +96,7 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
     setState(() => _quickTools.add(tool));
   }
 
-  void _removeQuickTool(TradingViewDrawingTool tool) {
-    setState(() => _quickTools.remove(tool));
-  }
+  void _removeQuickTool(TradingViewDrawingTool tool) => setState(() => _quickTools.remove(tool));
 
   void _handleQuickToolAdded(TradingViewDrawingTool tool) {
     final external = widget.onQuickToolAdded;
@@ -139,8 +134,7 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
             top: 8,
             child: _ToolboxButton(
               open: _open,
-              selectedLabel:
-                  TradingViewDrawingToolRegistry.metaOf(selected).label,
+              selectedLabel: TradingViewDrawingToolRegistry.metaOf(selected).label,
               drawingCount: widget.drawingCount,
               onPressed: () => setState(() => _open = !_open),
             ),
@@ -180,13 +174,7 @@ class _QuickToolRail extends StatelessWidget {
   final ValueChanged<TradingViewDrawingTool> onRemoveTool;
   final ValueChanged<TradingViewDrawingTool> onSelected;
 
-  const _QuickToolRail({
-    required this.tools,
-    required this.selectedTool,
-    required this.onAcceptTool,
-    required this.onRemoveTool,
-    required this.onSelected,
-  });
+  const _QuickToolRail({required this.tools, required this.selectedTool, required this.onAcceptTool, required this.onRemoveTool, required this.onSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -201,69 +189,34 @@ class _QuickToolRail extends StatelessWidget {
           decoration: BoxDecoration(
             color: active ? const Color(0xEE1E3A8A) : const Color(0xCC131722),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: active ? const Color(0xFF8AB4FF) : Colors.white12,
-            ),
+            border: Border.all(color: active ? const Color(0xFF8AB4FF) : Colors.white12),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Tooltip(
-                waitDuration: _tooltipWait,
-                message: '拖拽 TV 工具到这里，形成左侧快捷工具栏',
-                child: Icon(active ? Icons.add_circle : Icons.push_pin_outlined,
-                    size: 18, color: Colors.white70),
-              ),
+              Tooltip(waitDuration: _tooltipWait, message: '拖拽 TV 工具到这里，形成左侧快捷工具栏', child: Icon(active ? Icons.add_circle : Icons.push_pin_outlined, size: 18, color: Colors.white70)),
               const SizedBox(height: 6),
               for (final tool in tools)
-                _QuickToolButton(
-                  tool: tool,
-                  selected: selectedTool == tool,
-                  onSelected: onSelected,
-                  onRemove: onRemoveTool,
+                Tooltip(
+                  waitDuration: _tooltipWait,
+                  message: '${TradingViewDrawingToolRegistry.metaOf(tool).label}\n右键/长按移出快捷栏',
+                  child: GestureDetector(
+                    onTap: () => onSelected(tool),
+                    onLongPress: () => onRemoveTool(tool),
+                    onSecondaryTap: () => onRemoveTool(tool),
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      margin: const EdgeInsets.only(bottom: 5),
+                      decoration: BoxDecoration(color: selectedTool == tool ? const Color(0xFF2962FF) : Colors.transparent, borderRadius: BorderRadius.circular(8)),
+                      child: Icon(_toolIcon(tool), size: 17, color: Colors.white70),
+                    ),
+                  ),
                 ),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-class _QuickToolButton extends StatelessWidget {
-  final TradingViewDrawingTool tool;
-  final bool selected;
-  final ValueChanged<TradingViewDrawingTool> onSelected;
-  final ValueChanged<TradingViewDrawingTool> onRemove;
-
-  const _QuickToolButton({
-    required this.tool,
-    required this.selected,
-    required this.onSelected,
-    required this.onRemove,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final meta = TradingViewDrawingToolRegistry.metaOf(tool);
-    return Tooltip(
-      waitDuration: _tooltipWait,
-      message: '${meta.label}\n右键/长按移出快捷栏',
-      child: GestureDetector(
-        onTap: () => onSelected(tool),
-        onLongPress: () => onRemove(tool),
-        onSecondaryTap: () => onRemove(tool),
-        child: Container(
-          width: 30,
-          height: 30,
-          margin: const EdgeInsets.only(bottom: 5),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFF2962FF) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(_toolIcon(tool), size: 17, color: Colors.white70),
-        ),
-      ),
     );
   }
 }
@@ -274,12 +227,7 @@ class _ToolboxButton extends StatelessWidget {
   final int drawingCount;
   final VoidCallback onPressed;
 
-  const _ToolboxButton({
-    required this.open,
-    required this.selectedLabel,
-    required this.drawingCount,
-    required this.onPressed,
-  });
+  const _ToolboxButton({required this.open, required this.selectedLabel, required this.drawingCount, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -293,12 +241,7 @@ class _ToolboxButton extends StatelessWidget {
           onPressed: onPressed,
           icon: Icon(open ? Icons.close : Icons.architecture, size: 18),
           label: Text('TV工具$suffix'),
-          style: FilledButton.styleFrom(
-            visualDensity: VisualDensity.compact,
-            backgroundColor: const Color(0xDD1F2937),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          ),
+          style: FilledButton.styleFrom(visualDensity: VisualDensity.compact, backgroundColor: const Color(0xDD1F2937), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
         ),
       ),
     );
@@ -321,22 +264,7 @@ class _ToolboxPanel extends StatefulWidget {
   final ValueChanged<TradingViewDrawingTool> onSelected;
   final ValueChanged<TradingViewDrawingTool> onQuickToolAdded;
 
-  const _ToolboxPanel({
-    required this.selectedTool,
-    required this.hasBars,
-    required this.hasChanSnapshot,
-    required this.isToolAvailable,
-    required this.drawingCount,
-    required this.canExportDrawings,
-    required this.onClearDrawings,
-    required this.onImportDrawings,
-    required this.onExportDrawings,
-    required this.isChanOverlayVisible,
-    required this.onChanOverlayToggled,
-    required this.onClose,
-    required this.onSelected,
-    required this.onQuickToolAdded,
-  });
+  const _ToolboxPanel({required this.selectedTool, required this.hasBars, required this.hasChanSnapshot, required this.isToolAvailable, required this.drawingCount, required this.canExportDrawings, required this.onClearDrawings, required this.onImportDrawings, required this.onExportDrawings, required this.isChanOverlayVisible, required this.onChanOverlayToggled, required this.onClose, required this.onSelected, required this.onQuickToolAdded});
 
   @override
   State<_ToolboxPanel> createState() => _ToolboxPanelState();
@@ -346,6 +274,8 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
   final ScrollController _scrollController = ScrollController();
   final List<TradingViewDrawingGroup> _groupOrder = [];
   final Map<TradingViewDrawingGroup, List<TradingViewDrawingToolMeta>> _toolOrder = {};
+  final Set<String> _enabledIndicators = {'MA', 'BOLL', 'VOL', 'MACD'};
+  static const List<String> _indicatorKeys = ['MA', 'BOLL', 'VOL', 'MACD', 'amount', 'turnover', 'KDJ', 'RSI', 'DMI', 'ATR', 'WR', 'CCI', 'BIAS', 'OBV', 'PSY', 'TRIX', 'DPO', 'MTM', 'ROC', 'EXPMA', 'BBI', 'DFMA', 'CR', 'KTN', 'XSII', 'VR', 'EMV', 'MASS', 'MFI', 'BRAR', 'ASI', 'ZHUOYAO', 'BIAS_SIGNAL', 'TAQ'];
 
   @override
   void dispose() {
@@ -378,20 +308,8 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF131722),
         title: const Text('TV 工具箱操作说明', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          '1. 拖拽分类标题可调整分类顺序。\n'
-          '2. 拖拽组内工具可调整该组工具顺序。\n'
-          '3. 长按/拖拽工具到左侧快捷栏，可固定为快捷按钮。\n'
-          '4. 缠论叠加只控制后端/Vespa 返回元素的显示，不在前端重算。\n'
-          '5. 工具提示需鼠标停留 3 秒才显示，以减少滚动卡顿。',
-          style: TextStyle(color: Colors.white70, height: 1.45),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('知道了'),
-          ),
-        ],
+        content: const Text('1. 拖拽分类标题可调整分类顺序。\n2. 拖拽组内工具可调整该组工具顺序。\n3. 长按/拖拽工具到左侧快捷栏，可固定为快捷按钮。\n4. 缠论叠加来自后端/Vespa；easy-tdx 指标来自 easy-tdx OHLCV 展示层。\n5. 指标开关只控制指标展示，不参与 chan.py 缠论结构计算。', style: TextStyle(color: Colors.white70, height: 1.45)),
+        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('知道了'))],
       ),
     );
   }
@@ -404,14 +322,7 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
       elevation: 18,
       color: Colors.transparent,
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xF2131722),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-          boxShadow: const [
-            BoxShadow(blurRadius: 20, offset: Offset(0, 8), color: Color(0x99000000)),
-          ],
-        ),
+        decoration: BoxDecoration(color: const Color(0xF2131722), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.12)), boxShadow: const [BoxShadow(blurRadius: 20, offset: Offset(0, 8), color: Color(0x99000000))]),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -419,51 +330,13 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
               padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
               child: Row(
                 children: [
-                  IconButton(
-                    tooltip: '操作说明',
-                    onPressed: _showGuide,
-                    icon: const Icon(Icons.error_outline, size: 19),
-                    visualDensity: VisualDensity.compact,
-                    color: Colors.amberAccent,
-                  ),
+                  IconButton(tooltip: '操作说明', onPressed: _showGuide, icon: const Icon(Icons.error_outline, size: 19), visualDensity: VisualDensity.compact, color: Colors.amberAccent),
                   const SizedBox(width: 4),
-                  const Expanded(
-                    child: Text(
-                      'TradingView 画线工具箱',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '导入画线 JSON',
-                    onPressed: widget.onImportDrawings,
-                    icon: const Icon(Icons.file_upload_outlined, size: 18),
-                    visualDensity: VisualDensity.compact,
-                    color: Colors.white70,
-                    disabledColor: Colors.white24,
-                  ),
-                  IconButton(
-                    tooltip: widget.canExportDrawings ? '导出画线 JSON' : '暂无手动画线可导出',
-                    onPressed: widget.canExportDrawings ? widget.onExportDrawings : null,
-                    icon: const Icon(Icons.file_download_outlined, size: 18),
-                    visualDensity: VisualDensity.compact,
-                    color: Colors.white70,
-                    disabledColor: Colors.white24,
-                  ),
-                  IconButton(
-                    tooltip: widget.drawingCount > 0 ? '清空手动画线' : '暂无手动画线',
-                    onPressed: widget.drawingCount > 0 ? widget.onClearDrawings : null,
-                    icon: const Icon(Icons.delete_sweep, size: 18),
-                    visualDensity: VisualDensity.compact,
-                    color: Colors.white70,
-                    disabledColor: Colors.white24,
-                  ),
-                  IconButton(
-                    tooltip: '关闭工具箱',
-                    onPressed: widget.onClose,
-                    icon: const Icon(Icons.close, size: 18),
-                    visualDensity: VisualDensity.compact,
-                    color: Colors.white70,
-                  ),
+                  const Expanded(child: Text('TradingView 画线工具箱', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white))),
+                  IconButton(tooltip: '导入画线 JSON', onPressed: widget.onImportDrawings, icon: const Icon(Icons.file_upload_outlined, size: 18), visualDensity: VisualDensity.compact, color: Colors.white70, disabledColor: Colors.white24),
+                  IconButton(tooltip: widget.canExportDrawings ? '导出画线 JSON' : '暂无手动画线可导出', onPressed: widget.canExportDrawings ? widget.onExportDrawings : null, icon: const Icon(Icons.file_download_outlined, size: 18), visualDensity: VisualDensity.compact, color: Colors.white70, disabledColor: Colors.white24),
+                  IconButton(tooltip: widget.drawingCount > 0 ? '清空手动画线' : '暂无手动画线', onPressed: widget.drawingCount > 0 ? widget.onClearDrawings : null, icon: const Icon(Icons.delete_sweep, size: 18), visualDensity: VisualDensity.compact, color: Colors.white70, disabledColor: Colors.white24),
+                  IconButton(tooltip: '关闭工具箱', onPressed: widget.onClose, icon: const Icon(Icons.close, size: 18), visualDensity: VisualDensity.compact, color: Colors.white70),
                 ],
               ),
             ),
@@ -482,13 +355,11 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
                   buildDefaultDragHandles: true,
                   padding: const EdgeInsets.only(bottom: 10),
                   itemCount: _groupOrder.length,
-                  onReorder: (oldIndex, newIndex) {
-                    setState(() {
-                      if (newIndex > oldIndex) newIndex -= 1;
-                      final item = _groupOrder.removeAt(oldIndex);
-                      _groupOrder.insert(newIndex, item);
-                    });
-                  },
+                  onReorder: (oldIndex, newIndex) => setState(() {
+                    if (newIndex > oldIndex) newIndex -= 1;
+                    final item = _groupOrder.removeAt(oldIndex);
+                    _groupOrder.insert(newIndex, item);
+                  }),
                   itemBuilder: (context, index) {
                     final group = _groupOrder[index];
                     final tools = _toolOrder[group] ?? const <TradingViewDrawingToolMeta>[];
@@ -504,15 +375,16 @@ class _ToolboxPanelState extends State<_ToolboxPanel> {
                       onChanOverlayToggled: widget.onChanOverlayToggled,
                       onSelected: widget.onSelected,
                       onQuickToolAdded: widget.onQuickToolAdded,
-                      onToolReorder: (oldIndex, newIndex) {
-                        setState(() {
-                          if (newIndex > oldIndex) newIndex -= 1;
-                          final list = _toolOrder[group];
-                          if (list == null) return;
-                          final item = list.removeAt(oldIndex);
-                          list.insert(newIndex, item);
-                        });
-                      },
+                      indicatorKeys: _indicatorKeys,
+                      enabledIndicators: _enabledIndicators,
+                      onIndicatorToggled: (key) => setState(() => _enabledIndicators.contains(key) ? _enabledIndicators.remove(key) : _enabledIndicators.add(key)),
+                      onToolReorder: (oldToolIndex, newToolIndex) => setState(() {
+                        if (newToolIndex > oldToolIndex) newToolIndex -= 1;
+                        final list = _toolOrder[group];
+                        if (list == null) return;
+                        final item = list.removeAt(oldToolIndex);
+                        list.insert(newToolIndex, item);
+                      }),
                     );
                   },
                 ),
@@ -537,21 +409,11 @@ class _ToolGroupTile extends StatelessWidget {
   final ValueChanged<TradingViewDrawingTool> onSelected;
   final ValueChanged<TradingViewDrawingTool> onQuickToolAdded;
   final ReorderCallback onToolReorder;
+  final List<String> indicatorKeys;
+  final Set<String> enabledIndicators;
+  final ValueChanged<String> onIndicatorToggled;
 
-  const _ToolGroupTile({
-    super.key,
-    required this.group,
-    required this.tools,
-    required this.selectedTool,
-    required this.hasBars,
-    required this.hasChanSnapshot,
-    required this.isToolAvailable,
-    required this.isChanOverlayVisible,
-    required this.onChanOverlayToggled,
-    required this.onSelected,
-    required this.onQuickToolAdded,
-    required this.onToolReorder,
-  });
+  const _ToolGroupTile({super.key, required this.group, required this.tools, required this.selectedTool, required this.hasBars, required this.hasChanSnapshot, required this.isToolAvailable, required this.isChanOverlayVisible, required this.onChanOverlayToggled, required this.onSelected, required this.onQuickToolAdded, required this.onToolReorder, required this.indicatorKeys, required this.enabledIndicators, required this.onIndicatorToggled});
 
   @override
   Widget build(BuildContext context) {
@@ -561,64 +423,53 @@ class _ToolGroupTile extends StatelessWidget {
       child: ExpansionTile(
         key: PageStorageKey('tv_tool_group_${group.name}'),
         maintainState: true,
-        initiallyExpanded: group == TradingViewDrawingGroup.chanOverlay ||
-            group == TradingViewDrawingGroup.lines,
+        initiallyExpanded: group == TradingViewDrawingGroup.chanOverlay || group == TradingViewDrawingGroup.lines,
         leading: Icon(_groupIcon(group), color: Colors.white70, size: 18),
-        title: Text(_groupLabel(group),
-            style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600)),
+        title: Text(_groupLabel(group), style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600)),
         tilePadding: const EdgeInsets.symmetric(horizontal: 12),
         childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         collapsedIconColor: Colors.white54,
         iconColor: Colors.white70,
         children: [
-          Column(
-            children: [
-              for (var index = 0; index < tools.length; index++)
-                DragTarget<TradingViewDrawingTool>(
-                  onWillAcceptWithDetails: (_) => true,
-                  onAcceptWithDetails: (details) {
-                    final fromIndex = tools.indexWhere(
-                        (meta) => meta.tool == details.data);
-                    if (fromIndex >= 0 && fromIndex != index) {
-                      onToolReorder(fromIndex, index);
-                    }
-                  },
-                  builder: (context, candidateData, rejectedData) {
-                    final active = candidateData.isNotEmpty;
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 120),
-                      decoration: BoxDecoration(
-                        border: active
-                            ? Border.all(
-                                color: const Color(0xFF8AB4FF), width: 1)
-                            : null,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: _ToolTile(
-                        key: ValueKey('tool_${tools[index].tool.name}'),
-                        meta: tools[index],
-                        selected: selectedTool == tools[index].tool,
-                        disabledReason: _disabledReason(tools[index]),
-                        isChanOverlayVisible: isChanOverlayVisible,
-                        onChanOverlayToggled: onChanOverlayToggled,
-                        onSelected: onSelected,
-                        onQuickToolAdded: onQuickToolAdded,
-                      ),
-                    );
-                  },
-                ),
-            ],
-          ),
+          for (var index = 0; index < tools.length; index++)
+            DragTarget<TradingViewDrawingTool>(
+              onWillAcceptWithDetails: (_) => true,
+              onAcceptWithDetails: (details) {
+                final fromIndex = tools.indexWhere((meta) => meta.tool == details.data);
+                if (fromIndex >= 0 && fromIndex != index) onToolReorder(fromIndex, index);
+              },
+              builder: (context, candidateData, rejectedData) {
+                final active = candidateData.isNotEmpty;
+                final meta = tools[index];
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  decoration: BoxDecoration(border: active ? Border.all(color: const Color(0xFF8AB4FF), width: 1) : null, borderRadius: BorderRadius.circular(8)),
+                  child: _ToolTile(
+                    key: ValueKey('tool_${meta.tool.name}'),
+                    meta: meta,
+                    selected: selectedTool == meta.tool,
+                    disabledReason: _disabledReason(meta),
+                    isChanOverlayVisible: isChanOverlayVisible,
+                    onChanOverlayToggled: onChanOverlayToggled,
+                    onSelected: onSelected,
+                    onQuickToolAdded: onQuickToolAdded,
+                    indicatorKeys: indicatorKeys,
+                    enabledIndicators: enabledIndicators,
+                    onIndicatorToggled: onIndicatorToggled,
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );
   }
 
   String? _disabledReason(TradingViewDrawingToolMeta meta) {
-    if (meta.requiresChanSnapshot && !hasChanSnapshot) return '需要先加载 Python chan.py/Vespa 快照结果';
-    if (meta.minPoints > 0 && !hasBars) return '需要先加载K线后才能绑定时间/价格坐标';
+    if (!hasBars) return '当前没有K线数据';
+    if (meta.requiresChanSnapshot && !hasChanSnapshot) return '当前没有后端快照';
     final isAvailable = isToolAvailable?.call(meta.tool) ?? true;
-    if (!isAvailable) return '当前后端快照未返回${meta.label}数据';
+    if (!isAvailable && meta.tool != TradingViewDrawingTool.easyTdxIndicators) return '当前后端快照未返回${meta.label}数据';
     return null;
   }
 }
@@ -631,65 +482,69 @@ class _ToolTile extends StatelessWidget {
   final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
   final ValueChanged<TradingViewDrawingTool> onSelected;
   final ValueChanged<TradingViewDrawingTool> onQuickToolAdded;
+  final List<String> indicatorKeys;
+  final Set<String> enabledIndicators;
+  final ValueChanged<String> onIndicatorToggled;
 
-  const _ToolTile({
-    super.key,
-    required this.meta,
-    required this.selected,
-    required this.disabledReason,
-    required this.isChanOverlayVisible,
-    required this.onChanOverlayToggled,
-    required this.onSelected,
-    required this.onQuickToolAdded,
-  });
+  const _ToolTile({super.key, required this.meta, required this.selected, required this.disabledReason, required this.isChanOverlayVisible, required this.onChanOverlayToggled, required this.onSelected, required this.onQuickToolAdded, required this.indicatorKeys, required this.enabledIndicators, required this.onIndicatorToggled});
 
   @override
   Widget build(BuildContext context) {
     final enabled = disabledReason == null;
-    final subtitle = disabledReason ?? meta.description;
-    final isChanSwitch = meta.group == TradingViewDrawingGroup.chanOverlay &&
-        meta.maxPoints == 0 &&
-        onChanOverlayToggled != null;
+    final isEasyIndicator = meta.tool == TradingViewDrawingTool.easyTdxIndicators;
+    final isChanSwitch = !isEasyIndicator && meta.group == TradingViewDrawingGroup.chanOverlay && meta.maxPoints == 0 && onChanOverlayToggled != null;
     final visible = isChanOverlayVisible?.call(meta.tool) ?? selected;
     final tile = Opacity(
       opacity: enabled ? 1.0 : 0.42,
       child: Tooltip(
         waitDuration: _tooltipWait,
-        message: enabled
-            ? '${meta.description}\n拖拽到左侧快捷栏可固定工具；拖拽列表项可改变顺序。'
-            : '${meta.label}：$disabledReason',
-        child: ListTile(
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          enabled: enabled,
-          selected: selected || (isChanSwitch && visible),
-          selectedTileColor: const Color(0x332962FF),
-          leading: Icon(_toolIcon(meta.tool),
-              size: 18,
-              color: selected || (isChanSwitch && visible)
-                  ? const Color(0xFF8AB4FF)
-                  : Colors.white60),
-          title: Text(meta.label,
-              style: TextStyle(color: enabled ? Colors.white : Colors.white60, fontSize: 13)),
-          subtitle: Text(subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: Colors.white.withValues(alpha: enabled ? 0.50 : 0.36), fontSize: 11)),
-          trailing: isChanSwitch
-              ? Switch.adaptive(
-                  value: visible,
-                  onChanged: enabled ? (_) => onChanOverlayToggled?.call(meta.tool) : null,
-                )
-              : Text(_pointLabel(meta), style: const TextStyle(color: Colors.white30, fontSize: 10)),
-          onTap: enabled
-              ? () {
-                  if (isChanSwitch) {
-                    onChanOverlayToggled?.call(meta.tool);
-                  } else {
-                    onSelected(meta.tool);
-                  }
-                }
-              : null,
+        message: enabled ? '${meta.description}\n拖拽到左侧快捷栏可固定工具；拖拽列表项可改变顺序。' : '${meta.label}：$disabledReason',
+        child: Column(
+          children: [
+            ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              enabled: enabled,
+              selected: selected || (isChanSwitch && visible),
+              selectedTileColor: const Color(0x332962FF),
+              leading: Icon(_toolIcon(meta.tool), size: 18, color: selected || (isChanSwitch && visible) ? const Color(0xFF8AB4FF) : Colors.white60),
+              title: Text(meta.label, style: TextStyle(color: enabled ? Colors.white : Colors.white60, fontSize: 13)),
+              subtitle: Text(disabledReason ?? meta.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: enabled ? 0.50 : 0.36), fontSize: 11)),
+              trailing: isChanSwitch
+                  ? Switch.adaptive(value: visible, onChanged: enabled ? (_) => onChanOverlayToggled?.call(meta.tool) : null)
+                  : Text(_pointLabel(meta), style: const TextStyle(color: Colors.white30, fontSize: 10)),
+              onTap: enabled
+                  ? () {
+                      if (isChanSwitch) {
+                        onChanOverlayToggled?.call(meta.tool);
+                      } else {
+                        onSelected(meta.tool);
+                      }
+                    }
+                  : null,
+            ),
+            if (isEasyIndicator)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 10, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final key in indicatorKeys)
+                        FilterChip(
+                          label: Text(key, style: const TextStyle(fontSize: 11)),
+                          selected: enabledIndicators.contains(key),
+                          onSelected: enabled ? (_) => onIndicatorToggled(key) : null,
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -698,17 +553,10 @@ class _ToolTile extends StatelessWidget {
       feedback: Material(
         color: Colors.transparent,
         child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xEE1E3A8A),
-            borderRadius: BorderRadius.circular(8),
-          ),
+          decoration: BoxDecoration(color: const Color(0xEE1E3A8A), borderRadius: BorderRadius.circular(8)),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(_toolIcon(meta.tool), size: 18, color: Colors.white),
-              const SizedBox(width: 8),
-              Text(meta.label, style: const TextStyle(color: Colors.white)),
-            ]),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(_toolIcon(meta.tool), size: 18, color: Colors.white), const SizedBox(width: 8), Text(meta.label, style: const TextStyle(color: Colors.white))]),
           ),
         ),
       ),
@@ -718,134 +566,72 @@ class _ToolTile extends StatelessWidget {
   }
 }
 
-String _groupLabel(TradingViewDrawingGroup group) {
-  return switch (group) {
-    TradingViewDrawingGroup.cursorAndMeasure => '光标 / 测量',
-    TradingViewDrawingGroup.lines => '线类工具',
-    TradingViewDrawingGroup.pitchforks => '音叉工具',
-    TradingViewDrawingGroup.fibonacciAndGann => '斐波那契 / 江恩',
-    TradingViewDrawingGroup.geometricShapes => '几何图形',
-    TradingViewDrawingGroup.annotation => '文字 / 标注',
-    TradingViewDrawingGroup.patterns => '形态工具',
-    TradingViewDrawingGroup.predictionAndMeasurement => '预测 / 仓位测量',
-    TradingViewDrawingGroup.icons => '图标标记',
-    TradingViewDrawingGroup.chanOverlay => '缠论叠加',
-  };
-}
+String _groupLabel(TradingViewDrawingGroup group) => switch (group) {
+      TradingViewDrawingGroup.cursorAndMeasure => '光标 / 测量',
+      TradingViewDrawingGroup.lines => '线类工具',
+      TradingViewDrawingGroup.pitchforks => '音叉工具',
+      TradingViewDrawingGroup.fibonacciAndGann => '斐波那契 / 江恩',
+      TradingViewDrawingGroup.geometricShapes => '几何图形',
+      TradingViewDrawingGroup.annotation => '文字 / 标注',
+      TradingViewDrawingGroup.patterns => '形态工具',
+      TradingViewDrawingGroup.predictionAndMeasurement => '预测 / 仓位测量',
+      TradingViewDrawingGroup.icons => '图标标记',
+      TradingViewDrawingGroup.chanOverlay => '缠论叠加',
+    };
 
-IconData _groupIcon(TradingViewDrawingGroup group) {
-  return switch (group) {
-    TradingViewDrawingGroup.cursorAndMeasure => Icons.straighten,
-    TradingViewDrawingGroup.lines => Icons.show_chart,
-    TradingViewDrawingGroup.pitchforks => Icons.fork_left,
-    TradingViewDrawingGroup.fibonacciAndGann => Icons.grid_4x4,
-    TradingViewDrawingGroup.geometricShapes => Icons.category,
-    TradingViewDrawingGroup.annotation => Icons.text_fields,
-    TradingViewDrawingGroup.patterns => Icons.polyline,
-    TradingViewDrawingGroup.predictionAndMeasurement => Icons.assessment,
-    TradingViewDrawingGroup.icons => Icons.emoji_symbols,
-    TradingViewDrawingGroup.chanOverlay => Icons.account_tree,
-  };
-}
+IconData _groupIcon(TradingViewDrawingGroup group) => switch (group) {
+      TradingViewDrawingGroup.cursorAndMeasure => Icons.straighten,
+      TradingViewDrawingGroup.lines => Icons.show_chart,
+      TradingViewDrawingGroup.pitchforks => Icons.fork_left,
+      TradingViewDrawingGroup.fibonacciAndGann => Icons.grid_4x4,
+      TradingViewDrawingGroup.geometricShapes => Icons.category,
+      TradingViewDrawingGroup.annotation => Icons.text_fields,
+      TradingViewDrawingGroup.patterns => Icons.polyline,
+      TradingViewDrawingGroup.predictionAndMeasurement => Icons.assessment,
+      TradingViewDrawingGroup.icons => Icons.emoji_symbols,
+      TradingViewDrawingGroup.chanOverlay => Icons.account_tree,
+    };
 
-IconData _toolIcon(TradingViewDrawingTool tool) {
-  return switch (tool) {
-    TradingViewDrawingTool.cursor => Icons.near_me,
-    TradingViewDrawingTool.crosshair => Icons.control_camera,
-    TradingViewDrawingTool.ruler => Icons.straighten,
-    TradingViewDrawingTool.dateRange => Icons.date_range,
-    TradingViewDrawingTool.priceRange => Icons.attach_money,
-    TradingViewDrawingTool.dateAndPriceRange => Icons.open_in_full,
-    TradingViewDrawingTool.longPosition => Icons.trending_up,
-    TradingViewDrawingTool.shortPosition => Icons.trending_down,
-    TradingViewDrawingTool.forecast => Icons.timeline,
-    TradingViewDrawingTool.barsPattern => Icons.content_copy,
-    TradingViewDrawingTool.ghostFeed => Icons.auto_fix_high,
-    TradingViewDrawingTool.trendLine => Icons.show_chart,
-    TradingViewDrawingTool.infoLine => Icons.query_stats,
-    TradingViewDrawingTool.extendedLine => Icons.linear_scale,
-    TradingViewDrawingTool.ray => Icons.call_made,
-    TradingViewDrawingTool.horizontalLine => Icons.horizontal_rule,
-    TradingViewDrawingTool.horizontalRay => Icons.east,
-    TradingViewDrawingTool.verticalLine => Icons.vertical_align_center,
-    TradingViewDrawingTool.crossLine => Icons.add,
-    TradingViewDrawingTool.parallelChannel => Icons.view_stream,
-    TradingViewDrawingTool.regressionTrend => Icons.analytics,
-    TradingViewDrawingTool.flatTopBottom => Icons.table_rows,
-    TradingViewDrawingTool.disjointChannel => Icons.ssid_chart,
-    TradingViewDrawingTool.anchoredVwap => Icons.anchor,
-    TradingViewDrawingTool.anchoredText => Icons.text_fields,
-    TradingViewDrawingTool.pitchfork => Icons.fork_left,
-    TradingViewDrawingTool.schiffPitchfork => Icons.alt_route,
-    TradingViewDrawingTool.modifiedSchiffPitchfork => Icons.account_tree,
-    TradingViewDrawingTool.insidePitchfork => Icons.device_hub,
-    TradingViewDrawingTool.fibRetracement => Icons.format_line_spacing,
-    TradingViewDrawingTool.trendBasedFibExtension => Icons.trending_flat,
-    TradingViewDrawingTool.fibChannel => Icons.grid_3x3,
-    TradingViewDrawingTool.fibTimeZone => Icons.more_time,
-    TradingViewDrawingTool.fibSpeedResistanceFan => Icons.filter_tilt_shift,
-    TradingViewDrawingTool.fibSpeedResistanceArcs => Icons.architecture,
-    TradingViewDrawingTool.fibWedge => Icons.change_history,
-    TradingViewDrawingTool.pitchfan => Icons.air,
-    TradingViewDrawingTool.gannBox => Icons.grid_4x4,
-    TradingViewDrawingTool.gannSquareFixed => Icons.crop_7_5,
-    TradingViewDrawingTool.gannSquare => Icons.crop_square,
-    TradingViewDrawingTool.gannFan => Icons.radar,
-    TradingViewDrawingTool.brush => Icons.brush,
-    TradingViewDrawingTool.highlighter => Icons.highlight,
-    TradingViewDrawingTool.arrow => Icons.arrow_forward,
-    TradingViewDrawingTool.arrowMarker => Icons.near_me,
-    TradingViewDrawingTool.rectangle => Icons.rectangle_outlined,
-    TradingViewDrawingTool.rotatedRectangle => Icons.crop_rotate,
-    TradingViewDrawingTool.ellipse => Icons.circle_outlined,
-    TradingViewDrawingTool.triangle => Icons.change_history,
-    TradingViewDrawingTool.polyline => Icons.polyline,
-    TradingViewDrawingTool.curve => Icons.gesture,
-    TradingViewDrawingTool.path => Icons.route,
-    TradingViewDrawingTool.arc => Icons.roundabout_right,
-    TradingViewDrawingTool.circle => Icons.radio_button_unchecked,
-    TradingViewDrawingTool.text => Icons.title,
-    TradingViewDrawingTool.anchoredNote => Icons.sticky_note_2,
-    TradingViewDrawingTool.note => Icons.notes,
-    TradingViewDrawingTool.callout => Icons.chat_bubble_outline,
-    TradingViewDrawingTool.balloon => Icons.mode_comment_outlined,
-    TradingViewDrawingTool.priceLabel => Icons.label,
-    TradingViewDrawingTool.priceNote => Icons.request_quote,
-    TradingViewDrawingTool.signpost => Icons.signpost,
-    TradingViewDrawingTool.flagMark => Icons.flag,
-    TradingViewDrawingTool.abcdPattern => Icons.abc,
-    TradingViewDrawingTool.xabcdPattern => Icons.hub,
-    TradingViewDrawingTool.trianglePattern => Icons.change_history,
-    TradingViewDrawingTool.threeDrivesPattern => Icons.multiline_chart,
-    TradingViewDrawingTool.headAndShoulders => Icons.groups,
-    TradingViewDrawingTool.cypherPattern => Icons.enhanced_encryption,
-    TradingViewDrawingTool.elliottImpulseWave => Icons.waves,
-    TradingViewDrawingTool.elliottTriangleWave => Icons.schema,
-    TradingViewDrawingTool.elliottTripleComboWave => Icons.merge,
-    TradingViewDrawingTool.elliottCorrectionWave => Icons.replay,
-    TradingViewDrawingTool.cyclicLines => Icons.loop,
-    TradingViewDrawingTool.timeCycles => Icons.timelapse,
-    TradingViewDrawingTool.sineLine => Icons.ssid_chart,
-    TradingViewDrawingTool.iconArrowUp => Icons.arrow_upward,
-    TradingViewDrawingTool.iconArrowDown => Icons.arrow_downward,
-    TradingViewDrawingTool.iconCheck => Icons.check_circle_outline,
-    TradingViewDrawingTool.iconCross => Icons.cancel_outlined,
-    TradingViewDrawingTool.iconCircle => Icons.trip_origin,
-    TradingViewDrawingTool.iconStar => Icons.star_border,
-    TradingViewDrawingTool.iconFlag => Icons.outlined_flag,
-    TradingViewDrawingTool.chanFx => Icons.filter_center_focus,
-    TradingViewDrawingTool.chanFxLine => Icons.timeline,
-    TradingViewDrawingTool.chanFxText => Icons.format_color_text,
-    TradingViewDrawingTool.chanBi => Icons.edit_note,
-    TradingViewDrawingTool.chanBiText => Icons.format_color_text,
-    TradingViewDrawingTool.chanSeg => Icons.account_tree,
-    TradingViewDrawingTool.chanSegText => Icons.short_text,
-    TradingViewDrawingTool.chanZs => Icons.select_all,
-    TradingViewDrawingTool.chanBiBsp => Icons.shopping_cart_checkout,
-    TradingViewDrawingTool.chanSegBsp => Icons.sell_outlined,
-    TradingViewDrawingTool.chanMergedBars => Icons.view_week,
-  };
-}
+IconData _toolIcon(TradingViewDrawingTool tool) => switch (tool) {
+      TradingViewDrawingTool.cursor => Icons.near_me,
+      TradingViewDrawingTool.crosshair => Icons.control_camera,
+      TradingViewDrawingTool.ruler => Icons.straighten,
+      TradingViewDrawingTool.dateRange => Icons.date_range,
+      TradingViewDrawingTool.priceRange => Icons.attach_money,
+      TradingViewDrawingTool.dateAndPriceRange => Icons.open_in_full,
+      TradingViewDrawingTool.longPosition => Icons.trending_up,
+      TradingViewDrawingTool.shortPosition => Icons.trending_down,
+      TradingViewDrawingTool.forecast => Icons.timeline,
+      TradingViewDrawingTool.barsPattern => Icons.content_copy,
+      TradingViewDrawingTool.ghostFeed => Icons.auto_fix_high,
+      TradingViewDrawingTool.trendLine => Icons.show_chart,
+      TradingViewDrawingTool.infoLine => Icons.query_stats,
+      TradingViewDrawingTool.horizontalLine => Icons.horizontal_rule,
+      TradingViewDrawingTool.horizontalRay => Icons.east,
+      TradingViewDrawingTool.verticalLine => Icons.vertical_align_center,
+      TradingViewDrawingTool.brush => Icons.brush,
+      TradingViewDrawingTool.highlighter => Icons.highlight,
+      TradingViewDrawingTool.arrow => Icons.arrow_forward,
+      TradingViewDrawingTool.rectangle => Icons.rectangle_outlined,
+      TradingViewDrawingTool.ellipse => Icons.circle_outlined,
+      TradingViewDrawingTool.text => Icons.title,
+      TradingViewDrawingTool.note => Icons.notes,
+      TradingViewDrawingTool.priceLabel => Icons.label,
+      TradingViewDrawingTool.flagMark => Icons.flag,
+      TradingViewDrawingTool.chanFx => Icons.filter_center_focus,
+      TradingViewDrawingTool.chanFxLine => Icons.timeline,
+      TradingViewDrawingTool.chanFxText => Icons.format_color_text,
+      TradingViewDrawingTool.chanBi => Icons.edit_note,
+      TradingViewDrawingTool.chanBiText => Icons.format_color_text,
+      TradingViewDrawingTool.chanSeg => Icons.account_tree,
+      TradingViewDrawingTool.chanSegText => Icons.short_text,
+      TradingViewDrawingTool.chanZs => Icons.select_all,
+      TradingViewDrawingTool.chanBiBsp => Icons.shopping_cart_checkout,
+      TradingViewDrawingTool.chanSegBsp => Icons.sell_outlined,
+      TradingViewDrawingTool.chanMergedBars => Icons.view_week,
+      TradingViewDrawingTool.easyTdxIndicators => Icons.query_stats,
+      _ => Icons.architecture,
+    };
 
 String _pointLabel(TradingViewDrawingToolMeta meta) {
   if (meta.maxPoints == 0) return '开关';
