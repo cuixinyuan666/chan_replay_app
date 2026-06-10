@@ -26,3 +26,6 @@ jobs:
 
       - name: Check replay indicator patch result
         run: python tools/check_replay_indicator_patch_result.py
+
+      - name: Check replay indicator patch idempotence
+        run: python tools/check_replay_indicator_patch_idempotence.py
