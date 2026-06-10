@@ -131,8 +131,10 @@ indicators.macd
 
 1. `vol / amount / turnover` 来自 bars 透传字段。
 2. `turnover` 缺失时保持 `null`，不得估算伪造。
-3. `ma / boll / macd` 当前为 `backend_display_only_from_close`，只用于展示和研究特征，不改变 BSP 计算。
-4. step frames 会按各自可见 bars 输出对应 indicators。
+3. `ma / boll / macd` 当前为 display-only from close，只用于展示和研究特征，不改变 BSP 计算。
+4. Windows HTTP、Windows `app_engine.py --json-request`、Android MethodChannel 都已在代码层输出顶层 indicators。
+5. step frames 会按各自可见 bars 输出对应 indicators。
+6. Android `meta.indicator_sources` 已标注 `android_display_only_from_close`。
 
 合同文档：
 
@@ -269,8 +271,9 @@ tools/audit_global_lazy_loading.py
 1. easy-tdx bars 已保留 `volume / amount / turnover` 字段。
 2. 后端已输出 `indicators.vol / amount / turnover / ma / boll / macd`。
 3. `python/app_engine.py --json-request` 已补 indicators 输出。
-4. step frames 已补 indicators 输出。
-5. 指标来源写入 `meta.indicator_sources`。
+4. 后端 step frames 已补 indicators 输出。
+5. Android `chanpy_runtime.py` 已补顶层 indicators、frames indicators 和 `meta.indicator_sources`。
+6. 指标来源写入 `meta.indicator_sources`。
 
 #### 5. 研究层接入起步
 
@@ -294,7 +297,7 @@ tools/audit_global_lazy_loading.py
 1. `audit_dart_algorithm_usage.py` 需重新执行，确认 blocking_count 归零。
 2. `audit_global_lazy_loading.py --strict` 需本地执行。
 3. Windows `flutter run -d windows` 需确认启动后复盘页面、扫描器入口、研究 / 回测入口、Python 后端自动启动都可用。
-4. Android `flutter run` 需重新验收。
+4. Android `flutter run` 需重新验收，重点确认 MethodChannel indicators 合同和 frames indicators。
 5. Research API 和 Flutter 研究页需用真实 analysis JSON 复验。
 6. 合同校验脚本需用真实导出的 analysis JSON，而不是占位路径 `path/to/analysis.json`。
 
@@ -320,7 +323,7 @@ tools/audit_global_lazy_loading.py
 1. Flutter 增加 VOL 副图。
 2. Flutter 增加 MACD / MA / BOLL 显示。
 3. Flutter 增加指标开关、crosshair 联动和 tooltip。
-4. Android MethodChannel 输出合同与 Windows HTTP 输出合同保持一致。
+4. 对 Windows HTTP 与 Android MethodChannel 的指标显示做同屏一致性验收。
 
 #### P3：研究 / 回测 UI
 
@@ -364,7 +367,7 @@ POST /api/research/pipeline
 ```
 
 4. 开始 Flutter VOL 副图和 MACD / MA / BOLL 显示。
-5. 补齐 Android MethodChannel indicators 输出合同。
+5. 运行 Android 真机，复验 MethodChannel indicators 输出合同。
 
 ## 当前注意事项
 
