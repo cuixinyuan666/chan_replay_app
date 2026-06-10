@@ -240,6 +240,33 @@ tools/audit_global_lazy_loading.py
 
 最后更新：2026-06-10。
 
+### 当前绿色基线
+
+用户已本地跑通以下命令：
+
+```bash
+flutter analyze
+python tools/audit_dart_algorithm_usage.py
+python tools/audit_global_lazy_loading.py --strict
+python tools/validate_research_pipeline_contract.py test/fixtures/research_pipeline_contract_valid.json --require-features
+```
+
+真实导出 JSON：
+
+```text
+build/real_analysis.json
+```
+
+已通过：
+
+```bash
+python tools/validate_chanpy_output_contract.py build/real_analysis.json
+python tools/validate_easy_tdx_indicator_contract.py build/real_analysis.json
+python tools/validate_research_pipeline_contract.py build/real_analysis.json
+```
+
+阶段判定：P0 生产链路阻塞项、真实 analysis 输出合同、easy-tdx 指标合同、research pipeline 合同已经形成可复验绿色基线。
+
 ### 已完成
 
 #### 1. 主架构与单一计算源
@@ -266,6 +293,7 @@ tools/audit_global_lazy_loading.py
 5. 已新增 `tools/validate_easy_tdx_indicator_contract.py`。
 6. 已新增 `docs/easy_tdx_indicator_contract.md`。
 7. 已新增 `docs/vespa_quick_guide_alignment_matrix.md`。
+8. 真实导出 `build/real_analysis.json` 已通过 chan.py 输出合同、easy-tdx 指标合同和 research pipeline 合同校验。
 
 #### 3. BSP 与结构显示
 
@@ -283,6 +311,7 @@ tools/audit_global_lazy_loading.py
 4. 后端 step frames 已补 indicators 输出。
 5. Android `chanpy_runtime.py` 已补顶层 indicators、frames indicators 和 `meta.indicator_sources`。
 6. 指标来源写入 `meta.indicator_sources`。
+7. 真实导出 JSON 已通过 `validate_easy_tdx_indicator_contract.py`。
 
 #### 5. 研究层接入起步
 
@@ -294,38 +323,29 @@ tools/audit_global_lazy_loading.py
 6. 已新增 Flutter 研究 / 回测页面：`lib/ui/pages/research_backtest_page.dart`。
 7. 已新增 research pipeline 合同校验脚本：`tools/validate_research_pipeline_contract.py`。
 8. 已新增 research pipeline 最小 fixture：`test/fixtures/research_pipeline_contract_valid.json`。
+9. research pipeline fixture 与真实 `build/real_analysis.json` 都已通过合同校验。
+10. research pipeline fixture 校验已加入 GitHub Actions。
 
 #### 6. 本地验证与 CI 护栏
 
-1. 用户本地执行 `flutter analyze`，结果为 `No issues found`。
-2. 用户本地执行 `python tools/audit_dart_algorithm_usage.py` 时发现 3 个 blocking，均来自旧 `replay_page.dart` 生产链路 import / 实例化旧 Dart 引擎。
-3. 本轮已修复上述 blocking 源文件，但仍需用户重新执行审计确认。
-4. 已新增 `tools/audit_global_lazy_loading.py --strict`。
-5. 全局懒加载审计已加入 GitHub Actions。
-6. research pipeline 合同脚本已完成；GitHub Actions 接入本轮未完成，因为工作流文件更新被平台安全检查拦截。
+1. `flutter analyze` 已通过。
+2. `python tools/audit_dart_algorithm_usage.py` 已通过。
+3. `python tools/audit_global_lazy_loading.py --strict` 已通过。
+4. `python tools/validate_research_pipeline_contract.py test/fixtures/research_pipeline_contract_valid.json --require-features` 已通过。
+5. GitHub Actions 已包含 Flutter analyze、图表 label 测试、BSP label 测试、Dart 算法边界审计、全局懒加载审计、chan.py placement guardrails、easy-tdx 指标 fixture 校验、research pipeline fixture 校验。
 
 ### 已完成但仍需复验
 
-1. `audit_dart_algorithm_usage.py` 需重新执行，确认 blocking_count 归零。
-2. `audit_global_lazy_loading.py --strict` 需本地执行。
-3. `validate_research_pipeline_contract.py` 需本地执行 fixture 与真实 analysis JSON。
-4. Windows `flutter run -d windows` 需确认启动后复盘页面、扫描器入口、研究 / 回测入口、Python 后端自动启动都可用。
-5. Android `flutter run` 需重新验收，重点确认 MethodChannel indicators 合同和 frames indicators。
-6. Research API 和 Flutter 研究页需用真实 analysis JSON 复验。
-7. 合同校验脚本需用真实导出的 analysis JSON，而不是占位路径 `path/to/analysis.json`。
+1. Windows `flutter run -d windows` 需确认启动后复盘页面、扫描器入口、研究 / 回测入口、Python 后端自动启动都可用。
+2. Android `flutter run` 需重新验收，重点确认 MethodChannel indicators 合同和 frames indicators。
+3. Research API 和 Flutter 研究页需用真实 analysis JSON 做 UI 层操作验收。
+4. GitHub Actions 的最新远端运行结果仍需等一次 push 后复核。
 
 ### 未完成
 
-#### P0：生产链路收口
+#### P1：chan.py 输出真实性扩展验收
 
-1. 重新跑 `python tools/audit_dart_algorithm_usage.py`。
-2. 重新跑 `python tools/audit_global_lazy_loading.py --strict`。
-3. 对 GitHub Actions 的真实运行结果做一次完整复核。
-4. 旧 Dart 算法层如需保留，只能作为 `legacy`、`tools`、`compare` 或测试用途。
-
-#### P1：chan.py 输出真实性校验
-
-1. BSP 导出字段真实样本覆盖测试。
+1. BSP 导出字段更多真实样本覆盖测试。
 2. `merged_bars` 长样本一致性核对。
 3. once 模式与 step 模式最终帧一致性核对。
 4. `is_sure=false` 的 FX / BI / SEG / ZS / BSP 虚线或弱化显示统一检查。
@@ -343,7 +363,6 @@ tools/audit_global_lazy_loading.py
 1. 将研究页与当前复盘页的最新 analysis JSON 自动打通，减少手动粘贴。
 2. UI 展示 BSP 特征表、ML score、回测交易列表和 summary，而不是只显示原始 JSON。
 3. 后续支持外部模型文件导入，但不得让重依赖污染默认启动链路。
-4. 将 research pipeline 合同校验接入 GitHub Actions。
 
 #### P4：K线图最终显示验收
 
@@ -355,34 +374,11 @@ tools/audit_global_lazy_loading.py
 
 ## 下一批建议任务
 
-1. 先重新跑：
-
-```bash
-flutter analyze
-python tools/audit_dart_algorithm_usage.py
-python tools/audit_global_lazy_loading.py --strict
-python tools/validate_research_pipeline_contract.py test/fixtures/research_pipeline_contract_valid.json --require-features
-```
-
-2. 导出一份真实 analysis JSON，执行：
-
-```bash
-python tools/validate_chanpy_output_contract.py path/to/real_analysis.json
-python tools/validate_easy_tdx_indicator_contract.py path/to/real_analysis.json
-python tools/validate_research_pipeline_contract.py path/to/real_analysis.json
-```
-
-3. 用同一份 JSON 调用：
-
-```text
-POST /api/research/bsp/features
-POST /api/research/ml/score
-POST /api/research/backtest
-POST /api/research/pipeline
-```
-
-4. 开始 Flutter VOL 副图和 MACD / MA / BOLL 显示。
-5. 运行 Android 真机，复验 MethodChannel indicators 输出合同。
+1. 等本次 push 后，复核 GitHub Actions 远端运行结果。
+2. 开始 Flutter VOL 副图和 MACD / MA / BOLL 显示。
+3. 用 `build/real_analysis.json` 操作研究页，验收 features / scores / backtest / pipeline UI 输出。
+4. 运行 Android 真机，复验 MethodChannel indicators 输出合同。
+5. 扩大真实样本：随机 5 只股票、3 个周期跑合同校验。
 
 ## 当前注意事项
 
