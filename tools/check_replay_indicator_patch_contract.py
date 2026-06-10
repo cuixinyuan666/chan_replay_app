@@ -31,8 +31,13 @@ CHECKS = {
         'slice snapshot indicators',
         'APPLIED_SENTINELS = {',
         "'chart panel host': [",
+        'PATCH_SENTINEL_KEY = {',
+        'def sentinel_key(name: str) -> str:',
+        'def has_sentinels(text: str, name: str) -> bool:',
+        "if new in text or has_sentinels(text, name):",
         'def check_applied(text: str) -> list[str]:',
         'APPLIED_SENTINELS.items()',
+        'and not has_sentinels(text, name)',
     ],
     'dry_runner': [
         'patch_text',
