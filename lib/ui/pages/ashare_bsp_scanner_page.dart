@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -40,6 +39,17 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   bool _analyzing = false;
   int _scanSerial = 0;
 
+  int _scanIndex = 0;
+  int _scanTotal = 0;
+  int _scanSuccessCount = 0;
+  int _scanFailCount = 0;
+  int _scanFoundCount = 0;
+  String _scanCurrent = '';
+
+  double _leftWidth = 440;
+  double _settingsHeight = 260;
+  double _logHeight = 190;
+
   _ScanResult? _selectedResult;
   ChanSnapshot _snapshot = ChanSnapshot.empty();
   String _status = '就绪 - 点击"开始扫描"分析股票';
@@ -48,6 +58,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   bool _showSeg = true;
   bool _showZs = true;
   bool _showBsp = true;
+  bool _showMergedBars = false;
   int _windowSize = 90;
   double _priceScale = 1.0;
   int? _viewEndIndex;
@@ -84,9 +95,14 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       _results.clear();
       _logs
         ..clear()
-        ..add('正在启动/连接 Python chan.py 后端...')
-        ..add('正在获取股票列表...');
+        ..add('正在启动/连接 Python chan.py 后端...');
       _selectedResult = null;
+      _scanIndex = 0;
+      _scanTotal = 0;
+      _scanSuccessCount = 0;
+      _scanFailCount = 0;
+      _scanFoundCount = 0;
+      _scanCurrent = '';
       _status = '正在启动/连接 Python chan.py 后端...';
     });
 
@@ -94,36 +110,20 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       baseUrl: _backendUrlController.text.trim(),
     );
     try {
-      final decoded = await client.scanBsp(
+      await for (final event in client.scanBspStream(
         days: 365,
         recentDays: 3,
         limit: int.tryParse(_limitController.text.trim()) ?? 300,
         biStrict: _biStrict,
         config: _scannerConfig,
-      );
-      if (serial != _scanSerial) return;
-
-      final rows = decoded['results'];
-      final logRows = decoded['logs'];
-      setState(() {
-        _results
-          ..clear()
-          ..addAll(rows is List
-              ? rows
-                  .whereType<Map>()
-                  .map((e) => _ScanResult.fromJson(Map<String, dynamic>.from(e)))
-              : const <_ScanResult>[]);
-        _logs
-          ..clear()
-          ..addAll(logRows is List ? logRows.map((e) => '$e') : const <String>[]);
-        _status = '扫描完成: 成功${decoded['success_count'] ?? 0}只, '
-            '跳过${decoded['fail_count'] ?? 0}只, '
-            '发现${decoded['found_count'] ?? _results.length}只买点股票';
-      });
+      )) {
+        if (!mounted || serial != _scanSerial) break;
+        _applyScanEvent(event);
+      }
     } catch (e) {
       if (!mounted || serial != _scanSerial) return;
       setState(() {
-        _logs.add('❌ 扫描失败: $e');
+        _appendLog('❌ 扫描失败: $e');
         _status = '扫描失败: $e';
       });
     } finally {
@@ -134,13 +134,83 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     }
   }
 
+  void _applyScanEvent(Map<String, dynamic> event) {
+    setState(() {
+      final type = '${event['type'] ?? ''}';
+      if (type == 'start') {
+        _scanTotal = _toInt(event['total']) ?? _scanTotal;
+        _status = '${event['message'] ?? '开始扫描...'}';
+        _appendLog(_status);
+        return;
+      }
+      if (type == 'progress') {
+        _scanIndex = _toInt(event['index']) ?? _scanIndex;
+        _scanTotal = _toInt(event['total']) ?? _scanTotal;
+        _scanSuccessCount = _toInt(event['success_count']) ?? _scanSuccessCount;
+        _scanFailCount = _toInt(event['fail_count']) ?? _scanFailCount;
+        _scanFoundCount = _toInt(event['found_count']) ?? _scanFoundCount;
+        _scanCurrent = '${event['code'] ?? ''} ${event['name'] ?? ''}'.trim();
+        _status = '${event['message'] ?? '扫描中...'}';
+        return;
+      }
+      if (type == 'log') {
+        _appendLog('${event['message'] ?? ''}');
+        return;
+      }
+      if (type == 'result') {
+        final row = event['row'];
+        if (row is Map) {
+          final result = _ScanResult.fromJson(Map<String, dynamic>.from(row));
+          if (!_results.any((e) => e.sameSignal(result))) {
+            _results.add(result);
+          }
+        }
+        _scanIndex = _toInt(event['index']) ?? _scanIndex;
+        _scanTotal = _toInt(event['total']) ?? _scanTotal;
+        _scanSuccessCount = _toInt(event['success_count']) ?? _scanSuccessCount;
+        _scanFailCount = _toInt(event['fail_count']) ?? _scanFailCount;
+        _scanFoundCount = _toInt(event['found_count']) ?? _results.length;
+        _status = '发现买点 $_scanFoundCount 个，可直接点击结果查看K线；扫描继续运行';
+        return;
+      }
+      if (type == 'error') {
+        _appendLog('❌ ${event['message'] ?? '扫描失败'}');
+        _status = '${event['message'] ?? '扫描失败'}';
+        return;
+      }
+      if (type == 'done') {
+        _scanTotal = _toInt(event['total']) ?? _scanTotal;
+        _scanSuccessCount = _toInt(event['success_count']) ?? _scanSuccessCount;
+        _scanFailCount = _toInt(event['fail_count']) ?? _scanFailCount;
+        _scanFoundCount = _toInt(event['found_count']) ?? _results.length;
+        final rows = event['results'];
+        if (_results.isEmpty && rows is List) {
+          _results.addAll(rows
+              .whereType<Map>()
+              .map((e) => _ScanResult.fromJson(Map<String, dynamic>.from(e))));
+        }
+        _scanIndex = _scanTotal;
+        _status = '扫描完成: 成功$_scanSuccessCount只, 跳过$_scanFailCount只, 发现$_scanFoundCount只买点股票';
+      }
+    });
+  }
+
+  void _appendLog(String message) {
+    final text = message.trim();
+    if (text.isEmpty) return;
+    _logs.add(text);
+    if (_logs.length > 1400) {
+      _logs.removeRange(0, _logs.length - 1400);
+    }
+  }
+
   void _stopScan() {
     if (!_scanning) return;
     _scanSerial++;
     setState(() {
       _scanning = false;
       _status = '正在停止扫描...';
-      _logs.add('⏹️ 已请求停止扫描');
+      _appendLog('⏹️ 已请求停止扫描');
     });
   }
 
@@ -280,135 +350,190 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF0B0D10),
-      child: Row(
-        children: [
-          SizedBox(width: 440, child: _buildLeftPanel()),
-          const VerticalDivider(width: 1, color: Colors.white12),
-          Expanded(child: _buildChartPanel()),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxLeft = math.max(360.0, constraints.maxWidth - 420.0);
+        final leftWidth = _leftWidth.clamp(340.0, maxLeft).toDouble();
+        return Container(
+          color: const Color(0xFF0B0D10),
+          child: Row(
+            children: [
+              SizedBox(width: leftWidth, child: _buildLeftPanel()),
+              _resizeHandle(
+                vertical: true,
+                onDelta: (delta) => setState(() {
+                  _leftWidth = (_leftWidth + delta).clamp(340.0, maxLeft).toDouble();
+                }),
+              ),
+              Expanded(child: _buildChartPanel()),
+            ],
+          ),
+        );
+      },
     );
   }
 
   Widget _buildLeftPanel() {
-    return Padding(
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        children: [
-          _section(
-            '扫描设置',
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final available = constraints.maxHeight.isFinite ? constraints.maxHeight : 900.0;
+        final settingsHeight = _settingsHeight.clamp(190.0, math.max(220.0, available - 360.0)).toDouble();
+        final logHeight = _logHeight.clamp(120.0, math.max(140.0, available - settingsHeight - 190.0)).toDouble();
+        return Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
             children: [
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: _biStrict,
-                onChanged: _scanning
-                    ? null
-                    : (v) => setState(() => _biStrict = v ?? _biStrict),
-                title: const Text('笔严格模式'),
+              SizedBox(height: settingsHeight, child: _buildSettingsSection()),
+              _resizeHandle(
+                vertical: false,
+                onDelta: (delta) => setState(() {
+                  _settingsHeight = (_settingsHeight + delta).clamp(170.0, available - 280.0).toDouble();
+                }),
               ),
-              TextField(
-                controller: _backendUrlController,
-                enabled: !_scanning && !_isAndroidApp,
-                decoration: const InputDecoration(
-                  labelText: 'Windows Python chan.py 服务地址',
-                  border: OutlineInputBorder(),
+              Expanded(child: _buildResultSection()),
+              _resizeHandle(
+                vertical: false,
+                onDelta: (delta) => setState(() {
+                  _logHeight = (_logHeight - delta).clamp(110.0, available - 260.0).toDouble();
+                }),
+              ),
+              SizedBox(height: logHeight, child: _buildLogSection()),
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _status,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _limitController,
-                enabled: !_scanning,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: '扫描数量上限',
-                  helperText: '默认 300；后端过滤 ST / 科创 / 北交 / B股 / 停牌',
-                  border: OutlineInputBorder(),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSettingsSection() {
+    return _section(
+      '扫描设置',
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: _biStrict,
+                  onChanged: _scanning
+                      ? null
+                      : (v) => setState(() => _biStrict = v ?? _biStrict),
+                  title: const Text('笔严格模式'),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _scanning ? null : _startScan,
-                      icon: _scanning
+                TextField(
+                  controller: _backendUrlController,
+                  enabled: !_scanning && !_isAndroidApp,
+                  decoration: const InputDecoration(
+                    labelText: 'Windows Python chan.py 服务地址',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _limitController,
+                  enabled: !_scanning,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '扫描数量上限',
+                    helperText: '默认 300；支持最大 5000',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _scanning ? null : _startScan,
+                        icon: _scanning
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.play_arrow),
+                        label: const Text('开始扫描'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: _scanning ? _stopScan : null,
+                        icon: const Icon(Icons.stop),
+                        label: const Text('停止'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _buildProgressBlock(),
+                const Divider(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _codeController,
+                        enabled: !_analyzing,
+                        decoration: const InputDecoration(
+                          labelText: '单股分析代码',
+                          hintText: '如: 000001',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _analyzing ? null : _analyzeSingle,
+                      child: _analyzing
                           ? const SizedBox(
                               width: 16,
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.play_arrow),
-                      label: const Text('开始扫描'),
+                          : const Text('分析'),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: _scanning ? _stopScan : null,
-                      icon: const Icon(Icons.stop),
-                      label: const Text('停止'),
-                    ),
-                  ),
-                ],
-              ),
-              if (_scanning)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: LinearProgressIndicator(),
+                  ],
                 ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _section(
-            '单只股票分析',
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _codeController,
-                      enabled: !_analyzing && !_scanning,
-                      decoration: const InputDecoration(
-                        labelText: '股票代码',
-                        hintText: '如: 000001',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: _analyzing || _scanning ? null : _analyzeSingle,
-                    child: _analyzing
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('分析'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Expanded(child: _buildResultSection()),
-          const SizedBox(height: 8),
-          SizedBox(height: 176, child: _buildLogSection()),
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              _status,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProgressBlock() {
+    final progress = _scanTotal > 0 ? (_scanIndex / _scanTotal).clamp(0.0, 1.0).toDouble() : null;
+    final percent = progress == null ? '--' : '${(progress * 100).toStringAsFixed(1)}%';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LinearProgressIndicator(value: _scanning ? progress : (_scanTotal > 0 ? progress : 0)),
+        const SizedBox(height: 6),
+        Text(
+          '进度 $percent  $_scanIndex/$_scanTotal  成功$_scanSuccessCount  跳过$_scanFailCount  买点$_scanFoundCount',
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+        if (_scanCurrent.isNotEmpty)
+          Text(
+            '当前: $_scanCurrent',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white54, fontSize: 11),
+          ),
+      ],
     );
   }
 
@@ -416,11 +541,12 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
     return _section(
       '买点股票列表',
       trailing: TextButton.icon(
-        onPressed: _results.isEmpty || _scanning
+        onPressed: _results.isEmpty
             ? null
             : () => setState(() {
                   _results.clear();
                   _selectedResult = null;
+                  _scanFoundCount = 0;
                 }),
         icon: const Icon(Icons.clear_all, size: 16),
         label: const Text('清空列表'),
@@ -429,7 +555,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
         Expanded(
           child: _results.isEmpty
               ? const Center(
-                  child: Text('暂无买点结果', style: TextStyle(color: Colors.white54)),
+                  child: Text('暂无买点结果；扫描中一旦发现会实时出现在这里', style: TextStyle(color: Colors.white54)),
                 )
               : Scrollbar(
                   child: SingleChildScrollView(
@@ -451,7 +577,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
                         rows: [
                           for (final result in _results)
                             DataRow(
-                              selected: identical(result, _selectedResult),
+                              selected: result.sameSignal(_selectedResult),
                               onSelectChanged: (_) => _openResult(result),
                               cells: [
                                 DataCell(Text(result.code)),
@@ -492,7 +618,7 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
             child: SingleChildScrollView(
               reverse: true,
               child: SelectableText(
-                _logs.join('\n'),
+                _logs.isEmpty ? '暂无日志' : _logs.join('\n'),
                 style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
               ),
             ),
@@ -507,58 +633,60 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
       child: Column(
         children: [
-          _buildChartToolbar(),
+          _buildChartToolbar(fullscreen: false),
           const SizedBox(height: 8),
-          Expanded(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFF131722),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: _snapshot.rawBars.isEmpty
-                    ? const Center(
-                        child: Text(
-                          '点击扫描结果或单股分析后显示 chan.py 图表',
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                      )
-                    : OriginKlineChart(
-                        snapshot: _snapshot,
-                        showFx: false,
-                        showFxLine: false,
-                        showFxText: false,
-                        showBi: _showBi,
-                        showBiText: false,
-                        showSeg: _showSeg,
-                        showSegText: true,
-                        showZs: _showZs,
-                        showBiBsp: _showBsp,
-                        showSegBsp: _showBsp,
-                        showMergedBars: true,
-                        drawingObjects: _highlightObjects(),
-                        drawingStorageKey: _drawingStorageKey,
-                        symbolLabel: _chartSymbolLabel,
-                        windowSize: _windowSize,
-                        priceScale: _priceScale,
-                        viewEndIndex: _viewEndIndex,
-                        crosshairIndex: _crosshairIndex,
-                        onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
-                        onPanBars: _panChartByBars,
-                        onWindowSizeChanged: (v) => setState(() => _windowSize = v),
-                        onPriceScaleChanged: (v) => setState(() => _priceScale = v),
-                      ),
-              ),
-            ),
-          ),
+          Expanded(child: _buildChartCanvas()),
         ],
       ),
     );
   }
 
-  Widget _buildChartToolbar() {
+  Widget _buildChartCanvas() {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF131722),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: _snapshot.rawBars.isEmpty
+            ? const Center(
+                child: Text(
+                  '点击扫描结果或单股分析后显示 chan.py 图表',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              )
+            : OriginKlineChart(
+                snapshot: _snapshot,
+                showFx: false,
+                showFxLine: false,
+                showFxText: false,
+                showBi: _showBi,
+                showBiText: false,
+                showSeg: _showSeg,
+                showSegText: true,
+                showZs: _showZs,
+                showBiBsp: _showBsp,
+                showSegBsp: _showBsp,
+                showMergedBars: _showMergedBars,
+                drawingObjects: _highlightObjects(),
+                drawingStorageKey: _drawingStorageKey,
+                symbolLabel: _chartSymbolLabel,
+                windowSize: _windowSize,
+                priceScale: _priceScale,
+                viewEndIndex: _viewEndIndex,
+                crosshairIndex: _crosshairIndex,
+                onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
+                onPanBars: _panChartByBars,
+                onWindowSizeChanged: (v) => setState(() => _windowSize = v),
+                onPriceScaleChanged: (v) => setState(() => _priceScale = v),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildChartToolbar({required bool fullscreen}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
@@ -569,12 +697,20 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
       child: Row(
         children: [
           _disabledCheck('K线', true, 'K线为主图基础层，当前不可关闭'),
+          _check('合并K线', _showMergedBars, (v) => setState(() => _showMergedBars = v)),
           _check('笔', _showBi, (v) => setState(() => _showBi = v)),
           _check('线段', _showSeg, (v) => setState(() => _showSeg = v)),
           _check('中枢', _showZs, (v) => setState(() => _showZs = v)),
           _check('买卖点', _showBsp, (v) => setState(() => _showBsp = v)),
           _disabledCheck('MACD', true, 'MACD 副图当前未接入 OriginKlineChart，保留原扫描器入口占位'),
           const Spacer(),
+          if (!fullscreen)
+            OutlinedButton.icon(
+              onPressed: _snapshot.rawBars.isEmpty ? null : _openChartFullscreen,
+              icon: const Icon(Icons.fullscreen, size: 16),
+              label: const Text('全屏'),
+            ),
+          if (!fullscreen) const SizedBox(width: 8),
           OutlinedButton.icon(
             onPressed: _snapshot.rawBars.isEmpty || _analyzing
                 ? null
@@ -590,6 +726,46 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
             label: const Text('刷新图表'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openChartFullscreen() {
+    if (_snapshot.rawBars.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (context) => Scaffold(
+          backgroundColor: const Color(0xFF0B0D10),
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _chartSymbolLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                        tooltip: '退出全屏',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(child: _buildChartCanvas()),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -616,6 +792,31 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
           const SizedBox(height: 8),
           ...children,
         ],
+      ),
+    );
+  }
+
+  Widget _resizeHandle({required bool vertical, required ValueChanged<double> onDelta}) {
+    return MouseRegion(
+      cursor: vertical ? SystemMouseCursors.resizeColumn : SystemMouseCursors.resizeRow,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: vertical ? (d) => onDelta(d.delta.dx) : null,
+        onVerticalDragUpdate: vertical ? null : (d) => onDelta(d.delta.dy),
+        child: SizedBox(
+          width: vertical ? 8 : double.infinity,
+          height: vertical ? double.infinity : 8,
+          child: Center(
+            child: Container(
+              width: vertical ? 2 : 54,
+              height: vertical ? 54 : 2,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -695,6 +896,12 @@ class _AshareBspScannerPageState extends State<AshareBspScannerPage> {
   static String _inferMarket(String code) =>
       code.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ';
 
+  static int? _toInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('${value ?? ''}'.trim());
+  }
+
   static String _fmtNum(num? value) => value == null ? '-' : value.toStringAsFixed(2);
 
   static String _fmtDate(DateTime? value) {
@@ -743,6 +950,15 @@ class _ScanResult {
       bspPrice: _double(json['bsp_price'] ?? json['bspPrice']),
       level: _string(json['level']),
     );
+  }
+
+  bool sameSignal(_ScanResult? other) {
+    if (other == null) return false;
+    return code == other.code &&
+        market == other.market &&
+        rawIndex == other.rawIndex &&
+        bspType == other.bspType &&
+        level == other.level;
   }
 
   static String _string(Object? value) => '${value ?? ''}'.trim();
