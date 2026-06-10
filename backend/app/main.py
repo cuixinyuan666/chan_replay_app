@@ -8,10 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from .a_bsp_scanner import scan_bsp, scan_bsp_events
+from .a_indicator_export import build_display_indicators, indicator_source_meta
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
-app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.5.1')
+app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.5.2')
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,6 +50,33 @@ def _bsp_advanced_config_from_query(request: Request) -> dict[str, Any]:
         if name in _BSP_ADVANCED_QUERY_KEYS and suffix in _BSP_ADVANCED_QUERY_SUFFIXES:
             if str(value).strip():
                 result[key] = value
+    return result
+
+
+def _with_display_indicators(result: dict[str, object], config: dict[str, Any] | None) -> dict[str, object]:
+    """Attach display-only indicators without changing chan.py structures."""
+    bars = result.get('bars')
+    if isinstance(bars, list):
+        result = dict(result)
+        result['indicators'] = build_display_indicators(bars, config)
+        meta = dict(result.get('meta')) if isinstance(result.get('meta'), dict) else {}
+        sources = dict(meta.get('indicator_sources')) if isinstance(meta.get('indicator_sources'), dict) else {}
+        sources.update(indicator_source_meta())
+        meta['indicator_sources'] = sources
+        result['meta'] = meta
+        frames = result.get('frames')
+        if isinstance(frames, list):
+            patched_frames: list[Any] = []
+            for frame in frames:
+                if not isinstance(frame, dict):
+                    patched_frames.append(frame)
+                    continue
+                next_frame = dict(frame)
+                frame_bars = next_frame.get('bars')
+                if isinstance(frame_bars, list):
+                    next_frame['indicators'] = build_display_indicators(frame_bars, config)
+                patched_frames.append(next_frame)
+            result['frames'] = patched_frames
     return result
 
 
@@ -205,7 +233,7 @@ def health() -> dict[str, object]:
         'backend': 'origin_vespa_tdx',
         'data_source': 'easy-tdx',
         'engine': 'chan.py',
-        'version': '0.5.1',
+        'version': '0.5.2',
     }
 
 
@@ -214,7 +242,7 @@ def root() -> dict[str, object]:
     return {
         'ok': True,
         'backend': 'origin_vespa_tdx',
-        'version': '0.5.1',
+        'version': '0.5.2',
         'note': 'Python chan.py is the only Chan calculation source. Flutter only renders JSON results.',
         'endpoints': [
             '/health',
@@ -346,17 +374,20 @@ def chan_analyze(
     )
     config.update(_bsp_advanced_config_from_query(request))
     if mode.lower() == 'step':
-        return analyze_step(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
-    return analyze_once(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
+        result = analyze_step(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
+    else:
+        result = analyze_once(symbol=symbol, market=market, freq=freq, adjust=adjust, start=start, end=end, count=count, config=config)
+    return _with_display_indicators(result, config)
 
 
 @app.post('/api/chan/analyze_bars')
 def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
     bars = payload.get('bars') or []
     if not isinstance(bars, list):
-        return {'ok': False, 'error': 'bars 必须是数组', 'bars': [], 'merged_bars': [], 'fx': [], 'bi': [], 'seg': [], 'zs': [], 'bsp': [], 'frames': []}
+        empty = {'ok': False, 'error': 'bars 必须是数组', 'bars': [], 'merged_bars': [], 'fx': [], 'bi': [], 'seg': [], 'zs': [], 'bsp': [], 'frames': []}
+        return _with_display_indicators(empty, {})
     config = payload.get('config') if isinstance(payload.get('config'), dict) else {}
-    return analyze_bars(
+    result = analyze_bars(
         bars=bars,
         symbol=str(payload.get('symbol') or 'local_csv'),
         market=str(payload.get('market') or 'LOCAL'),
@@ -365,6 +396,7 @@ def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
         mode=str(payload.get('mode') or 'once'),
         config=config,
     )
+    return _with_display_indicators(result, config)
 
 
 @app.post('/api/scanner/bsp/scan')
@@ -417,6 +449,8 @@ def kline(
             'count': len(bars),
             'start': start,
             'end': end,
+            'indicator_sources': indicator_source_meta(),
         },
         'bars': bars,
+        'indicators': build_display_indicators(bars, None),
     }
