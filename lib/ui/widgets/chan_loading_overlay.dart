@@ -11,11 +11,15 @@ enum ChanLoadVisualState { loading, success, failure }
 class ChanLoadingOverlay extends StatefulWidget {
   final ChanLoadVisualState state;
   final String? message;
+  final DateTime? startedAt;
+  final Duration? estimatedDuration;
 
   const ChanLoadingOverlay({
     super.key,
     required this.state,
     this.message,
+    this.startedAt,
+    this.estimatedDuration,
   });
 
   @override
@@ -75,6 +79,7 @@ class _ChanLoadingOverlayState extends State<ChanLoadingOverlay>
         child: AnimatedBuilder(
           animation: _controller,
           builder: (context, _) {
+            final loadProgress = _loadProgress();
             return Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -83,6 +88,7 @@ class _ChanLoadingOverlayState extends State<ChanLoadingOverlay>
                     painter: _ChanLoadingPainter(
                       state: widget.state,
                       progress: _controller.value,
+                      loadProgress: loadProgress,
                     ),
                     child: const SizedBox.expand(),
                   ),
@@ -110,13 +116,32 @@ class _ChanLoadingOverlayState extends State<ChanLoadingOverlay>
       ),
     );
   }
+
+  double _loadProgress() {
+    if (widget.state == ChanLoadVisualState.success) return 1.0;
+    if (widget.state == ChanLoadVisualState.failure) return 1.0;
+    final startedAt = widget.startedAt;
+    final estimate = widget.estimatedDuration;
+    if (startedAt == null || estimate == null || estimate.inMilliseconds <= 0) {
+      return 0.08 + _controller.value * 0.18;
+    }
+    final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+    final ratio = elapsedMs / estimate.inMilliseconds;
+    final eased = 1 - math.exp(-ratio * 1.35);
+    return eased.clamp(0.04, 0.96).toDouble();
+  }
 }
 
 class _ChanLoadingPainter extends CustomPainter {
   final ChanLoadVisualState state;
   final double progress;
+  final double loadProgress;
 
-  const _ChanLoadingPainter({required this.state, required this.progress});
+  const _ChanLoadingPainter({
+    required this.state,
+    required this.progress,
+    required this.loadProgress,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -177,6 +202,58 @@ class _ChanLoadingPainter extends CustomPainter {
     final dotPaint = Paint()..color = Colors.white.withValues(alpha: 0.52);
     canvas.drawCircle(
         center, 3.2 + math.sin(progress * math.pi * 2).abs() * 1.4, dotPaint);
+    _drawSmartProgress(canvas, size);
+  }
+
+  void _drawSmartProgress(Canvas canvas, Size size) {
+    final width = math.min(size.width * 0.62, 520.0);
+    final left = (size.width - width) / 2;
+    final top = size.height * 0.76;
+    final track = RRect.fromRectAndRadius(
+      Rect.fromLTWH(left, top, width, 7),
+      const Radius.circular(99),
+    );
+    final trackPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.14)
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(track, trackPaint);
+
+    final solid = state == ChanLoadVisualState.failure ? 1.0 : loadProgress;
+    final ghost = state == ChanLoadVisualState.loading
+        ? math.min(0.985,
+            solid + 0.10 + 0.045 * math.sin(progress * math.pi * 2).abs())
+        : 1.0;
+    final ghostPaint = Paint()
+      ..color = const Color(0xFF90CAF9).withValues(alpha: 0.22)
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(left, top, width * ghost, 7),
+        const Radius.circular(99),
+      ),
+      ghostPaint,
+    );
+
+    final solidColor = switch (state) {
+      ChanLoadVisualState.loading => const Color(0xFFFFD54F),
+      ChanLoadVisualState.success => const Color(0xFF8BE28B),
+      ChanLoadVisualState.failure => const Color(0xFFFF8A80),
+    };
+    final solidPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          solidColor.withValues(alpha: 0.68),
+          solidColor,
+        ],
+      ).createShader(Rect.fromLTWH(left, top, width, 7))
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(left, top, width * solid.clamp(0.0, 1.0), 7),
+        const Radius.circular(99),
+      ),
+      solidPaint,
+    );
   }
 
   Path _halfPath({
@@ -212,7 +289,9 @@ class _ChanLoadingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ChanLoadingPainter oldDelegate) {
-    return oldDelegate.state != state || oldDelegate.progress != progress;
+    return oldDelegate.state != state ||
+        oldDelegate.progress != progress ||
+        oldDelegate.loadProgress != loadProgress;
   }
 }
 

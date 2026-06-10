@@ -19,7 +19,7 @@ class EasyTdxKlineSource {
     required String code,
     String period = 'DAILY',
     String adjust = 'QFQ',
-    int count = 800,
+    int? count,
     DateTime? startDate,
     DateTime? endDate,
   }) async {
@@ -36,7 +36,7 @@ class EasyTdxKlineSource {
       'market': market.trim().toUpperCase(),
       'freq': period.trim().toUpperCase(),
       'adjust': adjust.trim().toUpperCase(),
-      'count': '$count',
+      if (count != null) 'count': '$count',
       if (startDate != null) 'start': _fmtDate(startDate),
       if (endDate != null) 'end': _fmtDate(endDate),
     };
@@ -72,8 +72,7 @@ class EasyTdxKlineSource {
       queryParameters: query,
     );
 
-    final response =
-        await _client.get(uri).timeout(const Duration(seconds: 30));
+    final response = await _client.get(uri);
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       if (response.statusCode == 404 && _canAutoFallback(sourceBaseUrl)) {

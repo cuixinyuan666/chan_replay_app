@@ -28,13 +28,15 @@ class PythonChanAnalysis {
 }
 
 class PythonChanAnalysisSource {
-  static const MethodChannel _androidChanChannel = MethodChannel('chan_replay_app/python_chan');
+  static const MethodChannel _androidChanChannel =
+      MethodChannel('chan_replay_app/python_chan');
 
   final String baseUrl;
   final http.Client _client;
   _LocalPythonChanProcess? _localProcess;
 
-  PythonChanAnalysisSource({required this.baseUrl, http.Client? client}) : _client = client ?? http.Client();
+  PythonChanAnalysisSource({required this.baseUrl, http.Client? client})
+      : _client = client ?? http.Client();
 
   Future<PythonChanAnalysis> analyze({
     required String mode,
@@ -43,7 +45,7 @@ class PythonChanAnalysisSource {
     required String period,
     required String adjust,
     required Map<String, dynamic> config,
-    int count = 800,
+    int? count,
     DateTime? startDate,
     DateTime? endDate,
   }) async {
@@ -53,8 +55,8 @@ class PythonChanAnalysisSource {
       'market': market.trim().toUpperCase(),
       'freq': period.trim().toUpperCase(),
       'adjust': adjust.trim().toUpperCase(),
-      'count': count,
       'config': config,
+      if (count != null) 'count': count,
       if (startDate != null) 'start': _fmtDate(startDate),
       if (endDate != null) 'end': _fmtDate(endDate),
     };
@@ -102,18 +104,23 @@ class PythonChanAnalysisSource {
 
     final sourceBase = await _readyBaseUrl();
     final uri = Uri.parse(_join(sourceBase, '/api/chan/analyze_bars'));
-    final response = await _client
-        .post(uri, headers: {'content-type': 'application/json'}, body: jsonEncode(payload))
-        .timeout(const Duration(seconds: 60));
+    final response = await _client.post(uri,
+        headers: {'content-type': 'application/json'},
+        body: jsonEncode(payload));
     return _decodeResponse(response);
   }
 
-  Future<PythonChanAnalysis> _loadViaAndroid(Map<String, dynamic> payload) async {
-    final result = await _androidChanChannel.invokeMethod<String>('analyze', {'payload': jsonEncode(payload)});
-    if (result == null || result.trim().isEmpty) throw Exception('Android Chaquopy chan.py 返回为空');
+  Future<PythonChanAnalysis> _loadViaAndroid(
+      Map<String, dynamic> payload) async {
+    final result = await _androidChanChannel
+        .invokeMethod<String>('analyze', {'payload': jsonEncode(payload)});
+    if (result == null || result.trim().isEmpty)
+      throw Exception('Android Chaquopy chan.py 返回为空');
     final decoded = jsonDecode(result);
-    if (decoded is! Map<String, dynamic>) throw const FormatException('Android Chaquopy chan.py 返回结构不是 JSON 对象');
-    if (decoded['ok'] == false) throw Exception(decoded['error'] ?? 'Android Chaquopy chan.py 计算失败');
+    if (decoded is! Map<String, dynamic>)
+      throw const FormatException('Android Chaquopy chan.py 返回结构不是 JSON 对象');
+    if (decoded['ok'] == false)
+      throw Exception(decoded['error'] ?? 'Android Chaquopy chan.py 计算失败');
     return _parseAnalysis(decoded);
   }
 
@@ -128,30 +135,40 @@ class PythonChanAnalysisSource {
     }
   }
 
-  Future<PythonChanAnalysis> _loadViaAutoLocalBackend(Map<String, String> query) async {
-    if (!Platform.isWindows) throw UnsupportedError('自动后台启动 Python chan.py 本地服务目前只支持 Windows');
+  Future<PythonChanAnalysis> _loadViaAutoLocalBackend(
+      Map<String, String> query) async {
+    if (!Platform.isWindows)
+      throw UnsupportedError('自动后台启动 Python chan.py 本地服务目前只支持 Windows');
     _localProcess = await _LocalPythonChanProcess.start();
     return _loadFromBase(_localProcess!.baseUrl, query);
   }
 
-  Future<PythonChanAnalysis> _loadFromBase(String sourceBaseUrl, Map<String, String> query) async {
+  Future<PythonChanAnalysis> _loadFromBase(
+      String sourceBaseUrl, Map<String, String> query) async {
     await _assertCompatibleBackend(sourceBaseUrl);
-    final uri = Uri.parse(_join(sourceBaseUrl, '/api/chan/analyze')).replace(queryParameters: query);
-    final response = await _client.get(uri).timeout(const Duration(seconds: 60));
+    final uri = Uri.parse(_join(sourceBaseUrl, '/api/chan/analyze'))
+        .replace(queryParameters: query);
+    final response = await _client.get(uri);
     return _decodeResponse(response, sourceBaseUrl: sourceBaseUrl);
   }
 
-  Future<PythonChanAnalysis> _decodeResponse(http.Response response, {String? sourceBaseUrl}) async {
+  Future<PythonChanAnalysis> _decodeResponse(http.Response response,
+      {String? sourceBaseUrl}) async {
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      if (sourceBaseUrl != null && response.statusCode == 404 && _canAutoFallback(sourceBaseUrl)) {
-        throw _PythonChanBackendMismatch('localhost 服务不是 origin_vespa_tdx chan.py 后端: $body');
+      if (sourceBaseUrl != null &&
+          response.statusCode == 404 &&
+          _canAutoFallback(sourceBaseUrl)) {
+        throw _PythonChanBackendMismatch(
+            'localhost 服务不是 origin_vespa_tdx chan.py 后端: $body');
       }
       throw Exception('chan.py 引擎返回 ${response.statusCode}: $body');
     }
     final decoded = jsonDecode(body);
-    if (decoded is! Map<String, dynamic>) throw const FormatException('chan.py 引擎返回结构不是 JSON 对象');
-    if (decoded['ok'] == false) throw Exception(decoded['error'] ?? 'chan.py 引擎计算失败');
+    if (decoded is! Map<String, dynamic>)
+      throw const FormatException('chan.py 引擎返回结构不是 JSON 对象');
+    if (decoded['ok'] == false)
+      throw Exception(decoded['error'] ?? 'chan.py 引擎计算失败');
     return _parseAnalysis(decoded);
   }
 
@@ -161,12 +178,16 @@ class PythonChanAnalysisSource {
     final response = await _client.get(uri).timeout(const Duration(seconds: 3));
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw _PythonChanBackendMismatch('localhost /health 返回 ${response.statusCode}: $body');
+      throw _PythonChanBackendMismatch(
+          'localhost /health 返回 ${response.statusCode}: $body');
     }
     final decoded = jsonDecode(body);
-    if (decoded is! Map<String, dynamic>) throw const _PythonChanBackendMismatch('localhost /health 不是 JSON 对象');
-    if (decoded['backend'] != 'origin_vespa_tdx' || decoded['engine'] != 'chan.py') {
-      throw _PythonChanBackendMismatch('localhost 服务不是 origin_vespa_tdx chan.py 后端: $body');
+    if (decoded is! Map<String, dynamic>)
+      throw const _PythonChanBackendMismatch('localhost /health 不是 JSON 对象');
+    if (decoded['backend'] != 'origin_vespa_tdx' ||
+        decoded['engine'] != 'chan.py') {
+      throw _PythonChanBackendMismatch(
+          'localhost 服务不是 origin_vespa_tdx chan.py 后端: $body');
     }
   }
 
@@ -177,13 +198,16 @@ class PythonChanAnalysisSource {
     if (rawFrames is List) {
       for (final frame in rawFrames) {
         if (frame is Map<String, dynamic>) frames.add(_parseSnapshot(frame));
-        if (frame is Map && frame is! Map<String, dynamic>) frames.add(_parseSnapshot(Map<String, dynamic>.from(frame)));
+        if (frame is Map && frame is! Map<String, dynamic>)
+          frames.add(_parseSnapshot(Map<String, dynamic>.from(frame)));
       }
     }
     return PythonChanAnalysis(
       snapshot: snapshot,
       frames: frames,
-      meta: data['meta'] is Map ? Map<String, dynamic>.from(data['meta'] as Map) : const {},
+      meta: data['meta'] is Map
+          ? Map<String, dynamic>.from(data['meta'] as Map)
+          : const {},
     );
   }
 
@@ -291,14 +315,26 @@ class PythonChanAnalysisSource {
   }
 
   RawBar? _parseRawBar(Map row, int index) {
-    final time = _parseTime(row['dt'] ?? row['datetime'] ?? row['date'] ?? row['time']);
+    final time =
+        _parseTime(row['dt'] ?? row['datetime'] ?? row['date'] ?? row['time']);
     final open = _num(row['open'] ?? row['o']);
     final high = _num(row['high'] ?? row['h']);
     final low = _num(row['low'] ?? row['l']);
     final close = _num(row['close'] ?? row['c']);
     final volume = _num(row['vol'] ?? row['volume'] ?? row['v']) ?? 0.0;
-    if (time == null || open == null || high == null || low == null || close == null) return null;
-    return RawBar(index: index, time: time, open: open, high: high, low: low, close: close, volume: volume);
+    if (time == null ||
+        open == null ||
+        high == null ||
+        low == null ||
+        close == null) return null;
+    return RawBar(
+        index: index,
+        time: time,
+        open: open,
+        high: high,
+        low: low,
+        close: close,
+        volume: volume);
   }
 
   MergedBar? _parseMergedBar(Map row, List<RawBar> bars) {
@@ -307,13 +343,19 @@ class PythonChanAnalysisSource {
     final endRaw = _int(row['end_raw_index'] ?? row['endRawIndex']);
     final high = _num(row['high']);
     final low = _num(row['low']);
-    if (index == null || startRaw == null || endRaw == null || high == null || low == null || bars.isEmpty) return null;
+    if (index == null ||
+        startRaw == null ||
+        endRaw == null ||
+        high == null ||
+        low == null ||
+        bars.isEmpty) return null;
     final raw = bars[startRaw.clamp(0, bars.length - 1).toInt()];
     return MergedBar(
       index: index,
       startRawIndex: startRaw,
       endRawIndex: endRaw,
-      highRawIndex: _int(row['high_raw_index'] ?? row['highRawIndex']) ?? startRaw,
+      highRawIndex:
+          _int(row['high_raw_index'] ?? row['highRawIndex']) ?? startRaw,
       lowRawIndex: _int(row['low_raw_index'] ?? row['lowRawIndex']) ?? startRaw,
       time: _parseTime(row['time']) ?? raw.time,
       highTime: _parseTime(row['high_time'] ?? row['highTime']) ?? raw.time,
@@ -350,21 +392,60 @@ class PythonChanAnalysisSource {
     final endRaw = _int(row['end_raw_index'] ?? row['endRawIndex']);
     final startPrice = _num(row['start_price'] ?? row['startPrice']);
     final endPrice = _num(row['end_price'] ?? row['endPrice']);
-    if (startRaw == null || endRaw == null || startPrice == null || endPrice == null || mergedBars.isEmpty) return null;
+    if (startRaw == null ||
+        endRaw == null ||
+        startPrice == null ||
+        endPrice == null ||
+        mergedBars.isEmpty) return null;
     final isDown = '${row['direction'] ?? ''}'.toLowerCase().contains('down');
     final startMerged = _mergedAt(mergedBars, startRaw);
     final endMerged = _mergedAt(mergedBars, endRaw);
-    final startFx = FX(index: startMerged.index, rawIndex: startRaw, time: _parseTime(row['start_time'] ?? row['startTime']) ?? startMerged.time, type: isDown ? FxType.top : FxType.bottom, price: startPrice, left: startMerged, center: startMerged, right: startMerged, confirmed: true);
-    final endFx = FX(index: endMerged.index, rawIndex: endRaw, time: _parseTime(row['end_time'] ?? row['endTime']) ?? endMerged.time, type: isDown ? FxType.bottom : FxType.top, price: endPrice, left: endMerged, center: endMerged, right: endMerged, confirmed: row['is_sure'] != false);
-    return BI(index: _int(row['index']) ?? index, start: startFx, end: endFx, direction: isDown ? BiDirection.down : BiDirection.up, isSure: row['is_sure'] != false);
+    final startFx = FX(
+        index: startMerged.index,
+        rawIndex: startRaw,
+        time: _parseTime(row['start_time'] ?? row['startTime']) ??
+            startMerged.time,
+        type: isDown ? FxType.top : FxType.bottom,
+        price: startPrice,
+        left: startMerged,
+        center: startMerged,
+        right: startMerged,
+        confirmed: true);
+    final endFx = FX(
+        index: endMerged.index,
+        rawIndex: endRaw,
+        time: _parseTime(row['end_time'] ?? row['endTime']) ?? endMerged.time,
+        type: isDown ? FxType.bottom : FxType.top,
+        price: endPrice,
+        left: endMerged,
+        center: endMerged,
+        right: endMerged,
+        confirmed: row['is_sure'] != false);
+    return BI(
+        index: _int(row['index']) ?? index,
+        start: startFx,
+        end: endFx,
+        direction: isDown ? BiDirection.down : BiDirection.up,
+        isSure: row['is_sure'] != false);
   }
 
   SEG? _parseSeg(Map row, int index, List<BI> bis) {
     final start = _int(row['start_bi_index'] ?? row['startBiIndex']);
     final end = _int(row['end_bi_index'] ?? row['endBiIndex']);
-    if (start == null || end == null || start < 0 || end < start || end >= bis.length) return null;
+    if (start == null ||
+        end == null ||
+        start < 0 ||
+        end < start ||
+        end >= bis.length) return null;
     final isDown = '${row['direction'] ?? ''}'.toLowerCase().contains('down');
-    return SEG(index: _int(row['index']) ?? index, startBi: bis[start], endBi: bis[end], direction: isDown ? SegDirection.down : SegDirection.up, isSure: row['is_sure'] == true, reason: '${row['reason'] ?? 'chan.py'}', biList: bis.sublist(start, end + 1));
+    return SEG(
+        index: _int(row['index']) ?? index,
+        startBi: bis[start],
+        endBi: bis[end],
+        direction: isDown ? SegDirection.down : SegDirection.up,
+        isSure: row['is_sure'] == true,
+        reason: '${row['reason'] ?? 'chan.py'}',
+        biList: bis.sublist(start, end + 1));
   }
 
   ZS? _parseZs(Map row, int index) {
@@ -374,7 +455,12 @@ class PythonChanAnalysisSource {
     final zd = _num(row['zd']);
     final gg = _num(row['gg']);
     final dd = _num(row['dd']);
-    if (startBi == null || endBi == null || zg == null || zd == null || gg == null || dd == null) return null;
+    if (startBi == null ||
+        endBi == null ||
+        zg == null ||
+        zd == null ||
+        gg == null ||
+        dd == null) return null;
     return ZS(
       index: _int(row['index']) ?? index,
       startBiIndex: startBi,
@@ -411,19 +497,41 @@ class PythonChanAnalysisSource {
     );
   }
 
-  MergedBar _dummyMergedBar(RawBar bar) => MergedBar(index: bar.index, startRawIndex: bar.index, endRawIndex: bar.index, highRawIndex: bar.index, lowRawIndex: bar.index, time: bar.time, highTime: bar.time, lowTime: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume);
+  MergedBar _dummyMergedBar(RawBar bar) => MergedBar(
+      index: bar.index,
+      startRawIndex: bar.index,
+      endRawIndex: bar.index,
+      highRawIndex: bar.index,
+      lowRawIndex: bar.index,
+      time: bar.time,
+      highTime: bar.time,
+      lowTime: bar.time,
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      close: bar.close,
+      volume: bar.volume);
 
   MergedBar _mergedAt(List<MergedBar> bars, int rawIndex) {
     for (final bar in bars) {
-      if (rawIndex >= bar.startRawIndex && rawIndex <= bar.endRawIndex) return bar;
+      if (rawIndex >= bar.startRawIndex && rawIndex <= bar.endRawIndex)
+        return bar;
     }
     return bars[rawIndex.clamp(0, bars.length - 1).toInt()];
   }
 
-  Map<String, dynamic> _barToJson(RawBar bar) => {'dt': _fmtDate(bar.time), 'open': bar.open, 'high': bar.high, 'low': bar.low, 'close': bar.close, 'vol': bar.volume};
+  Map<String, dynamic> _barToJson(RawBar bar) => {
+        'dt': _fmtDate(bar.time),
+        'open': bar.open,
+        'high': bar.high,
+        'low': bar.low,
+        'close': bar.close,
+        'vol': bar.volume
+      };
 
   DateTime? _parseTime(Object? value) {
-    final text = '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
+    final text =
+        '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
     if (text.isEmpty || text == 'null') return null;
     return DateTime.tryParse(text);
   }
@@ -431,7 +539,10 @@ class PythonChanAnalysisSource {
   double? _num(Object? value) {
     if (value is num) return value.toDouble();
     final text = '${value ?? ''}'.trim().replaceAll(',', '');
-    if (text.isEmpty || text == '-' || text.toLowerCase() == 'nan' || text == 'null') return null;
+    if (text.isEmpty ||
+        text == '-' ||
+        text.toLowerCase() == 'nan' ||
+        text == 'null') return null;
     return double.tryParse(text);
   }
 
@@ -441,18 +552,28 @@ class PythonChanAnalysisSource {
     return int.tryParse('${value ?? ''}'.trim());
   }
 
-  String _join(String base, String path) => '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}$path';
-  String _fmtDate(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String _join(String base, String path) =>
+      '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}$path';
+  String _fmtDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   bool _canAutoFallback(String sourceBaseUrl) {
     if (!Platform.isWindows) return false;
     final uri = Uri.tryParse(sourceBaseUrl);
-    return uri != null && uri.scheme == 'http' && (uri.host == '127.0.0.1' || uri.host == 'localhost' || uri.host == '::1');
+    return uri != null &&
+        uri.scheme == 'http' &&
+        (uri.host == '127.0.0.1' ||
+            uri.host == 'localhost' ||
+            uri.host == '::1');
   }
 
   bool _looksLikeConnectionFailure(http.ClientException e) {
     final msg = e.toString().toLowerCase();
-    return msg.contains('connection refused') || msg.contains('connection failed') || msg.contains('failed host lookup') || msg.contains('connection reset') || msg.contains('connection closed');
+    return msg.contains('connection refused') ||
+        msg.contains('connection failed') ||
+        msg.contains('failed host lookup') ||
+        msg.contains('connection reset') ||
+        msg.contains('connection closed');
   }
 
   void close() {
@@ -495,12 +616,16 @@ class _LocalPythonChanProcess {
         lastError = '${candidate.executable}: $e';
       }
     }
-    throw Exception('无法后台启动 Python chan.py 本地服务。仅允许使用内置 Python：python/python.exe。最后错误：$lastError');
+    throw Exception(
+        '无法后台启动 Python chan.py 本地服务。仅允许使用内置 Python：python/python.exe。最后错误：$lastError');
   }
 
   static Future<File> _findAppEngine() async {
     final checked = <String>{};
-    final starts = <Directory>[Directory.current, File(Platform.resolvedExecutable).parent];
+    final starts = <Directory>[
+      Directory.current,
+      File(Platform.resolvedExecutable).parent
+    ];
     for (final start in starts) {
       var dir = start.absolute;
       for (var i = 0; i < 8; i++) {
@@ -518,7 +643,11 @@ class _LocalPythonChanProcess {
 
   static List<File> _appEngineCandidatesFrom(Directory dir) {
     final sep = Platform.pathSeparator;
-    return [File('${dir.path}${sep}python${sep}app_engine.py'), File('${dir.path}${sep}data${sep}python${sep}app_engine.py'), File('${dir.path}${sep}app_engine.py')];
+    return [
+      File('${dir.path}${sep}python${sep}app_engine.py'),
+      File('${dir.path}${sep}data${sep}python${sep}app_engine.py'),
+      File('${dir.path}${sep}app_engine.py')
+    ];
   }
 
   static Future<int> _pickFreePort() async {
@@ -543,12 +672,18 @@ class _LocalPythonChanProcess {
     final deadline = DateTime.now().add(const Duration(seconds: 25));
     Object? lastError;
     while (DateTime.now().isBefore(deadline)) {
-      final exitCode = await process.exitCode.timeout(const Duration(milliseconds: 10), onTimeout: () => -999999);
-      if (exitCode != -999999) throw Exception('Python chan.py 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
+      final exitCode = await process.exitCode
+          .timeout(const Duration(milliseconds: 10), onTimeout: () => -999999);
+      if (exitCode != -999999)
+        throw Exception(
+            'Python chan.py 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
       try {
         final client = HttpClient();
-        final request = await client.getUrl(Uri.parse('$baseUrl/health')).timeout(const Duration(milliseconds: 700));
-        final response = await request.close().timeout(const Duration(milliseconds: 700));
+        final request = await client
+            .getUrl(Uri.parse('$baseUrl/health'))
+            .timeout(const Duration(milliseconds: 700));
+        final response =
+            await request.close().timeout(const Duration(milliseconds: 700));
         client.close(force: true);
         if (response.statusCode >= 200 && response.statusCode < 300) return;
       } catch (e) {
@@ -557,7 +692,8 @@ class _LocalPythonChanProcess {
       await Future<void>.delayed(const Duration(milliseconds: 300));
     }
     dispose();
-    throw Exception('Python chan.py 本地服务启动超时：$lastError，stderr=${_stderr.toString()}');
+    throw Exception(
+        'Python chan.py 本地服务启动超时：$lastError，stderr=${_stderr.toString()}');
   }
 
   void dispose() {

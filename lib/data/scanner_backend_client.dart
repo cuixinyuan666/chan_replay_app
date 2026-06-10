@@ -20,7 +20,8 @@ class ScannerBackendClient {
     required Map<String, dynamic> config,
   }) async {
     if (Platform.isAndroid) {
-      throw UnsupportedError('扫描器当前需要 FastAPI 后端；Android Chaquopy 暂未接入批量 BSP 扫描');
+      throw UnsupportedError(
+          '扫描器当前需要 FastAPI 后端；Android Chaquopy 暂未接入批量 BSP 扫描');
     }
     final payload = _payload(
       limit: limit,
@@ -59,7 +60,8 @@ class ScannerBackendClient {
     required Map<String, dynamic> config,
   }) async* {
     if (Platform.isAndroid) {
-      throw UnsupportedError('扫描器当前需要 FastAPI 后端；Android Chaquopy 暂未接入批量 BSP 扫描');
+      throw UnsupportedError(
+          '扫描器当前需要 FastAPI 后端；Android Chaquopy 暂未接入批量 BSP 扫描');
     }
     final payload = _payload(
       limit: limit,
@@ -96,7 +98,8 @@ class ScannerBackendClient {
     required int recentDays,
     required bool biStrict,
     required Map<String, dynamic> config,
-  }) => <String, dynamic>{
+  }) =>
+      <String, dynamic>{
         'days': days,
         'recent_days': recentDays,
         'limit': limit,
@@ -115,16 +118,15 @@ class ScannerBackendClient {
     }
   }
 
-  Future<Map<String, dynamic>> _postScan(String sourceBaseUrl, Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> _postScan(
+      String sourceBaseUrl, Map<String, dynamic> payload) async {
     await _assertCompatibleBackend(sourceBaseUrl);
     final uri = Uri.parse(_join(sourceBaseUrl, '/api/scanner/bsp/scan'));
-    final response = await _client
-        .post(
-          uri,
-          headers: const {'content-type': 'application/json'},
-          body: jsonEncode(payload),
-        )
-        .timeout(const Duration(minutes: 8));
+    final response = await _client.post(
+      uri,
+      headers: const {'content-type': 'application/json'},
+      body: jsonEncode(payload),
+    );
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode == 404 && _canAutoFallback(sourceBaseUrl)) {
       throw _ScannerBackendMismatch('localhost 后端缺少扫描器接口: $body');
@@ -142,13 +144,14 @@ class ScannerBackendClient {
     return decoded;
   }
 
-  Stream<Map<String, dynamic>> _postScanStream(String sourceBaseUrl, Map<String, dynamic> payload) async* {
+  Stream<Map<String, dynamic>> _postScanStream(
+      String sourceBaseUrl, Map<String, dynamic> payload) async* {
     await _assertCompatibleBackend(sourceBaseUrl);
     final uri = Uri.parse(_join(sourceBaseUrl, '/api/scanner/bsp/scan_stream'));
     final request = http.Request('POST', uri)
       ..headers['content-type'] = 'application/json'
       ..body = jsonEncode(payload);
-    final response = await _client.send(request).timeout(const Duration(seconds: 30));
+    final response = await _client.send(request);
     if (response.statusCode == 404 && _canAutoFallback(sourceBaseUrl)) {
       final body = await response.stream.bytesToString();
       throw _ScannerBackendMismatch('localhost 后端缺少扫描器流式接口: $body');
@@ -158,7 +161,9 @@ class ScannerBackendClient {
       throw Exception('扫描器后端返回 ${response.statusCode}: $body');
     }
 
-    await for (final line in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
       final text = line.trim();
       if (text.isEmpty) continue;
       final decoded = jsonDecode(text);
@@ -176,14 +181,17 @@ class ScannerBackendClient {
     final response = await _client.get(uri).timeout(const Duration(seconds: 3));
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw _ScannerBackendMismatch('localhost /health 返回 ${response.statusCode}: $body');
+      throw _ScannerBackendMismatch(
+          'localhost /health 返回 ${response.statusCode}: $body');
     }
     final decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
       throw const _ScannerBackendMismatch('localhost /health 不是 JSON 对象');
     }
-    if (decoded['backend'] != 'origin_vespa_tdx' || decoded['engine'] != 'chan.py') {
-      throw _ScannerBackendMismatch('localhost 服务不是 origin_vespa_tdx chan.py 后端: $body');
+    if (decoded['backend'] != 'origin_vespa_tdx' ||
+        decoded['engine'] != 'chan.py') {
+      throw _ScannerBackendMismatch(
+          'localhost 服务不是 origin_vespa_tdx chan.py 后端: $body');
     }
   }
 
@@ -192,7 +200,9 @@ class ScannerBackendClient {
     final uri = Uri.tryParse(sourceBaseUrl);
     return uri != null &&
         uri.scheme == 'http' &&
-        (uri.host == '127.0.0.1' || uri.host == 'localhost' || uri.host == '::1');
+        (uri.host == '127.0.0.1' ||
+            uri.host == 'localhost' ||
+            uri.host == '::1');
   }
 
   bool _looksLikeConnectionFailure(http.ClientException e) {
@@ -248,7 +258,8 @@ class _ScannerLocalPythonProcess {
         lastError = '${candidate.executable}: $e';
       }
     }
-    throw Exception('无法后台启动 Python chan.py 本地服务。仅允许使用内置 Python：python/python.exe。最后错误：$lastError');
+    throw Exception(
+        '无法后台启动 Python chan.py 本地服务。仅允许使用内置 Python：python/python.exe。最后错误：$lastError');
   }
 
   static Future<File> _findAppEngine() async {
@@ -308,14 +319,16 @@ class _ScannerLocalPythonProcess {
         onTimeout: () => -999999,
       );
       if (exitCode != -999999) {
-        throw Exception('Python chan.py 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
+        throw Exception(
+            'Python chan.py 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
       }
       try {
         final client = HttpClient();
         final request = await client
             .getUrl(Uri.parse('$baseUrl/health'))
             .timeout(const Duration(milliseconds: 700));
-        final response = await request.close().timeout(const Duration(milliseconds: 700));
+        final response =
+            await request.close().timeout(const Duration(milliseconds: 700));
         client.close(force: true);
         if (response.statusCode >= 200 && response.statusCode < 300) return;
       } catch (e) {
@@ -324,7 +337,8 @@ class _ScannerLocalPythonProcess {
       await Future<void>.delayed(const Duration(milliseconds: 300));
     }
     dispose();
-    throw Exception('Python chan.py 本地服务启动超时：$lastError，stderr=${_stderr.toString()}');
+    throw Exception(
+        'Python chan.py 本地服务启动超时：$lastError，stderr=${_stderr.toString()}');
   }
 
   void dispose() {

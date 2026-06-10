@@ -158,7 +158,7 @@ def load_easy_tdx_bars(
     market_enum = _market_value(market_name, Market)
     period_enum = _period_value(period_name, Period)
     adjust_enum = _adjust_value(adjust_name, Adjust)
-    safe_count = max(1, min(int(count), 5000))
+    safe_count = max(1, int(count))
 
     try:
         df = _get_stock_kline(

@@ -6,19 +6,21 @@ import 'package:flutter/services.dart';
 import '../core/models/raw_bar.dart';
 
 class EmbeddedEasyTdxSource {
-  static const MethodChannel _channel = MethodChannel('chan_replay_app/python_easy_tdx');
+  static const MethodChannel _channel =
+      MethodChannel('chan_replay_app/python_easy_tdx');
 
   Future<List<RawBar>> loadKline({
     required String market,
     required String code,
     String period = 'DAILY',
     String adjust = 'QFQ',
-    int count = 800,
+    int? count,
     DateTime? startDate,
     DateTime? endDate,
   }) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      throw UnsupportedError('内置 Python easy-tdx 目前只支持 Android；Windows 请使用 easy-tdx 后端模式');
+      throw UnsupportedError(
+          '内置 Python easy-tdx 目前只支持 Android；Windows 请使用 easy-tdx 后端模式');
     }
 
     final normalizedCode = code.trim();
@@ -34,12 +36,13 @@ class EmbeddedEasyTdxSource {
       'market': market.trim().toUpperCase(),
       'period': period.trim().toUpperCase(),
       'adjust': adjust.trim().toUpperCase(),
-      'count': count,
+      if (count != null) 'count': count,
       if (startDate != null) 'start': _fmtDate(startDate),
       if (endDate != null) 'end': _fmtDate(endDate),
     });
 
-    final raw = await _channel.invokeMethod<String>('loadKline', {'payload': payload});
+    final raw =
+        await _channel.invokeMethod<String>('loadKline', {'payload': payload});
     if (raw == null || raw.trim().isEmpty) {
       throw const FormatException('内置 Python 未返回数据');
     }
@@ -70,14 +73,19 @@ class EmbeddedEasyTdxSource {
   }
 
   RawBar? _parseBar(Map row, int index) {
-    final time = _parseTime(row['dt'] ?? row['datetime'] ?? row['date'] ?? row['time']);
+    final time =
+        _parseTime(row['dt'] ?? row['datetime'] ?? row['date'] ?? row['time']);
     final open = _parseDouble(row['open'] ?? row['o']);
     final high = _parseDouble(row['high'] ?? row['h']);
     final low = _parseDouble(row['low'] ?? row['l']);
     final close = _parseDouble(row['close'] ?? row['c']);
     final volume = _parseDouble(row['vol'] ?? row['volume'] ?? row['v']) ?? 0.0;
 
-    if (time == null || open == null || high == null || low == null || close == null) {
+    if (time == null ||
+        open == null ||
+        high == null ||
+        low == null ||
+        close == null) {
       return null;
     }
     return RawBar(

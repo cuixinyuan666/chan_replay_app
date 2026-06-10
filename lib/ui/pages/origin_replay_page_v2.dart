@@ -25,8 +25,8 @@ class OriginReplayPageV2 extends StatefulWidget {
 }
 
 class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
-  static final DateTime _defaultStartDate = DateTime(2020, 1, 1);
-  static final DateTime _defaultEndDate = DateTime.now();
+  static final DateTime _defaultStartDate = DateTime(2025, 5, 5);
+  static final DateTime _defaultEndDate = DateTime(2026, 6, 6);
 
   static const List<String> _bspTypes = ['1', '1p', '2', '2s', '3a', '3b'];
   static const List<String> _macdAlgoValues = [
@@ -162,11 +162,22 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   bool _showBiBsp = true;
   bool _showSegBsp = true;
   bool _showMergedBars = false;
+  bool _showEasyTdxIndicators = false;
+  int _easyTdxSubPanelCount = 2;
+  final Set<String> _enabledEasyTdxIndicators = {
+    'MA',
+    'BOLL',
+    'VOL',
+    'MACD',
+  };
   bool _showLayerStatusPanel = true;
   Timer? _timer;
+  Timer? _initialLoadTimer;
   Timer? _toolbarCollapseTimer;
   Timer? _loadVisualTimer;
   ChanLoadVisualState? _loadVisualState;
+  DateTime? _loadStartedAt;
+  Duration? _loadEstimate;
   bool _toolbarHovering = false;
   final ValueNotifier<int> _tvToolboxOpenSignal = ValueNotifier<int>(0);
   final ValueNotifier<TradingViewDrawingTool?> _tvToolSelectSignal =
@@ -331,7 +342,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future<void>.delayed(const Duration(milliseconds: 320), () {
+      _initialLoadTimer = Timer(const Duration(milliseconds: 320), () {
         if (mounted) _load();
       });
     });
@@ -340,6 +351,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
   @override
   void dispose() {
     _timer?.cancel();
+    _initialLoadTimer?.cancel();
     _toolbarCollapseTimer?.cancel();
     _loadVisualTimer?.cancel();
     _tvToolboxOpenSignal.dispose();
@@ -371,6 +383,8 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     setState(() {
       _loading = true;
       _loadVisualState = ChanLoadVisualState.loading;
+      _loadStartedAt = DateTime.now();
+      _loadEstimate = _estimateLoadDuration();
     });
     final source =
         PythonChanAnalysisSource(baseUrl: _backendUrlController.text.trim());
@@ -445,12 +459,39 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
     }
   }
 
+  Duration _estimateLoadDuration() {
+    final days = math.max(1, _endDate.difference(_startDate).inDays + 1);
+    final periodFactor = switch (_period.toUpperCase()) {
+      'MIN1' => 6.0,
+      'MIN5' => 4.2,
+      'MIN15' => 3.0,
+      'MIN30' => 2.4,
+      'MIN60' => 1.9,
+      'WEEKLY' => 0.55,
+      'MONTHLY' => 0.35,
+      _ => 1.0,
+    };
+    final sourceFactor = _dataSource == 'csv' ? 0.42 : 1.0;
+    final modeFactor = _isStepMode ? 2.2 : 1.0;
+    final estimatedBars = _dataSource == 'csv'
+        ? (_localCsvBars?.length ?? days)
+        : days * periodFactor;
+    final seconds = 4.0 + estimatedBars / 32.0 * sourceFactor * modeFactor;
+    return Duration(seconds: seconds.clamp(8.0, 180.0).round());
+  }
+
   void _finishLoadVisual(ChanLoadVisualState state) {
     if (!mounted) return;
     _loadVisualTimer?.cancel();
     setState(() => _loadVisualState = state);
     _loadVisualTimer = Timer(const Duration(milliseconds: 1700), () {
-      if (mounted) setState(() => _loadVisualState = null);
+      if (mounted) {
+        setState(() {
+          _loadVisualState = null;
+          _loadStartedAt = null;
+          _loadEstimate = null;
+        });
+      }
     });
   }
 
@@ -498,6 +539,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
       TradingViewDrawingTool.chanBiBsp => _showBiBsp,
       TradingViewDrawingTool.chanSegBsp => _showSegBsp,
       TradingViewDrawingTool.chanMergedBars => _showMergedBars,
+      TradingViewDrawingTool.easyTdxIndicators => _showEasyTdxIndicators,
       _ => false,
     };
   }
@@ -537,6 +579,9 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
           break;
         case TradingViewDrawingTool.chanMergedBars:
           _showMergedBars = !_showMergedBars;
+          break;
+        case TradingViewDrawingTool.easyTdxIndicators:
+          _showEasyTdxIndicators = !_showEasyTdxIndicators;
           break;
         default:
           break;
@@ -2257,6 +2302,9 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                   showBiBsp: _showBiBsp && _hasBiBsp,
                   showSegBsp: _showSegBsp && _hasSegBsp,
                   showMergedBars: _showMergedBars && _hasMergedBars,
+                  showEasyTdxIndicators: _showEasyTdxIndicators,
+                  easyTdxSubPanelCount: _easyTdxSubPanelCount,
+                  enabledEasyTdxIndicators: _enabledEasyTdxIndicators,
                   drawingStorageKey: _drawingStorageKey,
                   toolboxOpenSignal: _tvToolboxOpenSignal,
                   toolboxSelectedToolSignal: _tvToolSelectSignal,
@@ -2272,11 +2320,26 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                   onPanBars: _panChartByBars,
                   onWindowSizeChanged: (v) => setState(() => _windowSize = v),
                   onPriceScaleChanged: (v) => setState(() => _priceScale = v),
+                  onEasyTdxSubPanelCountChanged: (v) => setState(
+                      () => _easyTdxSubPanelCount = v.clamp(0, 4).toInt()),
+                  onEasyTdxIndicatorToggled: (key) => setState(() {
+                    if (_enabledEasyTdxIndicators.contains(key)) {
+                      _enabledEasyTdxIndicators.remove(key);
+                    } else {
+                      _enabledEasyTdxIndicators.add(key);
+                    }
+                  }),
                 ),
               ),
               if (_showLayerStatusPanel) _buildLayerStatusPanel(),
               if (visualState != null)
-                Positioned.fill(child: ChanLoadingOverlay(state: visualState)),
+                Positioned.fill(
+                  child: ChanLoadingOverlay(
+                    state: visualState,
+                    startedAt: _loadStartedAt,
+                    estimatedDuration: _loadEstimate,
+                  ),
+                ),
             ],
           ),
         ),

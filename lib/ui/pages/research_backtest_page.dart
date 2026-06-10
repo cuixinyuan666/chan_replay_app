@@ -45,11 +45,9 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       final payload = _parsePayload();
       final sourceBaseUrl = await _readyBaseUrl();
       final uri = Uri.parse(_join(sourceBaseUrl, endpoint));
-      final response = await http
-          .post(uri,
-              headers: const {'content-type': 'application/json'},
-              body: jsonEncode(payload))
-          .timeout(const Duration(seconds: 60));
+      final response = await http.post(uri,
+          headers: const {'content-type': 'application/json'},
+          body: jsonEncode(payload));
       final body = utf8.decode(response.bodyBytes);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('HTTP ${response.statusCode}: $body');

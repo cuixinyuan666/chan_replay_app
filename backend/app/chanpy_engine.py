@@ -379,15 +379,27 @@ def _bsp_price(item: Any, klu: Any, line: Any, is_buy: bool) -> float | None:
     return _to_float(_call_any(line, ('get_end_val',), None)) if line is not None else None
 
 
+def _line_bsp_items(lines: Any) -> list[Any]:
+    result: list[Any] = []
+    for line in _as_list(lines):
+        bsp = _attr(line, ('bsp',), None)
+        if bsp is not None:
+            result.append(bsp)
+    return result
+
+
 def _export_bsp(level: Any) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     containers = [
         ('bi', _attr(level, ('bs_point_lst', 'bs_point_list'), None)),
         ('seg', _attr(level, ('seg_bs_point_lst', 'seg_bs_point_list'), None)),
+        ('seg', _line_bsp_items(_attr(level, ('seg_list',), None))),
+        ('seg', _line_bsp_items(_attr(level, ('segseg_list',), None))),
     ]
     seen: set[tuple[int, str, str]] = set()
     for level_name, container in containers:
         for item in _bsp_container_items(container):
+            actual_level = 'seg' if bool(_attr(item, ('is_segbsp',), False)) else level_name
             line = _attr(item, ('bi', 'seg', 'relate_bi', 'related_bi'), None)
             klu = _attr(item, ('klu', 'kl', 'point', 'kline'), None) or _call_any(item, ('get_klu',), None)
             if klu is None and line is not None:
@@ -398,7 +410,7 @@ def _export_bsp(level: Any) -> list[dict[str, Any]]:
             if raw_index is None or price is None:
                 continue
             type_text = _bsp_type_text(item, is_buy)
-            key = (raw_index, type_text, level_name)
+            key = (raw_index, type_text, actual_level)
             if key in seen:
                 continue
             seen.add(key)
@@ -409,9 +421,9 @@ def _export_bsp(level: Any) -> list[dict[str, Any]]:
                 'time': _time(klu),
                 'price': price,
                 'type': type_text,
-                'level': level_name,
-                'bi_index': line_index if level_name == 'bi' else None,
-                'seg_index': line_index if level_name == 'seg' else None,
+                'level': actual_level,
+                'bi_index': line_index if actual_level == 'bi' else None,
+                'seg_index': line_index if actual_level == 'seg' else None,
                 'zs_index': None,
                 'confirmed': bool(_attr(item, ('is_sure', 'confirmed'), True)),
             })
@@ -535,14 +547,14 @@ def analyze_bars(*, bars: list[dict[str, Any]], symbol: str = 'local_csv', marke
     return _result(bars=bars, structures=structures, code=code, market=market_name, freq=freq, adjust=adjust, mode=mode_name, config=config)
 
 
-def analyze_once(*, symbol: str, market: str | None, freq: str, adjust: str, start: str | None, end: str | None, count: int = 5000, config: dict[str, Any] | None = None) -> dict[str, Any]:
+def analyze_once(*, symbol: str, market: str | None, freq: str, adjust: str, start: str | None, end: str | None, count: int = 50000, config: dict[str, Any] | None = None) -> dict[str, Any]:
     code = normalize_symbol(symbol)
     market_name = (market or infer_market(code)).upper()
     bars = load_easy_tdx_bars(symbol=code, market=market_name, period=freq, adjust=adjust, count=count, start=start, end=end)
     return analyze_bars(bars=bars, symbol=code, market=market_name, freq=freq, adjust=adjust, mode='once', config=config)
 
 
-def analyze_step(*, symbol: str, market: str | None, freq: str, adjust: str, start: str | None, end: str | None, count: int = 5000, config: dict[str, Any] | None = None) -> dict[str, Any]:
+def analyze_step(*, symbol: str, market: str | None, freq: str, adjust: str, start: str | None, end: str | None, count: int = 50000, config: dict[str, Any] | None = None) -> dict[str, Any]:
     code = normalize_symbol(symbol)
     market_name = (market or infer_market(code)).upper()
     bars = load_easy_tdx_bars(symbol=code, market=market_name, period=freq, adjust=adjust, count=count, start=start, end=end)
