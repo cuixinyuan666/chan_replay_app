@@ -21,6 +21,9 @@ TARGETS = {
         "../../core/models/chan_snapshot.dart",
         "origin_indicator_pane.dart",
         "class OriginIndicatorPaneHost extends StatelessWidget",
+        "bool get _hasBars => snapshot.rawBars.isNotEmpty;",
+        "bool get _showVol => _hasBars && showVol && snapshot.indicators.vol.isNotEmpty;",
+        "bool get _showMacd => _hasBars && showMacd && snapshot.indicators.macd.isNotEmpty;",
     ),
 }
 
@@ -71,7 +74,7 @@ def main() -> int:
         all_findings.extend(findings)
 
     payload = {
-        'rule': 'indicator widgets must stay display-only and use bounded layout constraints',
+        'rule': 'indicator widgets must stay display-only, bounded, and gated by raw bars',
         'missing_required_snippets': all_missing,
         'forbidden_count': len(all_findings),
         'findings': [asdict(item) for item in all_findings],
@@ -81,7 +84,7 @@ def main() -> int:
     if all_missing or all_findings:
         print('FAIL: indicator pane boundary audit failed.', file=sys.stderr)
         return 1
-    print('PASS: indicator pane widgets remain display-only and bounded.')
+    print('PASS: indicator pane widgets remain display-only, bounded, and raw-bar gated.')
     return 0
 
 
