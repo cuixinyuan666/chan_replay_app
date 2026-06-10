@@ -1,9 +1,10 @@
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+
+import '../../core/models/chan_snapshot.dart';
+import '../../data/python_chan_analysis_source.dart';
 
 class EasyTdxIndicatorPage extends StatefulWidget {
   const EasyTdxIndicatorPage({super.key});
@@ -54,74 +55,86 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
     if (symbol.isEmpty) return;
     setState(() {
       _loading = true;
-      _status = '正在加载 $symbol.$_market $_freq 指标...';
+      _status = '正在通过复盘同款 Python 通道加载 $symbol.$_market $_freq 指标...';
     });
+
+    final source = PythonChanAnalysisSource(baseUrl: _cleanBaseUrl(_backend.text));
     try {
-      final base = _backend.text.trim().replaceAll(RegExp(r'/+$'), '');
-      final uri = Uri.parse('$base/api/tdx/kline').replace(queryParameters: {
-        'symbol': symbol,
-        'market': _market,
-        'freq': _freq,
-        'adjust': _adjust,
-        'count': '${int.tryParse(_count.text.trim())?.clamp(30, 5000).toInt() ?? 320}',
-      });
-      final resp = await http.get(uri).timeout(const Duration(seconds: 45));
-      final body = utf8.decode(resp.bodyBytes);
-      if (resp.statusCode < 200 || resp.statusCode >= 300) throw Exception('HTTP ${resp.statusCode}: $body');
-      final json = jsonDecode(body);
-      if (json is! Map<String, dynamic>) throw const FormatException('后端返回不是 JSON 对象');
-      if (json['ok'] == false) throw Exception(json['error'] ?? 'easy-tdx 请求失败');
-      final parsed = _parse(json);
+      final analysis = await source.analyze(
+        mode: 'once',
+        market: _market,
+        code: symbol,
+        period: _freq,
+        adjust: _adjust,
+        count: int.tryParse(_count.text.trim())?.clamp(30, 5000).toInt() ?? 320,
+        config: const {
+          'boll_n': 20,
+          'macd_fast': 12,
+          'macd_slow': 26,
+          'macd_signal': 9,
+        },
+      );
+      final parsed = _fromSnapshot(analysis.snapshot);
       if (parsed.isEmpty) throw const FormatException('没有有效 K线');
       setState(() {
         _bars = parsed;
         _crossIndex = parsed.length - 1;
-        _status = '已加载 $symbol.$_market $_freq $_adjust K:${parsed.length}；MA/BOLL/MACD 支持后端返回，缺失时本页展示层本地补算';
+        _status = '已加载 $symbol.$_market $_freq $_adjust K:${parsed.length}；调用链与复盘页一致，Windows 自动内置 Python，Android 走 Chaquopy';
       });
     } catch (e) {
       setState(() => _status = '加载失败：$e');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('加载失败：$e')));
     } finally {
+      source.close();
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  List<_Bar> _parse(Map<String, dynamic> root) {
-    final rows = root['bars'];
-    if (rows is! List) return const [];
-    final ind = root['indicators'] is Map ? root['indicators'] as Map : const {};
-    final vol = _point(ind['vol']);
-    final amount = _point(ind['amount']);
-    final turnover = _point(ind['turnover']);
-    final ma = _maMap(ind['ma']);
-    final boll = _bollMap(ind['boll']);
-    final macd = _macdMap(ind['macd']);
-    final out = <_Bar>[];
-    for (var i = 0; i < rows.length; i++) {
-      final r = rows[i];
-      if (r is! Map) continue;
-      final o = _num(r['open'] ?? r['o']);
-      final h = _num(r['high'] ?? r['h']);
-      final l = _num(r['low'] ?? r['l']);
-      final c = _num(r['close'] ?? r['c']);
-      if (o == null || h == null || l == null || c == null) continue;
-      final raw = _int(r['raw_index'] ?? r['rawIndex'] ?? r['id']) ?? out.length;
-      out.add(_Bar(
-        rawIndex: raw,
-        time: _time(r['time'] ?? r['dt'] ?? r['date'] ?? r['datetime']),
-        open: o,
-        high: math.max(h, math.max(o, c)),
-        low: math.min(l, math.min(o, c)),
-        close: c,
-        volume: vol[raw] ?? _num(r['volume'] ?? r['vol'] ?? r['v']),
-        amount: amount[raw] ?? _num(r['amount'] ?? r['money']),
-        turnover: turnover[raw] ?? _num(r['turnover'] ?? r['turnover_rate']),
-        ma: {for (final e in ma.entries) e.key: e.value[raw]},
-        boll: boll[raw],
-        macd: macd[raw],
+  String _cleanBaseUrl(String input) {
+    final text = input.trim().replaceAll(RegExp(r'\s+'), '');
+    return text.isEmpty ? _defaultBackend : text.replaceAll(RegExp(r'/+$'), '');
+  }
+
+  List<_Bar> _fromSnapshot(ChanSnapshot snapshot) {
+    final indicators = snapshot.indicators;
+    final vol = {for (final p in indicators.vol) p.rawIndex: p.value};
+    final amount = {for (final p in indicators.amount) p.rawIndex: p.value};
+    final turnover = {for (final p in indicators.turnover) p.rawIndex: p.value};
+    final ma = {
+      for (final entry in indicators.ma.entries)
+        entry.key: {for (final p in entry.value) p.rawIndex: p.value},
+    };
+    final boll = {for (final p in indicators.boll) p.rawIndex: _Boll(p.upper, p.mid, p.lower)};
+    final macd = {for (final p in indicators.macd) p.rawIndex: _Macd(p.dif, p.dea, p.hist)};
+    final bars = <_Bar>[];
+    for (final raw in snapshot.rawBars) {
+      final rawIndex = raw.index;
+      bars.add(_Bar(
+        rawIndex: rawIndex,
+        time: _fmtTime(raw.time),
+        open: raw.open,
+        high: raw.high,
+        low: raw.low,
+        close: raw.close,
+        volume: vol[rawIndex] ?? raw.volume,
+        amount: amount[rawIndex],
+        turnover: turnover[rawIndex],
+        ma: {for (final entry in ma.entries) entry.key: entry.value[rawIndex]},
+        boll: boll[rawIndex],
+        macd: macd[rawIndex],
       ));
     }
-    return _fallbackIndicators(out);
+    return _fallbackIndicators(bars);
+  }
+
+  String _fmtTime(DateTime time) {
+    final y = time.year.toString().padLeft(4, '0');
+    final m = time.month.toString().padLeft(2, '0');
+    final d = time.day.toString().padLeft(2, '0');
+    final hh = time.hour.toString().padLeft(2, '0');
+    final mm = time.minute.toString().padLeft(2, '0');
+    if (time.hour == 0 && time.minute == 0 && time.second == 0) return '$y-$m-$d';
+    return '$y-$m-$d $hh:$mm';
   }
 
   List<_Bar> _fallbackIndicators(List<_Bar> bars) {
@@ -138,41 +151,6 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
           macd: bars[i].macd ?? macd[i],
         ),
     ];
-  }
-
-  Map<int, double?> _point(Object? v) {
-    if (v is! List) return const {};
-    final out = <int, double?>{};
-    for (var i = 0; i < v.length; i++) {
-      final r = v[i];
-      if (r is Map) out[_int(r['raw_index'] ?? r['rawIndex']) ?? i] = _num(r['value']);
-    }
-    return out;
-  }
-
-  Map<int, Map<int, double?>> _maMap(Object? v) {
-    if (v is! Map) return const {};
-    return {for (final e in v.entries) if (_int(e.key) != null) _int(e.key)!: _point(e.value)};
-  }
-
-  Map<int, _Boll> _bollMap(Object? v) {
-    if (v is! List) return const {};
-    final out = <int, _Boll>{};
-    for (var i = 0; i < v.length; i++) {
-      final r = v[i];
-      if (r is Map) out[_int(r['raw_index'] ?? r['rawIndex']) ?? i] = _Boll(_num(r['upper']), _num(r['mid']), _num(r['lower']));
-    }
-    return out;
-  }
-
-  Map<int, _Macd> _macdMap(Object? v) {
-    if (v is! List) return const {};
-    final out = <int, _Macd>{};
-    for (var i = 0; i < v.length; i++) {
-      final r = v[i];
-      if (r is Map) out[_int(r['raw_index'] ?? r['rawIndex']) ?? i] = _Macd(_num(r['dif'] ?? r['diff']), _num(r['dea']), _num(r['hist'] ?? r['macd']));
-    }
-    return out;
   }
 
   List<double?> _ma(List<double> values, int n) {
@@ -222,24 +200,6 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
       out.add(_Macd(dif, dea, dif - dea));
     }
     return out;
-  }
-
-  double? _num(Object? v) {
-    if (v is num) return v.toDouble();
-    final text = '${v ?? ''}'.trim().replaceAll(',', '');
-    if (text.isEmpty || text == '-' || text == '--' || text == 'null' || text.toLowerCase() == 'nan') return null;
-    return double.tryParse(text);
-  }
-
-  int? _int(Object? v) {
-    if (v is int) return v;
-    if (v is num) return v.toInt();
-    return int.tryParse('${v ?? ''}'.trim());
-  }
-
-  String _time(Object? v) {
-    final text = '${v ?? ''}'.trim();
-    return text.length > 19 ? text.substring(0, 19) : text;
   }
 
   @override
@@ -298,7 +258,7 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
         const SizedBox(width: 8),
         const Text('easy-tdx 指标', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
         const SizedBox(width: 10),
-        const Text('展示指标，不参与 chan.py 缠论计算', style: TextStyle(color: Colors.white54, fontSize: 12)),
+        const Text('复用复盘页 Python 调用链', style: TextStyle(color: Colors.white54, fontSize: 12)),
         const Spacer(),
         if (_loading) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
       ],
@@ -311,7 +271,7 @@ class _EasyTdxIndicatorPageState extends State<EasyTdxIndicatorPage> {
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        _input(_backend, '后端', 220),
+        _input(_backend, '后端/自动内置Python', 220),
         _input(_symbol, '代码', 110),
         _drop('市场', _market, const ['SH', 'SZ'], (v) => setState(() => _market = v)),
         _drop('周期', _freq, const ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY', 'WEEKLY', 'MONTHLY'], (v) => setState(() => _freq = v), width: 116),
