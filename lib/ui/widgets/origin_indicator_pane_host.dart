@@ -27,8 +27,9 @@ class OriginIndicatorPaneHost extends StatelessWidget {
     this.doublePaneHeight = 176,
   });
 
-  bool get _showVol => showVol && snapshot.indicators.vol.isNotEmpty;
-  bool get _showMacd => showMacd && snapshot.indicators.macd.isNotEmpty;
+  bool get _hasBars => snapshot.rawBars.isNotEmpty;
+  bool get _showVol => _hasBars && showVol && snapshot.indicators.vol.isNotEmpty;
+  bool get _showMacd => _hasBars && showMacd && snapshot.indicators.macd.isNotEmpty;
   bool get _showPane => _showVol || _showMacd;
 
   @override
