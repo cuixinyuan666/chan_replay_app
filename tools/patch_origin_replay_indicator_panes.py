@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Patch OriginReplayPageV2 to mount display-only indicator panes.
-
-This script is intentionally narrow and anchor-based.  It only wires the Flutter
-page to the already-isolated OriginIndicatorPane widget; it does not touch
-chan.py and does not add any Flutter-side Chan structure calculation.
-
-Usage:
-  python tools/patch_origin_replay_indicator_panes.py
-  python tools/patch_origin_replay_indicator_panes.py --check
-  python tools/patch_origin_replay_indicator_panes.py --check-anchors
-"""
+"""Patch OriginReplayPageV2 to mount display-only indicator panes."""
 from __future__ import annotations
 
 import argparse
@@ -22,7 +12,7 @@ TARGET = ROOT / 'lib/ui/pages/origin_replay_page_v2.dart'
 IMPORT_OLD = """import '../widgets/origin_kline_chart.dart';
 import '../widgets/replay_controller_bar.dart';"""
 IMPORT_NEW = """import '../widgets/origin_kline_chart.dart';
-import '../widgets/origin_indicator_pane.dart';
+import '../widgets/origin_indicator_pane_host.dart';
 import '../widgets/replay_controller_bar.dart';"""
 
 STATE_OLD = """  bool _showMergedBars = false;
@@ -61,42 +51,32 @@ TOOLBAR_NEW = """                        _toolIcon(
 CHART_START_OLD = """              Positioned.fill(
                 child: OriginKlineChart("""
 CHART_START_NEW = """              Positioned.fill(
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: OriginKlineChart("""
+                child: OriginIndicatorPaneHost(
+                  snapshot: _snapshot,
+                  showVol: _showVolPane,
+                  showMacd: _showMacdPane,
+                  windowSize: _windowSize,
+                  viewEndIndex: _viewEndIndex,
+                  crosshairIndex: _crosshairIndex,
+                  chart: OriginKlineChart("""
 
 CHART_END_OLD = """                  onPriceScaleChanged: (v) => setState(() => _priceScale = v),
                 ),
               ),
               if (_showLayerStatusPanel) _buildLayerStatusPanel(),"""
 CHART_END_NEW = """                  onPriceScaleChanged: (v) => setState(() => _priceScale = v),
-                      ),
-                    ),
-                    if (_showVolPane || _showMacdPane)
-                      SizedBox(
-                        height: _showVolPane && _showMacdPane ? 176 : 102,
-                        child: OriginIndicatorPane(
-                          snapshot: _snapshot,
-                          showVol: _showVolPane,
-                          showMacd: _showMacdPane,
-                          windowSize: _windowSize,
-                          viewEndIndex: _viewEndIndex,
-                          crosshairIndex: _crosshairIndex,
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
               ),
               if (_showLayerStatusPanel) _buildLayerStatusPanel(),"""
 
 PATCHES = [
-    ('import OriginIndicatorPane', IMPORT_OLD, IMPORT_NEW),
+    ('import OriginIndicatorPaneHost', IMPORT_OLD, IMPORT_NEW),
     ('indicator pane state flags', STATE_OLD, STATE_NEW),
     ('layer status rows', STATUS_OLD, STATUS_NEW),
     ('toolbar indicator toggles', TOOLBAR_OLD, TOOLBAR_NEW),
-    ('chart panel column start', CHART_START_OLD, CHART_START_NEW),
-    ('chart panel column end', CHART_END_OLD, CHART_END_NEW),
+    ('chart panel host start', CHART_START_OLD, CHART_START_NEW),
+    ('chart panel host end', CHART_END_OLD, CHART_END_NEW),
 ]
 
 
@@ -118,19 +98,11 @@ def patch_text(text: str) -> tuple[str, list[tuple[str, str]]]:
 
 
 def check_applied(text: str) -> list[str]:
-    missing: list[str] = []
-    for name, _old, new in PATCHES:
-        if new not in text:
-            missing.append(name)
-    return missing
+    return [name for name, _old, new in PATCHES if new not in text]
 
 
 def check_anchors(text: str) -> list[str]:
-    missing: list[str] = []
-    for name, old, new in PATCHES:
-        if old not in text and new not in text:
-            missing.append(name)
-    return missing
+    return [name for name, old, new in PATCHES if old not in text and new not in text]
 
 
 def main() -> int:
