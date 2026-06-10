@@ -22,13 +22,13 @@ class ScannerBackendClient {
     if (Platform.isAndroid) {
       throw UnsupportedError('扫描器当前需要 FastAPI 后端；Android Chaquopy 暂未接入批量 BSP 扫描');
     }
-    final payload = <String, dynamic>{
-      'days': days,
-      'recent_days': recentDays,
-      'limit': limit,
-      'bi_strict': biStrict,
-      'config': config,
-    };
+    final payload = _payload(
+      limit: limit,
+      days: days,
+      recentDays: recentDays,
+      biStrict: biStrict,
+      config: config,
+    );
     final sourceBase = await _readyBaseUrl();
     try {
       return await _postScan(sourceBase, payload);
@@ -50,6 +50,59 @@ class ScannerBackendClient {
       return _postScan(_localProcess!.baseUrl, payload);
     }
   }
+
+  Stream<Map<String, dynamic>> scanBspStream({
+    required int limit,
+    required int days,
+    required int recentDays,
+    required bool biStrict,
+    required Map<String, dynamic> config,
+  }) async* {
+    if (Platform.isAndroid) {
+      throw UnsupportedError('扫描器当前需要 FastAPI 后端；Android Chaquopy 暂未接入批量 BSP 扫描');
+    }
+    final payload = _payload(
+      limit: limit,
+      days: days,
+      recentDays: recentDays,
+      biStrict: biStrict,
+      config: config,
+    );
+    final sourceBase = await _readyBaseUrl();
+    try {
+      yield* _postScanStream(sourceBase, payload);
+    } on _ScannerBackendMismatch catch (_) {
+      if (!Platform.isWindows) rethrow;
+      _localProcess = await _ScannerLocalPythonProcess.start();
+      yield* _postScanStream(_localProcess!.baseUrl, payload);
+    } on SocketException catch (_) {
+      if (!Platform.isWindows) rethrow;
+      _localProcess = await _ScannerLocalPythonProcess.start();
+      yield* _postScanStream(_localProcess!.baseUrl, payload);
+    } on TimeoutException catch (_) {
+      if (!Platform.isWindows) rethrow;
+      _localProcess = await _ScannerLocalPythonProcess.start();
+      yield* _postScanStream(_localProcess!.baseUrl, payload);
+    } on http.ClientException catch (e) {
+      if (!Platform.isWindows || !_looksLikeConnectionFailure(e)) rethrow;
+      _localProcess = await _ScannerLocalPythonProcess.start();
+      yield* _postScanStream(_localProcess!.baseUrl, payload);
+    }
+  }
+
+  Map<String, dynamic> _payload({
+    required int limit,
+    required int days,
+    required int recentDays,
+    required bool biStrict,
+    required Map<String, dynamic> config,
+  }) => <String, dynamic>{
+        'days': days,
+        'recent_days': recentDays,
+        'limit': limit,
+        'bi_strict': biStrict,
+        'config': config,
+      };
 
   Future<String> _readyBaseUrl() async {
     try {
@@ -87,6 +140,34 @@ class ScannerBackendClient {
       throw Exception(decoded['error'] ?? '扫描器后端执行失败');
     }
     return decoded;
+  }
+
+  Stream<Map<String, dynamic>> _postScanStream(String sourceBaseUrl, Map<String, dynamic> payload) async* {
+    await _assertCompatibleBackend(sourceBaseUrl);
+    final uri = Uri.parse(_join(sourceBaseUrl, '/api/scanner/bsp/scan_stream'));
+    final request = http.Request('POST', uri)
+      ..headers['content-type'] = 'application/json'
+      ..body = jsonEncode(payload);
+    final response = await _client.send(request).timeout(const Duration(seconds: 30));
+    if (response.statusCode == 404 && _canAutoFallback(sourceBaseUrl)) {
+      final body = await response.stream.bytesToString();
+      throw _ScannerBackendMismatch('localhost 后端缺少扫描器流式接口: $body');
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = await response.stream.bytesToString();
+      throw Exception('扫描器后端返回 ${response.statusCode}: $body');
+    }
+
+    await for (final line in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+      final text = line.trim();
+      if (text.isEmpty) continue;
+      final decoded = jsonDecode(text);
+      if (decoded is Map<String, dynamic>) {
+        yield decoded;
+      } else if (decoded is Map) {
+        yield Map<String, dynamic>.from(decoded);
+      }
+    }
   }
 
   Future<void> _assertCompatibleBackend(String sourceBaseUrl) async {
