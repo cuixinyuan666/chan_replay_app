@@ -15,6 +15,7 @@ TARGETS = {
         "../../core/models/easy_tdx_indicator.dart",
         "../../core/models/raw_bar.dart",
         "class OriginIndicatorPane extends StatelessWidget",
+        "SizedBox.expand(",
     ),
     ROOT / 'lib/ui/widgets/origin_indicator_pane_host.dart': (
         "../../core/models/chan_snapshot.dart",
@@ -33,6 +34,7 @@ FORBIDDEN_PATTERNS = {
     'research_or_training_layer': re.compile(
         r"a_bsp_feature_engine|a_ml_bridge|a_backtest_engine|ml_score|future_return|label_"
     ),
+    'unbounded_custom_paint_size': re.compile(r"Size\.infinite"),
 }
 
 
@@ -69,7 +71,7 @@ def main() -> int:
         all_findings.extend(findings)
 
     payload = {
-        'rule': 'indicator widgets must stay display-only and consume chart models only',
+        'rule': 'indicator widgets must stay display-only and use bounded layout constraints',
         'missing_required_snippets': all_missing,
         'forbidden_count': len(all_findings),
         'findings': [asdict(item) for item in all_findings],
@@ -79,7 +81,7 @@ def main() -> int:
     if all_missing or all_findings:
         print('FAIL: indicator pane boundary audit failed.', file=sys.stderr)
         return 1
-    print('PASS: indicator pane widgets remain display-only.')
+    print('PASS: indicator pane widgets remain display-only and bounded.')
     return 0
 
 
