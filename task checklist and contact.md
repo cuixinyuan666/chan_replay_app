@@ -9,9 +9,10 @@ This file is the project manual for the multi-level and interval-nest work.
 Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86b
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
-Latest task-party code commit: c1a7211a837d5d49aba2014edd6f4a6fe22b5066
-Latest task-party UI commit: 55fabb72756e072a6d7ffe2b2858a05560f33b5a
-Latest observed head during supervisor verification: fa634d67689bf2212c14fefe71327c0af6df4c2e
+Latest task-party backend/data commit: 2643cb70e544940bed17701ba789529298a37ff1
+Latest task-party UI commit: c5fe666b2d82b9a1bacdf610af6abda7ef6c082a
+Latest root default commit: 6a88fcbd67a67512775a6eed7e5541458c3c5724
+Latest observed head during supervisor verification: 736c209cb1f21195bf62d6496d82ba9acddca1d8
 Latest manual update commit: pending
 
 ## User objective
@@ -65,10 +66,14 @@ Strict step replay hard rules for both single-level and multi-level pages:
 - MultiLevelReplayPage can render the selected native step frame when frames are returned.
 - MultiLevelReplayPage has a one-click step diagnostic copy button named `Copy Step`.
 - MultiLevelReplayPage now shows `Copy Step` in step mode after Load even if frames are empty.
+- App startup now defaults to MultiLevelReplayPage instead of OriginReplayPageV2.
+- OriginReplayPageV2 is not built on startup, so replay-page default data load is temporarily stopped.
+- MultiLevelReplayPage defaults to step mode and auto-loads a smaller count=160 default dataset.
+- Multi-level step HTTP timeout is increased to 180 seconds and calculation timeout is surfaced directly.
 
 ## Current blockers
 
-- Multi-level native step frames are implemented but not locally verified yet.
+- Multi-level native step frames are implemented but not locally verified after the default step auto-load / timeout changes.
 - Single-level `OriginReplayPageV2` still has `_sliceSnapshot(fullSnapshot, cursor)` fallback in step mode and is not accepted as strict step replay.
 - Interval-nest rule engine is not implemented yet.
 
@@ -146,6 +151,8 @@ Strict step replay hard rules for both single-level and multi-level pages:
 15. Does single-level strict step still call `_sliceSnapshot(fullSnapshot, cursor)` when frames are empty?
 16. Does single-level Copy Step prove frames.length > 0 and source is chan.py step output?
 17. Is Copy Step visible in multi-level step mode even when frames.length is zero?
+18. Does app startup default to MultiLevelReplayPage and avoid building OriginReplayPageV2?
+19. Does default MultiLevelReplayPage auto-load step mode with count=160?
 
 ## Task party reply template
 
@@ -187,11 +194,6 @@ Decision:
 - MIN30/MIN5 intraday preservation is accepted.
 - P0 remains open only because strict step replay is not fully verified.
 
-Fix/enhancement applied after this report:
-- Commit: 0a3b7e2482b05cc23721d69e6847954afcaa8e2f
-  - File: lib/ui/pages/multi_level_replay_page.dart
-  - Change: Copy P0 now includes status_summary and level_summary so the bottom status information is copied automatically.
-
 2026-06-10 native multi-level step frames implementation batch:
 
 Backend commits:
@@ -218,23 +220,33 @@ Decision:
 - The user must run the app, switch Multi-level to step, click Load, click `Copy Step`, and paste diagnostics.
 - P0 remains open for multi-level step-frame verification and single-level strict-step fallback removal.
 
-2026-06-10 supervisor strict-step rule update:
+2026-06-10 default startup / timeout change:
 
-Checked head: fa634d67689bf2212c14fefe71327c0af6df4c2e
-Actual verification:
-- Multi-level backend bridge fallback is disabled as accepted behavior: analyze_multi returns native failure diagnostics instead of bridge result when native fails.
-- Multi-level backend step implementation uses CChan(lv_list).step_load in code commit b074d94d7149cb193f970fb806b8ad1fde74579a, but still needs Copy Step runtime verification.
-- MultiLevelReplayPage uses returned frames when available and provides Copy Step diagnostics, but if step mode returns no frames the page can still expose final snapshot in `_current`; this must fail loudly instead of looking like strict replay.
-- Single-level OriginReplayPageV2 still uses `_sliceSnapshot(analysis.snapshot, cursor)` when mode=step and frames is empty.
-- Single-level reset/forward/back/jump also fall back to `_sliceSnapshot(_fullSnapshot, cursor)` when frames is empty.
+User reported:
+- multi-level step load failed with `TimeoutException after 0:01:00.000000: Future not completed`.
+- User requested temporarily stopping default replay-page data loading on app startup.
+- User requested default app load to be multi-level step data.
+
+Fixes applied:
+- Commit: 6a88fcbd67a67512775a6eed7e5541458c3c5724
+  - File: lib/ui/pages/root_page.dart
+  - Change: app now starts on MultiLevelReplayPage; OriginReplayPageV2 is not visited/built on startup, so its initState auto-load does not run.
+- Commit: c5fe666b2d82b9a1bacdf610af6abda7ef6c082a
+  - File: lib/ui/pages/multi_level_replay_page.dart
+  - Change: MultiLevelReplayPage defaults to step mode, auto-loads after first frame, and uses count=160 for a manageable default step dataset.
+- Commit: 2643cb70e544940bed17701ba789529298a37ff1
+  - File: lib/data/python_multi_level_chan_analysis_source.dart
+  - Change: step analyze_multi POST timeout is now 180s, once timeout is 90s, and calculation timeout no longer triggers automatic backend restart.
 
 Decision:
-- Strict step hard rule now applies to both single-level and multi-level pages.
-- Any page in step mode must use chan.py step frames only.
-- If frames are empty, the page must show a blocked/failure state and must not render final-snapshot slicing as strict replay.
-- Single-level strict step is currently not accepted.
-- Multi-level strict step is pending Copy Step verification and must also fail loudly if frames are empty.
+- Default replay-page loading is temporarily stopped.
+- Default multi-level step loading is implemented but requires user verification.
+- If default step still times out at 180s, reduce default count or optimize backend frame payload before proceeding.
 
-Next user operation after task party finishes:
-- For multi-level: open Multi-level replay, switch to step, click Load, click Copy Step, paste diagnostics.
-- For single-level: open Replay page, switch to strict step, click Load, use the future single-level Copy Step diagnostics if added, paste diagnostics.
+Next user operation:
+- Pull latest.
+- Stop old Python backend processes.
+- Run flutter analyze.
+- Run flutter run.
+- Confirm the app opens Multi-level by default and starts step loading automatically.
+- After Load completes or fails, click `Copy Step` and paste diagnostics.
