@@ -863,6 +863,10 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'include_indicators_in_frames: ${_compactMeta(analysis, 'include_indicators_in_frames', frameMeta)}',
       'compact_transport_only: ${_compactMeta(analysis, 'compact_transport_only', frameMeta)}',
       'chan_py_core_unchanged: ${_compactMeta(analysis, 'chan_py_core_unchanged', frameMeta)}',
+      'compact_validation_scope: ${_compactMeta(analysis, 'compact_validation_scope', frameMeta)}',
+      'compact_validation_status: ${_compactMeta(analysis, 'compact_validation_status', frameMeta)}',
+      'compact_validation_mismatch_count: ${_compactMeta(analysis, 'compact_validation_mismatch_count', frameMeta)}',
+      'compact_validation_first_mismatch: ${_compactMeta(analysis, 'compact_validation_first_mismatch', frameMeta)}',
     ];
   }
 
