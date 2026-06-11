@@ -597,6 +597,12 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final safeIndex = hasFrame ? _frameIndex.clamp(0, frames.length - 1).toInt() : 0;
     final frame = hasFrame ? frames[safeIndex] : null;
     final frameMeta = frame?.meta ?? const <String, dynamic>{};
+    final currentFrameStatus = hasFrame && frame != null
+        ? _buildStatus(analysis, snapshot: frame)
+        : '<none; strict step blocked>';
+    final currentFrameSummary = hasFrame && frame != null
+        ? _buildLevelSummary(frame)
+        : '<none; strict step blocked>';
     return [
       'manual step diagnostics',
       'button: Copy Step',
@@ -624,8 +630,8 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'native_step_frames_truncated: ${meta['native_step_frames_truncated'] ?? ''}',
       'frames.length: ${frames.length}',
       'frame.relations.length: ${frame?.relations.length ?? ''}',
-      'status_summary.current_frame: ${hasFrame ? _buildStatus(analysis, snapshot: frame) : '<none; strict step blocked>'}',
-      'level_summary.current_frame: ${hasFrame ? _buildLevelSummary(frame) : '<none; strict step blocked>'}',
+      'status_summary.current_frame: $currentFrameStatus',
+      'level_summary.current_frame: $currentFrameSummary',
       'level_summary.final_snapshot_for_diagnostics: ${_buildLevelSummary(analysis.snapshot)}',
       'native_data_window: ${meta['native_data_window'] ?? ''}',
     ].join('\n');
