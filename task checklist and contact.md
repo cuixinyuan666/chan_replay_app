@@ -63,6 +63,7 @@ The file named `task checklist and contact.md` is the project manual. Future tas
 - MultiLevelReplayPage can render the selected native step frame when frames are returned.
 - MultiLevelReplayPage has a one-click step diagnostic copy button named `Copy Step`.
 - MultiLevelReplayPage shows `Copy Step` in step mode after Load even if frames are empty.
+- Lightweight multi-level step verification passed for default count=40 / max_step_frames=24.
 - App startup defaults to MultiLevelReplayPage instead of OriginReplayPageV2.
 - OriginReplayPageV2 is not built on startup, so replay-page default data load is temporarily stopped.
 - MultiLevelReplayPage defaults to step mode and auto-loads a lightweight count=40 startup dataset.
@@ -71,7 +72,7 @@ The file named `task checklist and contact.md` is the project manual. Future tas
 
 ## Current blockers
 
-- Multi-level native step frames are implemented but not locally verified after the lightweight default step auto-load / timeout changes.
+- Multi-level lightweight step is verified, but full-history non-truncated step replay is not accepted yet.
 - MultiLevelReplayPage still returns final snapshot from `_current` when mode=step and frames is empty. It must fail loudly instead.
 - Single-level `OriginReplayPageV2` still has `_sliceSnapshot(fullSnapshot, cursor)` fallback in step mode and is not accepted as strict step replay.
 - Single-level Copy Step diagnostics do not yet exist.
@@ -101,6 +102,8 @@ Required tasks:
 - A6. OriginReplayPageV2 must fail loudly if mode=step and frames.length=0.
 - A7. OriginReplayPageV2 must add Copy Step diagnostics with source, frames.length, current frame index/time, and K/FX/BI/SEG/ZS/BSP counts.
 - A8. Startup auto-load must remain safe: no default freeze; if step payload is too heavy, optimize payload shape instead of only raising timeout.
+- A9. If frames are truncated for safety, UI and diagnostics must clearly show native cursor range and that local frame 1 is not necessarily native cursor 0.
+- A10. Full-history or paged step replay must be planned before claiming complete strict replay over the entire selected range.
 
 Acceptance:
 - User can copy Multi-level Copy Step after Load.
@@ -108,6 +111,7 @@ Acceptance:
 - Both diagnostics show frames.length>0 for valid step cases.
 - Both pages fail loudly and copy diagnostic if frames.length=0.
 - No fullSnapshot slicing is used as a strict-step success path.
+- Truncated multi-level frames are accepted only as startup safety verification, not as full strict replay.
 
 Do not proceed to Batch B until Batch A is accepted.
 
@@ -210,8 +214,9 @@ Acceptance:
 - [x] Verify MIN30/MIN5 aligned_counts are larger than DAILY when source data exists.
 - [x] Verify native_data_window.bars_per_day has DAILY=1, MIN30=8, MIN5=48.
 - [x] Implement native multi-level step frames.
-- [ ] Verify multi-level step mode frames are not empty.
+- [x] Verify lightweight multi-level step mode frames are not empty.
 - [ ] MultiLevelReplayPage fails loudly instead of showing final snapshot when mode=step and frames.length=0.
+- [ ] Plan or implement full-history/paged multi-level step replay beyond truncated startup safety profile.
 - [ ] Remove strict-step `_sliceSnapshot(fullSnapshot, cursor)` fallback from single-level OriginReplayPageV2.
 - [ ] Verify single-level step mode frames are not empty and sourced from chan.py step output.
 - [ ] Verify both single-level and multi-level strict step fail loudly if frames are empty.
@@ -247,12 +252,13 @@ Acceptance:
 7. Which in-app button should the user click to copy step-frame diagnostics?
 8. Does Copy Step show native_step_frames=true and frames.length > 0?
 9. Does Copy Step include current-frame level_summary and frame cursor/current_time?
-10. Does single-level strict step still call `_sliceSnapshot(fullSnapshot, cursor)` when frames are empty?
-11. Does single-level Copy Step prove frames.length > 0 and source is chan.py step output?
-12. Is Copy Step visible in multi-level step mode even when frames.length is zero?
-13. Does app startup default to MultiLevelReplayPage and avoid building OriginReplayPageV2?
-14. Does default MultiLevelReplayPage auto-load step mode with count=40 and max_step_frames=24?
-15. If default step still freezes, what payload-shape optimization was made instead of simply increasing timeout?
+10. Does Copy Step show whether frames are truncated and what native cursor range is returned?
+11. Does single-level strict step still call `_sliceSnapshot(fullSnapshot, cursor)` when frames are empty?
+12. Does single-level Copy Step prove frames.length > 0 and source is chan.py step output?
+13. Is Copy Step visible in multi-level step mode even when frames.length is zero?
+14. Does app startup default to MultiLevelReplayPage and avoid building OriginReplayPageV2?
+15. Does default MultiLevelReplayPage auto-load step mode with count=40 and max_step_frames=24?
+16. If default step still freezes, what payload-shape optimization was made instead of simply increasing timeout?
 
 ## Task party reply template
 
@@ -356,10 +362,39 @@ Decision:
 - Batch C interval-nest signals cannot start until Batch B is accepted.
 - Batch D trading plan/score and Batch E training/statistics/scanner/report must wait for signal semantics to stabilize.
 
-Next user operation:
-- Pull latest.
-- Stop old Python backend processes.
-- Run flutter analyze.
-- Run flutter run.
-- Confirm the app opens Multi-level by default and starts lightweight step loading automatically.
-- After Load completes or fails, click `Copy Step` and paste diagnostics.
+2026-06-10 user lightweight multi-level Copy Step verification:
+
+User reported Copy Step:
+- copy_step_visible: true
+- step_controls_visible: true
+- mode: step
+- native_cchan_lv_list: true
+- level_relation_mode: chan_parent_child
+- fallback_to_bridge: false
+- native_step_frames: true
+- native_step_frames_total: 40
+- native_step_frames_returned: 24
+- native_step_frames_limit: 24
+- native_step_frames_truncated: true
+- frames.length: 24
+- frame.index.local: 0
+- frame.number.local: 1/24
+- frame.cursor.native: 16
+- frame.current_time: 2026-05-11 00:00:00
+- frame.relations.length: 153
+- current frame counts: DAILY K=17 BI=1, MIN30 K=136 BI=1, MIN5 K=816 BI=4
+- final counts: DAILY K=40 BI=2, MIN30 K=317 BI=4, MIN5 K=1897 BI=14
+- native_data_window aligned_counts: DAILY=40, MIN30=317, MIN5=1897
+- bars_per_day: DAILY=1, MIN30=8, MIN5=48
+
+Decision:
+- Lightweight multi-level step runtime verification is accepted.
+- Multi-level Copy Step proves frames.length > 0 and native_step_frames=true.
+- Returned frames are truncated for safety: local frame 1/24 starts at native cursor 16, not native cursor 0.
+- This is acceptable for startup safety and current-frame rendering verification.
+- This is not yet accepted as complete full-history strict replay over the entire selected range.
+- Batch A remains open because single-level strict step fallback is not fixed, multi-level frames-empty fail-loud behavior is still required, and full-history/paged step plan is still needed.
+
+Next user operation after task party finishes Batch A fixes:
+- For multi-level: run step again and click Copy Step.
+- For single-level: open Replay page, switch to strict step, load, click future Copy Step, and paste diagnostics.
