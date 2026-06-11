@@ -31,20 +31,22 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
   int _selectedIndex = 0;
   int _pairIndex = 0;
   String _ruleMode = 'validation';
+  String _strategyRuleName = 'DAILY_2B_MIN30_1B';
   String _directionFilter = 'same';
   String _highTypeFilter = 'ANY';
   String _lowTypeFilter = 'ANY';
 
   bool get _isScanMode => widget.mode == 'signal_scan_once';
   bool get _isStrategyMode => _ruleMode == 'strategy';
-  String get _signalRuleMode => _isStrategyMode ? 'strategy_preset_v1' : 'validation_any_bsp_pair';
-  String get _ruleChipLabel => _isStrategyMode ? 'strategy preset v1' : 'any BSP pair';
-  String get _effectiveDirectionFilter => _isStrategyMode ? 'same' : _directionFilter;
+  String get _signalRuleMode => _isStrategyMode ? 'strategy_interval_nest_buy' : 'validation_any_bsp_pair';
+  String get _ruleChipLabel => _isStrategyMode ? 'strategy interval buy' : 'any BSP pair';
+  String get _effectiveDirectionFilter => _isStrategyMode ? 'buy' : _directionFilter;
 
-  static const Set<String> _strategyBuyHighTypes = {'B2', 'B2s', 'B3'};
-  static const Set<String> _strategyBuyLowTypes = {'B1', 'B2', 'B2s'};
-  static const Set<String> _strategySellHighTypes = {'S2', 'S2s', 'S3'};
-  static const Set<String> _strategySellLowTypes = {'S1', 'S2', 'S2s'};
+  static const List<String> _strategyRules = [
+    'DAILY_2B_MIN30_1B',
+    'DAILY_3B_MIN30_1B',
+    'DAILY_3B_MIN30_2B',
+  ];
 
   List<_LevelPair> get _pairs {
     final relationPairs = <String, _LevelPair>{};
@@ -59,6 +61,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
   }
 
   _LevelPair? get _selectedPair {
+    if (_isStrategyMode) return const _LevelPair('DAILY', 'MIN30');
     final pairs = _pairs;
     if (pairs.isEmpty) return null;
     if (_pairIndex >= pairs.length) _pairIndex = pairs.length - 1;
@@ -110,12 +113,13 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
           if (pair != null) _chip('pair', pair.label, true),
           _chip('signals', '${signals.length}', signals.isNotEmpty),
           _ruleModeDropdown(),
-          _pairDropdown(),
+          if (_isStrategyMode) _strategyRuleDropdown(),
+          if (!_isStrategyMode) _pairDropdown(),
           if (!_isStrategyMode) _directionDropdown(),
           if (!_isStrategyMode) _typeDropdown('high type', _highTypeFilter, highTypes, (v) => setState(() => _highTypeFilter = v)),
           if (!_isStrategyMode) _typeDropdown('low type', _lowTypeFilter, lowTypes, (v) => setState(() => _lowTypeFilter = v)),
-          if (_isStrategyMode) _chip('high preset', 'B2/B2s/B3 or S2/S2s/S3', true),
-          if (_isStrategyMode) _chip('low preset', 'B1/B2/B2s or S1/S2/S2s', true),
+          if (_isStrategyMode) _chip('high', _highStrategyType, true),
+          if (_isStrategyMode) _chip('low', _lowTriggerType, true),
           if (selected != null) _chip('selected', '${_selectedIndex + 1}/${signals.length}', true),
           if (selected != null) _chip('state', selected.signal.state.wireName, selected.signal.state != SignalVisibilityState.invalid),
           if (selected != null) _chip('pattern', '${selected.highBsp.type}->${selected.lowBsp.type}', true),
@@ -161,6 +165,25 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
             _highTypeFilter = 'ANY';
             _lowTypeFilter = 'ANY';
           }
+        }),
+      ),
+    );
+  }
+
+  Widget _strategyRuleDropdown() {
+    return SizedBox(
+      width: 180,
+      child: DropdownButtonFormField<String>(
+        value: _strategyRuleName,
+        dropdownColor: const Color(0xFF20242E),
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        decoration: _dropdownDecoration('strategy rule'),
+        items: [
+          for (final value in _strategyRules) DropdownMenuItem(value: value, child: Text(value)),
+        ],
+        onChanged: (v) => setState(() {
+          _strategyRuleName = v ?? _strategyRules.first;
+          _selectedIndex = 0;
         }),
       ),
     );
@@ -276,14 +299,14 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
           lowTrigger: lowBsp.type,
           highRawIndex: highBsp.rawIndex,
           lowRawIndex: lowBsp.rawIndex,
-          score: _scoreFor(highBsp, lowBsp, state),
+          score: _scoreFor(state),
           state: state,
           reasons: [
             'high level BSP is from original chan.py output',
             'low level BSP is from original chan.py output',
             'high-low range is bound by native LevelRelation',
             _isStrategyMode
-                ? 'strategy_preset_v1 matched explicit BSP type preset'
+                ? 'strategy_interval_nest_buy matched $_strategyRuleName'
                 : 'validation mode accepts arbitrary BSP type combinations',
           ],
           warnings: [
@@ -291,18 +314,19 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
                 ? 'Scan snapshot candidate only; verify in strict step before formal step acceptance'
                 : 'Visible in current strict step frame',
             _isStrategyMode
-                ? 'Strategy preset is rule-filtered candidate only; not a trading recommendation'
+                ? 'Strategy rule is a candidate signal only; not a trading recommendation'
                 : 'Validation mode only; not a trading plan',
           ],
           observedAtCursor: _isScanMode ? null : widget.frameIndex,
           confirmedAtCursor: !_isScanMode && state == SignalVisibilityState.confirmed ? widget.frameIndex : null,
           meta: {
             'rule_mode': _signalRuleMode,
-            'strategy_version': _isStrategyMode ? 'strategy_preset_v1' : '',
-            'strategy_pattern': _strategyPattern(highBsp, lowBsp),
+            'strategy_rule_name': _isStrategyMode ? _strategyRuleName : '',
+            'high_strategy_type': _isStrategyMode ? _highStrategyType : '',
+            'low_trigger_type': _isStrategyMode ? _lowTriggerType : '',
             'direction_filter': _effectiveDirectionFilter,
-            'high_type_filter': _isStrategyMode ? 'strategy_preset' : _highTypeFilter,
-            'low_type_filter': _isStrategyMode ? 'strategy_preset' : _lowTypeFilter,
+            'high_type_filter': _isStrategyMode ? 'strategy_rule' : _highTypeFilter,
+            'low_type_filter': _isStrategyMode ? 'strategy_rule' : _lowTypeFilter,
             'relation_source': 'native chan_parent_child LevelRelation',
             'parent_relation_range': '${relation.parentRawIndex}-${relation.parentRawIndex}',
             'child_relation_range': '${relation.childStartRawIndex}-${relation.childEndRawIndex}',
@@ -333,7 +357,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
   }
 
   bool _matchesHighFilter(BspPoint point) {
-    if (_isStrategyMode) return _isStrategyHighPoint(point);
+    if (_isStrategyMode) return _strategyHighTypes.contains(point.type);
     if (_highTypeFilter != 'ANY' && point.type != _highTypeFilter) return false;
     if (_directionFilter == 'buy') return point.isBuy;
     if (_directionFilter == 'sell') return point.isSell;
@@ -342,20 +366,23 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
 
   bool _matchesLowFilter(BspPoint lowPoint, BspPoint highPoint, int childStart, int childEnd) {
     if (lowPoint.rawIndex < childStart || lowPoint.rawIndex > childEnd) return false;
-    if (_isStrategyMode) return _matchesStrategyPair(highPoint, lowPoint);
+    if (_isStrategyMode) return _strategyHighTypes.contains(highPoint.type) && _strategyLowTypes.contains(lowPoint.type);
     if (_lowTypeFilter != 'ANY' && lowPoint.type != _lowTypeFilter) return false;
     return _matchesDirectionPair(highPoint, lowPoint);
   }
 
-  bool _isStrategyHighPoint(BspPoint point) {
-    return _strategyBuyHighTypes.contains(point.type) || _strategySellHighTypes.contains(point.type);
+  Set<String> get _strategyHighTypes {
+    if (_strategyRuleName == 'DAILY_2B_MIN30_1B') return const {'B2', 'B2s'};
+    return const {'B3', 'B3s'};
   }
 
-  bool _matchesStrategyPair(BspPoint highPoint, BspPoint lowPoint) {
-    final buy = _strategyBuyHighTypes.contains(highPoint.type) && _strategyBuyLowTypes.contains(lowPoint.type);
-    final sell = _strategySellHighTypes.contains(highPoint.type) && _strategySellLowTypes.contains(lowPoint.type);
-    return buy || sell;
+  Set<String> get _strategyLowTypes {
+    if (_strategyRuleName == 'DAILY_3B_MIN30_2B') return const {'B2', 'B2s'};
+    return const {'B1'};
   }
+
+  String get _highStrategyType => _strategyRuleName.contains('_2B_') ? '2-buy' : '3-buy';
+  String get _lowTriggerType => _strategyRuleName.endsWith('_2B') ? '2-buy' : '1-buy';
 
   bool _matchesDirectionPair(BspPoint highPoint, BspPoint lowPoint) {
     if (_directionFilter == 'all') return true;
@@ -378,22 +405,9 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     return 'unknown';
   }
 
-  double _scoreFor(BspPoint highPoint, BspPoint lowPoint, SignalVisibilityState state) {
+  double _scoreFor(SignalVisibilityState state) {
     final base = state == SignalVisibilityState.confirmed ? 1.0 : 0.5;
-    if (!_isStrategyMode) return base;
-    if (_matchesStrategyPair(highPoint, lowPoint)) return base + 0.25;
-    return base;
-  }
-
-  String _strategyPattern(BspPoint highPoint, BspPoint lowPoint) {
-    if (!_isStrategyMode) return '';
-    if (_strategyBuyHighTypes.contains(highPoint.type) && _strategyBuyLowTypes.contains(lowPoint.type)) {
-      return 'buy_pullback_continuation';
-    }
-    if (_strategySellHighTypes.contains(highPoint.type) && _strategySellLowTypes.contains(lowPoint.type)) {
-      return 'sell_rebound_continuation';
-    }
-    return 'unmatched';
+    return _isStrategyMode ? base + 0.25 : base;
   }
 
   LevelRelation? _relationContaining(List<LevelRelation> relations, int childRawIndex) {
@@ -446,9 +460,10 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         'low_type_counts: ${_typeCounts(lowBsps)}',
         'native_relation_count_for_pair: $relationCount',
         'candidate_rule: ${_candidateRuleText}',
+        'source_policy: original chan.py BSP + native LevelRelation only',
         'strategy_caveat: ${_strategyCaveat}',
         'future_function_policy: ${_futurePolicy}',
-        'diagnosis: no candidate matched current ${_isStrategyMode ? 'strategy preset' : 'custom validation filters'} in this ${_isScanMode ? 'scan snapshot' : 'step frame'}',
+        'diagnosis: no candidate matched current ${_isStrategyMode ? 'strategy rule' : 'custom validation filters'} in this ${_isScanMode ? 'scan snapshot' : 'step frame'}',
         'status: no signal for current rule scope',
       ].join('\n');
     }
@@ -459,12 +474,12 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'available_signals: ${signals.length}',
       'selected_signal.local: ${_selectedIndex + 1}',
       'direction: ${signal.direction}',
+      'signal_state: ${signal.state.wireName}',
       'state: ${signal.state.wireName}',
       'score: ${signal.score}',
       'strict_step_verified: ${_isScanMode ? 'false' : 'true'}',
-      'strategy_pattern: ${_strategyPattern(selected.highBsp, selected.lowBsp)}',
-      'strategy_caveat: ${_strategyCaveat}',
       'high_level: ${signal.highLevel}',
+      'high_strategy_type: ${_isStrategyMode ? _highStrategyType : ''}',
       'high_pattern: ${signal.highPattern}',
       'high_bsp_index: ${selected.highBsp.index}',
       'high_bsp_type: ${selected.highBsp.type}',
@@ -476,6 +491,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'high_seg_index: ${selected.highBsp.segIndex ?? ''}',
       'high_zs_index: ${selected.highBsp.zsIndex ?? ''}',
       'low_level: ${signal.lowLevel}',
+      'low_trigger_type: ${_isStrategyMode ? _lowTriggerType : ''}',
       'low_trigger: ${signal.lowTrigger}',
       'low_bsp_index: ${selected.lowBsp.index}',
       'low_bsp_type: ${selected.lowBsp.type}',
@@ -495,8 +511,11 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'visibleAt.frame: ${signal.observedAtCursor ?? ''}',
       'confirmedAt.frame: ${signal.confirmedAtCursor ?? ''}',
       'invalidatedAt.frame: ${signal.invalidatedAtCursor ?? ''}',
+      'invalidation_reason: ',
+      'source_policy: original chan.py BSP + native LevelRelation only',
       'future_function_policy: ${_futurePolicy}',
       'candidate_rule: ${_candidateRuleText}',
+      'strategy_caveat: ${_strategyCaveat}',
       'reasons: ${signal.reasons.join(' | ')}',
       'warnings: ${signal.warnings.join(' | ')}',
       'status: ok',
@@ -514,12 +533,10 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'signal_source: original chan.py BSP + native LevelRelation',
       'signal_rule_mode: $_signalRuleMode',
       'rule_mode_ui: $_ruleMode',
-      'strategy_version: ${_isStrategyMode ? 'strategy_preset_v1' : ''}',
-      'strategy_high_types_buy: ${_strategyBuyHighTypes.join('/')}',
-      'strategy_low_types_buy: ${_strategyBuyLowTypes.join('/')}',
-      'strategy_high_types_sell: ${_strategySellHighTypes.join('/')}',
-      'strategy_low_types_sell: ${_strategySellLowTypes.join('/')}',
-      'signal_scope: ${_isStrategyMode ? 'strategy preset adjacent native relation pair' : 'arbitrary adjacent native relation pair'}',
+      'strategy_rule_name: ${_isStrategyMode ? _strategyRuleName : ''}',
+      'strategy_high_type: ${_isStrategyMode ? _highStrategyType : ''}',
+      'strategy_low_trigger_type: ${_isStrategyMode ? _lowTriggerType : ''}',
+      'signal_scope: ${_isStrategyMode ? 'strategy DAILY->MIN30 interval-nest buy' : 'arbitrary adjacent native relation pair'}',
       'scan_candidate_only: ${_isScanMode ? 'true' : 'false'}',
       'strict_step_frame_mode: ${_isScanMode ? 'false' : 'true'}',
       'available_pairs: $availablePairs',
@@ -527,8 +544,8 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'parent_level: ${pair.parentLevel}',
       'child_level: ${pair.childLevel}',
       'direction_filter: $_effectiveDirectionFilter',
-      'high_type_filter: ${_isStrategyMode ? 'strategy_preset' : _highTypeFilter}',
-      'low_type_filter: ${_isStrategyMode ? 'strategy_preset' : _lowTypeFilter}',
+      'high_type_filter: ${_isStrategyMode ? _strategyHighTypes.join('/') : _highTypeFilter}',
+      'low_type_filter: ${_isStrategyMode ? _strategyLowTypes.join('/') : _lowTypeFilter}',
     ];
   }
 
@@ -537,11 +554,11 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       : 'current strict step frame only; no final snapshot signal confirmation';
 
   String get _candidateRuleText => _isStrategyMode
-      ? 'strategy_preset_v1: high B2/B2s/B3 with low B1/B2/B2s for buy, or high S2/S2s/S3 with low S1/S2/S2s for sell; child BSP must be inside native child range'
+      ? '$_strategyRuleName: $_highStrategyType at DAILY + $_lowTriggerType at MIN30; low trigger BSP must be inside native child range'
       : 'high BSP at parent level + low BSP inside native child range; arbitrary BSP type combination';
 
   String get _strategyCaveat => _isStrategyMode
-      ? 'rule-filtered candidate only; not a trading recommendation; requires separate backtest/risk policy'
+      ? 'strategy signal candidate only; not a trading recommendation; requires backtest, risk policy, and execution rules'
       : 'validation mode only; not a trading recommendation';
 
   String _typeCounts(List<BspPoint> points) {
