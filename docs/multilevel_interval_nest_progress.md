@@ -37,23 +37,21 @@ file: docs/multilevel_interval_nest_plan.md
 
 完成：多级别 JSON 解析、公共 ChanSnapshot JSON 解析、独立 analyze_multi 客户端。
 
-### 4. 后端 analyze_multi 安全桥接版
+### 4. 后端 analyze_multi 桥接原型
 
 ```text
 commit: ee2d039f3fa28e46226a5f0e26d74cfc84ffb1ea
 file: backend/app/a_multilevel_engine.py
 ```
 
-完成：新增 analyze_multi 后端引擎函数，返回 `levels / relations / frames / meta`，每个级别复用现有单级别 `chanpy_engine.analyze_once`。
+完成：新增桥接原型，返回 `levels / relations / frames / meta`，每个级别复用现有单级别 `chanpy_engine.analyze_once`。
 
-重要限制：
+现状态：
 
 ```text
-当前是安全桥接版，不是原生 CChan(lv_list=[...])。
-这是 review 中指出的核心问题，需要作为 Phase 2B 阻塞项修正。
-当前 meta.native_cchan_lv_list=false。
-当前 relations 为 time_date_bridge。
-不能把该版本视为最终区间套关系来源。
+该版本已降级为 fallback/prototype。
+不能作为最终区间套关系来源。
+若响应 meta.fallback_to_bridge=true，说明原生 CChan(lv_list) 失败并回退到了该桥接原型。
 ```
 
 ### 5. FastAPI 路由接入
@@ -83,28 +81,60 @@ commit: c3ec762bff85f65b44abb71cc01c7465664b2142
 file: lib/data/python_multi_level_chan_analysis_source.dart
 ```
 
-修复问题：
+完成：多级别 source 对齐复盘页自动后端启动逻辑。localhost 不可用、旧服务不兼容、缺少 `/api/chan/analyze_multi` 或 Windows 连接拒绝时，会自动启动内置 `python/app_engine.py`。
+
+### 11. 原生 CChan(lv_list) 后端模块
 
 ```text
-点击“多级别 -> Load”时，如果 127.0.0.1:8000 没有后端服务，会出现：
-ClientException with SocketException: 远程计算机拒绝网络连接。
+commit: 71831aeb34fec52d1f7bd9a9ec354a277de94ffd
+file: backend/app/a_multilevel_native_engine.py
 ```
 
 完成：
 
 ```text
-- 多级别 source 增加 localhost /health 兼容检查。
-- localhost 服务不可用时，Windows 自动启动内置 python/app_engine.py。
-- localhost 是旧服务或缺少 /api/chan/analyze_multi 时，自动 fallback 到内置服务。
-- 增加 SocketException / errno=1225 / 中文“拒绝连接”匹配。
-- close() 会关闭自动启动的本地 Python 进程。
+- 新增 backend/app/a_multilevel_native_engine.py。
+- 准备所有 lv_list 级别的 CSV 数据。
+- 在同一个 chan.py CSV code 下准备多级别数据。
+- 构造一个 CChan(lv_list=[...])。
+- 从同一个 CChan 对象导出各级别结构。
+- 从 chan.py 的 sub_kl_list / sup_kl 关系导出 parent-child relations。
+- meta.native_cchan_lv_list=true。
+- meta.level_relation_mode=chan_parent_child。
 ```
 
-限制：
+### 12. analyze_multi 默认优先原生 lv_list
 
 ```text
-- Android MethodChannel 多级别调用仍未实现。
-- Windows 自动启动依赖 python/python.exe 和 python/app_engine.py 存在。
+commit: c5ee0fc0b5d12aba5b68a6311924046d47649a28
+file: backend/app/a_multilevel_engine.py
+```
+
+完成：
+
+```text
+- /api/chan/analyze_multi 默认先尝试 analyze_multi_native。
+- 原桥接实现改为 _analyze_multi_bridge。
+- 原生成功时返回 native_cchan_lv_list=true。
+- 原生失败时 fallback 到桥接版，并写入：
+  - meta.fallback_to_bridge=true
+  - meta.native_failure=<错误原因>
+  - meta.native_cchan_lv_list=false
+```
+
+### 13. 原生 lv_list step 安全修正
+
+```text
+commit: e0a7ec8e6898469a8bba40a354cdbe776b775299
+file: backend/app/a_multilevel_native_engine.py
+```
+
+完成：
+
+```text
+- 原生 CChan(lv_list) 当前固定使用 trigger_step=false 完整加载。
+- 避免 mode=step 但 native frames 未实现时导出空结构。
+- mode=step 当前返回最终多级别结构，并在 warnings 中说明 native step frames 尚未实现。
 ```
 
 ## 当前完成度
@@ -115,13 +145,13 @@ ClientException with SocketException: 远程计算机拒绝网络连接。
 阶段 1B：多级别 JSON 解析器                    已完成
 阶段 1C：独立 analyze_multi 客户端              已完成
 阶段 1D：多级别 source 启动逻辑对齐复盘页        已完成（Windows）
-阶段 2：后端 analyze_multi 安全桥接版           已完成，但不是最终版
-阶段 2B：原生 CChan(lv_list) 多级别关系          未完成，当前为阻塞项
+阶段 2：后端 analyze_multi 桥接原型             已完成，但仅作 fallback/prototype
+阶段 2B：原生 CChan(lv_list) 多级别关系          已实现，待本地验证
 阶段 3A：Flutter 多级别 UI 基础组件             已完成
 阶段 3B：受控多级别页面入口                    已完成（独立页面，不替换原复盘页）
 阶段 3C：原复盘页内联多级别模式                未完成
 阶段 4：高级别定位低级别区间                  未完成
-阶段 5：多级别严格逐K                         部分完成（后端 frames；UI 播放控件未接）
+阶段 5：多级别严格逐K                         部分完成（原生 final levels；native step frames 未实现）
 阶段 6：区间套信号引擎                        未完成
 阶段 7：评分、交易计划、训练、统计、选股       未完成
 ```
@@ -147,6 +177,7 @@ lib/ui/pages/multi_level_replay_page.dart
 lib/ui/widgets/multi_level_switcher.dart
 lib/ui/widgets/multi_level_layer_status_panel.dart
 backend/app/a_multilevel_engine.py
+backend/app/a_multilevel_native_engine.py
 ```
 
 修改：
@@ -155,6 +186,8 @@ backend/app/a_multilevel_engine.py
 backend/app/main.py
 lib/ui/pages/root_page.dart
 lib/data/python_multi_level_chan_analysis_source.dart
+backend/app/a_multilevel_engine.py
+backend/app/a_multilevel_native_engine.py
 ```
 
 尚未修改：
@@ -182,11 +215,14 @@ flutter run
 1. 点击“多级别 -> Load”时，如果没有手动启动后端，是否会自动启动内置 Python 服务。
 2. 是否不再出现 127.0.0.1:8000 connection refused。
 3. 多级别页面是否能拿到 analyze_multi 响应。
-4. DAILY / MIN30 / MIN5 切换是否正常。
-5. 原“复盘”页面是否仍保持原行为。
+4. 响应 meta.native_cchan_lv_list 是否为 true。
+5. 响应 meta.level_relation_mode 是否为 chan_parent_child。
+6. 如果 meta.fallback_to_bridge=true，请记录 meta.native_failure。
+7. DAILY / MIN30 / MIN5 切换是否正常。
+8. 原“复盘”页面是否仍保持原行为。
 ```
 
-## 老板 review 结论
+## 老板 review 修正状态
 
 老板指出的两个问题成立：
 
@@ -195,51 +231,49 @@ flutter run
 2. 当前是多个单级别 analyze_once + 时间桥接 relations。
 ```
 
-修正策略：
+当前修正状态：
 
 ```text
-短期：保留安全桥接版仅作为 UI/接口契约验证。
-中期：Phase 2B 必须改为 CChan(lv_list=[...]) 原生多级别。
-长期：区间套 relations 必须来自 chan.py parent/sub 关系，而不是时间桥接。
+1. 已新增 native CChan(lv_list) 路径。
+2. /api/chan/analyze_multi 已默认优先 native 路径。
+3. 桥接路径只作为 fallback/prototype。
+4. native 是否可稳定运行需要本地样本验证。
 ```
 
 ## 下一步任务
 
-### 下一步 1：根据 flutter run 结果修正编译或启动问题
+### 下一步 1：根据 flutter run 和 analyze_multi meta 修正 native 路径
 
 目标：
 
 ```text
-先保证多级别入口可运行，不再 connection refused。
+先确认 meta.native_cchan_lv_list=true。
+如果 fallback_to_bridge=true，优先修 native_failure。
 ```
 
-### 下一步 2：实现原生 CChan(lv_list) analyze_multi
+### 下一步 2：实现 native step_load frames
 
 目标：
 
 ```text
-后端真正构造 CChan(lv_list=[DAILY, MIN30, MIN5])。
-从同一个 CChan 多级别对象导出各级别结构。
-从 parent/sub 关系导出 relations。
-把 meta.native_cchan_lv_list 改为 true。
-```
-
-### 下一步 3：MultiLevelReplayPage 增加 step frame 控制
-
-目标：
-
-```text
-mode=step 时显示 cursor slider。
-支持上一帧 / 下一帧。
+mode=step 时使用 CChan(lv_list) + step_load 生成多级别 frames。
 右侧图层状态显示 当前/全量。
+```
+
+### 下一步 3：高级别定位低级别区间
+
+目标：
+
+```text
+使用 chan_parent_child relations 实现高级别 K/BI/ZS/BSP 到低级别区间定位。
 ```
 
 ## 风险记录
 
 ```text
 1. GitHub contents API 每次 create_file/update_file 会直接在远端分支产生提交，不是本地暂存后统一 push。
-2. 当前 analyze_multi 安全桥接版不能作为最终区间套关系来源。
-3. Windows 自动启动本地 Python 已接入多级别 source，但需要 flutter run 验证。
+2. native CChan(lv_list) 依赖 exporter.prepare_chanpy_csv 能为同一个 code 准备多级别 CSV 文件。
+3. 如 native CSV 准备或级别顺序失败，接口会 fallback 到 bridge，并在 meta.native_failure 中给出原因。
 4. Android MethodChannel 多级别调用仍未接入。
-5. 原生 CChan(lv_list) 需要结合当前 tools.chanpy_compare / chan.py CSV 数据源行为验证。
+5. 原生 step_load frames 尚未实现。
 ```
