@@ -27,7 +27,8 @@ Branch: origin_vespa_tdx
 - `b2d2f6e32a4834711848b496096c3510032cf289`: accepted real-data arbitrary BSP strict-step validation in the manual.
 - `f732132c887ce72f613cc152e20e742495af03bc`: cleared the obsolete legacy replay blocker from the manual.
 - `b825e3072dc08625fd245bf90c883dd0d86f6c49`: ignored Flutter 3.33 DropdownButtonFormField value deprecation info for current milestone.
-- `6f9f18e1d8df8dedcb1223f33860baf84745b9c3`: recorded analyzer deprecation cleanup in the manual.
+- `206d12af908d2c3259920b1b654a5f27f480e025`: recorded analyzer deprecation cleanup in the manual.
+- `2c4c841ef0fa0485e9949fb6a1e6947ae4aed075`: accepted clean `flutter analyze` in the manual.
 
 ## Current verified code status
 
@@ -40,6 +41,7 @@ Branch: origin_vespa_tdx
 - No temporary fixture file is retained in the current branch after rollback.
 - Code search no longer finds `OriginReplayPageV2` or `_sliceSnapshot`; the old legacy blocker is considered cleared.
 - Flutter 3.33 DropdownButtonFormField `value` deprecation info is suppressed in `analysis_options.yaml` for the current accepted milestone; a future UI cleanup can migrate the dropdowns to keyed `initialValue` fields.
+- User reran `flutter analyze`; result: `No issues found!`.
 
 ## Current accepted work
 
@@ -55,6 +57,7 @@ Branch: origin_vespa_tdx
 - App-bundled Python runtime is runtime-accepted by user Copy P0 diagnostics.
 - Fresh multi-level `Load` works through App-managed bundled Python backend at an app-assigned localhost port.
 - Arbitrary BSP pair strict-step validation is runtime-accepted using real easy-tdx/original chan.py data.
+- Flutter analyze is accepted clean: `No issues found!`.
 
 ## Runtime verification accepted: App-bundled Python / Copy P0
 
@@ -181,16 +184,29 @@ Decision:
 - Temporary fixture is no longer required for this validation target.
 - This remains an engineering validation mode, not a trading plan or strategy recommendation.
 
+## Analyzer verification accepted
+
+User reported:
+
+```text
+flutter analyze
+No issues found! (ran in 9.0s)
+```
+
+Decision:
+
+- Analyzer cleanup is accepted.
+- Current branch has no analyzer issues under the user's Flutter environment.
+
 ## Current blockers / pending verification
 
-- Re-run `flutter analyze` after `b825e3072dc08625fd245bf90c883dd0d86f6c49` to confirm the 4 Flutter 3.33 info items are cleared.
 - Full-history/paged strict step replay is not accepted yet.
 - Strategy-grade interval signal rules are not finalized; current accepted result is validation mode only.
 
 ## Next task-party operation
 
-1. Run `git pull`.
-2. Run `flutter analyze`.
-3. If analyze is clean, mark analyzer cleanup accepted.
-4. Keep arbitrary BSP validation mode for diagnostics.
-5. If turning this into a strategy feature later, add separate strategy rules instead of using validation mode as a trading signal.
+1. Decide next track:
+   - Track A: full-history/paged strict step replay.
+   - Track B: strategy-grade interval signal rules separate from validation mode.
+2. Keep arbitrary BSP validation mode for diagnostics only.
+3. If implementing strategy-grade interval rules, preserve the validation mode as a separate diagnostics panel/mode.
