@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -25,17 +27,29 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   PythonMultiLevelChanAnalysis? _analysis;
   MultiLevelViewState _viewState = MultiLevelViewState.disabled();
   bool _loading = false;
-  String _mode = 'once';
-  int _count = 800;
+  String _mode = 'step';
+  int _count = 160;
   int _frameIndex = 0;
   int _windowSize = 90;
   double _priceScale = 1.0;
   int? _viewEndIndex;
   int? _crosshairIndex;
-  String _status = 'multi-level replay not loaded';
+  String _status = 'multi-level step replay not loaded';
+  Timer? _initialLoadTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initialLoadTimer = Timer(const Duration(milliseconds: 360), () {
+        if (mounted && !_loading && _analysis == null) _load();
+      });
+    });
+  }
 
   @override
   void dispose() {
+    _initialLoadTimer?.cancel();
     _backendUrlController.dispose();
     _symbolController.dispose();
     _marketController.dispose();
