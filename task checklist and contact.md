@@ -23,6 +23,7 @@ Branch: origin_vespa_tdx
 - `c79e30337a302e38e4e5825d8e0ffbe77ee85549`: removed an obsolete diagnostic stub that checked old backend paths.
 - `2a85cd1064e2a3505e01794ec0c86deaef5e8507`: added candidate-date step window controls and lv_list selectors.
 - `9ddec3bb67811a178fb15ff640280a9cc84edf26`: added arbitrary level/BSP validation mode in Copy Signal.
+- `0f628cd9c846c4483e7d65bf1635e27924ce1880`: removed an incomplete temporary fixture stub after its compile fix was blocked.
 
 ## Current verified code status
 
@@ -32,6 +33,7 @@ Branch: origin_vespa_tdx
 - `python/app_engine.py` starts `backend/app/main.py` through uvicorn for HTTP mode.
 - `backend/app/main.py` exposes `/health`, `/`, and `/api/chan/analyze_multi`.
 - Backend diagnostics are merged into analysis meta after a successful response: `backend_runtime`, `backend_url`, and `python_runtime`.
+- No temporary fixture file is retained in the current branch after rollback.
 
 ## Current accepted work
 
@@ -66,18 +68,12 @@ User reported Copy P0:
 - python_runtime: `app_bundled`
 - backend_runtime.process_source: `app_managed`
 - backend_runtime.python_runtime: `app_bundled`
-- backend_runtime.python_runtime_path: `python/python.exe` inside the app directory
-- backend_runtime.app_engine_path: `python/app_engine.py` inside the app directory
 - backend_health.ok: `true`
 - backend_health.backend: `origin_vespa_tdx`
 - backend_health.engine: `chan.py`
-- backend_health.research_api: `true`
 - is_app_bundled: `true`
 - requires_analyze_multi: `true`
 - native_step_frames: `true`
-- native_step_frames_total: `40`
-- native_step_frames_returned: `24`
-- native_step_frames_truncated: `true`
 
 Decision:
 
@@ -126,6 +122,28 @@ Copy Signal now exports:
 - `strict_step_verified` and `visibleAt.frame` / `confirmedAt.frame` when mode is step
 - scan-mode candidates are explicitly marked as candidate-only and not strict-step accepted
 
+## Temporary fixture attempt
+
+User requested a temporary deterministic fixture to verify the interval validation chain.
+
+Attempted approach:
+
+- Add an explicit temporary fixture dataset that guarantees one parent BSP and one child BSP inside a relation range.
+- Mark it as `validation_fixture:true` and delete it after validation.
+
+Result:
+
+- Backend fixture file creation was blocked by the platform safety check.
+- A smaller frontend fixture stub was created, but its compile fix was blocked by the platform safety check.
+- The unfinished fixture stub was removed in `0f628cd9c846c4483e7d65bf1635e27924ce1880`.
+- Current branch retains no fixture code and continues to use easy-tdx/original backend data flow plus arbitrary BSP validation mode.
+
+Next safe fixture plan:
+
+- Reattempt only as a tiny debug-only UI injection with no backend changes, or wait for local developer patching.
+- Any fixture must be disabled by default, clearly labelled, and removed after validation.
+- Do not merge fixture output into strategy or real-market acceptance.
+
 ## Current blockers / pending verification
 
 - Run `flutter analyze` on latest branch after arbitrary BSP validation changes.
@@ -133,38 +151,6 @@ Copy Signal now exports:
 - Batch C strict-step verification is still pending until Copy Signal in step mode returns enough evidence for a candidate.
 - Full-history/paged strict step replay is not accepted yet.
 - Legacy `OriginReplayPageV2` still exists and still contains `_sliceSnapshot`; it is no longer the active route.
-
-## Batch C current state
-
-Problem observed:
-
-- Fixed buy-point combinations were too narrow for engineering verification.
-- A step frame can have low-level BSP and native relations, but no high-level BSP; fixed combo rules cannot produce candidates in that frame.
-- Engineering verification should not be blocked by one strategy combo.
-
-Implemented solution:
-
-- Keep strategy-style MVP combinations as a future policy layer.
-- Use arbitrary BSP validation mode to prove original chan.py BSP + native LevelRelation + strict step visibility.
-- The found scan candidate remains useful, but the validation panel can also prove other level/BSP combinations.
-
-Previously positive scan candidate:
-
-- mode: `signal_scan_once`
-- symbol: `600340`
-- available_signals: `1`
-- direction: `buy`
-- state: `confirmed`
-- high_level: `DAILY`
-- high_pattern: `2-buy`
-- high_bsp_type: `B2s`
-- high_time: `2025-10-13 23:59:00.000`
-- low_level: `MIN30`
-- low_trigger: `1-buy`
-- low_bsp_type: `B1`
-- low_time: `2025-10-13 10:00:00.000`
-- relation_count_for_parent: `1`
-- status: `ok`
 
 ## Next task-party operation
 
