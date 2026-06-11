@@ -62,6 +62,8 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     return fromLog ?? widget.snapshot.meta[key] ?? '';
   }
 
+  String _compactMetaText(String key, [Map<String, dynamic>? log]) => '${_compactMeta(key, log)}'.trim();
+
   List<_LevelPair> get _pairs {
     final relationPairs = <String, _LevelPair>{};
     for (final r in widget.snapshot.relations) {
@@ -637,18 +639,28 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         : widget.snapshot.relations
             .where((r) => r.parentLevel == pair.parentLevel && r.childLevel == pair.childLevel)
             .length;
+    final compactStatus = _compactMetaText('compact_validation_status', log);
+    final hasCompactValidation = compactStatus.isNotEmpty;
+    final compactScope = _compactMetaText('compact_validation_scope', log);
+    final compactMismatchCount = _compactMetaText('compact_validation_mismatch_count', log);
+    final compactFirstMismatch = _compactMetaText('compact_validation_first_mismatch', log);
+    final finalStatus = hasCompactValidation
+        ? (compactStatus == 'match' ? 'ok' : 'mismatch')
+        : 'blocked';
     return [
       'result validation diagnostics',
       'button: Copy Result Validation',
-      'validation_phase: F0',
-      'validation_scope: baseline_vs_fast_candidate',
+      'validation_phase: ${hasCompactValidation ? 'F1a' : 'F0'}',
+      'validation_scope: ${hasCompactValidation ? compactScope : 'baseline_vs_fast_candidate'}',
       'baseline_source: original chan.py analyze_multi',
       'fast_candidate_enabled: false',
       'fast_candidate_source: ',
-      'validation_status: blocked',
-      'blocked_reason: no fast candidate mode/cache/compact payload configured',
-      'mismatch_count: ',
-      'first_mismatch: ',
+      'compact_candidate_enabled: $hasCompactValidation',
+      'compact_candidate_source: ${hasCompactValidation ? 'compact_v1 transport adapter' : ''}',
+      'validation_status: ${hasCompactValidation ? compactStatus : 'blocked'}',
+      'blocked_reason: ${hasCompactValidation ? '' : 'no fast candidate mode/cache/compact payload configured'}',
+      'mismatch_count: ${hasCompactValidation ? compactMismatchCount : ''}',
+      'first_mismatch: ${hasCompactValidation ? compactFirstMismatch : ''}',
       'request.mode: $requestMode',
       'request.symbol: ${log['symbol'] ?? widget.symbol}',
       'request.market: ${log['market'] ?? ''}',
@@ -672,6 +684,10 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'frames_truncated: ${_compactMeta('frames_truncated', log)}',
       'include_bars_in_frames: ${_compactMeta('include_bars_in_frames', log)}',
       'include_indicators_in_frames: ${_compactMeta('include_indicators_in_frames', log)}',
+      'compact_validation_scope: $compactScope',
+      'compact_validation_status: $compactStatus',
+      'compact_validation_mismatch_count: $compactMismatchCount',
+      'compact_validation_first_mismatch: $compactFirstMismatch',
       'baseline.main_level: ${widget.snapshot.mainLevel}',
       'baseline.levels: ${levels.join(',')}',
       'baseline.level_count: ${levels.length}',
@@ -684,8 +700,8 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       for (final level in levels) _sampleBspLine(level),
       'baseline.sample_relation:',
       _sampleRelationLine(pair),
-      'acceptance_policy: no speed mode may be accepted until validation_status=match for the same request',
-      'status: blocked',
+      'acceptance_policy: no speed mode may be accepted until validation_status=match for the same request; compact transport match does not accept algorithmic speed mode',
+      'status: $finalStatus',
     ].join('\n');
   }
 
