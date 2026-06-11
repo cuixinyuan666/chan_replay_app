@@ -28,8 +28,8 @@ class _OriginReplayStrictPageState extends State<OriginReplayStrictPage> {
   String _market = 'SH';
   String _period = 'DAILY';
   String _adjust = 'QFQ';
-  DateTime _startDate = DateTime(2026, 1, 1);
-  DateTime _endDate = DateTime(2026, 6, 11);
+  final DateTime _startDate = DateTime(2026, 1, 1);
+  final DateTime _endDate = DateTime(2026, 6, 11);
   int _frameIndex = 0;
   int _windowSize = 90;
   double _priceScale = 1.0;
