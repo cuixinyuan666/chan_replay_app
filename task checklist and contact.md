@@ -34,6 +34,7 @@ Branch: origin_vespa_tdx
 - `8a1ddfa2c56741738752d14d6e631552eb912e91`: restored `_PythonMultiLevelBackendMismatch` and fixed analyzer/build errors.
 - `93aaa753b1e391132439e88167677ddd7cc6fd65`: removed the nonexistent `python/a_server.py` auto-start fallback.
 - `32b993249dc7f58e22ba53080c8ad2717e5e5c89`: manual-only commit that recorded the fallback removal.
+- `b2ce5a7073a885496cc0722b8e5fcc31a2c432c0`: added `AppBackendRuntime` backend runtime diagnostic foundation.
 
 ## Supervisor verification of latest task-party changes
 
@@ -44,12 +45,14 @@ Verified true:
 - The interval panel can use the separate once-mode scan snapshot while the chart keeps displaying the lightweight step replay snapshot.
 - `Copy Signal` exists and includes positive-signal diagnostics plus no-signal diagnostics.
 - The removed `python/a_server.py` fallback no longer attempts to call `Process.start('python', ...)` from `PythonMultiLevelChanAnalysisSource`.
+- `AppBackendRuntime` now exists and can produce backend runtime diagnostic text without invoking external Python.
 
 Verified problem:
 
 - Current multi-level source now posts only to the backend URL typed in the UI.
 - On connection failure it tells the user to start a backend service manually.
-- That is not accepted under the new hard rule: normal app workflow must use App-bundled Python / App-managed backend, not an external manually started interpreter.
+- That is not accepted under the hard rule: normal app workflow must use App-bundled Python / App-managed backend, not an external manually started interpreter.
+- `AppBackendRuntime` is not wired into UI yet, so P0.5 is started but not complete.
 - Copy Signal scan-mode wording still says current-frame policy in the output; this is a diagnostic wording bug, not a Chan calculation issue.
 
 ## Current blockers
@@ -72,6 +75,13 @@ Required tasks:
 - P0.5 Add a backend runtime diagnostic copy action showing backend URL, process source, Python runtime path/type, backend health, and whether it is App-bundled.
 - P0.6 Normal workflow must not call `python`, `python3`, Conda, Windows Store Python, or Termux Python directly.
 - P0.7 Development-only external backend override must be clearly labelled as development/debug only and cannot be the accepted default workflow.
+
+P0 progress:
+
+- Added `lib/data/app_backend_runtime.dart`.
+- The diagnostic class checks candidate app-bundled backend paths and reports a blocked state when none exist.
+- It does not call system Python, Conda Python, Windows Store Python, or shell `python`.
+- Next implementation step: wire this diagnostic into MultiLevelReplayPage as `Copy Backend`.
 
 Acceptance:
 
@@ -134,8 +144,8 @@ Batch C acceptance rule:
 
 ## Next task-party operation
 
-1. Implement App-bundled Python / App-managed backend startup.
-2. Add backend runtime copy diagnostics.
+1. Wire `AppBackendRuntime` into MultiLevelReplayPage as `Copy Backend`.
+2. Implement App-bundled Python / App-managed backend startup.
 3. Remove normal user instructions that require manual backend startup.
 4. Run `flutter analyze`.
 5. Start the app fresh without manually starting Python.
