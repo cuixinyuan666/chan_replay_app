@@ -469,9 +469,11 @@ def _snapshot_from_chan(
         'native_cchan_lv_list': True,
         'level_relation_mode': 'chan_parent_child',
         'chan_py_polluted': False,
-        if cursor is not None: 'cursor': cursor,
-        if current_time is not None: 'current_time': current_time,
     }
+    if cursor is not None:
+        meta['cursor'] = cursor
+    if current_time is not None:
+        meta['current_time'] = current_time
     if meta_extra:
         meta.update(meta_extra)
     return {
@@ -685,5 +687,4 @@ def analyze_multi_native(
         adjust=adjust,
         main=main,
         clock=clock,
-        config=config,
     )
