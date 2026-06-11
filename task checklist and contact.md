@@ -9,7 +9,8 @@ This file is the project manual for the multi-level and interval-nest work.
 Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86b
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
-Latest task-party code commit: 0a3b7e2482b05cc23721d69e6847954afcaa8e2f
+Latest task-party code commit: c1a7211a837d5d49aba2014edd6f4a6fe22b5066
+Latest task-party UI commit: 9b76ca7e6d6cb9bdb58cd171046f6982726e95b4
 Latest observed head during supervisor verification: 2ef9e055687b9e7ef009821d8e387ad0d2f34bd3
 Latest manual update commit: pending
 
@@ -50,10 +51,13 @@ Hard rules added by user:
 - MIN30/MIN5 level detection is fixed to preserve intraday timestamps.
 - Native once analyze_multi is verified with sane DAILY/MIN30/MIN5 counts.
 - Copy P0 now includes status_summary and level_summary.
+- Native step frames are implemented through original chan.py CChan(lv_list).step_load outputs.
+- MultiLevelReplayPage can render the selected native step frame.
+- MultiLevelReplayPage has a one-click step diagnostic copy button named `Copy Step`.
 
 ## Current blockers
 
-- Native step frames are not implemented yet.
+- Native step frames are implemented but not locally verified yet.
 - Interval-nest rule engine is not implemented yet.
 
 ## 16 requested items
@@ -84,20 +88,20 @@ Hard rules added by user:
 - [x] Verify relations can map high level to low level.
 - [x] Verify MIN30/MIN5 aligned_counts are larger than DAILY when source data exists.
 - [x] Verify native_data_window.bars_per_day has DAILY=1, MIN30=8, MIN5=48.
-- [ ] Implement native step frames.
+- [x] Implement native step frames.
 - [ ] Verify step mode frames are not empty.
-- [ ] Remove or disable bridge fallback as accepted behavior for core Chan calculation.
+- [x] Remove or disable bridge fallback as accepted behavior for core Chan calculation.
 - [x] Add one-click copy button for P0 diagnostic fields in MultiLevelReplayPage.
 
 ## P1 checklist
 
-- [ ] Add cursor state to MultiLevelReplayPage.
-- [ ] Add replay controls to MultiLevelReplayPage.
-- [ ] Use current frame in step mode.
-- [ ] Use current frame in MultiLevelLayerStatusPanel.
+- [x] Add cursor state to MultiLevelReplayPage.
+- [x] Add replay controls to MultiLevelReplayPage.
+- [x] Use current frame in step mode.
+- [x] Use current frame in MultiLevelLayerStatusPanel.
 - [ ] Implement DAILY to MIN30 targeting.
 - [ ] Implement MIN30 to MIN5 targeting.
-- [ ] Add one-click copy button for step-frame diagnostics.
+- [x] Add one-click copy button for step-frame diagnostics.
 - [ ] Add one-click copy button for high-to-low relation diagnostics.
 
 ## P2 checklist
@@ -121,6 +125,8 @@ Hard rules added by user:
 10. Does native_data_window.bars_per_day show MIN30=8 and MIN5=48?
 11. Are MIN30/MIN5 aligned_counts larger than DAILY when source data is available?
 12. Does Copy P0 include status_summary and level_summary?
+13. Does Copy Step show native_step_frames=true and frames.length > 0?
+14. Does Copy Step include current-frame level_summary and frame cursor/current_time?
 
 ## Task party reply template
 
@@ -141,13 +147,6 @@ open issues:
 questions:
 
 ## Supervisor decisions
-
-2026-06-10 initial decision:
-
-Result: partially passed.
-Accepted: multi-level models, native engine file, native-first routing, independent multi-level page entry.
-Not accepted: native runtime not verified, native step frames not implemented, interval-nest rule engine not implemented.
-Next task: report native once meta and relations. If fallback occurs, fix native_failure first. If native succeeds, implement native step frames.
 
 2026-06-10 native once accepted:
 
@@ -174,22 +173,25 @@ Fix/enhancement applied after this report:
   - File: lib/ui/pages/multi_level_replay_page.dart
   - Change: Copy P0 now includes status_summary and level_summary so the bottom status information is copied automatically.
 
-Required next task:
-- Implement native step frames.
-- Add one-click copy button for step-frame diagnostics before asking for next verification.
+2026-06-10 native step frames implementation batch:
 
-2026-06-10 supervisor verification after native once success:
+Backend commits:
+- Commit: b074d94d7149cb193f970fb806b8ad1fde74579a
+  - File: backend/app/a_multilevel_native_engine.py
+  - Change: implemented native CChan(lv_list).step_load frame export; each frame is exported from the yielded chan.py snapshot; frame payloads are capped by max_step_frames=120 by default to avoid huge cumulative minute payloads.
+- Commit: 0eaa5f021f806598cd51c7c217fbebdd63eee555
+  - File: backend/app/a_multilevel_native_engine.py
+  - Change: fixed Python metadata dict syntax in _snapshot_from_chan.
+- Commit: c1a7211a837d5d49aba2014edd6f4a6fe22b5066
+  - File: backend/app/a_multilevel_native_engine.py
+  - Change: fixed missing config argument in the once branch after step-frame refactor.
 
-Checked head: 2ef9e055687b9e7ef009821d8e387ad0d2f34bd3
-Actual checks:
-- Verified commit 0a3b7e2482b05cc23721d69e6847954afcaa8e2f exists.
-- Verified it only changes MultiLevelReplayPage Copy P0 diagnostics.
-- Verified it adds status_summary to Copy P0.
-- Verified it adds level_summary to Copy P0, including K/BI/FX/SEG/ZS/BSP counts per level.
-- Verified no backend behavior and no chan.py files were changed in that commit.
+Frontend commit:
+- Commit: 9b76ca7e6d6cb9bdb58cd171046f6982726e95b4
+  - File: lib/ui/pages/multi_level_replay_page.dart
+  - Change: step mode now renders selected native frame; added frame slider, previous/next controls, current frame label, current-frame layer panel, and `Copy Step` diagnostics button.
+
 Decision:
-- The manual's native once P0 acceptance is consistent with the user's Copy P0 data.
-- The Copy P0 enhancement claim is true.
-- Strict native step frames remain the next blocker and must still be implemented using original chan.py behavior or original chan.py outputs only.
-Next user operation after task party implements step:
-- Open Multi-level replay, switch to step mode, click Load, then click the future Copy Step diagnostics button and paste the copied result.
+- Native step frames are implemented in code but not accepted until user verification.
+- The user must run the app, switch to step, click Load, click `Copy Step`, and paste the diagnostics.
+- P0 remains open only for step-frame verification.
