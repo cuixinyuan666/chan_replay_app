@@ -11,3 +11,4 @@ linter:
     avoid_print: false
     unnecessary_brace_in_string_interps: false
     curly_braces_in_flow_control_structures: false
+    prefer_const_declarations: false

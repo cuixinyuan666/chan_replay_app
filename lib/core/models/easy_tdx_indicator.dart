@@ -144,29 +144,6 @@ class EasyTdxIndicators {
       macd.isEmpty &&
       namedSeries.values.every((rows) => rows.isEmpty);
 
-  List<EasyIndicatorPoint> visibleVol(int start, int end) =>
-      _visibleRange(vol, start, end, (row) => row.rawIndex);
-
-  List<EasyIndicatorPoint> visibleAmount(int start, int end) =>
-      _visibleRange(amount, start, end, (row) => row.rawIndex);
-
-  List<EasyIndicatorPoint> visibleTurnover(int start, int end) =>
-      _visibleRange(turnover, start, end, (row) => row.rawIndex);
-
-  Map<int, List<EasyIndicatorPoint>> visibleMa(int start, int end) {
-    return {
-      for (final entry in ma.entries)
-        entry.key:
-            _visibleRange(entry.value, start, end, (row) => row.rawIndex),
-    };
-  }
-
-  List<EasyBollPoint> visibleBoll(int start, int end) =>
-      _visibleRange(boll, start, end, (row) => row.rawIndex);
-
-  List<EasyMacdPoint> visibleMacd(int start, int end) =>
-      _visibleRange(macd, start, end, (row) => row.rawIndex);
-
   factory EasyTdxIndicators.empty() => const EasyTdxIndicators();
 
   factory EasyTdxIndicators.fromJson(Object? value) {
@@ -187,6 +164,53 @@ class EasyTdxIndicators {
       macd: _parseMacdList(value['macd']),
       namedSeries: named,
     );
+  }
+
+  Map<int, List<EasyIndicatorPoint>> visibleMa(int start, int end) {
+    final result = <int, List<EasyIndicatorPoint>>{};
+    for (final entry in ma.entries) {
+      final rows = _visiblePoints(entry.value, start, end);
+      if (rows.isNotEmpty) result[entry.key] = rows;
+    }
+    return result;
+  }
+
+  List<EasyBollPoint> visibleBoll(int start, int end) {
+    return [
+      for (final row in boll)
+        if (row.rawIndex >= start && row.rawIndex <= end) row,
+    ];
+  }
+
+  List<EasyIndicatorPoint> visibleVol(int start, int end) =>
+      _visiblePoints(vol, start, end);
+  List<EasyIndicatorPoint> visibleAmount(int start, int end) =>
+      _visiblePoints(amount, start, end);
+  List<EasyIndicatorPoint> visibleTurnover(int start, int end) =>
+      _visiblePoints(turnover, start, end);
+
+  List<EasyMacdPoint> visibleMacd(int start, int end) {
+    return [
+      for (final row in macd)
+        if (row.rawIndex >= start && row.rawIndex <= end) row,
+    ];
+  }
+
+  List<EasyNamedIndicatorPoint> visibleNamed(String key, int start, int end) {
+    final rows =
+        namedSeries[key.toUpperCase()] ?? const <EasyNamedIndicatorPoint>[];
+    return [
+      for (final row in rows)
+        if (row.rawIndex >= start && row.rawIndex <= end) row,
+    ];
+  }
+
+  static List<EasyIndicatorPoint> _visiblePoints(
+      List<EasyIndicatorPoint> rows, int start, int end) {
+    return [
+      for (final row in rows)
+        if (row.rawIndex >= start && row.rawIndex <= end) row,
+    ];
   }
 
   static String _displayName(String key) {
@@ -243,19 +267,6 @@ class EasyTdxIndicators {
       if (row is Map) result.add(EasyMacdPoint.fromJson(row, i));
     }
     return result;
-  }
-
-  static List<T> _visibleRange<T>(
-    List<T> rows,
-    int start,
-    int end,
-    int Function(T row) rawIndexOf,
-  ) {
-    if (rows.isEmpty || end < start) return const [];
-    return rows.where((row) {
-      final rawIndex = rawIndexOf(row);
-      return rawIndex >= start && rawIndex <= end;
-    }).toList(growable: false);
   }
 }
 
