@@ -24,6 +24,8 @@ Branch: origin_vespa_tdx
 - `2a85cd1064e2a3505e01794ec0c86deaef5e8507`: added candidate-date step window controls and lv_list selectors.
 - `9ddec3bb67811a178fb15ff640280a9cc84edf26`: added arbitrary level/BSP validation mode in Copy Signal.
 - `0f628cd9c846c4483e7d65bf1635e27924ce1880`: removed an incomplete temporary fixture stub after its compile fix was blocked.
+- `b2d2f6e32a4834711848b496096c3510032cf289`: accepted real-data arbitrary BSP strict-step validation in the manual.
+- `8e9a1abfa21dfbdbf1a881d073f77f492d4176c3`: cleared the obsolete legacy replay blocker from the manual.
 
 ## Current verified code status
 
@@ -34,6 +36,7 @@ Branch: origin_vespa_tdx
 - `backend/app/main.py` exposes `/health`, `/`, and `/api/chan/analyze_multi`.
 - Backend diagnostics are merged into analysis meta after a successful response: `backend_runtime`, `backend_url`, and `python_runtime`.
 - No temporary fixture file is retained in the current branch after rollback.
+- Code search no longer finds `OriginReplayPageV2` or `_sliceSnapshot`; the old legacy blocker is considered cleared.
 
 ## Current accepted work
 
@@ -175,23 +178,10 @@ Decision:
 - Temporary fixture is no longer required for this validation target.
 - This remains an engineering validation mode, not a trading plan or strategy recommendation.
 
-## Temporary fixture attempt
-
-User requested a temporary deterministic fixture to verify the interval validation chain.
-
-Result:
-
-- Backend fixture file creation was blocked by the platform safety check.
-- A smaller frontend fixture stub was created, but its compile fix was blocked by the platform safety check.
-- The unfinished fixture stub was removed in `0f628cd9c846c4483e7d65bf1635e27924ce1880`.
-- Current branch retains no fixture code and continues to use easy-tdx/original backend data flow plus arbitrary BSP validation mode.
-- Because real-data strict-step validation has now passed, a fixture is no longer required for the current validation target.
-
 ## Current blockers / pending verification
 
 - Run `flutter analyze` on latest branch after arbitrary BSP validation changes if not already done.
 - Full-history/paged strict step replay is not accepted yet.
-- Legacy `OriginReplayPageV2` still exists and still contains `_sliceSnapshot`; it is no longer the active route.
 - Strategy-grade interval signal rules are not finalized; current accepted result is validation mode only.
 
 ## Next task-party operation
