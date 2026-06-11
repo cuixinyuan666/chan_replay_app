@@ -28,7 +28,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   MultiLevelViewState _viewState = MultiLevelViewState.disabled();
   bool _loading = false;
   String _mode = 'step';
-  int _count = 160;
+  int _count = 40;
   int _frameIndex = 0;
   int _windowSize = 90;
   double _priceScale = 1.0;
@@ -109,7 +109,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
           'bi_algo': 'normal',
           'seg_algo': 'chan',
           'zs_algo': 'normal',
-          'max_step_frames': 120,
+          'max_step_frames': 24,
         },
       );
       if (!mounted) return;
