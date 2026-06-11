@@ -10,7 +10,7 @@ Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
 Latest task-party backend/data commit: 2643cb70e544940bed17701ba789529298a37ff1
-Latest task-party UI commit: c5fe666b2d82b9a1bacdf610af6abda7ef6c082a
+Latest task-party UI commit: bff2fb57925ba0a24f6ada38eb75888bb1797698
 Latest root default commit: 6a88fcbd67a67512775a6eed7e5541458c3c5724
 Latest observed head during supervisor verification: 736c209cb1f21195bf62d6496d82ba9acddca1d8
 Latest manual update commit: pending
@@ -68,12 +68,13 @@ Strict step replay hard rules for both single-level and multi-level pages:
 - MultiLevelReplayPage now shows `Copy Step` in step mode after Load even if frames are empty.
 - App startup now defaults to MultiLevelReplayPage instead of OriginReplayPageV2.
 - OriginReplayPageV2 is not built on startup, so replay-page default data load is temporarily stopped.
-- MultiLevelReplayPage defaults to step mode and auto-loads a smaller count=160 default dataset.
+- MultiLevelReplayPage defaults to step mode and auto-loads a lightweight count=40 startup dataset.
+- MultiLevelReplayPage sends max_step_frames=24 for the default step request to avoid UI-freezing cumulative payloads.
 - Multi-level step HTTP timeout is increased to 180 seconds and calculation timeout is surfaced directly.
 
 ## Current blockers
 
-- Multi-level native step frames are implemented but not locally verified after the default step auto-load / timeout changes.
+- Multi-level native step frames are implemented but not locally verified after the lightweight default step auto-load / timeout changes.
 - Single-level `OriginReplayPageV2` still has `_sliceSnapshot(fullSnapshot, cursor)` fallback in step mode and is not accepted as strict step replay.
 - Interval-nest rule engine is not implemented yet.
 
@@ -128,7 +129,6 @@ Strict step replay hard rules for both single-level and multi-level pages:
 ## P2 checklist
 
 - [ ] DAILY 2-buy plus MIN30 1-buy signal.
-- [ ] DAILY 2-buy plus MIN30 2-buy signal.
 - [ ] DAILY 3-buy plus MIN30 1-buy signal.
 - [ ] DAILY 3-buy plus MIN30 2-buy signal.
 
@@ -152,7 +152,7 @@ Strict step replay hard rules for both single-level and multi-level pages:
 16. Does single-level Copy Step prove frames.length > 0 and source is chan.py step output?
 17. Is Copy Step visible in multi-level step mode even when frames.length is zero?
 18. Does app startup default to MultiLevelReplayPage and avoid building OriginReplayPageV2?
-19. Does default MultiLevelReplayPage auto-load step mode with count=160?
+19. Does default MultiLevelReplayPage auto-load step mode with count=40 and max_step_frames=24?
 
 ## Task party reply template
 
@@ -220,10 +220,11 @@ Decision:
 - The user must run the app, switch Multi-level to step, click Load, click `Copy Step`, and paste diagnostics.
 - P0 remains open for multi-level step-frame verification and single-level strict-step fallback removal.
 
-2026-06-10 default startup / timeout change:
+2026-06-10 default startup / timeout / freeze change:
 
 User reported:
 - multi-level step load failed with `TimeoutException after 0:01:00.000000: Future not completed`.
+- after a long load, the app directly froze.
 - User requested temporarily stopping default replay-page data loading on app startup.
 - User requested default app load to be multi-level step data.
 
@@ -233,20 +234,23 @@ Fixes applied:
   - Change: app now starts on MultiLevelReplayPage; OriginReplayPageV2 is not visited/built on startup, so its initState auto-load does not run.
 - Commit: c5fe666b2d82b9a1bacdf610af6abda7ef6c082a
   - File: lib/ui/pages/multi_level_replay_page.dart
-  - Change: MultiLevelReplayPage defaults to step mode, auto-loads after first frame, and uses count=160 for a manageable default step dataset.
+  - Change: MultiLevelReplayPage defaults to step mode, auto-loads after first frame, and initially used count=160.
 - Commit: 2643cb70e544940bed17701ba789529298a37ff1
   - File: lib/data/python_multi_level_chan_analysis_source.dart
   - Change: step analyze_multi POST timeout is now 180s, once timeout is 90s, and calculation timeout no longer triggers automatic backend restart.
+- Commit: bff2fb57925ba0a24f6ada38eb75888bb1797698
+  - File: lib/ui/pages/multi_level_replay_page.dart
+  - Change: reduced default startup count from 160 to 40 and default max_step_frames from 120 to 24 to avoid sending a UI-freezing cumulative payload to Flutter.
 
 Decision:
 - Default replay-page loading is temporarily stopped.
-- Default multi-level step loading is implemented but requires user verification.
-- If default step still times out at 180s, reduce default count or optimize backend frame payload before proceeding.
+- Default multi-level step loading remains enabled but now uses a lightweight startup safety profile.
+- If default step still freezes, the next fix should optimize backend frame payload shape instead of increasing timeout.
 
 Next user operation:
 - Pull latest.
 - Stop old Python backend processes.
 - Run flutter analyze.
 - Run flutter run.
-- Confirm the app opens Multi-level by default and starts step loading automatically.
+- Confirm the app opens Multi-level by default and starts lightweight step loading automatically.
 - After Load completes or fails, click `Copy Step` and paste diagnostics.
