@@ -32,8 +32,11 @@ class MultiLevelChanSnapshot {
   ChanSnapshot? get mainSnapshot =>
       mainLevel.isEmpty ? null : snapshots[mainLevel];
 
-  String get safeActiveLevel =>
-      snapshots.containsKey(mainLevel) ? mainLevel : levels.firstOrNull ?? '';
+  String get safeActiveLevel => snapshots.containsKey(mainLevel)
+      ? mainLevel
+      : levels.isNotEmpty
+          ? levels.first
+          : '';
 
   List<LevelRelation> relationsFromParent({
     required String parentLevel,
