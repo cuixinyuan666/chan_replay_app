@@ -18,8 +18,8 @@ class _RootPageState extends State<RootPage> {
   static const int _scannerIndex = 2;
   static const int _researchIndex = 3;
 
-  int _index = _replayIndex;
-  final Set<int> _visited = {_replayIndex};
+  int _index = _multiLevelIndex;
+  final Set<int> _visited = {_multiLevelIndex};
 
   void _open(int index) {
     if (_index == index) return;
