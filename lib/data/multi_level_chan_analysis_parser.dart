@@ -40,28 +40,41 @@ class MultiLevelChanAnalysisParser {
     );
   }
 
+  static MultiLevelChanSnapshot? parseFrame(
+    Object? rawFrame, {
+    required ChanSnapshotParser parseSingleLevelSnapshot,
+    Object? baseLevels,
+  }) {
+    final base = baseLevels is Map ? Map<String, dynamic>.from(baseLevels) : const <String, dynamic>{};
+    if (rawFrame is Map<String, dynamic>) {
+      return parseSnapshot(
+        _inflateCompactFrame(rawFrame, base),
+        parseSingleLevelSnapshot: parseSingleLevelSnapshot,
+      );
+    }
+    if (rawFrame is Map) {
+      return parseSnapshot(
+        _inflateCompactFrame(Map<String, dynamic>.from(rawFrame), base),
+        parseSingleLevelSnapshot: parseSingleLevelSnapshot,
+      );
+    }
+    return null;
+  }
+
   static List<MultiLevelChanSnapshot> parseFrames(
     Object? rawFrames, {
     required ChanSnapshotParser parseSingleLevelSnapshot,
     Object? baseLevels,
   }) {
     if (rawFrames is! List) return const [];
-    final base = baseLevels is Map ? Map<String, dynamic>.from(baseLevels) : const <String, dynamic>{};
     final frames = <MultiLevelChanSnapshot>[];
     for (final frame in rawFrames) {
-      if (frame is Map<String, dynamic>) {
-        final parsed = parseSnapshot(
-          _inflateCompactFrame(frame, base),
-          parseSingleLevelSnapshot: parseSingleLevelSnapshot,
-        );
-        if (parsed != null) frames.add(parsed);
-      } else if (frame is Map) {
-        final parsed = parseSnapshot(
-          _inflateCompactFrame(Map<String, dynamic>.from(frame), base),
-          parseSingleLevelSnapshot: parseSingleLevelSnapshot,
-        );
-        if (parsed != null) frames.add(parsed);
-      }
+      final parsed = parseFrame(
+        frame,
+        baseLevels: baseLevels,
+        parseSingleLevelSnapshot: parseSingleLevelSnapshot,
+      );
+      if (parsed != null) frames.add(parsed);
     }
     return frames;
   }
