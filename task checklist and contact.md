@@ -41,7 +41,7 @@ Branch: origin_vespa_tdx
 - `0f94fb9012930bef8f75911d3cd1a1e9fb872128`: added `compact_validation_*` fields to Copy P0 and Copy Step diagnostics.
 - `958920a489bfb33edc7ba390476a8c38270b10e8`: wired Copy Result Validation to report F1a compact match/mismatch when compact validation meta is present.
 - `f635f70b38848857ef28c7a24efa32b3abbe07ad`: accepted runtime Copy Result Validation F1a compact transport match and marked F1a compact-v1 transport equivalence accepted.
-- Current update: selected F1b compact performance re-measurement and cache-readiness analysis as the next task after F1a.
+- Current update: accepted F1b post-compact measurements and selected F1c compact payload refinement / frame paging / lazy frame parsing as the next task.
 
 ## Current accepted work
 
@@ -56,12 +56,13 @@ Branch: origin_vespa_tdx
 - P0 Time Log strategy context with explicit fields: runtime accepted by user-provided log.
 - F0 Copy Result Validation blocked gate: runtime accepted.
 - F1a Copy Time Log compact meta: runtime accepted.
-- F1a Copy Result Validation compact meta: runtime accepted for compact fields while F0 remained blocked.
+- F1a Copy Result Validation compact meta: runtime accepted.
 - F1a Copy Step compact meta: runtime accepted.
 - F1a Copy P0 compact meta: runtime accepted.
 - F1a backend compact transport validation in Copy P0 / Copy Step: runtime accepted with `compact_validation_status: match` and `compact_validation_mismatch_count: 0`.
 - F1a Copy Result Validation compact transport equivalence: runtime accepted with `validation_phase: F1a`, `validation_status: match`, `mismatch_count: 0`, and `status: ok`.
 - F1a compact-v1 transport equivalence: accepted.
+- F1b post-compact performance measurement: accepted and classified.
 
 ## P0 Time Log instrumentation
 
@@ -100,50 +101,19 @@ Goal:
 - Reduce repeated JSON, repeated K-line arrays, repeated indicator arrays, and unnecessary frontend parsing.
 - Preserve final chart and diagnostic equivalence with the pre-optimization baseline.
 
-Implemented and accepted as compact transport equivalence:
+Accepted as compact transport equivalence:
 
-- `backend/app/main.py` wraps `/api/chan/analyze_multi` step responses at the App adapter/export layer.
-- `compact_v1` default frame-level behavior:
-  - `include_bars_in_frames=false`.
-  - `include_indicators_in_frames=false`.
-  - frame-level payload keeps current-frame structures from original chan.py output.
-  - frame-level payload adds `visible_count`.
-  - top-level result keeps each level's final bars/indicators once.
-- Backend meta includes compact fields when step response is compacted:
-  - `step_frame_format: compact_v1`
-  - `frame_policy`
-  - `frame_stride`
-  - `frame_start`
-  - `frame_end`
-  - `frames_total`
-  - `frames_returned`
-  - `frames_truncated`
-  - `max_return_frames`
-  - `include_bars_in_frames`
-  - `include_indicators_in_frames`
-  - `compact_transport_only: true`
-  - `chan_py_core_unchanged: true`
-- Backend adapter-level compact transport validation is implemented and accepted:
+- Backend `compact_v1` adapter is implemented at App adapter/export layer.
+- Frame-level `bars` and `indicators` are omitted by default.
+- Frame-level `visible_count` is preserved.
+- Top-level result keeps each level's final bars/indicators once.
+- Flutter parser reconstructs visible bars/indicators for display without recalculating Chan structures.
+- Backend compact transport validation is accepted:
   - `compact_validation_scope: backend_precompact_vs_compact_transport`
   - `compact_validation_status: match`
   - `compact_validation_mismatch_count: 0`
   - `compact_validation_first_mismatch:` blank.
-  - Validation checks `visible_count`, bars/indicators removal switches, and `merged_bars/fx/bi/seg/zs/bsp` list count preservation.
-  - This validation does not recalculate Chan structures.
-- `lib/data/multi_level_chan_analysis_parser.dart` supports compact_v1 frames:
-  - If a frame level omits `bars` and includes `visible_count`, parser reconstructs visible bars from top-level level bars.
-  - If a frame level omits `indicators`, parser clips top-level indicators up to `visible_count`.
-  - Old full frame format remains supported.
-- `lib/ui/widgets/multi_level_interval_signal_panel.dart` prints compact meta, keeps response bytes separate from timing stages, and reports F1a compact validation match/mismatch in `Copy Result Validation`.
-- `lib/ui/pages/multi_level_replay_page.dart` adds compact meta and compact validation fields to `Copy P0` and `Copy Step` diagnostics.
-
-Runtime accepted F1a outputs:
-
-- Copy P0 compact meta accepted.
-- Copy Step compact meta accepted.
-- Time Log compact meta and `response_bytes` accepted.
-- Copy P0 / Copy Step compact validation accepted.
-- Copy Result Validation F1a compact validation accepted:
+- Copy Result Validation F1a accepted:
   - `validation_phase: F1a`
   - `validation_scope: backend_precompact_vs_compact_transport`
   - `compact_candidate_enabled: true`
@@ -153,19 +123,6 @@ Runtime accepted F1a outputs:
   - `first_mismatch:` blank.
   - `status: ok`.
 
-F1a acceptance status:
-
-- Backend compact_v1 adapter: accepted.
-- Flutter compact_v1 parser compatibility: accepted.
-- Response bytes timing: accepted.
-- Copied Time Log / Result Validation compact meta: accepted.
-- Compact frame total propagation: accepted.
-- Copy P0 / Copy Step compact meta fields: accepted.
-- Backend compact transport validation meta: accepted.
-- Copy P0 / Copy Step compact validation fields: accepted.
-- Copy Result Validation F1a match/mismatch wiring: accepted.
-- F1a compact-v1 transport equivalence: accepted.
-
 Important limitation:
 
 - This accepts only compact transport equivalence. It does not accept algorithmic `极速` mode.
@@ -174,89 +131,114 @@ Important limitation:
 
 ## Phase F1b: compact performance re-measurement and cache-readiness analysis
 
-Selected next task:
+Accepted F1b post-compact measurement window:
 
-- F1b is the next manual task after F1a.
-- It must be completed before raw-data cache, baseline result cache, strategy resumption, full-history/paged step replay, or algorithmic fast mode.
-- Purpose: prove whether compact_v1 produced a real measurable speed/payload improvement and identify the remaining bottleneck with more precise timing.
+- symbol `600340`, market `SH`.
+- levels `DAILY,MIN30,MIN5`.
+- count `220`.
+- max_step_frames `60`.
+- start/end `2025-09-01` to `2025-10-20`.
+- mode `step`.
 
-Why F1b is required:
-
-- F1a accepted transport equivalence, but equivalence alone does not prove performance improvement.
-- Previous accepted timing was before the final compact_v1 acceptance and showed step end-to-end around `26s-33s`.
-- Before adding caches or further fast mode, the task party must provide post-compact timing against the same request window.
-- If compact_v1 does not materially reduce parse/JSON/payload time, the next optimization must target the exact remaining bottleneck rather than guessing.
-
-Required F1b measurements:
-
-1. Baseline accepted test window:
-   - symbol `600340`, market `SH`.
-   - levels `DAILY,MIN30,MIN5`.
-   - count `220`.
-   - max_step_frames `60`.
-   - start/end `2025-09-01` to `2025-10-20`.
-2. Run normal step Load after latest compact_v1 code.
-3. Paste `Copy Time Log` from the compact result.
-4. Paste `Copy P0`.
-5. Paste `Copy Step`.
-6. Paste `Copy Result Validation`.
-
-Required F1b Copy Time Log fields:
+Accepted F1b measurement output:
 
 - `step_frame_format: compact_v1`.
-- `frame_policy`.
-- `frames_total`.
-- `frames_returned`.
-- `frames_truncated`.
-- `response_bytes`.
-- backend elapsed ms.
-- frontend elapsed ms.
-- frontend HTTP round-trip ms.
-- frontend body decode ms.
-- frontend JSON decode ms.
-- frontend parse ms.
-- backend serialization ms if available.
-- slowest stages list.
-- status.
+- `frames_total: 29`.
+- `frames_returned: 29`.
+- `frames_truncated: false`.
+- `include_bars_in_frames: false`.
+- `include_indicators_in_frames: false`.
+- `response_bytes: 4059073`.
+- `total_elapsed_ms: 26885`.
+- `backend_elapsed_ms: 10879`.
+- `frontend_elapsed_ms: 26885`.
+- `frontend.http_round_trip: 10879ms`.
+- `frontend.body_decode: 17ms`.
+- `frontend.json_decode: 114ms`.
+- `frontend.parse.snapshot_frames_relations_bsp: 11142ms`.
+- `frontend.backend_ready: 4726ms`.
+- Result Validation remained `validation_status: match`, `mismatch_count: 0`, and `status: ok`.
 
-Required F1b acceptance thresholds:
+F1b bottleneck classification:
 
-- Result validation must remain `validation_status: match`.
+- Frontend parse remains the largest explicit stage after total time: `11142ms`.
+- HTTP/backend round-trip remains very high: `10879ms`.
+- Response bytes remain large: about `4.06MB` for only 29 frames.
+- JSON decode is not the main bottleneck: `114ms`.
+- Body decode is not the main bottleneck: `17ms`.
+- Backend startup/ready is visible but not the primary bottleneck: `4726ms`.
+
+F1b decision:
+
+- Select **F1c compact payload refinement / frame paging / lazy frame parsing**.
+- Do not select raw-data cache yet, because frontend parse remains as large as backend/http round-trip.
+- Do not select backend lifecycle as the primary next task, because backend_ready is smaller than parse and http round-trip.
+- Do not select strategy/signal fast reuse yet, because the measured slow path is initial step load and frame parse.
+- Do not start algorithmic fast/极速 mode.
+
+## Phase F1c: compact payload refinement / frame paging / lazy frame parsing
+
+Selected next task.
+
+Goal:
+
+- Reduce frontend parse time and payload/step-frame overhead without changing original `chan.py` calculation logic.
+- Keep strict step replay backed by native backend frames.
+- Keep compact validation gate visible and passing.
+- Avoid loading/parsing all heavy frame snapshots eagerly when only the first/current frame is needed.
+
+Allowed F1c implementation directions:
+
+1. Add lazy frame parsing in Flutter:
+   - Parse top-level snapshot eagerly.
+   - Keep raw frame JSON list or compact frame descriptors in memory.
+   - Parse only the current frame when selected.
+   - Cache parsed frames after first use.
+   - Keep slider frame count and current cursor available from raw frame meta.
+2. Add frame page/window policy:
+   - Use `frame_policy=window` or a new explicit page request for visible frame windows.
+   - Must not pretend a paged/strided subset is full strict replay.
+   - Diagnostics must show policy and returned range.
+3. Further compact frame payload:
+   - Remove or delta-encode repeated `merged_bars` from frame levels if validation proves reconstruction is equivalent.
+   - Preserve FX/BI/SEG/ZS/BSP semantics from backend output.
+4. Add better timing fields:
+   - split top-level parse vs frame parse.
+   - record parsed frame count.
+   - record lazy cache hit/miss.
+
+Forbidden in F1c:
+
+- Do not modify `python/chan.py` core algorithm.
+- Do not calculate FX/BI/SEG/ZS/BSP in Flutter.
+- Do not expose `极速` as accepted.
+- Do not drop relation/BSP diagnostics.
+- Do not hide that paging/stride is not full strict replay.
+
+F1c acceptance criteria:
+
+- `Copy Result Validation` must remain `validation_status: match`.
 - `compact_validation_status: match` and `compact_validation_mismatch_count: 0` must remain visible.
-- `include_bars_in_frames=false` and `include_indicators_in_frames=false` must remain visible.
-- `response_bytes` must be reported and compared against the previously recorded compact response bytes around `4051090` bytes if the same request is used.
-- Frontend parse and JSON decode time should decrease versus pre-compact timing, or the output must explain why there is no material improvement.
-- No Chan calculation logic may change.
-
-F1b decision output:
-
-After F1b data is pasted, supervisor must classify the next bottleneck:
-
-- If `response_bytes`, JSON decode, and frontend parse are still dominant: select F1c compact payload refinement / frame paging.
-- If backend compute/fetch dominates: select F1c raw data cache instrumentation or raw data cache implementation.
-- If backend ready dominates: inspect backend startup reuse / app-managed backend lifecycle.
-- If strategy panel interaction is slow after data is loaded: select strategy/signal fast reuse.
+- `Copy Time Log` must include parse split fields and show a reduced initial parse time or explain why not.
+- `Copy P0` and `Copy Step` must still show native CChan/lv_list, no fallback, compact frame format, and strict step source.
+- If lazy parse is used, diagnostics must show parsed frame count and current frame parse state.
 
 ## Current blockers / pending verification
 
 - No speed/fast/turbo/极速 mode is accepted yet.
-- Strategy mode acceptance remains paused until F1b data is reviewed, unless the manual explicitly resumes strategy first.
-- Full-history/paged strict step replay remains deferred, but F1a/F4 are the planned path toward scalable strict replay.
+- Strategy mode acceptance remains paused until F1c decision or implementation is complete, unless the manual explicitly resumes strategy first.
+- Full-history/paged strict step replay remains deferred except as an F1c frame paging implementation detail.
 - Algorithmic fast mode is prohibited until a stricter validation plan is written and accepted.
-- F1b post-compact performance data is now required before selecting further optimization or returning to strategy acceptance.
+- F1c implementation is now the selected next task.
 
 ## Next task-party operation
 
-1. Run `git pull`.
-2. Run `flutter analyze`.
-3. Open multi-level page and perform normal step Load with accepted test window:
-   - symbol `600340`, market `SH`.
-   - levels `DAILY,MIN30,MIN5`.
-   - count `220`.
-   - max_step_frames `60`.
-   - start/end `2025-09-01` to `2025-10-20`.
-4. Paste Copy Time Log.
-5. Paste Copy P0.
-6. Paste Copy Step.
-7. Paste Copy Result Validation.
-8. Do not start raw-data cache, result cache, strategy acceptance, full-history/paged replay, or algorithmic fast mode before F1b measurements are reviewed.
+1. Implement F1c lazy frame parsing / compact payload refinement without changing `chan.py`.
+2. Add diagnostics for:
+   - top-level parse ms.
+   - frame parse ms.
+   - parsed frame count.
+   - lazy frame cache hit/miss if used.
+3. Re-run the accepted test window.
+4. Paste Copy Time Log, Copy P0, Copy Step, and Copy Result Validation.
+5. Accept F1c only if validation remains match and parse/payload diagnostics improve or clearly explain the remaining bottleneck.
