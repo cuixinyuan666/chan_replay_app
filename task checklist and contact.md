@@ -9,7 +9,7 @@ This file is the project manual for the multi-level and interval-nest work.
 Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86b
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
-Latest task-party code commit: 8f1abfb543cc5848417382e7aef00670fa527b0d
+Latest task-party code commit: 63a8d2e6ee8e835791da4c8e8b9420525dee6785
 Latest observed head during supervisor verification: 3bf4cb4775057cc1d8d1af21bd68adfa52551373
 Latest manual update commit: pending
 
@@ -47,10 +47,11 @@ Hard rules added by user:
 - MultiLevelReplayPage has a one-click P0 diagnostics copy button named `Copy P0`.
 - Native CSV input now performs effective-time sort/dedupe before chan.py loading.
 - analyze_multi now returns a native-failure diagnostic response instead of a bridge result when native fails.
+- MIN30/MIN5 level detection is fixed to preserve intraday timestamps.
 
 ## Current blockers
 
-- Native runtime result is not verified after effective-time dedupe fix.
+- Native runtime result after MIN level detection fix is not verified yet.
 - Native step frames are not implemented yet.
 - Interval-nest rule engine is not implemented yet.
 
@@ -114,6 +115,8 @@ Hard rules added by user:
 7. Which in-app button should the user click to copy step-frame diagnostics?
 8. Does the native parent-level CSV contain duplicate datetime rows after time normalization?
 9. If duplicate rows exist, which level and original rows produce `2026/04/21 23:59` twice?
+10. Does native_data_window.bars_per_day show MIN30=8 and MIN5=48?
+11. Are MIN30/MIN5 aligned_counts larger than DAILY when source data is available?
 
 ## Task party reply template
 
@@ -238,8 +241,31 @@ Fixes applied after third P0:
   - File: backend/app/a_multilevel_engine.py
   - Change: native failure now returns a diagnostic response instead of bridge result. `fallback_to_bridge` should be false, `source` should be native_failure_diagnostic, and `native_failure` should show the real native error.
 
+2026-06-10 fourth P0 result after native success:
+
+User reported:
+- native_cchan_lv_list: true
+- level_relation_mode: chan_parent_child
+- fallback_to_bridge: false
+- relations.length: 68
+- frames.length: 0
+- aligned_counts: DAILY=34, MIN30=34, MIN5=34
+- duplicates_removed: DAILY=0, MIN30=234, MIN5=1546
+
+Decision:
+- Native CChan(lv_list) now runs, but P0 is not fully accepted because MIN30/MIN5 were collapsed to daily-like counts.
+- This means high-to-low relations exist but are not trustworthy yet.
+- Root cause: MIN30/MIN5 were misclassified as non-intraday by level parsing.
+
+Fix applied:
+- Commit: 63a8d2e6ee8e835791da4c8e8b9420525dee6785
+  - File: backend/app/a_multilevel_native_engine.py
+  - Cause: `_level_intraday_bars_per_day` converted `MIN30` into `MININ30` and `MIN5` into `MININ5`.
+  - Change: explicit aliases and numeric minute parsing now classify MIN30 as 8 bars/day and MIN5 as 48 bars/day.
+  - Expected verification: native_data_window.bars_per_day should show `{DAILY: 1, MIN30: 8, MIN5: 48}` and MIN30/MIN5 aligned_counts should be larger than DAILY if source data is available.
+
 Required next local check:
-- Stop any old Python backend process that may still be serving old code.
+- Stop old Python backend processes.
 - Pull latest origin_vespa_tdx.
 - Run flutter analyze.
 - Run flutter run.
