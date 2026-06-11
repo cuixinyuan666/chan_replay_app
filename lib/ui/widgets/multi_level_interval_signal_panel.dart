@@ -165,6 +165,19 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
             label: const Text('Copy Time Log'),
             style: _buttonStyle(),
           ),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: _copyResultValidationText(pair, signals)));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Result validation copied'), duration: Duration(seconds: 3)),
+                );
+              }
+            },
+            icon: const Icon(Icons.verified, size: 14),
+            label: const Text('Copy Result Validation'),
+            style: _buttonStyle(),
+          ),
         ],
       ),
     );
@@ -599,6 +612,87 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       for (final entry in stages.entries) '${entry.key}: ${entry.value}ms',
       'status: ${log['status'] ?? 'ok'}',
     ].join('\n');
+  }
+
+  String _copyResultValidationText(_LevelPair? pair, List<_SignalMatch> signals) {
+    final log = _timeLog ?? const <String, dynamic>{};
+    final requestMode = log['mode'] ?? widget.mode;
+    final levels = widget.snapshot.levels;
+    final relationCountForPair = pair == null
+        ? 0
+        : widget.snapshot.relations
+            .where((r) => r.parentLevel == pair.parentLevel && r.childLevel == pair.childLevel)
+            .length;
+    return [
+      'result validation diagnostics',
+      'button: Copy Result Validation',
+      'validation_phase: F0',
+      'validation_scope: baseline_vs_fast_candidate',
+      'baseline_source: original chan.py analyze_multi',
+      'fast_candidate_enabled: false',
+      'fast_candidate_source: ',
+      'validation_status: blocked',
+      'blocked_reason: no fast candidate mode/cache/compact payload configured',
+      'mismatch_count: ',
+      'first_mismatch: ',
+      'request.mode: $requestMode',
+      'request.symbol: ${log['symbol'] ?? widget.symbol}',
+      'request.market: ${log['market'] ?? ''}',
+      'request.levels: ${_formatList(log['levels'])}',
+      'request.count: ${log['count'] ?? ''}',
+      'request.max_step_frames: ${log['max_step_frames'] ?? ''}',
+      'request.start: ${log['start'] ?? ''}',
+      'request.end: ${log['end'] ?? ''}',
+      'ui.context: interval_signal_panel',
+      'rule_mode_ui: $_ruleMode',
+      'signal_rule_mode: $_signalRuleMode',
+      'strategy_rule_name: ${_isStrategyMode ? _strategyRuleName : ''}',
+      'selected_pair: ${pair?.label ?? ''}',
+      'frame.index.local: ${widget.frameIndex ?? ''}',
+      'frame.count.local: ${widget.frameCount ?? ''}',
+      'baseline.main_level: ${widget.snapshot.mainLevel}',
+      'baseline.levels: ${levels.join(',')}',
+      'baseline.level_count: ${levels.length}',
+      'baseline.relation_count.total: ${widget.snapshot.relations.length}',
+      'baseline.relation_count.selected_pair: $relationCountForPair',
+      'baseline.signal_count.current_rule: ${signals.length}',
+      'baseline.level_counts:',
+      for (final level in levels) _levelCountsLine(level),
+      'baseline.sample_bsp:',
+      for (final level in levels) _sampleBspLine(level),
+      'baseline.sample_relation:',
+      _sampleRelationLine(pair),
+      'acceptance_policy: no speed mode may be accepted until validation_status=match for the same request',
+      'status: blocked',
+    ].join('\n');
+  }
+
+  String _levelCountsLine(String level) {
+    final s = widget.snapshot.of(level);
+    if (s == null) return '$level: missing';
+    return '$level: raw=${s.rawBars.length},k=${s.mergedBars.length},fx=${s.fxs.length},bi=${s.bis.length},seg=${s.segs.length},zs=${s.zss.length},bsp=${s.bsps.length}';
+  }
+
+  String _sampleBspLine(String level) {
+    final s = widget.snapshot.of(level);
+    if (s == null || s.bsps.isEmpty) return '$level: none';
+    final sample = s.bsps.take(3).map((b) {
+      return '#${b.index}:${b.type}:raw=${b.rawIndex}:time=${b.time ?? ''}';
+    }).join(' | ');
+    return '$level: $sample';
+  }
+
+  String _sampleRelationLine(_LevelPair? pair) {
+    final relations = pair == null
+        ? widget.snapshot.relations.take(3).toList()
+        : widget.snapshot.relations
+            .where((r) => r.parentLevel == pair.parentLevel && r.childLevel == pair.childLevel)
+            .take(3)
+            .toList();
+    if (relations.isEmpty) return 'none';
+    return relations.map((r) {
+      return '${r.parentLevel}->${r.childLevel}:parent=${r.parentRawIndex}:child=${r.childStartRawIndex}-${r.childEndRawIndex}';
+    }).join(' | ');
   }
 
   Map<String, int> _stageMap(Object? raw) {
