@@ -553,16 +553,30 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       return [
         'time log diagnostics',
         'button: Copy Time Log',
+        'time_log_context: interval_signal_panel',
+        'rule_mode_ui: $_ruleMode',
+        'signal_rule_mode: $_signalRuleMode',
         'status: missing time_log in snapshot.meta',
       ].join('\n');
     }
+    final pair = _selectedPair;
     final stages = _stageMap(log['stages']);
     final slow = stages.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     return [
       'time log diagnostics',
       'button: Copy Time Log',
+      'time_log_context: interval_signal_panel',
+      'rule_mode_ui: $_ruleMode',
+      'signal_rule_mode: $_signalRuleMode',
+      'strategy_rule_name: ${_isStrategyMode ? _strategyRuleName : ''}',
+      'strategy_high_type: ${_isStrategyMode ? _highStrategyType : ''}',
+      'strategy_low_trigger_type: ${_isStrategyMode ? _lowTriggerType : ''}',
+      'selected_pair: ${pair?.label ?? ''}',
+      'frame.index.local: ${widget.frameIndex ?? ''}',
+      'frame.count.local: ${widget.frameCount ?? ''}',
+      'backend_request_mode: ${log['mode'] ?? widget.mode}',
       'trace_id: ${log['trace_id'] ?? ''}',
-      'mode: ${log['mode'] ?? widget.mode}',
+      'mode: ${_isStrategyMode ? 'strategy' : widget.mode}',
       'symbol: ${log['symbol'] ?? widget.symbol}',
       'market: ${log['market'] ?? ''}',
       'levels: ${_formatList(log['levels'])}',
