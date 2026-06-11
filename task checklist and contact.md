@@ -25,7 +25,9 @@ Branch: origin_vespa_tdx
 - `9ddec3bb67811a178fb15ff640280a9cc84edf26`: added arbitrary level/BSP validation mode in Copy Signal.
 - `0f628cd9c846c4483e7d65bf1635e27924ce1880`: removed an incomplete temporary fixture stub after its compile fix was blocked.
 - `b2d2f6e32a4834711848b496096c3510032cf289`: accepted real-data arbitrary BSP strict-step validation in the manual.
-- `8e9a1abfa21dfbdbf1a881d073f77f492d4176c3`: cleared the obsolete legacy replay blocker from the manual.
+- `f732132c887ce72f613cc152e20e742495af03bc`: cleared the obsolete legacy replay blocker from the manual.
+- `b825e3072dc08625fd245bf90c883dd0d86f6c49`: ignored Flutter 3.33 DropdownButtonFormField value deprecation info for current milestone.
+- `6f9f18e1d8df8dedcb1223f33860baf84745b9c3`: recorded analyzer deprecation cleanup in the manual.
 
 ## Current verified code status
 
@@ -37,6 +39,7 @@ Branch: origin_vespa_tdx
 - Backend diagnostics are merged into analysis meta after a successful response: `backend_runtime`, `backend_url`, and `python_runtime`.
 - No temporary fixture file is retained in the current branch after rollback.
 - Code search no longer finds `OriginReplayPageV2` or `_sliceSnapshot`; the old legacy blocker is considered cleared.
+- Flutter 3.33 DropdownButtonFormField `value` deprecation info is suppressed in `analysis_options.yaml` for the current accepted milestone; a future UI cleanup can migrate the dropdowns to keyed `initialValue` fields.
 
 ## Current accepted work
 
@@ -180,7 +183,7 @@ Decision:
 
 ## Current blockers / pending verification
 
-- Run `flutter analyze` on latest branch after arbitrary BSP validation changes if not already done.
+- Re-run `flutter analyze` after `b825e3072dc08625fd245bf90c883dd0d86f6c49` to confirm the 4 Flutter 3.33 info items are cleared.
 - Full-history/paged strict step replay is not accepted yet.
 - Strategy-grade interval signal rules are not finalized; current accepted result is validation mode only.
 
@@ -188,6 +191,6 @@ Decision:
 
 1. Run `git pull`.
 2. Run `flutter analyze`.
-3. Continue only if analyze is clean.
+3. If analyze is clean, mark analyzer cleanup accepted.
 4. Keep arbitrary BSP validation mode for diagnostics.
 5. If turning this into a strategy feature later, add separate strategy rules instead of using validation mode as a trading signal.
