@@ -27,7 +27,7 @@ Branch: origin_vespa_tdx
 - `6801eaf341e8bb4d7ebf798452436ea75140e32c`: recorded Copy Time Log implementation in the manual.
 - `6264c1e47bde70aa230f2a557d385ffc393a5e3b`: accepted user-provided step and once Time Logs in the manual.
 - `b2db4aa399133477606a58fe93643ce0489dfdf6`: added interval rule context fields to copied Time Logs.
-- Current update: recorded the latest strategy-panel step Time Log and context-field follow-up.
+- Current update: added supervisor-designed `极速` mode optimization plan from accepted Time Logs.
 - Earlier accepted commits remain valid: bundled Python backend, native `analyze_multi`, strict step, relation navigation, Scan Signal, arbitrary BSP validation mode, clean analyze before strategy/time-log patches.
 
 ## Current accepted work
@@ -40,6 +40,7 @@ Branch: origin_vespa_tdx
 - Legacy `OriginReplayPageV2` / `_sliceSnapshot` blocker: cleared by code search.
 - P0 Time Log normal step Load path: runtime accepted.
 - P0 Time Log Scan Signal / once path: runtime accepted.
+- P0 Time Log interval-panel step timing path: runtime accepted.
 
 ## Runtime verification accepted: App-bundled Python / Copy P0
 
@@ -102,7 +103,7 @@ User supplied strategy no-signal diagnostics for frame `0/29`:
 Decision:
 
 - Strategy mode no-signal diagnostics are structurally useful but cannot be accepted yet, because P0 Time Log supersedes further functional acceptance.
-- No strategy signal acceptance may be recorded until Time Log is fully accepted.
+- No strategy signal acceptance may be recorded until Time Log and performance instrumentation are fully accepted.
 
 ## P0 Time Log instrumentation
 
@@ -124,22 +125,8 @@ Implemented in `lib/data/python_multi_level_chan_analysis_source.dart`:
   - `frontend.json_decode`
   - `frontend.parse.snapshot_frames_relations_bsp`
   - `frontend.total`
-- Added request context into `time_log`:
-  - mode
-  - symbol
-  - market
-  - levels
-  - count
-  - max_step_frames
-  - start
-  - end
-- Added runtime/backend context into `time_log` when available:
-  - backend_url
-  - python_runtime
-  - process_source
-  - used_app_bundled_python
-  - native_cchan_lv_list
-  - fallback_to_bridge
+- Added request context into `time_log`: mode, symbol, market, levels, count, max_step_frames, start, end.
+- Added runtime/backend context into `time_log` when available: backend_url, python_runtime, process_source, used_app_bundled_python, native_cchan_lv_list, fallback_to_bridge.
 - Propagated `time_log` into final snapshot meta and each step frame snapshot meta, so widgets can copy the timing block from current frame or scan snapshot.
 - No chan.py calculation semantics changed.
 
@@ -233,45 +220,178 @@ P0 Time Log acceptance status:
 - Runtime interval-panel step Time Log: accepted.
 - Runtime strategy context Time Log with explicit rule fields: pending retest after latest context-field patch.
 
-## Future track after Time Log: 极速 mode planning
+## Supervisor analysis from accepted Time Logs
 
-Do not implement `极速` mode before Time Log diagnostics are accepted and reviewed.
+Observed timing bottlenecks:
 
-Allowed only after Time Log review:
+- Normal step Load total elapsed: `32729ms`.
+- Normal step backend elapsed: `12186ms`.
+- Normal step frontend/action elapsed: `32729ms`.
+- Scan Signal / once total elapsed: `12153ms`.
+- Scan Signal / once backend elapsed: `8738ms`.
+- Interval-panel step timing total elapsed: `28210ms`.
+- Interval-panel step backend elapsed: `10545ms`.
+- Slowest reported stages repeatedly include frontend parse, HTTP round-trip, backend ready, JSON decode, and backend chan.py/data preparation work.
 
-- data cache keyed by symbol, market, level, adjust, start/end, data source version.
-- app-managed cache for raw bars after first fetch.
-- avoid repeated JSON serialization of unchanged structures.
-- reuse already computed `CChan` results when request parameters are identical.
-- incremental load/append where original chan.py semantics remain unchanged.
-- reduce frontend parsing/render preparation duplication.
-- paging or lazy materialization of step frames where strict-step semantics are preserved.
+Interpretation:
 
-Forbidden:
+- `step` mode is much slower than `once` because step mode returns frame data and heavier frontend parsing work.
+- Backend time is significant, but the largest user-visible delay is end-to-end frontend action time, including HTTP round-trip, JSON decode, and large snapshot/frame parsing.
+- The first optimization target should not be Chan algorithm replacement. It should be data/result reuse, response-size reduction, frontend parse reduction, and frame materialization control while keeping original chan.py as source of truth.
 
-- reimplement Chan FX/BI/SEG/ZS/BSP in Flutter/Dart.
-- return approximate Chan structures.
-- skip original chan.py calculation for accepted output.
-- use final snapshot slicing as strict-step proof.
-- hide mismatches between fast result and baseline result.
+## 极速 mode optimization plan
+
+Goal:
+
+- Preserve final presentation equivalence with baseline original chan.py output.
+- Keep original chan.py as the calculation authority.
+- Reduce user-visible load time substantially, especially repeated requests for the same symbol/window/config.
+- Add validation proof before accepting any fast path.
+
+Target performance goals for the accepted test window `600340 / SH / DAILY,MIN30,MIN5 / 2025-09-01 to 2025-10-20 / count=220`:
+
+- Cold step Load target: below `18s` initially, then below `12s` after transport/parse optimization.
+- Warm repeated step Load target: below `5s` when raw data and baseline result are cached.
+- Scan Signal / once warm target: below `3s`.
+- UI panel interactions after data is loaded: below `500ms` where no backend recomputation is required.
+
+Phase F0: result validation foundation, before any speed switch is accepted
+
+Required implementation:
+
+- Add `Copy Result Validation` panel/action.
+- Run baseline mode and fast candidate mode on the same request parameters.
+- Compare structure-level results before exposing `极速` mode as accepted.
+- Validation must compare:
+  - request parameters.
+  - raw bar counts per level.
+  - K/BI/FX/SEG/ZS/BSP counts per level.
+  - parent-child relation count.
+  - signal count by rule.
+  - selected sample BI/SEG/BSP/relation/signal indices and times.
+  - mismatch count.
+  - first mismatch details.
+  - validation status: `match|mismatch|blocked`.
+
+Acceptance:
+
+- No speed mode may be accepted unless `Copy Result Validation` reports `validation_status: match` for the tested request.
+- If mismatch exists, fast mode must be blocked and diagnostic output must show exact mismatch details.
+
+Phase F1: raw data cache, safest first speedup
+
+Allowed behavior:
+
+- Cache raw bars per `(market, symbol, level, adjust, start, end, data_source, data_version_or_fetch_time)`.
+- Cache only raw input data before chan.py calculation.
+- On cache hit, still run original chan.py using cached raw bars.
+- Add cache timing fields to Time Log:
+  - `cache.raw.hit/miss` per level.
+  - `cache.raw.read_ms` per level.
+  - `cache.raw.write_ms` per level.
+  - `backend.fetch_saved_ms_estimate` if measurable.
+
+Why first:
+
+- It reduces easy-tdx/network/file fetch delay without changing chan.py output semantics.
+- It is safe because chan.py still receives the same raw bars.
+
+Phase F2: baseline result cache for identical requests
+
+Allowed behavior:
+
+- Cache baseline original chan.py analysis output for identical request parameters and raw-data digest.
+- Cache key must include:
+  - market, symbol, levels, adjust, start, end, count, mode, max_step_frames.
+  - chan.py config: bi_algo, seg_algo, zs_algo and any relevant flags.
+  - raw data digest per level.
+  - backend code/version marker.
+- On exact cache hit, return the cached baseline result, clearly marked as `fast_cache_hit: true`.
+- This is still acceptable because the cached result was produced by original chan.py for the exact same request/raw data.
+
+Required diagnostics:
+
+- Time Log must include `cache.analysis.hit/miss`, `cache.analysis.key`, `cache.analysis.read_ms`, `cache.analysis.write_ms`.
+- Result Validation must compare cached return against baseline at least once for the same request and report `match`.
+
+Phase F3: response-size and frontend parse reduction
+
+Allowed behavior:
+
+- Avoid duplicating large unchanged structures across every step frame.
+- Use a shared baseline payload plus frame deltas or frame indexes when possible.
+- Lazy materialize frames in the frontend only when the user navigates to them.
+- Keep `Copy Step`, `Copy Signal`, `Copy Relation`, and chart output equivalent to baseline.
+- Add optional compact payload mode only if Result Validation passes.
+
+Required diagnostics:
+
+- Time Log must break down:
+  - backend serialization ms.
+  - response bytes.
+  - frontend body decode ms.
+  - JSON decode ms.
+  - model parse ms.
+  - frame materialization ms.
+- Result Validation must prove compact/delta payload reconstructs the same current visible snapshot and diagnostic output.
+
+Phase F4: step-frame paging / lazy strict replay
+
+Allowed behavior:
+
+- Preserve strict-step semantics by serving original chan.py step frames in pages.
+- Do not use final snapshot slicing as a success path.
+- Initial page may load only nearby frames needed for display.
+- Additional frames can be fetched on demand.
+- Page metadata must include native cursor ranges and total frame count.
+
+Acceptance:
+
+- `Copy Step` must show current page, native cursor range, total native frame count, and whether the current frame came from original chan.py step output.
+- Result Validation must compare sampled frames across pages against baseline full step output.
+
+Phase F5: strategy/signal fast reuse
+
+Allowed behavior:
+
+- After baseline snapshot is computed or cached, strategy rules may run on already parsed original chan.py BSP and native `LevelRelation` data without recomputing chan.py.
+- Strategy scanning should not trigger full backend recomputation when the same snapshot is already loaded.
+- This is allowed only for signal filtering/selection over original chan.py output, not for calculating new Chan structures.
+
+Required diagnostics:
+
+- Time Log must include `strategy.scan_ms`, `strategy.source_snapshot_cache_hit`, and selected rule timings.
+- Copy Signal must continue to prove source BSPs and native relation range.
+
+Forbidden optimization directions
+
+- Reimplement Chan FX/BI/SEG/ZS/BSP in Flutter/Dart.
+- Return approximate Chan structures.
+- Skip original chan.py calculation for accepted output unless returning an exact cached baseline result generated by original chan.py.
+- Use final snapshot slicing as strict-step proof.
+- Hide mismatches between fast result and baseline result.
+- Treat faster but different output as accepted.
 
 ## Current blockers / pending verification
 
-- Re-run `flutter analyze` after `b2db4aa399133477606a58fe93643ce0489dfdf6`.
 - Runtime strategy context Copy Time Log must be retested after latest context-field patch.
-- Strategy mode acceptance is paused until Time Log is fully accepted.
-- Full-history/paged strict step replay remains deferred.
+- Re-run `flutter analyze` after Time Log context-field patch and any future fast-mode code.
+- `Copy Result Validation` does not exist yet and must be added before accepting any `极速` mode.
+- `极速` mode implementation must follow phases F0 to F5; F0 validation comes first.
+- Strategy mode acceptance remains paused until Time Log context and/or result validation requirements are satisfied.
+- Full-history/paged strict step replay remains deferred, but F4 is the planned path for future strict paging.
 
 ## Next task-party operation
 
 1. Run `git pull`.
 2. Run `flutter analyze`.
-3. Open multi-level page and perform normal step Load.
-4. Open `区间信号`, set `rule mode=strategy`, then click `Copy Time Log`; paste the result.
-5. Expected new fields:
+3. Retest `Copy Time Log` from `区间信号` with `rule mode=strategy` after the context-field patch.
+4. The pasted strategy Time Log must include:
    - `time_log_context: interval_signal_panel`
    - `rule_mode_ui: strategy`
    - `signal_rule_mode: strategy_interval_nest_buy`
    - `strategy_rule_name: ...`
    - `backend_request_mode: step`
-6. Once strategy context Time Log with rule fields is accepted, resume strategy-mode acceptance or full-history/paged strict step track.
+5. Add `Copy Result Validation` before implementing any `极速` switch.
+6. Implement Phase F1 raw data cache only after F0 validation output exists.
+7. Do not implement approximate calculation or Flutter/Dart Chan logic.
