@@ -89,6 +89,116 @@ def _with_display_indicators(result: dict[str, object], config: dict[str, Any] |
     return result
 
 
+def _compact_value(payload: dict[str, Any], config: dict[str, Any], key: str, default: Any) -> Any:
+    if key in payload:
+        return payload.get(key)
+    return config.get(key, default)
+
+
+def _compact_bool(payload: dict[str, Any], config: dict[str, Any], key: str, default: bool) -> bool:
+    value = _compact_value(payload, config, key, default)
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in _BOOL_TRUE
+
+
+def _compact_int(payload: dict[str, Any], config: dict[str, Any], key: str, default: int, *, minimum: int, maximum: int) -> int:
+    return _intish(_compact_value(payload, config, key, default), default, minimum=minimum, maximum=maximum)
+
+
+def _compact_multilevel_step_result(
+    result: dict[str, object],
+    payload: dict[str, Any],
+    config: dict[str, Any],
+) -> dict[str, object]:
+    """Compact transport payload only; original chan.py structures are not recalculated here."""
+    if str(payload.get('mode') or 'once').lower() != 'step':
+        return result
+    frames = result.get('frames')
+    if not isinstance(frames, list):
+        return result
+
+    include_bars = _compact_bool(payload, config, 'include_bars_in_frames', False)
+    include_indicators = _compact_bool(payload, config, 'include_indicators_in_frames', False)
+    frame_policy = str(_compact_value(payload, config, 'frame_policy', 'full')).strip().lower() or 'full'
+    frame_stride = _compact_int(payload, config, 'frame_stride', 1, minimum=1, maximum=1000)
+    frame_start_raw = _compact_value(payload, config, 'frame_start', None)
+    frame_end_raw = _compact_value(payload, config, 'frame_end', None)
+    max_return_frames = _compact_int(payload, config, 'max_return_frames', len(frames), minimum=1, maximum=5000)
+
+    selected_frames = list(frames)
+    if frame_policy == 'stride' and frame_stride > 1:
+        selected_frames = [frame for i, frame in enumerate(selected_frames) if i % frame_stride == 0]
+    elif frame_policy == 'window':
+        start = _intish(frame_start_raw, 0, minimum=0, maximum=10_000_000)
+        end = _intish(frame_end_raw, len(selected_frames) - 1, minimum=0, maximum=10_000_000)
+        selected_frames = selected_frames[start:end + 1]
+    elif frame_policy == 'latest':
+        selected_frames = selected_frames[-1:]
+    elif frame_policy != 'full':
+        frame_policy = 'full'
+
+    if len(selected_frames) > max_return_frames:
+        selected_frames = selected_frames[-max_return_frames:]
+
+    compact_frames: list[Any] = []
+    for frame in selected_frames:
+        if not isinstance(frame, dict):
+            compact_frames.append(frame)
+            continue
+        next_frame = dict(frame)
+        frame_levels = next_frame.get('levels')
+        if isinstance(frame_levels, dict):
+            next_levels: dict[str, Any] = {}
+            for level_name, level_payload in frame_levels.items():
+                if not isinstance(level_payload, dict):
+                    next_levels[level_name] = level_payload
+                    continue
+                next_level = dict(level_payload)
+                bars = next_level.get('bars')
+                visible_count = len(bars) if isinstance(bars, list) else next_level.get('visible_count', 0)
+                next_level['visible_count'] = visible_count
+                if not include_bars:
+                    next_level.pop('bars', None)
+                if not include_indicators:
+                    next_level.pop('indicators', None)
+                next_levels[level_name] = next_level
+            next_frame['levels'] = next_levels
+        frame_meta = dict(next_frame.get('meta')) if isinstance(next_frame.get('meta'), dict) else {}
+        frame_meta.update({
+            'step_frame_format': 'compact_v1',
+            'frame_policy': frame_policy,
+            'frame_stride': frame_stride,
+            'include_bars_in_frames': include_bars,
+            'include_indicators_in_frames': include_indicators,
+        })
+        next_frame['meta'] = frame_meta
+        compact_frames.append(next_frame)
+
+    next_result = dict(result)
+    next_result['frames'] = compact_frames
+    meta = dict(next_result.get('meta')) if isinstance(next_result.get('meta'), dict) else {}
+    native_total = meta.get('native_step_frames_total')
+    frames_total = native_total if isinstance(native_total, int) else len(frames)
+    meta.update({
+        'step_frame_format': 'compact_v1',
+        'frame_policy': frame_policy,
+        'frame_stride': frame_stride,
+        'frame_start': frame_start_raw,
+        'frame_end': frame_end_raw,
+        'frames_total': frames_total,
+        'frames_returned': len(compact_frames),
+        'frames_truncated': len(compact_frames) < frames_total,
+        'max_return_frames': max_return_frames,
+        'include_bars_in_frames': include_bars,
+        'include_indicators_in_frames': include_indicators,
+        'compact_transport_only': True,
+        'chan_py_core_unchanged': True,
+    })
+    next_result['meta'] = meta
+    return next_result
+
+
 def _payload_int(payload: dict[str, Any], key: str, default: int, *, minimum: int, maximum: int) -> int:
     return _intish(payload.get(key, default), default, minimum=minimum, maximum=maximum)
 
@@ -206,7 +316,7 @@ def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
 def chan_analyze_multi(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
     config = payload.get('config') if isinstance(payload.get('config'), dict) else {}
     levels = payload.get('lv_list') or payload.get('levels') or payload.get('level_order')
-    return analyze_multi(
+    result = analyze_multi(
         symbol=str(payload.get('symbol') or '000001'),
         market=payload.get('market'),
         levels=levels,
@@ -219,6 +329,7 @@ def chan_analyze_multi(payload: dict[str, Any] = Body(...)) -> dict[str, object]
         count=_payload_int(payload, 'count', 50000, minimum=10, maximum=200000),
         config=config,
     )
+    return _compact_multilevel_step_result(result, payload, config)
 
 
 @app.post('/api/research/bsp/features')
@@ -239,78 +350,63 @@ def research_ml_score(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
         raw_features = extract_bsp_features(
             analysis,
             label_horizon=_payload_int(payload, 'label_horizon', 5, minimum=1, maximum=250),
-            include_labels=_payload_bool(payload, 'include_labels', False),
-        )['features']
-    model = payload.get('model') if isinstance(payload.get('model'), dict) else None
-    return score_bsp_features([row for row in raw_features if isinstance(row, dict)], model=model)
+            include_labels=_payload_bool(payload, 'include_labels', True),
+        )
+    model_name = str(payload.get('model') or 'logistic_v1')
+    return score_bsp_features(raw_features, model_name=model_name)
 
 
 @app.post('/api/research/backtest')
 def research_backtest(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
     analysis = _analysis_from_payload(payload)
-    if isinstance(payload.get('scores'), list):
-        analysis = {**analysis, 'scores': payload['scores']}
-    elif isinstance(payload.get('features'), list):
-        analysis = {**analysis, 'features': payload['features']}
-    options = payload.get('options') if isinstance(payload.get('options'), dict) else {}
-    return run_bsp_backtest(analysis, options=options)
+    return run_bsp_backtest(
+        analysis,
+        horizon=_payload_int(payload, 'horizon', 5, minimum=1, maximum=250),
+        fee_rate=float(payload.get('fee_rate', 0.0005) or 0.0),
+        slippage=float(payload.get('slippage', 0.0) or 0.0),
+        initial_cash=float(payload.get('initial_cash', 100000.0) or 100000.0),
+    )
 
 
 @app.post('/api/research/pipeline')
 def research_pipeline(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
     analysis = _analysis_from_payload(payload)
-    feature_result = extract_bsp_features(
+    horizon = _payload_int(payload, 'horizon', 5, minimum=1, maximum=250)
+    features = extract_bsp_features(
         analysis,
-        label_horizon=_payload_int(payload, 'label_horizon', 5, minimum=1, maximum=250),
-        include_labels=_payload_bool(payload, 'include_labels', True),
+        label_horizon=horizon,
+        include_labels=True,
     )
-    model = payload.get('model') if isinstance(payload.get('model'), dict) else None
-    score_result = score_bsp_features(feature_result['features'], model=model)
-    options = payload.get('options') if isinstance(payload.get('options'), dict) else {}
-    backtest_result = run_bsp_backtest({**analysis, 'scores': score_result['scores']}, options=options)
+    scored = score_bsp_features(features.get('features', []), model_name=str(payload.get('model') or 'logistic_v1'))
+    backtest = run_bsp_backtest(
+        analysis,
+        horizon=horizon,
+        fee_rate=float(payload.get('fee_rate', 0.0005) or 0.0),
+        slippage=float(payload.get('slippage', 0.0) or 0.0),
+        initial_cash=float(payload.get('initial_cash', 100000.0) or 100000.0),
+    )
     return {
         'ok': True,
-        'features': feature_result['features'],
-        'scores': score_result['scores'],
-        'backtest': backtest_result,
-        'meta': {
-            'source': 'origin_vespa_tdx.backend.research_pipeline',
-            'chan_py_polluted': False,
-        },
+        'features': features,
+        'scores': scored,
+        'backtest': backtest,
     }
 
 
 @app.post('/api/scanner/bsp/scan')
-def scanner_bsp_scan(payload: dict[str, Any] | None = Body(default=None)) -> dict[str, object]:
+def scanner_bsp_scan(payload: dict[str, Any] | None = Body(None)) -> dict[str, object]:
     return scan_bsp(**_scanner_args(payload))
 
 
-@app.post('/api/scanner/bsp/scan_stream')
-def scanner_bsp_scan_stream(payload: dict[str, Any] | None = Body(default=None)) -> StreamingResponse:
-    args = _scanner_args(payload)
+@app.get('/api/scanner/bsp/scan_stream')
+def scanner_bsp_scan_stream(
+    limit: int = Query(300, ge=1, le=5000),
+    days: int = Query(365, ge=30, le=5000),
+    recent_days: int = Query(3, ge=1, le=120),
+    bi_strict: bool = Query(True),
+) -> StreamingResponse:
+    def _iter():
+        for event in scan_bsp_events(limit=limit, days=days, recent_days=recent_days, bi_strict=bi_strict):
+            yield json.dumps(event, ensure_ascii=False) + '\n'
 
-    def events():
-        for event in scan_bsp_events(**args):
-            yield f'data: {json.dumps(event, ensure_ascii=False)}\n\n'
-
-    return StreamingResponse(events(), media_type='text/event-stream')
-
-
-@app.get('/api/tdx/kline')
-def tdx_kline(
-    symbol: str = Query('000001'),
-    market: str | None = Query(None),
-    period: str = Query('DAILY'),
-    adjust: str = Query('QFQ'),
-    count: int = Query(50000, ge=10),
-    start: str | None = Query(None),
-    end: str | None = Query(None),
-) -> dict[str, object]:
-    code = normalize_symbol(symbol)
-    market_name = (market or infer_market(code)).upper()
-    bars = load_easy_tdx_bars(symbol=code, market=market_name, period=period, adjust=adjust, count=count, start=start, end=end)
-    return {
-        'ok': True,
-        'symbol': f'{code}.{market_name}',
-        'bars': bars,
-    }
+    return StreamingResponse(_iter(), media_type='application/x-ndjson')
