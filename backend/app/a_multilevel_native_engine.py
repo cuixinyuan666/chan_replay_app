@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from datetime import datetime, time
 from typing import Any
 
@@ -116,6 +117,15 @@ def _expanded_count_for_level(level: str, top_bar_count: int, requested_count: i
     bars_per_day = _level_intraday_bars_per_day(level)
     estimated = int(top_bar_count * bars_per_day * 1.35) + 500
     return min(200000, max(int(requested_count), estimated))
+
+
+def _max_step_frames(config: dict[str, Any] | None) -> int:
+    raw = (config or {}).get('max_step_frames')
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 120
+    return max(1, min(1000, value))
 
 
 def _date_range_for_bars(bars: list[dict[str, Any]]) -> tuple[datetime | None, datetime | None]:
@@ -323,6 +333,14 @@ def _raw_klu_iter(level: Any) -> list[Any]:
     return result
 
 
+def _visible_bars_for_level(level_obj: Any, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    indices = [idx for idx in (_idx(klu) for klu in _raw_klu_iter(level_obj)) if idx is not None]
+    if not indices:
+        return []
+    visible_count = min(max(indices) + 1, len(bars))
+    return list(bars[:visible_count])
+
+
 def _native_relations_for_pair(
     *,
     parent_level: str,
@@ -382,6 +400,7 @@ def _prepare_native_chan(
     bars_by_level: dict[str, list[dict[str, Any]]],
     adjust: str,
     config: dict[str, Any] | None,
+    trigger_step: bool,
 ) -> tuple[Any, Any, list[Any], str]:
     exporter = _load_exporter()
     chanpy_root = exporter.add_chanpy_path(_chanpy_path())
@@ -395,7 +414,7 @@ def _prepare_native_chan(
         csv_path = _bars_to_csv(csv_levels[level], f'{prepared_code_base}_{level.lower()}')
         next_code = exporter.prepare_chanpy_csv(str(csv_path), chanpy_root, kl_type, prepared_code_base)
         prepared_code = prepared_code or str(next_code)
-    chan_config = CChanConfig(_config_dict(trigger_step=False, config=config))
+    chan_config = CChanConfig(_config_dict(trigger_step=trigger_step, config=config))
     chan = exporter.make_cchan(CChan, {
         'code': prepared_code or prepared_code_base,
         'begin_time': None,
@@ -407,6 +426,189 @@ def _prepare_native_chan(
         'extra_kl': None,
     })
     return exporter, chan, kl_types, prepared_code or prepared_code_base
+
+
+def _snapshot_from_chan(
+    *,
+    exporter: Any,
+    chan: Any,
+    kl_types: list[Any],
+    level_order: list[str],
+    bars_by_level: dict[str, list[dict[str, Any]]],
+    config: dict[str, Any] | None,
+    main: str,
+    clock: str,
+    mode_name: str,
+    cursor: int | None = None,
+    current_time: str | None = None,
+    meta_extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    level_results: dict[str, dict[str, Any]] = {}
+    for level, kl_type in zip(level_order, kl_types):
+        level_obj = exporter.get_level(chan, kl_type)
+        structures = _export_level(exporter, level_obj)
+        visible_bars = _visible_bars_for_level(level_obj, bars_by_level[level])
+        level_results[level] = _level_payload(
+            bars=visible_bars,
+            structures=structures,
+            config=config,
+        )
+    relations = _native_relations(
+        level_order=level_order,
+        kl_types=kl_types,
+        chan=chan,
+        exporter=exporter,
+    )
+    meta = {
+        'engine': 'chan.py',
+        'source': 'origin_vespa_tdx.backend.a_multilevel_native_engine',
+        'mode': mode_name,
+        'levels': level_order,
+        'main_level': main,
+        'clock_level': clock,
+        'native_cchan_lv_list': True,
+        'level_relation_mode': 'chan_parent_child',
+        'chan_py_polluted': False,
+        if cursor is not None: 'cursor': cursor,
+        if current_time is not None: 'current_time': current_time,
+    }
+    if meta_extra:
+        meta.update(meta_extra)
+    return {
+        'main_level': main,
+        'levels': level_results,
+        'relations': relations,
+        'meta': meta,
+    }
+
+
+def _frame_current_time(frame: dict[str, Any], main: str) -> str | None:
+    level = frame.get('levels', {}).get(main) if isinstance(frame.get('levels'), dict) else None
+    if not isinstance(level, dict):
+        return None
+    bars = level.get('bars')
+    if not isinstance(bars, list) or not bars:
+        return None
+    last = bars[-1]
+    if not isinstance(last, dict):
+        return None
+    value = last.get('dt') or last.get('time') or last.get('date')
+    return None if value is None else str(value)
+
+
+def _native_once_response(
+    *,
+    exporter: Any,
+    chan: Any,
+    kl_types: list[Any],
+    level_order: list[str],
+    bars_by_level: dict[str, list[dict[str, Any]]],
+    data_meta: dict[str, Any],
+    prepared_code: str,
+    code: str,
+    market_name: str,
+    adjust: str,
+    main: str,
+    clock: str,
+    config: dict[str, Any] | None,
+) -> dict[str, Any]:
+    snapshot = _snapshot_from_chan(
+        exporter=exporter,
+        chan=chan,
+        kl_types=kl_types,
+        level_order=level_order,
+        bars_by_level=bars_by_level,
+        config=config,
+        main=main,
+        clock=clock,
+        mode_name='once',
+        meta_extra={
+            'symbol': f'{code}.{market_name}',
+            'name': code,
+            'adjust': adjust.upper(),
+            'prepared_code': prepared_code,
+            'native_step_frames': False,
+            'native_data_window': data_meta,
+            'native_csv_time_policy': 'effective-time sort/dedupe; non-intraday parent levels are written to CSV at 23:59 while UI bars keep original times',
+            'warnings': ['native CChan(lv_list) path is active'],
+        },
+    )
+    return {
+        'ok': True,
+        'main_level': main,
+        'levels': snapshot['levels'],
+        'relations': snapshot['relations'],
+        'frames': [],
+        'meta': snapshot['meta'],
+    }
+
+
+def _native_step_response(
+    *,
+    exporter: Any,
+    chan: Any,
+    kl_types: list[Any],
+    level_order: list[str],
+    bars_by_level: dict[str, list[dict[str, Any]]],
+    data_meta: dict[str, Any],
+    prepared_code: str,
+    code: str,
+    market_name: str,
+    adjust: str,
+    main: str,
+    clock: str,
+    config: dict[str, Any] | None,
+) -> dict[str, Any]:
+    step_iter = getattr(chan, 'step_load', None)
+    if not callable(step_iter):
+        raise RuntimeError('native CChan(lv_list) does not expose step_load')
+    max_frames = _max_step_frames(config)
+    frame_buffer: deque[dict[str, Any]] = deque(maxlen=max_frames)
+    total_frames = 0
+    for cursor, cur_chan in enumerate(step_iter()):
+        frame = _snapshot_from_chan(
+            exporter=exporter,
+            chan=cur_chan,
+            kl_types=kl_types,
+            level_order=level_order,
+            bars_by_level=bars_by_level,
+            config=config,
+            main=main,
+            clock=clock,
+            mode_name='step',
+            cursor=cursor,
+        )
+        frame['meta']['current_time'] = _frame_current_time(frame, main)
+        frame['meta']['frame_index'] = cursor
+        frame_buffer.append(frame)
+        total_frames += 1
+    frames = list(frame_buffer)
+    if not frames:
+        raise RuntimeError('native CChan(lv_list) step_load returned no frames')
+    final = frames[-1]
+    meta = dict(final['meta'])
+    meta.update({
+        'symbol': f'{code}.{market_name}',
+        'name': code,
+        'adjust': adjust.upper(),
+        'prepared_code': prepared_code,
+        'native_step_frames': True,
+        'native_step_frames_total': total_frames,
+        'native_step_frames_returned': len(frames),
+        'native_step_frames_limit': max_frames,
+        'native_step_frames_truncated': total_frames > len(frames),
+        'native_data_window': data_meta,
+        'native_csv_time_policy': 'effective-time sort/dedupe; non-intraday parent levels are written to CSV at 23:59 while UI bars keep original times',
+        'warnings': ['native CChan(lv_list).step_load() path is active'],
+    })
+    return {
+        'ok': True,
+        'main_level': main,
+        'levels': final['levels'],
+        'relations': final['relations'],
+        'frames': frames,
+        'meta': meta,
+    }
 
 
 def analyze_multi_native(
@@ -450,51 +652,38 @@ def analyze_multi_native(
         bars_by_level=bars_by_level,
         adjust=adjust,
         config=config,
+        trigger_step=mode_name == 'step',
     )
 
-    level_results: dict[str, dict[str, Any]] = {}
-    for level, kl_type in zip(level_order, kl_types):
-        level_obj = exporter.get_level(chan, kl_type)
-        structures = _export_level(exporter, level_obj)
-        level_results[level] = _level_payload(
-            bars=bars_by_level[level],
-            structures=structures,
+    if mode_name == 'step':
+        return _native_step_response(
+            exporter=exporter,
+            chan=chan,
+            kl_types=kl_types,
+            level_order=level_order,
+            bars_by_level=bars_by_level,
+            data_meta=data_meta,
+            prepared_code=prepared_code,
+            code=code,
+            market_name=market_name,
+            adjust=adjust,
+            main=main,
+            clock=clock,
             config=config,
         )
 
-    relations = _native_relations(
-        level_order=level_order,
-        kl_types=kl_types,
-        chan=chan,
+    return _native_once_response(
         exporter=exporter,
+        chan=chan,
+        kl_types=kl_types,
+        level_order=level_order,
+        bars_by_level=bars_by_level,
+        data_meta=data_meta,
+        prepared_code=prepared_code,
+        code=code,
+        market_name=market_name,
+        adjust=adjust,
+        main=main,
+        clock=clock,
+        config=config,
     )
-    warnings = ['native CChan(lv_list) path is active']
-    if mode_name == 'step':
-        warnings.append('native step frames are not exported yet; final multi-level structures are returned')
-
-    return {
-        'ok': True,
-        'main_level': main,
-        'levels': level_results,
-        'relations': relations,
-        'frames': [],
-        'meta': {
-            'engine': 'chan.py',
-            'source': 'origin_vespa_tdx.backend.a_multilevel_native_engine',
-            'mode': mode_name,
-            'symbol': f'{code}.{market_name}',
-            'name': code,
-            'levels': level_order,
-            'main_level': main,
-            'clock_level': clock,
-            'adjust': adjust.upper(),
-            'prepared_code': prepared_code,
-            'native_cchan_lv_list': True,
-            'level_relation_mode': 'chan_parent_child',
-            'chan_py_polluted': False,
-            'native_step_frames': False,
-            'native_data_window': data_meta,
-            'native_csv_time_policy': 'effective-time sort/dedupe; non-intraday parent levels are written to CSV at 23:59 while UI bars keep original times',
-            'warnings': warnings,
-        },
-    }
