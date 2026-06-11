@@ -39,7 +39,7 @@ Branch: origin_vespa_tdx
 - `1ab4b0dfa2a8de48c7e6ae33644e30db31d2b58e`: added backend compact_v1 transport validation meta.
 - `0f94fb9012930bef8f75911d3cd1a1e9fb872128`: added `compact_validation_*` fields to Copy P0 and Copy Step diagnostics.
 - `958920a489bfb33edc7ba390476a8c38270b10e8`: wired Copy Result Validation to report F1a compact match/mismatch when compact validation meta is present.
-- Current update: recorded P0/Step compact validation match runtime acceptance and Result Validation F1a wiring; runtime validation of the Result Validation copy output is pending.
+- Current update: accepted runtime Copy Result Validation F1a compact transport match and marked F1a compact-v1 transport equivalence accepted.
 
 ## Current accepted work
 
@@ -58,6 +58,8 @@ Branch: origin_vespa_tdx
 - F1a Copy Step compact meta: runtime accepted.
 - F1a Copy P0 compact meta: runtime accepted.
 - F1a backend compact transport validation in Copy P0 / Copy Step: runtime accepted with `compact_validation_status: match` and `compact_validation_mismatch_count: 0`.
+- F1a Copy Result Validation compact transport equivalence: runtime accepted with `validation_phase: F1a`, `validation_status: match`, `mismatch_count: 0`, and `status: ok`.
+- F1a compact-v1 transport equivalence: accepted.
 
 ## P0 Time Log instrumentation
 
@@ -124,11 +126,11 @@ Implemented:
   - `frames_returned`
   - `frames_truncated`
   - `max_return_frames`
-- Backend adapter-level compact transport validation is implemented:
+- Backend adapter-level compact transport validation is implemented and accepted:
   - `compact_validation_scope: backend_precompact_vs_compact_transport`
-  - `compact_validation_status`
-  - `compact_validation_mismatch_count`
-  - `compact_validation_first_mismatch`
+  - `compact_validation_status: match`
+  - `compact_validation_mismatch_count: 0`
+  - `compact_validation_first_mismatch:` blank.
   - Validation checks `visible_count`, bars/indicators removal switches, and `merged_bars/fx/bi/seg/zs/bsp` list count preservation.
   - This validation does not recalculate Chan structures.
 - `lib/data/multi_level_chan_analysis_parser.dart` supports compact_v1 frames:
@@ -136,76 +138,57 @@ Implemented:
   - If a frame level omits `indicators`, parser clips top-level indicators up to `visible_count`.
   - Old full frame format remains supported.
 - `lib/data/python_multi_level_chan_analysis_source.dart` passes top-level `levels` into the compact frame parser.
-- `lib/ui/widgets/multi_level_interval_signal_panel.dart` prints compact meta and keeps response bytes separate from timing stages in copied logs.
+- `lib/ui/widgets/multi_level_interval_signal_panel.dart` prints compact meta, keeps response bytes separate from timing stages, and reports F1a compact validation match/mismatch in `Copy Result Validation`.
 - `lib/ui/pages/multi_level_replay_page.dart` adds compact meta and compact validation fields to `Copy P0` and `Copy Step` diagnostics.
-- `Copy Result Validation` now reports F1a match/mismatch when `compact_validation_status` is present:
-  - `validation_phase: F1a`
-  - `validation_scope: backend_precompact_vs_compact_transport`
-  - `validation_status: match/mismatch`
-  - `mismatch_count`
-  - `first_mismatch`
-  - `compact_candidate_enabled: true`
-  - `compact_candidate_source: compact_v1 transport adapter`
 
-Runtime accepted F1a outputs so far:
+Runtime accepted F1a outputs:
 
 - Copy P0 compact meta accepted.
 - Copy Step compact meta accepted.
 - Time Log compact meta and `response_bytes` accepted.
-- Result Validation compact fields accepted before F1a match/mismatch wiring.
-- Copy P0 / Copy Step compact validation accepted:
-  - `compact_validation_scope: backend_precompact_vs_compact_transport`
-  - `compact_validation_status: match`
-  - `compact_validation_mismatch_count: 0`
-  - `compact_validation_first_mismatch:` blank.
-
-Pending F1a verification:
-
-- `Copy Result Validation` runtime output after `958920a489bfb33edc7ba390476a8c38270b10e8` must be pasted and must show F1a match/mismatch instead of F0 blocked.
-- If Copy Result Validation reports `validation_status: match`, then F1a compact-v1 transport equivalence can be accepted.
-- Algorithmic `极速` mode remains not accepted and not exposed.
-
-Forbidden for F1a remains:
-
-- Modify `chan.py` core FX/BI/SEG/ZS/BSP logic.
-- Recalculate Chan structures in Flutter/Dart.
-- Drop `is_sure=false` structures for speed unless explicitly part of an accepted UI filter that does not affect diagnostics.
-- Drop BSP types for speed.
-- Pretend `stride` replay is full strict step replay.
-- Continue writing `bars[:i+1]` into every frame by default.
-- Continue writing full indicators into every frame by default.
-- Hide mismatch between compact output and baseline output.
-
-## Current blockers / pending verification
-
-- Re-run `flutter analyze` after `958920a489bfb33edc7ba390476a8c38270b10e8`.
-- Runtime Copy Result Validation must show:
+- Copy P0 / Copy Step compact validation accepted.
+- Copy Result Validation F1a compact validation accepted:
   - `validation_phase: F1a`
   - `validation_scope: backend_precompact_vs_compact_transport`
   - `compact_candidate_enabled: true`
+  - `compact_candidate_source: compact_v1 transport adapter`
   - `validation_status: match`
   - `mismatch_count: 0`
   - `first_mismatch:` blank.
-- Strategy mode acceptance remains paused while F1a remains current priority.
-- Full-history/paged strict step replay remains deferred, but F1a/F4 are the planned path toward scalable strict replay.
-- No speed mode is accepted yet.
+  - `status: ok`.
+
+F1a acceptance status:
+
+- Backend compact_v1 adapter: accepted.
+- Flutter compact_v1 parser compatibility: accepted.
+- Response bytes timing: accepted.
+- Copied Time Log / Result Validation compact meta: accepted.
+- Compact frame total propagation: accepted.
+- Copy P0 / Copy Step compact meta fields: accepted.
+- Backend compact transport validation meta: accepted.
+- Copy P0 / Copy Step compact validation fields: accepted.
+- Copy Result Validation F1a match/mismatch wiring: accepted.
+- F1a compact-v1 transport equivalence: accepted.
+
+Important limitation:
+
+- This accepts only compact transport equivalence. It does not accept algorithmic `极速` mode.
+- `极速` mode remains not implemented, not exposed, and not accepted.
+- Any later algorithmic fast path still requires validation_status=match for the same request and must respect original chan.py as calculation authority.
+
+## Current blockers / pending verification
+
+- Strategy mode acceptance remains paused unless the next manual task explicitly resumes it.
+- Full-history/paged strict step replay remains deferred unless the next manual task selects it.
+- No speed/fast/turbo/极速 mode is accepted yet.
+- The current manual has no explicit next implementation phase after F1a; next work must be added to this manual before coding.
 
 ## Next task-party operation
 
-1. Run `git pull`.
-2. Run `flutter analyze`.
-3. Open multi-level page and perform normal step Load with accepted test window:
-   - symbol `600340`, market `SH`
-   - levels `DAILY,MIN30,MIN5`
-   - count `220`
-   - max_step_frames `60`
-   - start/end `2025-09-01` to `2025-10-20`
-4. Paste Copy Result Validation.
-5. Expected fields:
-   - `validation_phase: F1a`
-   - `validation_scope: backend_precompact_vs_compact_transport`
-   - `compact_candidate_enabled: true`
-   - `validation_status: match`
-   - `mismatch_count: 0`
-   - `first_mismatch:` blank.
-6. If this passes, mark F1a compact-v1 transport equivalence accepted and continue to the next manual task.
+1. Do not start algorithmic speed mode merely because F1a compact transport equivalence is accepted.
+2. Select and document the next phase in this manual before implementation.
+3. Candidate next phases mentioned earlier but not yet selected:
+   - Strategy mode runtime acceptance.
+   - Full-history / paged strict step replay.
+   - Additional backend Time Log granularity.
+   - Algorithmic fast mode only after a stricter result validation plan is written and accepted.
