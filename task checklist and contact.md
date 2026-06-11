@@ -6,13 +6,10 @@ This file is the project manual for the multi-level and interval-nest work.
 
 ## Current review baseline
 
-Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86b
-Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
-Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
+Latest observed head before this supervisor update: 5a94f36dac62041c6ec6753b99f6fe51f94caeb1
 Latest task-party backend/data commit: 2643cb70e544940bed17701ba789529298a37ff1
 Latest task-party UI commit: bff2fb57925ba0a24f6ada38eb75888bb1797698
 Latest root default commit: 6a88fcbd67a67512775a6eed7e5541458c3c5724
-Latest observed head during supervisor verification: 736c209cb1f21195bf62d6496d82ba9acddca1d8
 Latest manual update commit: pending
 
 ## User objective
@@ -27,7 +24,7 @@ All future checks use the latest push on origin_vespa_tdx.
 
 The file named `task checklist and contact.md` is the project manual. Future task execution must follow this manual. Before finishing a task batch, update this manual and add detailed commit notes.
 
-Hard rules added by user:
+## Hard rules
 
 - All Chan calculation logic must always stay centered on the original chan.py implementation.
 - Do not invent or recreate Chan logic in Flutter, Dart, or custom Python code. Only call, serialize, display, and coordinate the original chan.py outputs.
@@ -37,7 +34,7 @@ Hard rules added by user:
 - Avoid asking the user to operate in the command line when the same information can be copied from the app.
 - In direct communication with the user, explicitly say which app button to click to copy the required information.
 
-Strict step replay hard rules for both single-level and multi-level pages:
+## Strict step replay hard rules for both single-level and multi-level pages
 
 - Strict step replay must use original chan.py step behavior or structures exported from original chan.py step output.
 - Strict step replay must not use final fullSnapshot slicing as a success path.
@@ -57,16 +54,16 @@ Strict step replay hard rules for both single-level and multi-level pages:
 - Native CChan lv_list engine exists.
 - MultiLevelReplayPage displays manual P0 diagnostics after Load.
 - MultiLevelReplayPage has a one-click P0 diagnostics copy button named `Copy P0`.
-- Native CSV input now performs effective-time sort/dedupe before chan.py loading.
-- analyze_multi now returns a native-failure diagnostic response instead of a bridge result when native fails.
+- Native CSV input performs effective-time sort/dedupe before chan.py loading.
+- analyze_multi returns a native-failure diagnostic response instead of a bridge result when native fails.
 - MIN30/MIN5 level detection is fixed to preserve intraday timestamps.
 - Native once analyze_multi is verified with sane DAILY/MIN30/MIN5 counts.
-- Copy P0 now includes status_summary and level_summary.
+- Copy P0 includes status_summary and level_summary.
 - Native multi-level step frames are implemented through original chan.py CChan(lv_list).step_load outputs.
 - MultiLevelReplayPage can render the selected native step frame when frames are returned.
 - MultiLevelReplayPage has a one-click step diagnostic copy button named `Copy Step`.
-- MultiLevelReplayPage now shows `Copy Step` in step mode after Load even if frames are empty.
-- App startup now defaults to MultiLevelReplayPage instead of OriginReplayPageV2.
+- MultiLevelReplayPage shows `Copy Step` in step mode after Load even if frames are empty.
+- App startup defaults to MultiLevelReplayPage instead of OriginReplayPageV2.
 - OriginReplayPageV2 is not built on startup, so replay-page default data load is temporarily stopped.
 - MultiLevelReplayPage defaults to step mode and auto-loads a lightweight count=40 startup dataset.
 - MultiLevelReplayPage sends max_step_frames=24 for the default step request to avoid UI-freezing cumulative payloads.
@@ -75,8 +72,114 @@ Strict step replay hard rules for both single-level and multi-level pages:
 ## Current blockers
 
 - Multi-level native step frames are implemented but not locally verified after the lightweight default step auto-load / timeout changes.
+- MultiLevelReplayPage still returns final snapshot from `_current` when mode=step and frames is empty. It must fail loudly instead.
 - Single-level `OriginReplayPageV2` still has `_sliceSnapshot(fullSnapshot, cursor)` fallback in step mode and is not accepted as strict step replay.
+- Single-level Copy Step diagnostics do not yet exist.
 - Interval-nest rule engine is not implemented yet.
+
+## Task organization policy: no toothpaste delivery
+
+Task party must deliver work in dependent batches. Small commits are allowed, but acceptance is by batch, not by isolated small edits. A batch is not accepted unless its code path, UI path, diagnostics button, and user-verifiable copy output are all present.
+
+### Batch A: Strict step replay closure, highest priority
+
+Goal: make strict step truthful on both single-level and multi-level pages.
+
+Scope:
+- Multi-level step runtime verification path.
+- Single-level step fallback removal.
+- Single-level Copy Step diagnostics.
+- Fail-loud behavior when frames are empty.
+- UI freeze safety for step payloads.
+
+Required tasks:
+- A1. MultiLevelReplayPage must not show final snapshot as strict step when mode=step and frames.length=0.
+- A2. MultiLevelReplayPage must show blocked/failure state and Copy Step diagnostics when frames.length=0.
+- A3. MultiLevelReplayPage Copy Step must prove native_step_frames=true, frames.length>0, current frame cursor/time, current frame level counts, and whether frames are truncated.
+- A4. OriginReplayPageV2 must remove `_sliceSnapshot(fullSnapshot, cursor)` as strict-step fallback.
+- A5. OriginReplayPageV2 must use chan.py step frames only in strict step mode.
+- A6. OriginReplayPageV2 must fail loudly if mode=step and frames.length=0.
+- A7. OriginReplayPageV2 must add Copy Step diagnostics with source, frames.length, current frame index/time, and K/FX/BI/SEG/ZS/BSP counts.
+- A8. Startup auto-load must remain safe: no default freeze; if step payload is too heavy, optimize payload shape instead of only raising timeout.
+
+Acceptance:
+- User can copy Multi-level Copy Step after Load.
+- User can copy Single-level Copy Step after Load.
+- Both diagnostics show frames.length>0 for valid step cases.
+- Both pages fail loudly and copy diagnostic if frames.length=0.
+- No fullSnapshot slicing is used as a strict-step success path.
+
+Do not proceed to Batch B until Batch A is accepted.
+
+### Batch B: Multi-level relation navigation and targeting
+
+Goal: turn native chan_parent_child relations into usable chart navigation.
+
+Scope:
+- DAILY to MIN30 targeting.
+- MIN30 to MIN5 targeting.
+- Current-frame-aware relation lookup.
+- In-app Copy Relation diagnostics.
+
+Required tasks:
+- B1. Click/select DAILY K/BI/ZS/BSP and locate corresponding MIN30 range using native relations.
+- B2. Click/select MIN30 K/BI/ZS/BSP and locate corresponding MIN5 range using native relations.
+- B3. The relation lookup must respect current step frame when in step mode.
+- B4. Add Copy Relation diagnostics: parent level/index/time, child level start/end/index/time, relation count, active frame.
+- B5. No synthetic relation logic is allowed; use native chan.py parent-child relation data only.
+
+Acceptance:
+- User can click high-level structure and see low-level range.
+- Copy Relation proves which native relation was used.
+
+### Batch C: Interval-nest signal engine MVP
+
+Goal: build first real interval-nest signals on top of accepted strict step and relation navigation.
+
+Scope:
+- DAILY 2-buy + MIN30 1-buy.
+- DAILY 3-buy + MIN30 1-buy.
+- DAILY 3-buy + MIN30 2-buy.
+- Optional MIN30 to MIN5 trigger if relation data and step frames are stable.
+
+Required tasks:
+- C1. Use original chan.py BSP outputs only.
+- C2. Use native relation ranges to bind high-level and low-level signals.
+- C3. Add signal state: candidate / confirmed / invalidated.
+- C4. Add visibleAt / confirmedAt / rawIndex or equivalent timing markers to avoid future-function ambiguity.
+- C5. Add Copy Signal diagnostics.
+
+Acceptance:
+- User can inspect why a signal exists and which native chan.py BSP/relations support it.
+
+### Batch D: Trading plan and quality score
+
+Goal: convert accepted interval-nest signals into practical replay/trading aid.
+
+Scope:
+- BSP quality score.
+- Stop and target generation.
+- Higher-level direction vs lower-level trigger status.
+- Current level obeying higher level.
+
+Acceptance:
+- Each plan is explainable and copyable from the app.
+- No recommendation is based on invented Chan structures.
+
+### Batch E: Training, statistics, scanner, report
+
+Goal: build after signal semantics are stable.
+
+Scope:
+- Training mode.
+- Historical statistics.
+- Multi-level scanner.
+- Signal replay timeline.
+- Interval-nest report.
+- TV indicator linkage.
+
+Acceptance:
+- All statistical and scanner results must state level pair, signal definition, sample count, and future-data safety policy.
 
 ## 16 requested items
 
@@ -108,6 +211,7 @@ Strict step replay hard rules for both single-level and multi-level pages:
 - [x] Verify native_data_window.bars_per_day has DAILY=1, MIN30=8, MIN5=48.
 - [x] Implement native multi-level step frames.
 - [ ] Verify multi-level step mode frames are not empty.
+- [ ] MultiLevelReplayPage fails loudly instead of showing final snapshot when mode=step and frames.length=0.
 - [ ] Remove strict-step `_sliceSnapshot(fullSnapshot, cursor)` fallback from single-level OriginReplayPageV2.
 - [ ] Verify single-level step mode frames are not empty and sourced from chan.py step output.
 - [ ] Verify both single-level and multi-level strict step fail loudly if frames are empty.
@@ -118,8 +222,8 @@ Strict step replay hard rules for both single-level and multi-level pages:
 
 - [x] Add cursor state to MultiLevelReplayPage.
 - [x] Add replay controls to MultiLevelReplayPage.
-- [x] Use current frame in MultiLevelReplayPage step mode.
-- [x] Use current frame in MultiLevelLayerStatusPanel.
+- [x] Use current frame in MultiLevelReplayPage step mode when frames are present.
+- [x] Use current frame in MultiLevelLayerStatusPanel when frames are present.
 - [ ] Add/verify single-level Copy Step diagnostics.
 - [ ] Implement DAILY to MIN30 targeting.
 - [ ] Implement MIN30 to MIN5 targeting.
@@ -141,23 +245,19 @@ Strict step replay hard rules for both single-level and multi-level pages:
 5. Does step mode return frames?
 6. Which in-app button should the user click to copy P0 diagnostics?
 7. Which in-app button should the user click to copy step-frame diagnostics?
-8. Does the native parent-level CSV contain duplicate datetime rows after time normalization?
-9. If duplicate rows exist, which level and original rows produce `2026/04/21 23:59` twice?
-10. Does native_data_window.bars_per_day show MIN30=8 and MIN5=48?
-11. Are MIN30/MIN5 aligned_counts larger than DAILY when source data is available?
-12. Does Copy P0 include status_summary and level_summary?
-13. Does multi-level Copy Step show native_step_frames=true and frames.length > 0?
-14. Does multi-level Copy Step include current-frame level_summary and frame cursor/current_time?
-15. Does single-level strict step still call `_sliceSnapshot(fullSnapshot, cursor)` when frames are empty?
-16. Does single-level Copy Step prove frames.length > 0 and source is chan.py step output?
-17. Is Copy Step visible in multi-level step mode even when frames.length is zero?
-18. Does app startup default to MultiLevelReplayPage and avoid building OriginReplayPageV2?
-19. Does default MultiLevelReplayPage auto-load step mode with count=40 and max_step_frames=24?
+8. Does Copy Step show native_step_frames=true and frames.length > 0?
+9. Does Copy Step include current-frame level_summary and frame cursor/current_time?
+10. Does single-level strict step still call `_sliceSnapshot(fullSnapshot, cursor)` when frames are empty?
+11. Does single-level Copy Step prove frames.length > 0 and source is chan.py step output?
+12. Is Copy Step visible in multi-level step mode even when frames.length is zero?
+13. Does app startup default to MultiLevelReplayPage and avoid building OriginReplayPageV2?
+14. Does default MultiLevelReplayPage auto-load step mode with count=40 and max_step_frames=24?
+15. If default step still freezes, what payload-shape optimization was made instead of simply increasing timeout?
 
 ## Task party reply template
 
 latest commit:
-completed items:
+completed batch:
 modified files:
 local checks:
 result:
@@ -192,7 +292,7 @@ Decision:
 - Native once CChan(lv_list) is accepted for P0.
 - High-to-low native relations exist and count is non-zero.
 - MIN30/MIN5 intraday preservation is accepted.
-- P0 remains open only because strict step replay is not fully verified.
+- P0 remains open because strict step replay is not fully verified.
 
 2026-06-10 native multi-level step frames implementation batch:
 
@@ -210,14 +310,14 @@ Backend commits:
 Frontend commits:
 - Commit: 9b76ca7e6d6cb9bdb58cd171046f6982726e95b4
   - File: lib/ui/pages/multi_level_replay_page.dart
-  - Change: step mode now renders selected native frame; added frame slider, previous/next controls, current frame label, current-frame layer panel, and `Copy Step` diagnostics button.
+  - Change: step mode renders selected native frame when frames are present; added frame slider, previous/next controls, current frame label, current-frame layer panel, and `Copy Step` diagnostics button.
 - Commit: 55fabb72756e072a6d7ffe2b2858a05560f33b5a
   - File: lib/ui/pages/multi_level_replay_page.dart
   - Change: fixed Copy Step visibility so it also appears in the P0 diagnostics bar when mode=step, even if frames are empty.
 
 Decision:
 - Multi-level native step frames are implemented in code but not accepted until user verification.
-- The user must run the app, switch Multi-level to step, click Load, click `Copy Step`, and paste diagnostics.
+- MultiLevelReplayPage still must fail loudly when frames are empty.
 - P0 remains open for multi-level step-frame verification and single-level strict-step fallback removal.
 
 2026-06-10 default startup / timeout / freeze change:
@@ -228,24 +328,33 @@ User reported:
 - User requested temporarily stopping default replay-page data loading on app startup.
 - User requested default app load to be multi-level step data.
 
-Fixes applied:
+Fixes applied and verified in code:
 - Commit: 6a88fcbd67a67512775a6eed7e5541458c3c5724
   - File: lib/ui/pages/root_page.dart
-  - Change: app now starts on MultiLevelReplayPage; OriginReplayPageV2 is not visited/built on startup, so its initState auto-load does not run.
+  - Verified: app starts on MultiLevelReplayPage; OriginReplayPageV2 is not visited/built on startup, so its initState auto-load does not run.
 - Commit: c5fe666b2d82b9a1bacdf610af6abda7ef6c082a
   - File: lib/ui/pages/multi_level_replay_page.dart
-  - Change: MultiLevelReplayPage defaults to step mode, auto-loads after first frame, and initially used count=160.
+  - Verified: MultiLevelReplayPage defaults to step mode and auto-loads after first frame.
 - Commit: 2643cb70e544940bed17701ba789529298a37ff1
   - File: lib/data/python_multi_level_chan_analysis_source.dart
-  - Change: step analyze_multi POST timeout is now 180s, once timeout is 90s, and calculation timeout no longer triggers automatic backend restart.
+  - Verified: step analyze_multi POST timeout is 180s and once timeout is 90s.
 - Commit: bff2fb57925ba0a24f6ada38eb75888bb1797698
   - File: lib/ui/pages/multi_level_replay_page.dart
-  - Change: reduced default startup count from 160 to 40 and default max_step_frames from 120 to 24 to avoid sending a UI-freezing cumulative payload to Flutter.
+  - Verified: default startup count is 40 and max_step_frames is 24.
 
 Decision:
 - Default replay-page loading is temporarily stopped.
-- Default multi-level step loading remains enabled but now uses a lightweight startup safety profile.
-- If default step still freezes, the next fix should optimize backend frame payload shape instead of increasing timeout.
+- Default multi-level step loading remains enabled but uses a lightweight startup safety profile.
+- If default step still freezes, next fix must optimize backend frame payload shape instead of increasing timeout.
+
+2026-06-10 supervisor task-batch organization:
+
+Decision:
+- Future work must be accepted by dependency batch, not by isolated micro task.
+- Batch A strict step closure is now the gate for all later work.
+- Batch B relation targeting cannot start until Batch A is accepted.
+- Batch C interval-nest signals cannot start until Batch B is accepted.
+- Batch D trading plan/score and Batch E training/statistics/scanner/report must wait for signal semantics to stabilize.
 
 Next user operation:
 - Pull latest.
