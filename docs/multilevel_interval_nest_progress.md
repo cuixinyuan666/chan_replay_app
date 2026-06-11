@@ -157,6 +157,35 @@ file: docs/analyze_multi_smoke_test.md
 - 记录 Flutter 侧已具备和未接入内容。
 ```
 
+### 7. Flutter 多级别 UI 基础组件
+
+```text
+commit: 8b15d903489e2d4debab66ef408ce185addfd8ab
+file: lib/ui/widgets/multi_level_switcher.dart
+
+commit: ba614e065ff1fbed7ed9c939a64db45bce7caddc
+file: lib/ui/widgets/multi_level_layer_status_panel.dart
+
+commit: 6def2a24a42a607b630780f102285c347a1e3041
+file: lib/core/models/multi_level_view_state.dart
+```
+
+完成：
+
+```text
+- 新增 MultiLevelSwitcher：用于 DAILY / MIN30 / MIN5 等级别切换。
+- 新增 MultiLevelLayerStatusPanel：用于 once 和 strict-step 多级别图层数量显示。
+- 新增 MultiLevelViewState：集中管理 activeLevel / clockLevel / ReplayClockMode / enabled。
+```
+
+限制：
+
+```text
+- 组件尚未接入 origin_replay_page_v2.dart。
+- 当前只是可复用 UI 基础件，不改变现有复盘页面行为。
+- 现有单级别图层状态面板仍未替换。
+```
+
 ## 当前完成度
 
 ```text
@@ -166,7 +195,8 @@ file: docs/analyze_multi_smoke_test.md
 阶段 1C：独立 analyze_multi 客户端              已完成（未接 UI / 未接自动本地服务）
 阶段 2：后端 analyze_multi 安全桥接版           已完成（非原生 CChan lv_list）
 阶段 2B：原生 CChan(lv_list) 多级别关系          未完成
-阶段 3：UI 级别切换与图层面板                  未完成
+阶段 3A：Flutter 多级别 UI 基础组件             已完成（未接页面）
+阶段 3B：UI 级别切换接入复盘页面                未完成
 阶段 4：高级别定位低级别区间                  未完成
 阶段 5：多级别严格逐K                         部分完成（后端安全桥接 frames；UI 未接）
 阶段 6：区间套信号引擎                        未完成
@@ -183,12 +213,15 @@ docs/multilevel_interval_nest_progress.md
 docs/analyze_multi_smoke_test.md
 lib/core/models/level_relation.dart
 lib/core/models/multi_level_chan_snapshot.dart
+lib/core/models/multi_level_view_state.dart
 lib/core/models/replay_clock_mode.dart
 lib/core/models/signal_visibility_state.dart
 lib/core/models/interval_nest_signal.dart
 lib/data/multi_level_chan_analysis_parser.dart
 lib/data/chan_snapshot_json_parser.dart
 lib/data/python_multi_level_chan_analysis_source.dart
+lib/ui/widgets/multi_level_switcher.dart
+lib/ui/widgets/multi_level_layer_status_panel.dart
 backend/app/a_multilevel_engine.py
 ```
 
@@ -232,6 +265,14 @@ meta.native_cchan_lv_list: false
 meta.chan_py_polluted: false
 ```
 
+Flutter 已新增但尚未接入页面：
+
+```text
+MultiLevelSwitcher
+MultiLevelLayerStatusPanel
+MultiLevelViewState
+```
+
 ## 下一步任务
 
 ### 下一步 1：本地验证 analyze_multi
@@ -245,17 +286,17 @@ meta.chan_py_polluted: false
 检查 levels / relations / frames 是否符合契约。
 ```
 
-### 下一步 2：Flutter UI 多级别切换
+### 下一步 2：Flutter UI 多级别切换接入
 
 目标：
 
 ```text
-先加受控入口，不替换原单级别入口。
+在 origin_replay_page_v2.dart 中加受控入口，不替换原单级别入口。
 支持 DAILY / MIN30 / MIN5 切换显示。
 使用 PythonMultiLevelChanAnalysisSource。
 ```
 
-### 下一步 3：多级别图层状态
+### 下一步 3：多级别图层状态接入
 
 目标：
 
@@ -282,4 +323,5 @@ step：显示各级别 当前/全量 数量。
 3. 后续改 UI 前需要先本地验证 analyze_multi 响应。
 4. Windows 自动启动本地 Python 和 Android MethodChannel 多级别调用仍未接入。
 5. step frames 当前按 clock_level 截取各级别可见数据，仍需通过本地样本验证边界情况。
+6. UI 基础组件已提交但未接入页面，因此当前不会改变用户可见行为。
 ```
