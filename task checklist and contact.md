@@ -21,6 +21,7 @@ Branch: origin_vespa_tdx
 - `93aaa753b1e391132439e88167677ddd7cc6fd65`: removed the nonexistent `python/a_server.py` fallback.
 - `c30e8fba5aaf7cf54931d13e03b3bac3bbba461d`: recorded the first positive Scan Signal candidate.
 - `c79e30337a302e38e4e5825d8e0ffbe77ee85549`: removed an obsolete diagnostic stub that checked old backend paths.
+- `2a85cd1064e2a3505e01794ec0c86deaef5e8507`: added candidate-date step window controls and lv_list selectors.
 
 ## Current verified code status
 
@@ -84,9 +85,34 @@ Decision:
 - `/api/chan/analyze_multi` is available from the App-managed backend.
 - Continue requiring in-app diagnostics for future runtime issues.
 
+## Candidate-date step window controls
+
+Implemented in `MultiLevelReplayPage`:
+
+- `lv_list` is selected through ordered chips: `DAILY`, `MIN60`, `MIN30`, `MIN15`, `MIN5`, `MIN1`.
+- The selected level order follows the fixed top-down order from those chips.
+- `count` is selectable through a dropdown: `40`, `80`, `120`, `220`, `600`.
+- `max_step_frames` is selectable through a dropdown: `24`, `40`, `60`, `120`.
+- `start` and `end` date fields are shown in the header and are passed to `analyze_multi` for both `Load` and `Scan Signal`.
+- The `候选窗口 2025-10-13` button sets:
+  - mode: `step`
+  - lv_list: `DAILY,MIN30,MIN5`
+  - count: `220`
+  - max_step_frames: `60`
+  - start: `2025-09-01`
+  - end: `2025-10-20`
+- `Copy P0` and `Copy Step` include selected lv_list, count, max_step_frames, start, and end.
+
+Purpose:
+
+- The found candidate occurred on `2025-10-13`.
+- The default latest-data window around 2026 cannot strict-step verify that candidate.
+- The new date window controls let step replay load a window that includes the candidate date.
+
 ## Current blockers / pending verification
 
-- Run `flutter analyze` on latest branch after bundled-Python changes if not already done by task party.
+- Run `flutter analyze` on latest branch after candidate-date UI changes.
+- Runtime-verify that `候选窗口 2025-10-13` loads step frames covering the candidate date.
 - Batch C strict-step verification is still pending for the discovered scan candidate.
 - Full-history/paged strict step replay is not accepted yet.
 - Legacy `OriginReplayPageV2` still exists and still contains `_sliceSnapshot`; it is no longer the active route.
@@ -100,7 +126,7 @@ Problem observed:
 
 Implemented solution:
 
-- Keep replay in `step` mode with a small count such as 40 or 80.
+- Keep replay in `step` mode with a bounded date window and selected `max_step_frames`.
 - To search a larger range, enter a larger count such as 600 and click `Scan Signal`.
 - `Scan Signal` uses `analyze_multi` with `mode=once`, so it does not return hundreds of step frames.
 - The chart can keep displaying the lightweight replay while the interval panel scans the larger once snapshot.
@@ -143,8 +169,11 @@ Interpretation:
 
 ## Next task-party operation
 
-1. Run `flutter analyze` on latest branch if not already done.
-2. Fix Copy Signal wording so scan-mode candidates say scan-mode/once snapshot, not current lightweight step frame.
-3. Continue Batch C by mapping the found scan candidate back to a strict-step frame, or add a dedicated scan-to-step verification workflow.
-4. Copy Signal strict-step acceptance must eventually include non-empty `visibleAt.frame` and `confirmedAt.frame` or an equivalent exact step/time proof.
-5. Keep App-bundled Python diagnostics available for future P0 checks.
+1. Run `git pull`.
+2. Run `flutter analyze`.
+3. Run the app fresh without manually starting external Python.
+4. In multi-level page, click `候选窗口 2025-10-13`.
+5. Click `Copy P0` and `Copy Step`.
+6. Confirm the step window includes `2025-10-13` frames.
+7. Continue Batch C by mapping the scan candidate back to a strict-step frame, or add dedicated scan-to-step verification output.
+8. Fix Copy Signal wording so scan-mode candidates say scan-mode/once snapshot, not current lightweight step frame.
