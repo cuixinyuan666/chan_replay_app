@@ -25,7 +25,9 @@ Branch: origin_vespa_tdx
 - `40a694d222aad49002a66d514b11f8cce9ab0e82`: propagated `time_log` into final snapshot and step frame metadata.
 - `218b6ae8ec2612bf75e699ce09f2b9697d290185`: added `Copy Time Log` button next to `Copy Signal` in interval signal panel.
 - `6801eaf341e8bb4d7ebf798452436ea75140e32c`: recorded Copy Time Log implementation in the manual.
-- Current update: accepted user-provided normal step and once/Scan Signal Time Logs; strategy context Time Log remains pending after context-output fix.
+- `6264c1e47bde70aa230f2a557d385ffc393a5e3b`: accepted user-provided step and once Time Logs in the manual.
+- `b2db4aa399133477606a58fe93643ce0489dfdf6`: added interval rule context fields to copied Time Logs.
+- Current update: recorded the latest strategy-panel step Time Log and context-field follow-up.
 - Earlier accepted commits remain valid: bundled Python backend, native `analyze_multi`, strict step, relation navigation, Scan Signal, arbitrary BSP validation mode, clean analyze before strategy/time-log patches.
 
 ## Current accepted work
@@ -146,6 +148,17 @@ Implemented in `lib/ui/widgets/multi_level_interval_signal_panel.dart`:
 - Added visible `Copy Time Log` button next to `Copy Signal`.
 - The button reads `widget.snapshot.meta['time_log']`.
 - The copied plain-text output includes trace/request/runtime totals, slowest top 10 stages, and full stage table.
+- Follow-up patch adds UI context fields to copied logs:
+  - `time_log_context: interval_signal_panel`
+  - `rule_mode_ui`
+  - `signal_rule_mode`
+  - `strategy_rule_name`
+  - `strategy_high_type`
+  - `strategy_low_trigger_type`
+  - `selected_pair`
+  - `frame.index.local`
+  - `frame.count.local`
+  - `backend_request_mode`
 
 Runtime Time Log accepted: normal step Load:
 
@@ -186,11 +199,30 @@ Runtime Time Log accepted: Scan Signal / once:
 - slowest stages include HTTP round-trip, backend ready, parse.
 - status: `ok`
 
+Runtime Time Log accepted as step timing from interval panel / strategy test context:
+
+- trace_id: `ml-1781194587353914`
+- mode: `step`
+- symbol: `600340`
+- levels: `DAILY,MIN30,MIN5`
+- count: `220`
+- max_step_frames: `60`
+- start/end: `2025-09-01` to `2025-10-20`
+- python_runtime: `app_bundled`
+- process_source: `app_managed`
+- used_app_bundled_python: `true`
+- native_cchan_lv_list: `true`
+- fallback_to_bridge: `false`
+- total_elapsed_ms: `28210`
+- backend_elapsed_ms: `10545`
+- frontend_elapsed_ms: `28210`
+- slowest stages include frontend parse, http round-trip, backend ready, JSON decode.
+- status: `ok`
+
 Strategy context Time Log:
 
-- User pasted a third Time Log that is identical to the once/Scan Signal log, with the same trace_id `ml-1781194209519646` and `mode: once`.
-- This proves the underlying once snapshot timing but does not distinguish strategy UI context.
-- Latest code now supports Copy Time Log from the current interval panel context after `time_log` propagation; strategy context should be retested after pulling latest commits.
+- Latest user-provided strategy-panel Time Log is a valid step timing log, but it was copied before UI context fields were added.
+- Retest after `b2db4aa399133477606a58fe93643ce0489dfdf6` should include `rule_mode_ui=strategy` and `signal_rule_mode=strategy_interval_nest_buy`.
 
 P0 Time Log acceptance status:
 
@@ -198,7 +230,8 @@ P0 Time Log acceptance status:
 - Copy Time Log UI: implemented.
 - Runtime step Load Time Log: accepted.
 - Runtime Scan Signal / once Time Log: accepted.
-- Runtime strategy context Time Log: pending retest after latest context-output fix.
+- Runtime interval-panel step Time Log: accepted.
+- Runtime strategy context Time Log with explicit rule fields: pending retest after latest context-field patch.
 
 ## Future track after Time Log: 极速 mode planning
 
@@ -224,8 +257,8 @@ Forbidden:
 
 ## Current blockers / pending verification
 
-- Re-run `flutter analyze` after `40a694d222aad49002a66d514b11f8cce9ab0e82` and `218b6ae8ec2612bf75e699ce09f2b9697d290185`.
-- Runtime strategy context Copy Time Log must be retested after latest code.
+- Re-run `flutter analyze` after `b2db4aa399133477606a58fe93643ce0489dfdf6`.
+- Runtime strategy context Copy Time Log must be retested after latest context-field patch.
 - Strategy mode acceptance is paused until Time Log is fully accepted.
 - Full-history/paged strict step replay remains deferred.
 
@@ -235,4 +268,10 @@ Forbidden:
 2. Run `flutter analyze`.
 3. Open multi-level page and perform normal step Load.
 4. Open `区间信号`, set `rule mode=strategy`, then click `Copy Time Log`; paste the result.
-5. Once strategy context Time Log is accepted, resume strategy-mode acceptance or full-history/paged strict step track.
+5. Expected new fields:
+   - `time_log_context: interval_signal_panel`
+   - `rule_mode_ui: strategy`
+   - `signal_rule_mode: strategy_interval_nest_buy`
+   - `strategy_rule_name: ...`
+   - `backend_request_mode: step`
+6. Once strategy context Time Log with rule fields is accepted, resume strategy-mode acceptance or full-history/paged strict step track.
