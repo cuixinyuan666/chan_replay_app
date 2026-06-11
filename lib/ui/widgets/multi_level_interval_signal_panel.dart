@@ -30,11 +30,21 @@ class MultiLevelIntervalSignalPanel extends StatefulWidget {
 class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignalPanel> {
   int _selectedIndex = 0;
   int _pairIndex = 0;
+  String _ruleMode = 'validation';
   String _directionFilter = 'same';
   String _highTypeFilter = 'ANY';
   String _lowTypeFilter = 'ANY';
 
   bool get _isScanMode => widget.mode == 'signal_scan_once';
+  bool get _isStrategyMode => _ruleMode == 'strategy';
+  String get _signalRuleMode => _isStrategyMode ? 'strategy_preset_v1' : 'validation_any_bsp_pair';
+  String get _ruleChipLabel => _isStrategyMode ? 'strategy preset v1' : 'any BSP pair';
+  String get _effectiveDirectionFilter => _isStrategyMode ? 'same' : _directionFilter;
+
+  static const Set<String> _strategyBuyHighTypes = {'B2', 'B2s', 'B3'};
+  static const Set<String> _strategyBuyLowTypes = {'B1', 'B2', 'B2s'};
+  static const Set<String> _strategySellHighTypes = {'S2', 'S2s', 'S3'};
+  static const Set<String> _strategySellLowTypes = {'S1', 'S2', 'S2s'};
 
   List<_LevelPair> get _pairs {
     final relationPairs = <String, _LevelPair>{};
@@ -90,18 +100,22 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          const Text(
-            'Interval validation',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
+          Text(
+            _isStrategyMode ? 'Interval strategy' : 'Interval validation',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
           ),
-          _chip('rule', 'any BSP pair', true),
+          _chip('rule', _ruleChipLabel, true),
           _chip('source', 'chan.py BSP + native relation', true),
+          if (_isStrategyMode) _chip('strategy', 'candidate only', false),
           if (pair != null) _chip('pair', pair.label, true),
           _chip('signals', '${signals.length}', signals.isNotEmpty),
+          _ruleModeDropdown(),
           _pairDropdown(),
-          _directionDropdown(),
-          _typeDropdown('high type', _highTypeFilter, highTypes, (v) => setState(() => _highTypeFilter = v)),
-          _typeDropdown('low type', _lowTypeFilter, lowTypes, (v) => setState(() => _lowTypeFilter = v)),
+          if (!_isStrategyMode) _directionDropdown(),
+          if (!_isStrategyMode) _typeDropdown('high type', _highTypeFilter, highTypes, (v) => setState(() => _highTypeFilter = v)),
+          if (!_isStrategyMode) _typeDropdown('low type', _lowTypeFilter, lowTypes, (v) => setState(() => _lowTypeFilter = v)),
+          if (_isStrategyMode) _chip('high preset', 'B2/B2s/B3 or S2/S2s/S3', true),
+          if (_isStrategyMode) _chip('low preset', 'B1/B2/B2s or S1/S2/S2s', true),
           if (selected != null) _chip('selected', '${_selectedIndex + 1}/${signals.length}', true),
           if (selected != null) _chip('state', selected.signal.state.wireName, selected.signal.state != SignalVisibilityState.invalid),
           if (selected != null) _chip('pattern', '${selected.highBsp.type}->${selected.lowBsp.type}', true),
@@ -123,6 +137,31 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
             style: _buttonStyle(),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _ruleModeDropdown() {
+    const values = ['validation', 'strategy'];
+    return SizedBox(
+      width: 132,
+      child: DropdownButtonFormField<String>(
+        value: _ruleMode,
+        dropdownColor: const Color(0xFF20242E),
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        decoration: _dropdownDecoration('rule mode'),
+        items: [
+          for (final value in values) DropdownMenuItem(value: value, child: Text(value)),
+        ],
+        onChanged: (v) => setState(() {
+          _ruleMode = v ?? 'validation';
+          _selectedIndex = 0;
+          if (_isStrategyMode) {
+            _directionFilter = 'same';
+            _highTypeFilter = 'ANY';
+            _lowTypeFilter = 'ANY';
+          }
+        }),
       ),
     );
   }
@@ -237,26 +276,33 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
           lowTrigger: lowBsp.type,
           highRawIndex: highBsp.rawIndex,
           lowRawIndex: lowBsp.rawIndex,
-          score: state == SignalVisibilityState.confirmed ? 1.0 : 0.5,
+          score: _scoreFor(highBsp, lowBsp, state),
           state: state,
-          reasons: const [
+          reasons: [
             'high level BSP is from original chan.py output',
             'low level BSP is from original chan.py output',
             'high-low range is bound by native LevelRelation',
-            'validation mode accepts arbitrary BSP type combinations',
+            _isStrategyMode
+                ? 'strategy_preset_v1 matched explicit BSP type preset'
+                : 'validation mode accepts arbitrary BSP type combinations',
           ],
           warnings: [
             _isScanMode
                 ? 'Scan snapshot candidate only; verify in strict step before formal step acceptance'
-                : 'Visible in current strict step frame; still not a trading plan',
+                : 'Visible in current strict step frame',
+            _isStrategyMode
+                ? 'Strategy preset is rule-filtered candidate only; not a trading recommendation'
+                : 'Validation mode only; not a trading plan',
           ],
           observedAtCursor: _isScanMode ? null : widget.frameIndex,
           confirmedAtCursor: !_isScanMode && state == SignalVisibilityState.confirmed ? widget.frameIndex : null,
           meta: {
-            'rule_mode': 'validation_any_bsp_pair',
-            'direction_filter': _directionFilter,
-            'high_type_filter': _highTypeFilter,
-            'low_type_filter': _lowTypeFilter,
+            'rule_mode': _signalRuleMode,
+            'strategy_version': _isStrategyMode ? 'strategy_preset_v1' : '',
+            'strategy_pattern': _strategyPattern(highBsp, lowBsp),
+            'direction_filter': _effectiveDirectionFilter,
+            'high_type_filter': _isStrategyMode ? 'strategy_preset' : _highTypeFilter,
+            'low_type_filter': _isStrategyMode ? 'strategy_preset' : _lowTypeFilter,
             'relation_source': 'native chan_parent_child LevelRelation',
             'parent_relation_range': '${relation.parentRawIndex}-${relation.parentRawIndex}',
             'child_relation_range': '${relation.childStartRawIndex}-${relation.childEndRawIndex}',
@@ -287,20 +333,28 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
   }
 
   bool _matchesHighFilter(BspPoint point) {
+    if (_isStrategyMode) return _isStrategyHighPoint(point);
     if (_highTypeFilter != 'ANY' && point.type != _highTypeFilter) return false;
-    return _matchesDirectionSide(point, isHigh: true, highPoint: point);
+    if (_directionFilter == 'buy') return point.isBuy;
+    if (_directionFilter == 'sell') return point.isSell;
+    return true;
   }
 
   bool _matchesLowFilter(BspPoint lowPoint, BspPoint highPoint, int childStart, int childEnd) {
     if (lowPoint.rawIndex < childStart || lowPoint.rawIndex > childEnd) return false;
+    if (_isStrategyMode) return _matchesStrategyPair(highPoint, lowPoint);
     if (_lowTypeFilter != 'ANY' && lowPoint.type != _lowTypeFilter) return false;
     return _matchesDirectionPair(highPoint, lowPoint);
   }
 
-  bool _matchesDirectionSide(BspPoint point, {required bool isHigh, required BspPoint highPoint}) {
-    if (_directionFilter == 'buy') return point.isBuy;
-    if (_directionFilter == 'sell') return point.isSell;
-    return true;
+  bool _isStrategyHighPoint(BspPoint point) {
+    return _strategyBuyHighTypes.contains(point.type) || _strategySellHighTypes.contains(point.type);
+  }
+
+  bool _matchesStrategyPair(BspPoint highPoint, BspPoint lowPoint) {
+    final buy = _strategyBuyHighTypes.contains(highPoint.type) && _strategyBuyLowTypes.contains(lowPoint.type);
+    final sell = _strategySellHighTypes.contains(highPoint.type) && _strategySellLowTypes.contains(lowPoint.type);
+    return buy || sell;
   }
 
   bool _matchesDirectionPair(BspPoint highPoint, BspPoint lowPoint) {
@@ -322,6 +376,24 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     if (highPoint.isBuy && lowPoint.isSell) return 'mixed_buy_sell';
     if (highPoint.isSell && lowPoint.isBuy) return 'mixed_sell_buy';
     return 'unknown';
+  }
+
+  double _scoreFor(BspPoint highPoint, BspPoint lowPoint, SignalVisibilityState state) {
+    final base = state == SignalVisibilityState.confirmed ? 1.0 : 0.5;
+    if (!_isStrategyMode) return base;
+    if (_matchesStrategyPair(highPoint, lowPoint)) return base + 0.25;
+    return base;
+  }
+
+  String _strategyPattern(BspPoint highPoint, BspPoint lowPoint) {
+    if (!_isStrategyMode) return '';
+    if (_strategyBuyHighTypes.contains(highPoint.type) && _strategyBuyLowTypes.contains(lowPoint.type)) {
+      return 'buy_pullback_continuation';
+    }
+    if (_strategySellHighTypes.contains(highPoint.type) && _strategySellLowTypes.contains(lowPoint.type)) {
+      return 'sell_rebound_continuation';
+    }
+    return 'unmatched';
   }
 
   LevelRelation? _relationContaining(List<LevelRelation> relations, int childRawIndex) {
@@ -346,7 +418,8 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         'button: Copy Signal',
         'mode: ${widget.mode}',
         'symbol: ${widget.symbol}',
-        'signal_rule_mode: validation_any_bsp_pair',
+        'signal_rule_mode: $_signalRuleMode',
+        'rule_mode_ui: $_ruleMode',
         'available_pairs: $availablePairs',
         'status: no available native relation pair',
       ].join('\n');
@@ -372,10 +445,11 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         'low_sell_count: ${lowBsps.where((b) => b.isSell).length}',
         'low_type_counts: ${_typeCounts(lowBsps)}',
         'native_relation_count_for_pair: $relationCount',
-        'candidate_rule: high BSP at parent level + low BSP inside native child range; arbitrary BSP type combination',
+        'candidate_rule: ${_candidateRuleText}',
+        'strategy_caveat: ${_strategyCaveat}',
         'future_function_policy: ${_futurePolicy}',
-        'diagnosis: no candidate matched current custom filters in this ${_isScanMode ? 'scan snapshot' : 'step frame'}',
-        'status: no signal for custom validation scope',
+        'diagnosis: no candidate matched current ${_isStrategyMode ? 'strategy preset' : 'custom validation filters'} in this ${_isScanMode ? 'scan snapshot' : 'step frame'}',
+        'status: no signal for current rule scope',
       ].join('\n');
     }
 
@@ -388,6 +462,8 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'state: ${signal.state.wireName}',
       'score: ${signal.score}',
       'strict_step_verified: ${_isScanMode ? 'false' : 'true'}',
+      'strategy_pattern: ${_strategyPattern(selected.highBsp, selected.lowBsp)}',
+      'strategy_caveat: ${_strategyCaveat}',
       'high_level: ${signal.highLevel}',
       'high_pattern: ${signal.highPattern}',
       'high_bsp_index: ${selected.highBsp.index}',
@@ -420,7 +496,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'confirmedAt.frame: ${signal.confirmedAtCursor ?? ''}',
       'invalidatedAt.frame: ${signal.invalidatedAtCursor ?? ''}',
       'future_function_policy: ${_futurePolicy}',
-      'candidate_rule: high BSP at parent level + low BSP inside native child range; arbitrary BSP type combination',
+      'candidate_rule: ${_candidateRuleText}',
       'reasons: ${signal.reasons.join(' | ')}',
       'warnings: ${signal.warnings.join(' | ')}',
       'status: ok',
@@ -436,23 +512,37 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'frame.index.local: ${widget.frameIndex ?? ''}',
       'frame.count.local: ${widget.frameCount ?? ''}',
       'signal_source: original chan.py BSP + native LevelRelation',
-      'signal_rule_mode: validation_any_bsp_pair',
-      'signal_scope: arbitrary adjacent native relation pair',
+      'signal_rule_mode: $_signalRuleMode',
+      'rule_mode_ui: $_ruleMode',
+      'strategy_version: ${_isStrategyMode ? 'strategy_preset_v1' : ''}',
+      'strategy_high_types_buy: ${_strategyBuyHighTypes.join('/')}',
+      'strategy_low_types_buy: ${_strategyBuyLowTypes.join('/')}',
+      'strategy_high_types_sell: ${_strategySellHighTypes.join('/')}',
+      'strategy_low_types_sell: ${_strategySellLowTypes.join('/')}',
+      'signal_scope: ${_isStrategyMode ? 'strategy preset adjacent native relation pair' : 'arbitrary adjacent native relation pair'}',
       'scan_candidate_only: ${_isScanMode ? 'true' : 'false'}',
       'strict_step_frame_mode: ${_isScanMode ? 'false' : 'true'}',
       'available_pairs: $availablePairs',
       'selected_pair: ${pair.label}',
       'parent_level: ${pair.parentLevel}',
       'child_level: ${pair.childLevel}',
-      'direction_filter: $_directionFilter',
-      'high_type_filter: $_highTypeFilter',
-      'low_type_filter: $_lowTypeFilter',
+      'direction_filter: $_effectiveDirectionFilter',
+      'high_type_filter: ${_isStrategyMode ? 'strategy_preset' : _highTypeFilter}',
+      'low_type_filter: ${_isStrategyMode ? 'strategy_preset' : _lowTypeFilter}',
     ];
   }
 
   String get _futurePolicy => _isScanMode
       ? 'scan snapshot only; must be verified by strict step before step acceptance'
       : 'current strict step frame only; no final snapshot signal confirmation';
+
+  String get _candidateRuleText => _isStrategyMode
+      ? 'strategy_preset_v1: high B2/B2s/B3 with low B1/B2/B2s for buy, or high S2/S2s/S3 with low S1/S2/S2s for sell; child BSP must be inside native child range'
+      : 'high BSP at parent level + low BSP inside native child range; arbitrary BSP type combination';
+
+  String get _strategyCaveat => _isStrategyMode
+      ? 'rule-filtered candidate only; not a trading recommendation; requires separate backtest/risk policy'
+      : 'validation mode only; not a trading recommendation';
 
   String _typeCounts(List<BspPoint> points) {
     final counts = <String, int>{};
