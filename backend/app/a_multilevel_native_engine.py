@@ -77,6 +77,15 @@ def _is_intraday_level(level: str) -> bool:
     return _level_intraday_bars_per_day(level) > 1
 
 
+def _effective_csv_dt(level: str, row: dict[str, Any]) -> datetime | None:
+    row_dt = _parse_bar_dt(row)
+    if row_dt is None:
+        return None
+    if _is_intraday_level(level):
+        return row_dt
+    return datetime.combine(row_dt.date(), time(23, 59))
+
+
 def _expanded_count_for_level(level: str, top_bar_count: int, requested_count: int) -> int:
     bars_per_day = _level_intraday_bars_per_day(level)
     estimated = int(top_bar_count * bars_per_day * 1.35) + 500
@@ -107,6 +116,19 @@ def _filter_by_date_window(
         if start_date <= row_dt.date() <= end_date:
             result.append(row)
     return result
+
+
+def _sort_dedupe_level_bars(level: str, bars: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    keyed: dict[datetime, dict[str, Any]] = {}
+    for row in bars:
+        if not isinstance(row, dict):
+            continue
+        key = _effective_csv_dt(level, row)
+        if key is None:
+            continue
+        keyed[key] = row
+    result = [keyed[key] for key in sorted(keyed)]
+    return result, max(0, len(bars) - len(result))
 
 
 def _common_date_window(
@@ -180,10 +202,13 @@ def _load_aligned_bars_by_level(
         bars_by_level[level] = bars
 
     common_start, common_end = _common_date_window(bars_by_level)
-    aligned = {
-        level: _filter_by_date_window(bars, common_start, common_end)
-        for level, bars in bars_by_level.items()
-    }
+    aligned: dict[str, list[dict[str, Any]]] = {}
+    duplicates_removed: dict[str, int] = {}
+    for level, bars in bars_by_level.items():
+        windowed = _filter_by_date_window(bars, common_start, common_end)
+        deduped, removed = _sort_dedupe_level_bars(level, windowed)
+        aligned[level] = deduped
+        duplicates_removed[level] = removed
     empty_levels = [level for level, bars in aligned.items() if not bars]
     if empty_levels:
         raise RuntimeError(f'native CChan(lv_list) 对齐后以下级别无K线: {empty_levels}')
@@ -201,23 +226,21 @@ def _load_aligned_bars_by_level(
         'requested_counts': requested_counts,
         'raw_counts': {level: len(bars) for level, bars in bars_by_level.items()},
         'aligned_counts': {level: len(bars) for level, bars in aligned.items()},
-        'alignment_policy': 'top-level date window + expanded sub-level count + common date trim',
+        'duplicates_removed': duplicates_removed,
+        'alignment_policy': 'expanded sub-level count + common date trim + effective-time sort/dedupe',
     }
     return aligned, meta
 
 
 def _bars_for_native_csv(level: str, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if _is_intraday_level(level):
-        return bars
     result: list[dict[str, Any]] = []
     for row in bars:
         if not isinstance(row, dict):
             continue
-        row_dt = _parse_bar_dt(row)
-        if row_dt is None:
+        csv_dt = _effective_csv_dt(level, row)
+        if csv_dt is None:
             result.append(row)
             continue
-        csv_dt = datetime.combine(row_dt.date(), time(23, 59))
         patched = dict(row)
         patched['dt'] = csv_dt.isoformat(sep=' ')
         patched['time'] = csv_dt.isoformat(sep=' ')
@@ -444,7 +467,7 @@ def analyze_multi_native(
             'chan_py_polluted': False,
             'native_step_frames': False,
             'native_data_window': data_meta,
-            'native_csv_time_policy': 'non-intraday parent levels are written to CSV at 23:59 while UI bars keep original times',
+            'native_csv_time_policy': 'effective-time sort/dedupe; non-intraday parent levels are written to CSV at 23:59 while UI bars keep original times',
             'warnings': warnings,
         },
     }
