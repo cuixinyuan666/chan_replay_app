@@ -27,203 +27,175 @@ commit: b14310c18e53bc647e2e21c1c9c15d43190ef7cb
 file: docs/multilevel_interval_nest_plan.md
 ```
 
-完成内容：
+完成：定义多级别总目标、`POST /api/chan/analyze_multi` 契约、`levels / relations / frames / meta` 返回结构、16 个目标功能与 MVP 验收路线。
 
-```text
-- 定义多级别与区间套总目标。
-- 定义 POST /api/chan/analyze_multi 接口契约。
-- 定义 levels / relations / frames / meta 返回结构。
-- 定义 16 个目标功能与开发阶段。
-- 定义 MVP-1 到 MVP-5 验收路线。
-```
-
-### 2. 父子级别关系模型
+### 2. Flutter 多级别基础模型
 
 ```text
 commit: 294292aa4e057af1f40b858792dc97f8c28756af
 file: lib/core/models/level_relation.dart
-```
 
-完成内容：
-
-```text
-- 新增 LevelRelation。
-- 支持 parent_level + parent_raw_index 映射 child_level 的 rawIndex 区间。
-- 为后续“点击高级别结构 -> 定位低级别区间”做基础。
-```
-
-### 3. 多级别快照模型
-
-```text
 commit: dcd3570c40d988e107e1f472910fd2edaf2621f0
 file: lib/core/models/multi_level_chan_snapshot.dart
-```
 
-完成内容：
-
-```text
-- 新增 MultiLevelChanSnapshot。
-- 用 Map<String, ChanSnapshot> 按级别承载 DAILY / MIN30 / MIN5 等快照。
-- 支持 mainLevel、levels、relations、meta。
-- 支持 relationsFromParent 和 relationsForParentRange 查询。
-```
-
-### 4. 回放时钟模式
-
-```text
 commit: 2bda4c3ef636e047c6c234ff2f208932003a1338
 file: lib/core/models/replay_clock_mode.dart
-```
 
-完成内容：
-
-```text
-- 新增 ReplayClockMode。
-- 支持 once、strictMainLevel、strictLowestLevel。
-- 为一次性显示、主级别严格逐K、最小级别严格逐K预留统一枚举。
-```
-
-### 5. 信号可见性状态
-
-```text
 commit: 26a78c7968affb9459dce57f631f83e49e747add
 file: lib/core/models/signal_visibility_state.dart
-```
 
-完成内容：
-
-```text
-- 新增 SignalVisibilityState。
-- 支持 forming、candidate、confirmed、invalid、futureOnly。
-- 为未来函数风险标注、训练模式、历史统计当时性校验做基础。
-```
-
-### 6. 区间套信号模型
-
-```text
 commit: 7fa905c032bdd96f82f9130172178958ac112004
 file: lib/core/models/interval_nest_signal.dart
-```
 
-完成内容：
-
-```text
-- 新增 IntervalNestSignal。
-- 承载 highLevel / midLevel / lowLevel。
-- 承载 highPattern / midPattern / lowTrigger。
-- 承载 score、state、reasons、warnings。
-- 增加 observedAtCursor、confirmedAtCursor、invalidatedAtCursor。
-- 支持 fromJson / toJson。
-```
-
-### 7. MultiLevelChanSnapshot 安全修正
-
-```text
 commit: e3ac134e4a08023f7ecec2557edf701695d75770
 file: lib/core/models/multi_level_chan_snapshot.dart
 ```
 
-完成内容：
+完成：
 
 ```text
-- 移除 firstOrNull 依赖。
-- 改为显式 levels.isNotEmpty 判断。
-- 降低 Dart analyzer 兼容风险。
+- LevelRelation：父级别 rawIndex -> 子级别 rawIndex 区间。
+- MultiLevelChanSnapshot：按级别承载多个 ChanSnapshot。
+- ReplayClockMode：once / strictMainLevel / strictLowestLevel。
+- SignalVisibilityState：forming / candidate / confirmed / invalid / futureOnly。
+- IntervalNestSignal：区间套信号载体。
+- 修正 MultiLevelChanSnapshot，移除 firstOrNull 依赖。
 ```
 
-### 8. 多级别分析解析器
+### 3. Flutter 多级别解析与客户端
 
 ```text
 commit: 59c9abb363e4e196c8fecf0656bb79a616892dfa
 file: lib/data/multi_level_chan_analysis_parser.dart
-```
 
-完成内容：
-
-```text
-- 新增 MultiLevelChanAnalysisParser。
-- 解析 analyze_multi 返回的 levels。
-- 解析 relations。
-- 解析 main_level 和 meta.levels。
-- 解析多级别 frames。
-- 通过注入 ChanSnapshotParser 复用单级别快照解析器，避免重复实现 FX / BI / SEG / ZS / BSP 解析。
-```
-
-### 9. 公共 ChanSnapshot JSON 解析器
-
-```text
 commit: 2a87332b69e2eee1d08b86f0bcf204290222e416
 file: lib/data/chan_snapshot_json_parser.dart
-```
 
-完成内容：
-
-```text
-- 新增 ChanSnapshotJsonParser。
-- 将后端 JSON 解析为现有 ChanSnapshot。
-- 只解析后端结果，不在 Flutter 计算缠论结构。
-- 为多级别客户端提供可复用单级别快照解析能力。
-- 暂未替换现有 PythonChanAnalysisSource 内部解析逻辑，避免长文件误覆盖。
-```
-
-### 10. 独立多级别分析客户端
-
-```text
 commit: b44442e2897b639879942f49673e3d31bd82dfdd
 file: lib/data/python_multi_level_chan_analysis_source.dart
 ```
 
-完成内容：
+完成：
 
 ```text
-- 新增 PythonMultiLevelChanAnalysisSource。
-- 新增 PythonMultiLevelChanAnalysis 结果载体。
-- 支持 POST /api/chan/analyze_multi。
-- 请求字段支持 mode、market、symbol、lv_list、adjust、config、main_level、clock_level、count、start、end。
-- 复用 ChanSnapshotJsonParser 和 MultiLevelChanAnalysisParser。
+- MultiLevelChanAnalysisParser：解析 levels / relations / frames / meta。
+- ChanSnapshotJsonParser：把后端 JSON 解析为现有 ChanSnapshot，不计算缠论结构。
+- PythonMultiLevelChanAnalysisSource：独立客户端，支持 POST /api/chan/analyze_multi。
 - 解析可选 interval_nest_signals。
 ```
 
-限制说明：
+限制：
 
 ```text
-- 暂未接入现有复盘页面。
-- 暂未替换 PythonChanAnalysisSource.analyze()。
-- 暂未支持 Windows 自动后台启动本地 Python 服务。
-- 暂未支持 Android MethodChannel 多级别调用。
-- 后端 /api/chan/analyze_multi 尚未实现前，此客户端不能完成真实请求。
+- 尚未接入 UI。
+- 尚未接入 Windows 自动后台启动本地 Python 服务。
+- 尚未接入 Android MethodChannel。
+- 没有替换现有 PythonChanAnalysisSource。
+```
+
+### 4. 后端 analyze_multi 安全桥接版
+
+```text
+commit: ee2d039f3fa28e46226a5f0e26d74cfc84ffb1ea
+file: backend/app/a_multilevel_engine.py
+```
+
+完成：
+
+```text
+- 新增 backend/app/a_multilevel_engine.py。
+- 新增 analyze_multi 后端引擎函数。
+- 返回 contract-compatible 多级别结构：levels / relations / frames / meta。
+- 每个级别复用现有单级别 chanpy_engine.analyze_once。
+- chan.py 仍是 FX / BI / SEG / ZS / BSP 唯一计算源。
+- 新增时间/日期桥接 relations，用于高级别 K 到低级别 K 区间映射。
+- 支持 mode=step 时按 clock_level 构造多级别 frame。
+```
+
+重要限制：
+
+```text
+- 当前是安全桥接版，不是原生 CChan(lv_list=[...])。
+- meta.native_cchan_lv_list=false。
+- parent-child relations 当前为 time_date_bridge，不是 chan.py parent_klu/sub_kl_list 原生关系。
+- 后续需要升级为原生多级别对象关系。
+```
+
+### 5. FastAPI 路由接入
+
+```text
+commit: 1ded7ed6edd47267c7fd5856f504de4cfe341433
+file: backend/app/main.py
+```
+
+完成：
+
+```text
+- 在 FastAPI 中引入 a_multilevel_engine.analyze_multi。
+- 新增 POST /api/chan/analyze_multi。
+- 根接口 endpoint 列表加入 /api/chan/analyze_multi。
+- 接收 lv_list / levels / level_order。
+- 接收 main_level / clock_level。
+- 接收 mode / symbol / market / adjust / start / end / count / config。
+- 保持 /api/chan/analyze 和 /api/chan/analyze_bars 不变。
+```
+
+### 6. analyze_multi 冒烟测试文档
+
+```text
+commit: 8ef4a6a26c9ee7865fed86ff98893e908e9f6230
+file: docs/analyze_multi_smoke_test.md
+```
+
+完成：
+
+```text
+- 记录 once 模式请求体。
+- 记录 step 模式请求体。
+- 记录响应字段检查点。
+- 记录当前安全桥接版边界。
+- 记录 Flutter 侧已具备和未接入内容。
 ```
 
 ## 当前完成度
 
 ```text
-阶段 0：架构文档与接口契约              已完成
-阶段 1A：Flutter 多级别基础模型          已完成
-阶段 1B：多级别 JSON 解析器              已完成
-阶段 1C：独立 analyze_multi 客户端        已完成（未接 UI / 未接自动本地服务）
-阶段 2：后端 analyze_multi                未完成
-阶段 3：UI 级别切换与图层面板            未完成
-阶段 4：高级别定位低级别区间            未完成
-阶段 5：多级别严格逐K                   未完成
-阶段 6：区间套信号引擎                  未完成
-阶段 7：评分、交易计划、训练、统计、选股 未完成
+阶段 0：架构文档与接口契约                    已完成
+阶段 1A：Flutter 多级别基础模型                已完成
+阶段 1B：多级别 JSON 解析器                    已完成
+阶段 1C：独立 analyze_multi 客户端              已完成（未接 UI / 未接自动本地服务）
+阶段 2：后端 analyze_multi 安全桥接版           已完成（非原生 CChan lv_list）
+阶段 2B：原生 CChan(lv_list) 多级别关系          未完成
+阶段 3：UI 级别切换与图层面板                  未完成
+阶段 4：高级别定位低级别区间                  未完成
+阶段 5：多级别严格逐K                         部分完成（后端安全桥接 frames；UI 未接）
+阶段 6：区间套信号引擎                        未完成
+阶段 7：评分、交易计划、训练、统计、选股       未完成
 ```
 
 ## 当前代码影响范围
 
-当前已提交内容主要新增模型、解析器、独立客户端和文档：
+新增：
 
 ```text
-新增：docs/multilevel_interval_nest_plan.md
-新增：docs/multilevel_interval_nest_progress.md
-新增：lib/core/models/level_relation.dart
-新增：lib/core/models/multi_level_chan_snapshot.dart
-新增：lib/core/models/replay_clock_mode.dart
-新增：lib/core/models/signal_visibility_state.dart
-新增：lib/core/models/interval_nest_signal.dart
-新增：lib/data/multi_level_chan_analysis_parser.dart
-新增：lib/data/chan_snapshot_json_parser.dart
-新增：lib/data/python_multi_level_chan_analysis_source.dart
+docs/multilevel_interval_nest_plan.md
+docs/multilevel_interval_nest_progress.md
+docs/analyze_multi_smoke_test.md
+lib/core/models/level_relation.dart
+lib/core/models/multi_level_chan_snapshot.dart
+lib/core/models/replay_clock_mode.dart
+lib/core/models/signal_visibility_state.dart
+lib/core/models/interval_nest_signal.dart
+lib/data/multi_level_chan_analysis_parser.dart
+lib/data/chan_snapshot_json_parser.dart
+lib/data/python_multi_level_chan_analysis_source.dart
+backend/app/a_multilevel_engine.py
+```
+
+修改：
+
+```text
+backend/app/main.py
 ```
 
 尚未修改：
@@ -236,64 +208,78 @@ python/app_engine.py
 python/chan.py
 ```
 
-因此当前单级别复盘、一次性显示、严格逐K、图层开关理论上不应受影响。
+## 当前可测试内容
+
+后端新增接口：
+
+```text
+POST /api/chan/analyze_multi
+```
+
+参考：
+
+```text
+docs/analyze_multi_smoke_test.md
+```
+
+预期返回：
+
+```text
+levels: DAILY / MIN30 / MIN5 等多级别结构
+relations: 父级别 K 到子级别 K 区间映射
+frames: step 模式下的多级别逐K帧
+meta.native_cchan_lv_list: false
+meta.chan_py_polluted: false
+```
 
 ## 下一步任务
 
-### 下一步 1：后端 analyze_multi
+### 下一步 1：本地验证 analyze_multi
 
 目标：
 
 ```text
-新增 POST /api/chan/analyze_multi。
-接收 lv_list。
-调用 chan.py 多级别能力。
-返回 levels / relations / frames / meta。
+启动 python/app_engine.py。
+调用 /api/chan/analyze_multi once。
+调用 /api/chan/analyze_multi step。
+检查 levels / relations / frames 是否符合契约。
 ```
 
-注意：
-
-```text
-不修改 python/chan.py 内部逻辑。
-只在 App 自主扩展层中新增序列化与接口。
-```
-
-### 下一步 2：现有 source 兼容接入
+### 下一步 2：Flutter UI 多级别切换
 
 目标：
 
 ```text
-在确认 standalone source 可用后，再考虑把 PythonChanAnalysisSource 扩展为：
-- 保留 snapshot / frames
-- 新增 multiSnapshot / multiFrames
+先加受控入口，不替换原单级别入口。
+支持 DAILY / MIN30 / MIN5 切换显示。
+使用 PythonMultiLevelChanAnalysisSource。
 ```
 
-当前不急于改该长文件，避免误覆盖。
-
-### 下一步 3：UI 多级别切换
+### 下一步 3：多级别图层状态
 
 目标：
 
 ```text
-先实现 DAILY / MIN30 / MIN5 切换显示。
-暂不做复杂区间套联动。
+once：显示各级别全量数量。
+step：显示各级别 当前/全量 数量。
 ```
 
-### 下一步 4：多级别图层状态
+### 下一步 4：原生 CChan(lv_list) 升级
 
 目标：
 
 ```text
-一次性显示：显示各级别全量数量。
-严格逐K：显示各级别 当前/全量 数量。
+使用 chan.py 原生多级别对象关系。
+从 parent_klu / sub_kl_list 生成精确 relations。
+替换当前 time_date_bridge。
 ```
 
 ## 风险记录
 
 ```text
 1. GitHub contents API 每次 create_file/update_file 会直接在远端分支产生提交，不是本地暂存后统一 push。
-2. 后续修改 python_chan_analysis_source.dart 时文件较长，应避免整文件误覆盖。
-3. 当前新增 standalone source 是为了降低对现有稳定单级别流程的影响。
-4. 后端 analyze_multi 未完成前，前端 multi-level client 只能解析模拟或未来接口返回。
-5. Windows 自动启动本地 Python 和 Android MethodChannel 多级别调用需要单独补齐。
+2. 当前 analyze_multi 是安全桥接版，结构计算仍来自 chan.py，但多级别关系不是原生 CChan lv_list。
+3. 后续改 UI 前需要先本地验证 analyze_multi 响应。
+4. Windows 自动启动本地 Python 和 Android MethodChannel 多级别调用仍未接入。
+5. step frames 当前按 clock_level 截取各级别可见数据，仍需通过本地样本验证边界情况。
 ```
