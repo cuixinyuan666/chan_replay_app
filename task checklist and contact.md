@@ -11,6 +11,7 @@ Branch: origin_vespa_tdx
 - Strict step replay must use backend step frames, never final-snapshot slicing.
 - If diagnostics are needed, expose an in-app copy button.
 - Normal Windows user workflow uses App-managed bundled Python.
+- User-facing workflow must not require manually starting system Python, Conda Python, Windows Store Python, Termux Python, or any other external interpreter.
 
 ## Latest important commits
 
@@ -40,13 +41,52 @@ Branch: origin_vespa_tdx
 - Layer status, relation panel, and interval panel no longer cover chart/action buttons by default.
 - Duplicate `Copy Step` button was removed from the step control bar.
 - Large-count signal discovery uses `Scan Signal` with once-mode snapshot, not large step replay.
-- App-bundled Python implementation exists in latest code and should be runtime-verified, not reimplemented.
+- App-bundled Python implementation exists in latest code.
+- App-bundled Python runtime is runtime-accepted by user Copy P0 diagnostics.
+- Fresh multi-level `Load` works through App-managed bundled Python backend at an app-assigned localhost port.
+
+## Runtime verification accepted: App-bundled Python / Copy P0
+
+User reported Copy P0:
+
+- mode: `step`
+- symbol: `600340`
+- market: `SH`
+- levels: `DAILY,MIN30,MIN5`
+- strict_step_blocked: `false`
+- native_cchan_lv_list: `true`
+- level_relation_mode: `chan_parent_child`
+- fallback_to_bridge: `false`
+- relations.length: `360`
+- frames.length: `24`
+- source: `origin_vespa_tdx.backend.a_multilevel_native_engine`
+- backend_url: `http://127.0.0.1:13053`
+- python_runtime: `app_bundled`
+- backend_runtime.process_source: `app_managed`
+- backend_runtime.python_runtime: `app_bundled`
+- backend_runtime.python_runtime_path: `python/python.exe` inside the app directory
+- backend_runtime.app_engine_path: `python/app_engine.py` inside the app directory
+- backend_health.ok: `true`
+- backend_health.backend: `origin_vespa_tdx`
+- backend_health.engine: `chan.py`
+- backend_health.research_api: `true`
+- is_app_bundled: `true`
+- requires_analyze_multi: `true`
+- native_step_frames: `true`
+- native_step_frames_total: `40`
+- native_step_frames_returned: `24`
+- native_step_frames_truncated: `true`
+
+Decision:
+
+- App-managed bundled Python runtime is accepted for the reported Windows workflow.
+- The app no longer requires the user to manually start an external interpreter for the reported multi-level workflow.
+- `/api/chan/analyze_multi` is available from the App-managed backend.
+- Continue requiring in-app diagnostics for future runtime issues.
 
 ## Current blockers / pending verification
 
-- Run `flutter analyze` on latest branch after bundled-Python changes.
-- Runtime-verify that fresh Windows app start can run Multi-level `Load` without manually starting external Python.
-- Runtime-verify that `Copy P0` includes or proves `python_runtime: app_bundled` through backend meta.
+- Run `flutter analyze` on latest branch after bundled-Python changes if not already done by task party.
 - Batch C strict-step verification is still pending for the discovered scan candidate.
 - Full-history/paged strict step replay is not accepted yet.
 - Legacy `OriginReplayPageV2` still exists and still contains `_sliceSnapshot`; it is no longer the active route.
@@ -65,13 +105,14 @@ Implemented solution:
 - `Scan Signal` uses `analyze_multi` with `mode=once`, so it does not return hundreds of step frames.
 - The chart can keep displaying the lightweight replay while the interval panel scans the larger once snapshot.
 
-Positive candidate found:
+Positive candidate found through Copy Signal:
 
 - mode: `signal_scan_once`
 - symbol: `600340`
 - available_signals: `1`
 - direction: `buy`
 - state: `confirmed`
+- score: `1.0`
 - high_level: `DAILY`
 - high_pattern: `2-buy`
 - high_bsp_index: `4`
@@ -88,19 +129,22 @@ Positive candidate found:
 - child_relation_range: `1912-1919`
 - child_union_range: `1912-1919`
 - relation_count_for_parent: `1`
+- signal_source: `original chan.py BSP + native LevelRelation`
+- future_function_policy: `current frame only; no final snapshot signal confirmation`
 - status: `ok`
 
 Interpretation:
 
-- Candidate discovery works over a once-mode scan snapshot.
+- Batch C scan-mode candidate discovery works over a once-mode scan snapshot.
 - Source BSP fields and native relation range are present.
-- It is not yet strict-step accepted because `visibleAt.frame` and `confirmedAt.frame` are blank in scan mode.
+- The discovered candidate is accepted as a scan-mode interval-nest MVP candidate.
+- It is not yet strict-step accepted because `visibleAt.frame`, `confirmedAt.frame`, and `invalidatedAt.frame` are blank in scan mode.
+- The warning says `Accepted on current lightweight step frame only`, but the mode is `signal_scan_once`; this wording should be corrected to avoid confusing scan-mode acceptance with strict-step acceptance.
 
 ## Next task-party operation
 
-1. Run `flutter analyze` on latest branch.
-2. Run the app fresh without starting any external Python manually.
-3. In multi-level page, `mode=step`, `count=40`, click `Load`.
-4. Click `Copy P0` and verify backend meta proves `python_runtime: app_bundled` or equivalent.
-5. Use `Scan Signal(600)` only for candidate search.
-6. Continue Batch C by mapping the found scan candidate back to strict-step frame verification.
+1. Run `flutter analyze` on latest branch if not already done.
+2. Fix Copy Signal wording so scan-mode candidates say scan-mode/once snapshot, not current lightweight step frame.
+3. Continue Batch C by mapping the found scan candidate back to a strict-step frame, or add a dedicated scan-to-step verification workflow.
+4. Copy Signal strict-step acceptance must eventually include non-empty `visibleAt.frame` and `confirmedAt.frame` or an equivalent exact step/time proof.
+5. Keep App-bundled Python diagnostics available for future P0 checks.
