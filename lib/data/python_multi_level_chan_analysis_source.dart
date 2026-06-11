@@ -140,6 +140,7 @@ class PythonMultiLevelChanAnalysisSource {
           ),
         );
     stages['frontend.http_round_trip'] = httpSw.elapsedMilliseconds;
+    stages['frontend.response_bytes'] = response.bodyBytes.length;
     return _decodeResponse(
       response,
       sourceBaseUrl: sourceBase,
@@ -271,6 +272,7 @@ class PythonMultiLevelChanAnalysisSource {
       'total_elapsed_ms': frontendTotal,
       'backend_elapsed_ms': backendElapsed,
       'frontend_elapsed_ms': frontendTotal,
+      'response_bytes': stages['frontend.response_bytes'],
       'stages': Map<String, int>.from(stages),
       'used_app_bundled_python': (meta['python_runtime'] ?? runtime['python_runtime']) == 'app_bundled',
       'native_cchan_lv_list': meta['native_cchan_lv_list'],
@@ -297,6 +299,7 @@ class PythonMultiLevelChanAnalysisSource {
 
     final frames = MultiLevelChanAnalysisParser.parseFrames(
       data['frames'],
+      baseLevels: data['levels'],
       parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
     );
 
