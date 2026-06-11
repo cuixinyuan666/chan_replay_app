@@ -73,6 +73,10 @@ def _level_intraday_bars_per_day(level: str) -> int:
     return mapping.get(text, 1)
 
 
+def _is_intraday_level(level: str) -> bool:
+    return _level_intraday_bars_per_day(level) > 1
+
+
 def _expanded_count_for_level(level: str, top_bar_count: int, requested_count: int) -> int:
     bars_per_day = _level_intraday_bars_per_day(level)
     estimated = int(top_bar_count * bars_per_day * 1.35) + 500
@@ -202,6 +206,32 @@ def _load_aligned_bars_by_level(
     return aligned, meta
 
 
+def _bars_for_native_csv(level: str, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if _is_intraday_level(level):
+        return bars
+    result: list[dict[str, Any]] = []
+    for row in bars:
+        if not isinstance(row, dict):
+            continue
+        row_dt = _parse_bar_dt(row)
+        if row_dt is None:
+            result.append(row)
+            continue
+        csv_dt = datetime.combine(row_dt.date(), time(23, 59))
+        patched = dict(row)
+        patched['dt'] = csv_dt.isoformat(sep=' ')
+        patched['time'] = csv_dt.isoformat(sep=' ')
+        result.append(patched)
+    return result
+
+
+def _csv_bars_by_level(level_order: list[str], bars_by_level: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    return {
+        level: _bars_for_native_csv(level, bars_by_level[level])
+        for level in level_order
+    }
+
+
 def _patch_indicators(level_result: dict[str, Any], config: dict[str, Any] | None) -> dict[str, Any]:
     bars = level_result.get('bars') if isinstance(level_result.get('bars'), list) else []
     patched = dict(level_result)
@@ -310,8 +340,9 @@ def _prepare_native_chan(
     autype = exporter.pick_autype(AUTYPE, adjust)
     prepared_code_base = f'origin_multi_{_safe_code(code)}'
     prepared_code: str | None = None
+    csv_levels = _csv_bars_by_level(level_order, bars_by_level)
     for level, kl_type in zip(level_order, kl_types):
-        csv_path = _bars_to_csv(bars_by_level[level], f'{prepared_code_base}_{level.lower()}')
+        csv_path = _bars_to_csv(csv_levels[level], f'{prepared_code_base}_{level.lower()}')
         next_code = exporter.prepare_chanpy_csv(str(csv_path), chanpy_root, kl_type, prepared_code_base)
         prepared_code = prepared_code or str(next_code)
     chan_config = CChanConfig(_config_dict(trigger_step=False, config=config))
@@ -413,6 +444,7 @@ def analyze_multi_native(
             'chan_py_polluted': False,
             'native_step_frames': False,
             'native_data_window': data_meta,
+            'native_csv_time_policy': 'non-intraday parent levels are written to CSV at 23:59 while UI bars keep original times',
             'warnings': warnings,
         },
     }
