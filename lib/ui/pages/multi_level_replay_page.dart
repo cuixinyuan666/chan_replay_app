@@ -382,11 +382,23 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     return 'analyze_multi ${_mode.toUpperCase()} native:$native relation:$relationMode fallback:${fallback ?? false} relations:${snapshot.relations.length} frames:${analysis.frames.length} ${parts.join(' | ')}';
   }
 
+  String _buildLevelSummary(PythonMultiLevelChanAnalysis analysis) {
+    final parts = <String>[];
+    for (final level in analysis.snapshot.levels) {
+      final s = analysis.snapshot.of(level);
+      if (s == null) continue;
+      parts.add('$level K:${s.rawBars.length} BI:${s.bis.length} FX:${s.fxs.length} SEG:${s.segs.length} ZS:${s.zss.length} BSP:${s.bsps.length}');
+    }
+    return parts.join(' | ');
+  }
+
   String _buildP0DiagnosticText(PythonMultiLevelChanAnalysis analysis) {
     final meta = analysis.meta;
     final snapshot = analysis.snapshot;
     return [
       'manual P0 diagnostics',
+      'status_summary: ${_buildStatus(analysis)}',
+      'level_summary: ${_buildLevelSummary(analysis)}',
       'mode: $_mode',
       'symbol: ${_symbolController.text.trim()}',
       'market: ${_marketController.text.trim().toUpperCase()}',
