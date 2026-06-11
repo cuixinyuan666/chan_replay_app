@@ -8,6 +8,7 @@ import '../../core/models/multi_level_view_state.dart';
 import '../../core/models/replay_clock_mode.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
 import '../widgets/multi_level_layer_status_panel.dart';
+import '../widgets/multi_level_relation_panel.dart';
 import '../widgets/multi_level_switcher.dart';
 import '../widgets/origin_kline_chart.dart';
 
@@ -172,6 +173,15 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                         _crosshairIndex = null;
                       }),
                     ),
+                  ),
+                if (current != null && current.relations.isNotEmpty)
+                  MultiLevelRelationPanel(
+                    snapshot: current,
+                    mode: _mode,
+                    frameIndex: _mode == 'step' && _analysis?.frames.isNotEmpty == true ? _frameIndex : null,
+                    frameCount: _mode == 'step' ? _analysis?.frames.length : null,
+                    symbol: _symbolController.text.trim(),
+                    onLocate: _locateRelationTarget,
                   ),
                 Expanded(
                   child: _stepFramesEmpty
@@ -517,6 +527,31 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       _crosshairIndex = null;
       _status = _buildStatus(analysis, snapshot: analysis.frames[safe]);
     });
+  }
+
+  void _locateRelationTarget(RelationLocateRequest request) {
+    final current = _current;
+    final levelSnapshot = current?.of(request.level) ?? _full?.of(request.level);
+    if (levelSnapshot == null || levelSnapshot.rawBars.isEmpty) return;
+    final endIndex = _barListIndexForRawIndex(levelSnapshot, request.endRawIndex);
+    final startIndex = _barListIndexForRawIndex(levelSnapshot, request.startRawIndex);
+    final rangeWidth = (endIndex - startIndex).abs() + 18;
+    setState(() {
+      _viewState = _viewState.withActiveLevel(request.level);
+      _viewEndIndex = endIndex.clamp(0, levelSnapshot.rawBars.length - 1).toInt();
+      if (rangeWidth > _windowSize) _windowSize = rangeWidth.clamp(30, 260).toInt();
+      _crosshairIndex = _viewEndIndex;
+      _status = 'relation locate ${request.level} raw:${request.startRawIndex}-${request.endRawIndex}';
+    });
+  }
+
+  int _barListIndexForRawIndex(dynamic snapshot, int rawIndex) {
+    final bars = snapshot.rawBars;
+    for (var i = 0; i < bars.length; i++) {
+      if (bars[i].index == rawIndex) return i;
+    }
+    if (rawIndex >= 0 && rawIndex < bars.length) return rawIndex;
+    return bars.isEmpty ? 0 : bars.length - 1;
   }
 
   void _panChartByBars(int bars) {
