@@ -52,25 +52,51 @@ def _parse_bar_dt(row: dict[str, Any]) -> datetime | None:
 
 
 def _level_intraday_bars_per_day(level: str) -> int:
-    text = level.upper().replace('K_', '').replace('M', 'MIN')
-    mapping = {
+    text = level.upper().strip().replace('K_', '').replace('-', '').replace('_', '')
+    aliases = {
         'MIN1': 240,
         '1MIN': 240,
+        'M1': 240,
+        '1M': 240,
         'MIN5': 48,
         '5MIN': 48,
+        'M5': 48,
+        '5M': 48,
         'MIN15': 16,
         '15MIN': 16,
+        'M15': 16,
+        '15M': 16,
         'MIN30': 8,
         '30MIN': 8,
+        'M30': 8,
+        '30M': 8,
         'MIN60': 4,
         '60MIN': 4,
+        'M60': 4,
+        '60M': 4,
         'DAILY': 1,
         'DAY': 1,
-        'K_DAY': 1,
+        'KDAY': 1,
         'WEEKLY': 1,
+        'WEEK': 1,
         'MONTHLY': 1,
+        'MONTH': 1,
     }
-    return mapping.get(text, 1)
+    if text in aliases:
+        return aliases[text]
+    if text.startswith('MIN') and text[3:].isdigit():
+        minutes = max(1, int(text[3:]))
+        return max(1, 240 // minutes)
+    if text.endswith('MIN') and text[:-3].isdigit():
+        minutes = max(1, int(text[:-3]))
+        return max(1, 240 // minutes)
+    if text.startswith('M') and text[1:].isdigit():
+        minutes = max(1, int(text[1:]))
+        return max(1, 240 // minutes)
+    if text.endswith('M') and text[:-1].isdigit():
+        minutes = max(1, int(text[:-1]))
+        return max(1, 240 // minutes)
+    return 1
 
 
 def _is_intraday_level(level: str) -> bool:
@@ -227,6 +253,7 @@ def _load_aligned_bars_by_level(
         'raw_counts': {level: len(bars) for level, bars in bars_by_level.items()},
         'aligned_counts': {level: len(bars) for level, bars in aligned.items()},
         'duplicates_removed': duplicates_removed,
+        'bars_per_day': {level: _level_intraday_bars_per_day(level) for level in level_order},
         'alignment_policy': 'expanded sub-level count + common date trim + effective-time sort/dedupe',
     }
     return aligned, meta
