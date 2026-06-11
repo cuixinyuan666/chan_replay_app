@@ -1,8 +1,10 @@
-# Windows embedded Python runtime
+# Windows App-Bundled Python Runtime
 
-`origin_vespa_tdx` 的 Windows 目标是随 App 携带便携 Python，而不是依赖 Anaconda、系统 Python 或手工设置 `CHANPY_PATH`。
+The Windows app must use the Python runtime bundled with the app. Normal app
+workflows must not start system Python, Conda Python, Windows Store Python,
+`python3`, `py -3`, or any other external interpreter.
 
-最终目录：
+## Runtime Layout
 
 ```text
 chan_replay_app/
@@ -11,83 +13,62 @@ chan_replay_app/
     python311.dll
     python311.zip
     Lib/
-    site-packages/
+    Scripts/
     app_engine.py
     requirements-windows.txt
     chan.py/
-      Chan.py
-      ChanConfig.py
-      Common/
-      KLine/
-      Bi/
-      Seg/
-      ZS/
-      DataAPI/
+  backend/
+    app/
 ```
 
-Flutter 当前 Windows 自动启动顺序：
+Packaged Windows builds install these directories under:
 
 ```text
-1. python/python.exe
-2. backend/.venv/Scripts/python.exe
-3. python
-4. py -3
+<app-exe-dir>/data/python/
+<app-exe-dir>/data/backend/
 ```
 
-因此只要 `python/python.exe` 存在，App 会优先使用项目内便携 Python。
+## Startup Rule
 
-## 准备文件
-
-手工下载：
+The Flutter app starts:
 
 ```text
-1. Windows embeddable package，例如 python-3.11.9-embed-amd64.zip
-2. get-pip.py
+data/python/python.exe data/python/app_engine.py --host 127.0.0.1 --port <free-port>
 ```
 
-脚本不会主动联网下载这些文件；这样可以避免构建脚本隐藏网络行为。
+There is no fallback interpreter. If `data/python/python.exe` or
+`data/python/app_engine.py` is missing, the workflow is blocked and the app
+should show/copy diagnostics instead of asking the user to start a backend
+manually.
 
-## 一键准备便携目录
+## Required Backend Endpoints
 
-在项目根目录运行：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/setup_windows_embedded_python.ps1 `
-  -EmbeddedZip C:\path\to\python-3.11.9-embed-amd64.zip `
-  -GetPipPy C:\path\to\get-pip.py `
-  -ChanPySource ..\chan.py
-```
-
-脚本会：
+The App-managed backend must expose:
 
 ```text
-1. 解压 embeddable Python 到 python/
-2. 修改 python*._pth，启用 import site，并加入 Lib/site-packages
-3. 安装 pip
-4. 安装 python/requirements-windows.txt
-5. 可选复制 chan.py 到 python/chan.py
-6. 检查 python/app_engine.py
-7. 执行 app_engine.py --help 作为 smoke test
+/health
+/api/chan/analyze
+/api/chan/analyze_bars
+/api/chan/analyze_multi
+/api/scanner/bsp/scan
+/api/scanner/bsp/scan_stream
+/api/research/bsp/features
+/api/research/ml/score
+/api/research/backtest
+/api/research/pipeline
 ```
 
-## 验证
+Multi-level replay and Scan Signal require `/api/chan/analyze_multi`. If the
+bundled backend cannot expose it, the task is blocked.
+
+## Development Smoke Checks
+
+These commands are for development checks only:
 
 ```powershell
 .\python\python.exe .\python\app_engine.py --help
-.\python\python.exe -m pip list
-```
-
-启动本地服务：
-
-```powershell
 .\python\python.exe .\python\app_engine.py --host 127.0.0.1 --port 8000
 ```
 
-Flutter 运行时会自动优先使用 `python/python.exe`。
-
-## 注意
-
-- `python/app_engine.py` 不是多余文件；它是 Windows 本地 Python 服务入口。
-- `python/chan.py` 是 Vespa/chan.py 源码目录；它应与 `app_engine.py` 同级。
-- 不要把 `app_engine.py` 放进 `python/chan.py/`。
-- 不要把 embeddable Python 二进制提交到 Git；发布包阶段再放入。
+They do not define the accepted user workflow. The accepted workflow is the app
+starting and managing bundled Python automatically.

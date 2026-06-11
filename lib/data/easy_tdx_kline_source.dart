@@ -1,15 +1,16 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
 import '../core/models/raw_bar.dart';
+import 'app_bundled_python_backend.dart';
 
 class EasyTdxKlineSource {
   final String baseUrl;
   final http.Client _client;
-  _LocalEasyTdxProcess? _localProcess;
+  AppBundledPythonBackendProcess? _localProcess;
 
   EasyTdxKlineSource({required this.baseUrl, http.Client? client})
       : _client = client ?? http.Client();
@@ -25,10 +26,11 @@ class EasyTdxKlineSource {
   }) async {
     final normalizedCode = code.trim();
     if (!RegExp(r'^\d{6}$').hasMatch(normalizedCode)) {
-      throw const FormatException('股票代码必须是6位数字，例如 000001');
+      throw const FormatException(
+          'Stock code must be 6 digits, for example 000001.');
     }
     if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
-      throw const FormatException('开始日期不能晚于结束日期');
+      throw const FormatException('Start date cannot be after end date.');
     }
 
     final query = {
@@ -41,26 +43,18 @@ class EasyTdxKlineSource {
       if (endDate != null) 'end': _fmtDate(endDate),
     };
 
-    try {
-      return await _loadFromBase(baseUrl, query);
-    } on _EasyTdxBackendMismatch catch (_) {
-      return _loadViaAutoLocalBackend(query);
-    } on SocketException catch (_) {
-      return _loadViaAutoLocalBackend(query);
-    } on http.ClientException catch (e) {
-      if (!_looksLikeConnectionFailure(e)) rethrow;
-      return _loadViaAutoLocalBackend(query);
-    } on TimeoutException catch (_) {
-      return _loadViaAutoLocalBackend(query);
-    }
+    if (Platform.isWindows) return _loadViaAutoLocalBackend(query);
+    return _loadFromBase(baseUrl, query);
   }
 
   Future<List<RawBar>> _loadViaAutoLocalBackend(
       Map<String, String> query) async {
     if (!Platform.isWindows) {
-      throw UnsupportedError('自动后台启动 easy-tdx 本地服务目前只支持 Windows');
+      throw UnsupportedError(
+        'App-managed bundled Python backend startup is only supported on Windows.',
+      );
     }
-    _localProcess = await _LocalEasyTdxProcess.start();
+    _localProcess = await AppBundledPythonBackend.start();
     return _loadFromBase(_localProcess!.baseUrl, query);
   }
 
@@ -76,26 +70,27 @@ class EasyTdxKlineSource {
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       if (response.statusCode == 404 && _canAutoFallback(sourceBaseUrl)) {
-        throw _EasyTdxBackendMismatch('localhost 服务不是当前 easy-tdx 后端: $body');
+        throw _EasyTdxBackendMismatch(
+            'localhost service is not the expected easy-tdx backend: $body');
       }
-      throw Exception('easy-tdx 返回 ${response.statusCode}: $body');
+      throw Exception('easy-tdx returned ${response.statusCode}: $body');
     }
 
     final Object? decoded;
     try {
       decoded = jsonDecode(body);
     } catch (_) {
-      throw _EasyTdxBackendMismatch('localhost /health 不是 JSON 对象: $body');
+      throw _EasyTdxBackendMismatch('localhost response is not JSON: $body');
     }
     if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('easy-tdx 返回结构不是 JSON 对象');
+      throw const FormatException('easy-tdx response is not a JSON object.');
     }
     if (decoded['ok'] == false) {
-      throw Exception(decoded['error'] ?? 'easy-tdx 获取失败');
+      throw Exception(decoded['error'] ?? 'easy-tdx request failed.');
     }
     final rows = decoded['bars'];
     if (rows is! List) {
-      throw const FormatException('easy-tdx 未返回 bars 数组');
+      throw const FormatException('easy-tdx response is missing bars.');
     }
 
     final bars = <RawBar>[];
@@ -112,15 +107,6 @@ class EasyTdxKlineSource {
     ];
   }
 
-  bool _looksLikeConnectionFailure(http.ClientException e) {
-    final msg = e.toString().toLowerCase();
-    return msg.contains('connection refused') ||
-        msg.contains('connection failed') ||
-        msg.contains('failed host lookup') ||
-        msg.contains('connection reset') ||
-        msg.contains('connection closed');
-  }
-
   Future<void> _assertCompatibleBackend(String sourceBaseUrl) async {
     if (!_canAutoFallback(sourceBaseUrl)) return;
 
@@ -129,17 +115,17 @@ class EasyTdxKlineSource {
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw _EasyTdxBackendMismatch(
-          'localhost /health 返回 ${response.statusCode}: $body');
+          'localhost /health returned ${response.statusCode}: $body');
     }
 
     final decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
-      throw const _EasyTdxBackendMismatch('localhost /health 不是 JSON 对象');
+      throw const _EasyTdxBackendMismatch('localhost /health is not JSON.');
     }
-    if (decoded['backend'] != 'vespa_tdx' ||
-        decoded['data_source'] != 'easy-tdx') {
+    if (decoded['backend'] != 'origin_vespa_tdx' ||
+        decoded['engine'] != 'chan.py') {
       throw _EasyTdxBackendMismatch(
-          'localhost 服务不是 vespa_tdx easy-tdx 后端: $body');
+          'localhost service is not origin_vespa_tdx chan.py backend: $body');
     }
   }
 
@@ -209,166 +195,6 @@ class EasyTdxKlineSource {
     if (text.isEmpty || text == '-' || text.toLowerCase() == 'nan') return null;
     return double.tryParse(text);
   }
-}
-
-class _LocalEasyTdxProcess {
-  final Process process;
-  final String baseUrl;
-  final StringBuffer _stderr = StringBuffer();
-
-  _LocalEasyTdxProcess._(this.process, this.baseUrl) {
-    process.stderr.transform(utf8.decoder).listen(_stderr.write);
-    process.stdout.transform(utf8.decoder).listen((_) {});
-  }
-
-  static Future<_LocalEasyTdxProcess> start() async {
-    final backendDir = await _findBackendDir();
-    final port = await _pickFreePort();
-    final baseUrl = 'http://127.0.0.1:$port';
-    final candidates = _pythonCandidates(backendDir);
-    Object? lastError;
-
-    for (final candidate in candidates) {
-      try {
-        final process = await Process.start(
-          candidate.executable,
-          [
-            ...candidate.prefixArgs,
-            '-m',
-            'uvicorn',
-            'app.main:app',
-            '--host',
-            '127.0.0.1',
-            '--port',
-            '$port',
-          ],
-          workingDirectory: backendDir.path,
-          runInShell: false,
-          environment: {
-            'PYTHONIOENCODING': 'utf-8',
-          },
-          mode: ProcessStartMode.normal,
-        );
-        final runner = _LocalEasyTdxProcess._(process, baseUrl);
-        await runner._waitUntilReady();
-        return runner;
-      } catch (e) {
-        lastError = e;
-      }
-    }
-
-    throw Exception(
-      '无法后台启动 easy-tdx 本地服务。请确认已安装 Python，并在 backend 目录执行过：pip install -r requirements.txt。最后错误：$lastError',
-    );
-  }
-
-  static Future<Directory> _findBackendDir() async {
-    final checked = <String>{};
-    final starts = <Directory>[
-      Directory.current,
-      File(Platform.resolvedExecutable).parent,
-    ];
-
-    for (final start in starts) {
-      var dir = start.absolute;
-      for (var i = 0; i < 8; i++) {
-        if (!checked.add(dir.path)) break;
-        for (final candidate in _backendCandidatesFrom(dir)) {
-          if (await _isBackendDir(candidate)) return candidate;
-        }
-        final parent = dir.parent;
-        if (parent.path == dir.path) break;
-        dir = parent;
-      }
-    }
-    throw Exception(
-        '找不到 backend/app/main.py；请从项目根目录运行 Flutter，或把 backend 目录放到 exe 同级目录、exe/data 目录或项目根目录。');
-  }
-
-  static List<Directory> _backendCandidatesFrom(Directory dir) {
-    final sep = Platform.pathSeparator;
-    return [
-      dir,
-      Directory('${dir.path}${sep}backend'),
-      Directory('${dir.path}${sep}data${sep}backend'),
-    ];
-  }
-
-  static Future<bool> _isBackendDir(Directory dir) {
-    final sep = Platform.pathSeparator;
-    return File('${dir.path}${sep}app${sep}main.py').exists();
-  }
-
-  static Future<int> _pickFreePort() async {
-    final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-    final port = socket.port;
-    await socket.close();
-    return port;
-  }
-
-  static List<_PythonCandidate> _pythonCandidates(Directory backendDir) {
-    final sep = Platform.pathSeparator;
-    final venvPython =
-        File('${backendDir.path}$sep.venv${sep}Scripts${sep}python.exe');
-    final result = <_PythonCandidate>[];
-    if (venvPython.existsSync()) {
-      result.add(_PythonCandidate(venvPython.path));
-    }
-    result.add(const _PythonCandidate('python'));
-    result.add(const _PythonCandidate('py', ['-3']));
-    return result;
-  }
-
-  Future<void> _waitUntilReady() async {
-    final deadline = DateTime.now().add(const Duration(seconds: 20));
-    Object? lastError;
-    while (DateTime.now().isBefore(deadline)) {
-      final exitFuture = process.exitCode.timeout(
-        const Duration(milliseconds: 10),
-        onTimeout: () => -999999,
-      );
-      final exitCode = await exitFuture;
-      if (exitCode != -999999) {
-        throw Exception(
-            'easy-tdx 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
-      }
-
-      try {
-        final client = HttpClient();
-        final request = await client
-            .getUrl(Uri.parse('$baseUrl/health'))
-            .timeout(const Duration(milliseconds: 700));
-        final response =
-            await request.close().timeout(const Duration(milliseconds: 700));
-        client.close(force: true);
-        if (response.statusCode >= 200 && response.statusCode < 300) return;
-      } catch (e) {
-        lastError = e;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-    }
-    dispose();
-    throw Exception(
-        'easy-tdx 本地服务启动超时：$lastError，stderr=${_stderr.toString()}');
-  }
-
-  void dispose() {
-    try {
-      process.kill(ProcessSignal.sigterm);
-    } catch (_) {}
-    Future<void>.delayed(const Duration(milliseconds: 500), () {
-      try {
-        process.kill(ProcessSignal.sigkill);
-      } catch (_) {}
-    });
-  }
-}
-
-class _PythonCandidate {
-  final String executable;
-  final List<String> prefixArgs;
-
-  const _PythonCandidate(this.executable, [this.prefixArgs = const []]);
 }
 
 class _EasyTdxBackendMismatch implements Exception {

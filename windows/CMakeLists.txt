@@ -102,9 +102,17 @@ install(CODE "
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
-# Bundle the lightweight external easy-tdx FastAPI backend for Windows.
-# Python packages are intentionally not copied; the app will use
-# data/backend/.venv, global python, or py -3 if available.
+# Bundle the App-managed Python runtime and origin_vespa_tdx backend for Windows.
+# Normal app workflows must use data/python/python.exe; no external Python
+# fallback is accepted.
+install(CODE "
+  file(REMOVE_RECURSE \"${INSTALL_BUNDLE_DATA_DIR}/python\")
+  " COMPONENT Runtime)
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/../python"
+  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
+  COMPONENT Runtime
+  PATTERN "__pycache__" EXCLUDE
+  PATTERN "*.pyc" EXCLUDE)
 install(CODE "
   file(REMOVE_RECURSE \"${INSTALL_BUNDLE_DATA_DIR}/backend\")
   " COMPONENT Runtime)

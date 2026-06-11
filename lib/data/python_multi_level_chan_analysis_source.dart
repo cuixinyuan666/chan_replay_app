@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import 'app_bundled_python_backend.dart';
 import '../core/models/interval_nest_signal.dart';
 import '../core/models/multi_level_chan_snapshot.dart';
 import 'chan_snapshot_json_parser.dart';
@@ -29,6 +30,7 @@ class PythonMultiLevelChanAnalysis {
 class PythonMultiLevelChanAnalysisSource {
   final String baseUrl;
   final http.Client _client;
+  AppBundledPythonBackendProcess? _localProcess;
 
   PythonMultiLevelChanAnalysisSource({
     required this.baseUrl,
@@ -68,19 +70,21 @@ class PythonMultiLevelChanAnalysisSource {
     };
 
     if (Platform.isAndroid) {
-      throw UnsupportedError('多级别 analyze_multi 尚未接入 Android MethodChannel');
+      throw UnsupportedError(
+        'Multi-level analyze_multi is not wired to Android MethodChannel yet.',
+      );
     }
 
-    try {
-      return await _postAnalyzeMulti(baseUrl, payload);
-    } on SocketException catch (e) {
-      throw Exception('无法连接 chan.py 后端：$baseUrl。请先启动后端服务，并确认 /api/chan/analyze_multi 可访问。原始错误：$e');
-    } on http.ClientException catch (e) {
-      if (_looksLikeConnectionFailure(e)) {
-        throw Exception('无法连接 chan.py 后端：$baseUrl。请先启动后端服务，并确认 backend 地址正确。原始错误：$e');
-      }
-      rethrow;
-    }
+    final sourceBase =
+        Platform.isWindows ? await _readyAppManagedBaseUrl() : baseUrl;
+    return _postAnalyzeMulti(sourceBase, payload);
+  }
+
+  Future<String> _readyAppManagedBaseUrl() async {
+    _localProcess ??= await AppBundledPythonBackend.start(
+      requireAnalyzeMulti: true,
+    );
+    return _localProcess!.baseUrl;
   }
 
   Future<PythonMultiLevelChanAnalysis> _postAnalyzeMulti(
@@ -99,12 +103,16 @@ class PythonMultiLevelChanAnalysisSource {
         .timeout(
           timeout,
           onTimeout: () => throw TimeoutException(
-            'analyze_multi ${payload['mode'] ?? ''} 请求超时：${timeout.inSeconds}s，uri=$uri。'
-            'step 回放请降低 count / max_step_frames；找信号请使用 Scan Signal/once 扫描，避免返回大量 step frames。',
+            'analyze_multi ${payload['mode'] ?? ''} timed out after ${timeout.inSeconds}s, uri=$uri. '
+            'For step replay, lower count/max_step_frames; for signal search, use Scan Signal once mode.',
             timeout,
           ),
         );
-    return _decodeResponse(response, sourceBaseUrl: sourceBase);
+    return _decodeResponse(
+      response,
+      sourceBaseUrl: sourceBase,
+      backendDiagnostics: _localProcess?.diagnostics,
+    );
   }
 
   Duration _requestTimeout(Map<String, dynamic> payload) {
@@ -118,22 +126,41 @@ class PythonMultiLevelChanAnalysisSource {
   PythonMultiLevelChanAnalysis _decodeResponse(
     http.Response response, {
     String? sourceBaseUrl,
+    Map<String, dynamic>? backendDiagnostics,
   }) {
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       if (response.statusCode == 404) {
-        throw Exception('chan.py 后端缺少 /api/chan/analyze_multi：${sourceBaseUrl ?? baseUrl}。请确认启动的是 origin_vespa_tdx 后端服务。返回：$body');
+        throw Exception(
+          'Blocked: backend is missing /api/chan/analyze_multi: ${sourceBaseUrl ?? baseUrl}. Response: $body',
+        );
       }
-      throw Exception('chan.py 多级别引擎返回 ${response.statusCode}: $body');
+      throw Exception(
+        'chan.py multi-level engine returned ${response.statusCode}: $body',
+      );
     }
     final decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('chan.py 多级别引擎返回结构不是 JSON 对象');
+      throw const FormatException(
+        'chan.py multi-level engine did not return a JSON object.',
+      );
     }
     if (decoded['ok'] == false) {
-      throw Exception(decoded['error'] ?? 'chan.py 多级别引擎计算失败');
+      throw Exception(
+          decoded['error'] ?? 'chan.py multi-level calculation failed.');
     }
-    return parse(decoded);
+    final analysis = parse(decoded);
+    if (backendDiagnostics == null) return analysis;
+    final meta = Map<String, dynamic>.from(analysis.meta);
+    meta['backend_runtime'] = backendDiagnostics;
+    meta['backend_url'] = backendDiagnostics['backend_url'];
+    meta['python_runtime'] = backendDiagnostics['python_runtime'];
+    return PythonMultiLevelChanAnalysis(
+      snapshot: analysis.snapshot,
+      frames: analysis.frames,
+      intervalNestSignals: analysis.intervalNestSignals,
+      meta: meta,
+    );
   }
 
   static PythonMultiLevelChanAnalysis parse(Map<String, dynamic> data) {
@@ -142,7 +169,7 @@ class PythonMultiLevelChanAnalysisSource {
       parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
     );
     if (snapshot == null) {
-      throw const FormatException('chan.py 多级别返回缺少 levels 结构');
+      throw const FormatException('chan.py 澶氱骇鍒繑鍥炵己灏?levels 缁撴瀯');
     }
 
     final frames = MultiLevelChanAnalysisParser.parseFrames(
@@ -169,7 +196,8 @@ class PythonMultiLevelChanAnalysisSource {
       if (item is Map<String, dynamic>) {
         result.add(IntervalNestSignal.fromJson(item));
       } else if (item is Map) {
-        result.add(IntervalNestSignal.fromJson(Map<String, dynamic>.from(item)));
+        result
+            .add(IntervalNestSignal.fromJson(Map<String, dynamic>.from(item)));
       }
     }
     return result;
@@ -181,21 +209,9 @@ class PythonMultiLevelChanAnalysisSource {
   String _trimTrailingSlash(String raw) =>
       raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
 
-  bool _looksLikeConnectionFailure(http.ClientException e) {
-    final msg = e.toString().toLowerCase();
-    return msg.contains('connection refused') ||
-        msg.contains('connection failed') ||
-        msg.contains('failed host lookup') ||
-        msg.contains('connection reset') ||
-        msg.contains('connection closed') ||
-        msg.contains('socketexception') ||
-        msg.contains('refused') ||
-        msg.contains('errno = 1225') ||
-        msg.contains('拒绝') ||
-        msg.contains('远程计算机拒绝');
-  }
-
   void close() {
     _client.close();
+    _localProcess?.dispose();
+    _localProcess = null;
   }
 }
