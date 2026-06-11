@@ -6,7 +6,7 @@ This file is the project manual for the multi-level and interval-nest work.
 
 ## Current review baseline
 
-Latest observed head before this supervisor update: 0c2c2e9adb6639964e105432ba670d466e813c02
+Latest observed head before this supervisor update: d39d57353af3a3ae51bec11022e5c6193a46e8ff
 Latest multi-level strict-step UI commit: 763d6219e7aaa5732f7d62aca1474c5a0c4b9303
 Latest multi-level compile-fix commit: 62767e6d7134e2512901ef876514a61f39a8f1af
 Latest single-level strict replay page commit: bb5f9faeeea18bffdd12afd4f5d4b3d0d3790d70
@@ -18,6 +18,9 @@ Latest relation locate type fix commit: 6f8fd5d9f07003c69215609c46d41ef87c59309a
 Latest relation page wiring commit: a6f7d34463aeff1b753457ca6b4dff6577d888bf
 Latest interval signal panel commit: ee21e713745e2219b3bdda9c46f03d3d21fd7d63
 Latest interval signal page wiring commit: b1afcae8891837e1cd615be2d6d3803f2564739f
+Latest layer status minimize support commit: 622d45043c6c28ee1b122ae5ba838b6ab55e624d
+Latest layer status default-minimized wiring commit: 2cba9fc38e3ed7842036965665ef83e6ce8026f4
+Latest analyzer cleanup commit: b9d0994286f4f070f771f34af11dd7ef593e1444
 Latest manual update commit: pending
 
 ## User objective
@@ -52,6 +55,7 @@ The file named `task checklist and contact.md` is the project manual. Future tas
 - Native multi-level step frames are implemented through original chan.py `CChan(lv_list).step_load()` outputs.
 - MultiLevelReplayPage has `Copy P0`, `Copy Step`, `Copy Relation`, and `Copy Signal` diagnostics.
 - MultiLevelReplayPage fails loudly when step frames are empty.
+- Multi-level layer status no longer covers action buttons on initial load; it is minimized by default and restored by the bottom-right `图层状态` button.
 - `OriginReplayStrictPage` uses backend returned frames only in step mode and has one-click `Copy Step` diagnostics.
 - Batch B relation targeting implementation has been supervisor-verified in code and runtime-accepted by Copy Relation diagnostics.
 
@@ -103,6 +107,11 @@ Implementation commits:
 - `ee21e713745e2219b3bdda9c46f03d3d21fd7d63`: added `lib/ui/widgets/multi_level_interval_signal_panel.dart`.
 - `b1afcae8891837e1cd615be2d6d3803f2564739f`: wired the signal panel into `MultiLevelReplayPage`.
 
+UI obstruction fix:
+- `622d45043c6c28ee1b122ae5ba838b6ab55e624d`: added optional minimize action to `MultiLevelLayerStatusPanel`.
+- `2cba9fc38e3ed7842036965665ef83e6ce8026f4`: changed `MultiLevelReplayPage` so layer status is minimized by default and restored by the bottom-right `图层状态` button.
+- `b9d0994286f4f070f771f34af11dd7ef593e1444`: cleared strict replay final-field analyzer hints.
+
 Copy Signal expected fields:
 - `signal_source: original chan.py BSP + native LevelRelation`
 - `signal_scope: DAILY/MIN30 MVP`
@@ -127,6 +136,8 @@ Batch C acceptance rule:
 
 - Pull latest.
 - Run `flutter analyze` and `flutter run`.
+- Confirm the layer status starts minimized as the bottom-right `图层状态` button.
+- Click `图层状态` to restore the floating window, then click the minus icon to minimize again.
 - Wait for Multi-level default step load.
 - Use the Interval signal MVP panel.
 - Click `Copy Signal`.
