@@ -846,6 +846,26 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     return parts.join(' | ');
   }
 
+  Object? _compactMeta(PythonMultiLevelChanAnalysis analysis, String key, [Map<String, dynamic>? frameMeta]) {
+    return frameMeta?[key] ?? analysis.meta[key] ?? analysis.snapshot.meta[key] ?? '';
+  }
+
+  List<String> _compactMetaLines(PythonMultiLevelChanAnalysis analysis, [Map<String, dynamic>? frameMeta]) {
+    return [
+      'step_frame_format: ${_compactMeta(analysis, 'step_frame_format', frameMeta)}',
+      'frame_policy: ${_compactMeta(analysis, 'frame_policy', frameMeta)}',
+      'frame_stride: ${_compactMeta(analysis, 'frame_stride', frameMeta)}',
+      'frames_total: ${_compactMeta(analysis, 'frames_total', frameMeta)}',
+      'frames_returned: ${_compactMeta(analysis, 'frames_returned', frameMeta)}',
+      'frames_truncated: ${_compactMeta(analysis, 'frames_truncated', frameMeta)}',
+      'max_return_frames: ${_compactMeta(analysis, 'max_return_frames', frameMeta)}',
+      'include_bars_in_frames: ${_compactMeta(analysis, 'include_bars_in_frames', frameMeta)}',
+      'include_indicators_in_frames: ${_compactMeta(analysis, 'include_indicators_in_frames', frameMeta)}',
+      'compact_transport_only: ${_compactMeta(analysis, 'compact_transport_only', frameMeta)}',
+      'chan_py_core_unchanged: ${_compactMeta(analysis, 'chan_py_core_unchanged', frameMeta)}',
+    ];
+  }
+
   String _buildP0DiagnosticText(PythonMultiLevelChanAnalysis analysis) {
     final meta = analysis.meta;
     final snapshot = analysis.snapshot;
@@ -869,6 +889,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'native_failure: ${meta['native_failure'] ?? ''}',
       'relations.length: ${snapshot.relations.length}',
       'frames.length: ${analysis.frames.length}',
+      ..._compactMetaLines(analysis),
       'source: ${meta['source'] ?? ''}',
       'backend_url: ${meta['backend_url'] ?? ''}',
       'python_runtime: ${meta['python_runtime'] ?? ''}',
@@ -926,6 +947,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'native_step_frames_truncated: ${meta['native_step_frames_truncated'] ?? ''}',
       'frames.length: ${frames.length}',
       'frame.relations.length: ${frame?.relations.length ?? ''}',
+      ..._compactMetaLines(analysis, frameMeta),
       'status_summary.current_frame: $currentFrameStatus',
       'level_summary.current_frame: $currentFrameSummary',
       'level_summary.final_snapshot_for_diagnostics: ${_buildLevelSummary(analysis.snapshot)}',
