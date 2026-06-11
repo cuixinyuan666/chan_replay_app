@@ -9,7 +9,7 @@ This file is the project manual for the multi-level and interval-nest work.
 Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86b
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
-Latest task-party code commit: 1cc0b53211d5a3fa895d8259b3f54f1edf5fb0af
+Latest task-party code commit: 8f1abfb543cc5848417382e7aef00670fa527b0d
 Latest observed head during supervisor verification: 3bf4cb4775057cc1d8d1af21bd68adfa52551373
 Latest manual update commit: pending
 
@@ -41,18 +41,18 @@ Hard rules added by user:
 - Multi-level parser and source exist.
 - Independent MultiLevelReplayPage exists.
 - RootPage has a multi-level entry.
-- Bridge analyze_multi exists only as a prototype/fallback and is not accepted as success.
+- Bridge analyze_multi exists only as a historical prototype and is not accepted as success.
 - Native CChan lv_list engine exists.
 - MultiLevelReplayPage displays manual P0 diagnostics after Load.
 - MultiLevelReplayPage has a one-click P0 diagnostics copy button named `Copy P0`.
+- Native CSV input now performs effective-time sort/dedupe before chan.py loading.
+- analyze_multi now returns a native-failure diagnostic response instead of a bridge result when native fails.
 
 ## Current blockers
 
-- Native runtime still fails after parent-time fix.
-- Current native failure is duplicate kline time: `kline time err, cur=2026/04/21 23:59, last=2026/04/21 23:59`.
+- Native runtime result is not verified after effective-time dedupe fix.
 - Native step frames are not implemented yet.
 - Interval-nest rule engine is not implemented yet.
-- Bridge fallback still exists in code and must not be counted as successful core Chan calculation.
 
 ## 16 requested items
 
@@ -207,41 +207,6 @@ Fixes applied:
   - File: lib/ui/pages/multi_level_replay_page.dart
   - Change: added one-click `Copy P0` diagnostics button.
 
-Required next local check:
-- Stop any old Python backend process that may still be serving old code.
-- Pull latest origin_vespa_tdx.
-- Run flutter analyze.
-- Run flutter run.
-- Open Multi-level replay.
-- Click Load in once mode.
-- Click `Copy P0`.
-- Paste the copied diagnostics.
-
-2026-06-10 supervisor verification of latest push:
-
-Checked head: 3bf4cb4775057cc1d8d1af21bd68adfa52551373
-Manual progress check:
-- The manual claims `Copy P0` exists. Verified in actual code: MultiLevelReplayPage imports Clipboard, renders `Copy P0`, and copies `_buildP0DiagnosticText`.
-- The manual claims parent-time fix exists. Verified in actual code: non-intraday parent bars are written to native CSV at 23:59 while UI/output bars keep original times.
-- The manual keeps native runtime unchecked. This is correct because the latest head is manual-only and no post-fix P0 copy result from the user is present.
-Actual code check:
-- `Copy P0` button exists and copies native_cchan_lv_list, level_relation_mode, fallback_to_bridge, native_failure, relations.length, frames.length, source, native_data_window, and native_csv_time_policy.
-- Native CChan(lv_list) still returns `frames: []` and `native_step_frames: False`; strict step is not complete.
-- Bridge fallback still exists in `a_multilevel_engine.analyze_multi`; it records fallback_to_bridge and native_failure. This is useful for debugging but not acceptable as a passing core Chan path.
-Result: partially passed.
-Accepted in this check:
-- P0 copy button is real and may stay checked.
-- Parent-time CSV fix is real.
-Rejected / still open:
-- Native runtime after parent-time fix is still unverified.
-- Strict step native frames remain unimplemented.
-- Bridge fallback still exists and must not be considered success.
-Next user operation:
-- In the app, open `Multi-level replay`, click `Load`, then click `Copy P0`, and paste the copied diagnostics.
-Next task-party operation:
-- If copied diagnostics show fallback_to_bridge=true, fix native_failure immediately.
-- If copied diagnostics show native_cchan_lv_list=true and level_relation_mode=chan_parent_child, implement native step frames next.
-
 2026-06-10 third P0 result from Copy P0:
 
 Copied diagnostics:
@@ -252,7 +217,7 @@ Copied diagnostics:
 - native_cchan_lv_list: false
 - level_relation_mode: time_date_bridge
 - fallback_to_bridge: true
-- native_failure: kline time err, cur=2026/04/21 23:59, last=2026/04/21 23:59, or refer to quick_guide.md, try set auto=False in the CTime returned by your data source class
+- native_failure: duplicate kline timestamp after parent time normalization
 - relations.length: 235
 - frames.length: 0
 - source: origin_vespa_tdx.backend.a_multilevel_engine.bridge
@@ -263,13 +228,22 @@ Decision:
 - P0 failed again.
 - Native did not run successfully.
 - The result is from bridge source, so it is not accepted as core Chan multi-level success.
-- The new native failure is a duplicate kline timestamp after parent CSV time normalization, specifically duplicated `2026/04/21 23:59`.
 - The task party must not proceed to native step frames, interval-nest signals, statistics, scanner, or training until this native failure is fixed.
 
-Required next task:
-- Fix native CSV datetime generation so chan.py receives strictly increasing K-line times for every level.
-- Do not bypass chan.py time checks.
-- Do not disable validation.
-- Do not count bridge fallback as pass.
-- Add or expand an in-app copy diagnostic that reports duplicate native CSV datetimes per level, including at least level name, duplicated datetime, original source rows, and first/last few native CSV times.
-- After the fix, the user must open Multi-level replay, click Load, click `Copy P0`, and paste the copied result.
+Fixes applied after third P0:
+- Commit: 573975c728939a5c3dd4f3e6b282f1bce421cbbd
+  - File: backend/app/a_multilevel_native_engine.py
+  - Change: added effective-time sort/dedupe before chan.py CSV writing; native_data_window.duplicates_removed records removed rows per level.
+- Commit: 8f1abfb543cc5848417382e7aef00670fa527b0d
+  - File: backend/app/a_multilevel_engine.py
+  - Change: native failure now returns a diagnostic response instead of bridge result. `fallback_to_bridge` should be false, `source` should be native_failure_diagnostic, and `native_failure` should show the real native error.
+
+Required next local check:
+- Stop any old Python backend process that may still be serving old code.
+- Pull latest origin_vespa_tdx.
+- Run flutter analyze.
+- Run flutter run.
+- Open Multi-level replay.
+- Click Load in once mode.
+- Click `Copy P0`.
+- Paste the copied diagnostics.
