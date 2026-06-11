@@ -43,25 +43,106 @@ class MultiLevelChanAnalysisParser {
   static List<MultiLevelChanSnapshot> parseFrames(
     Object? rawFrames, {
     required ChanSnapshotParser parseSingleLevelSnapshot,
+    Object? baseLevels,
   }) {
     if (rawFrames is! List) return const [];
+    final base = baseLevels is Map ? Map<String, dynamic>.from(baseLevels) : const <String, dynamic>{};
     final frames = <MultiLevelChanSnapshot>[];
     for (final frame in rawFrames) {
       if (frame is Map<String, dynamic>) {
         final parsed = parseSnapshot(
-          frame,
+          _inflateCompactFrame(frame, base),
           parseSingleLevelSnapshot: parseSingleLevelSnapshot,
         );
         if (parsed != null) frames.add(parsed);
       } else if (frame is Map) {
         final parsed = parseSnapshot(
-          Map<String, dynamic>.from(frame),
+          _inflateCompactFrame(Map<String, dynamic>.from(frame), base),
           parseSingleLevelSnapshot: parseSingleLevelSnapshot,
         );
         if (parsed != null) frames.add(parsed);
       }
     }
     return frames;
+  }
+
+  static Map<String, dynamic> _inflateCompactFrame(
+    Map<String, dynamic> frame,
+    Map<String, dynamic> baseLevels,
+  ) {
+    final rawLevels = frame['levels'];
+    if (rawLevels is! Map || baseLevels.isEmpty) return frame;
+    final nextFrame = Map<String, dynamic>.from(frame);
+    final nextLevels = <String, dynamic>{};
+    for (final entry in rawLevels.entries) {
+      final level = '${entry.key}'.trim().toUpperCase();
+      final rawLevelPayload = entry.value;
+      if (rawLevelPayload is! Map) {
+        nextLevels[entry.key] = rawLevelPayload;
+        continue;
+      }
+      final levelPayload = Map<String, dynamic>.from(rawLevelPayload);
+      final basePayloadRaw = baseLevels[level] ?? baseLevels[entry.key];
+      final basePayload = basePayloadRaw is Map ? Map<String, dynamic>.from(basePayloadRaw) : const <String, dynamic>{};
+      final visibleCount = _parseVisibleCount(levelPayload);
+      final frameBars = levelPayload['bars'];
+      if (frameBars is! List && visibleCount != null) {
+        final baseBars = basePayload['bars'];
+        if (baseBars is List) {
+          levelPayload['bars'] = baseBars.take(visibleCount).toList(growable: false);
+        }
+      }
+      final frameIndicators = levelPayload['indicators'];
+      if (frameIndicators is! Map && visibleCount != null) {
+        final baseIndicators = basePayload['indicators'];
+        if (baseIndicators is Map) {
+          levelPayload['indicators'] = _clipIndicators(baseIndicators, visibleCount);
+        }
+      }
+      nextLevels[entry.key] = levelPayload;
+    }
+    nextFrame['levels'] = nextLevels;
+    return nextFrame;
+  }
+
+  static int? _parseVisibleCount(Map<String, dynamic> levelPayload) {
+    final raw = levelPayload['visible_count'] ?? levelPayload['visibleCount'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse('$raw');
+  }
+
+  static Map<String, dynamic> _clipIndicators(Map raw, int visibleCount) {
+    final result = <String, dynamic>{};
+    for (final entry in raw.entries) {
+      final key = '${entry.key}';
+      final value = entry.value;
+      if (value is List) {
+        result[key] = _clipIndicatorList(value, visibleCount);
+      } else if (value is Map) {
+        final nested = <String, dynamic>{};
+        for (final nestedEntry in value.entries) {
+          final nestedValue = nestedEntry.value;
+          nested['${nestedEntry.key}'] = nestedValue is List
+              ? _clipIndicatorList(nestedValue, visibleCount)
+              : nestedValue;
+        }
+        result[key] = nested;
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  }
+
+  static List<dynamic> _clipIndicatorList(List rows, int visibleCount) {
+    final result = <dynamic>[];
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      final rawIndex = row is Map ? _int(row['raw_index'] ?? row['rawIndex']) ?? i : i;
+      if (rawIndex < visibleCount) result.add(row);
+    }
+    return result;
   }
 
   static List<LevelRelation> parseRelations(Object? rawRelations) {
@@ -104,5 +185,11 @@ class MultiLevelChanAnalysisParser {
         .toUpperCase();
     if (raw.isNotEmpty && snapshots.containsKey(raw)) return raw;
     return levels.isNotEmpty ? levels.first : snapshots.keys.first;
+  }
+
+  static int? _int(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('$value');
   }
 }
