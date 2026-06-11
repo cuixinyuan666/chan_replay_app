@@ -27,8 +27,10 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   final _levelsController = TextEditingController(text: 'DAILY,MIN30,MIN5');
 
   PythonMultiLevelChanAnalysis? _analysis;
+  PythonMultiLevelChanAnalysis? _signalScanAnalysis;
   MultiLevelViewState _viewState = MultiLevelViewState.disabled();
   bool _loading = false;
+  bool _signalScanLoading = false;
   bool _layerPanelExpanded = false;
   bool _relationPanelExpanded = false;
   bool _signalPanelExpanded = false;
@@ -40,6 +42,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   int? _viewEndIndex;
   int? _crosshairIndex;
   String _status = 'multi-level step replay not loaded';
+  String _signalScanStatus = 'signal scan not run';
   Timer? _initialLoadTimer;
 
   @override
@@ -77,6 +80,8 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     return analysis.snapshot;
   }
 
+  MultiLevelChanSnapshot? get _signalSnapshot => _signalScanAnalysis?.snapshot ?? _current;
+
   String get _activeLevel {
     final full = _full;
     if (full == null) return '';
@@ -90,10 +95,16 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       ];
 
   Future<void> _load() async {
-    if (_loading) return;
+    if (_loading || _signalScanLoading) return;
     final levels = _levels;
     if (levels.isEmpty) {
       _showMessage('lv_list is empty');
+      return;
+    }
+    if (_mode == 'step' && _count > 120) {
+      final msg = 'step replay count=$_count 太大，容易触发 step_load 超时；请保持 step count<=120，用 Scan Signal 扫描大 count 信号。';
+      setState(() => _status = msg);
+      _showMessage(msg);
       return;
     }
     setState(() {
@@ -101,6 +112,8 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       _layerPanelExpanded = false;
       _relationPanelExpanded = false;
       _signalPanelExpanded = false;
+      _signalScanAnalysis = null;
+      _signalScanStatus = 'signal scan not run';
       _status = 'loading analyze_multi...';
     });
     final source = PythonMultiLevelChanAnalysisSource(
@@ -152,10 +165,59 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     }
   }
 
+  Future<void> _scanSignals() async {
+    if (_loading || _signalScanLoading) return;
+    final levels = _levels;
+    if (levels.isEmpty) {
+      _showMessage('lv_list is empty');
+      return;
+    }
+    setState(() {
+      _signalScanLoading = true;
+      _signalPanelExpanded = true;
+      _signalScanStatus = 'scanning signal candidates with once count=$_count...';
+    });
+    final source = PythonMultiLevelChanAnalysisSource(
+      baseUrl: _backendUrlController.text.trim(),
+    );
+    try {
+      final scan = await source.analyzeMulti(
+        mode: 'once',
+        market: _marketController.text.trim().toUpperCase(),
+        code: _symbolController.text.trim(),
+        levels: levels,
+        adjust: 'QFQ',
+        mainLevel: levels.first,
+        clockLevel: levels.first,
+        count: _count,
+        config: const {
+          'bi_algo': 'normal',
+          'seg_algo': 'chan',
+          'zs_algo': 'normal',
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _signalScanAnalysis = scan;
+        _signalPanelExpanded = true;
+        _signalScanStatus = 'signal scan done: once count=$_count ${_buildCompactLevelSummary(scan.snapshot)}';
+      });
+      _showMessage(_signalScanStatus);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _signalScanStatus = 'signal scan failed: $e');
+      _showMessage(_signalScanStatus);
+    } finally {
+      source.close();
+      if (mounted) setState(() => _signalScanLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final full = _full;
     final current = _current;
+    final signalSnapshot = _signalSnapshot;
     final activeLevel = _activeLevel;
     final snapshot = current?.of(activeLevel);
     return Scaffold(
@@ -181,7 +243,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                       }),
                     ),
                   ),
-                if (current != null) _analysisToolStrip(current),
+                if (current != null) _analysisToolStrip(current, signalSnapshot),
                 if (current != null && _relationPanelExpanded && current.relations.isNotEmpty)
                   MultiLevelRelationPanel(
                     snapshot: current,
@@ -191,12 +253,12 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                     symbol: _symbolController.text.trim(),
                     onLocate: _locateRelationTarget,
                   ),
-                if (current != null && _signalPanelExpanded)
+                if (signalSnapshot != null && _signalPanelExpanded)
                   MultiLevelIntervalSignalPanel(
-                    snapshot: current,
-                    mode: _mode,
-                    frameIndex: _mode == 'step' && _analysis?.frames.isNotEmpty == true ? _frameIndex : null,
-                    frameCount: _mode == 'step' ? _analysis?.frames.length : null,
+                    snapshot: signalSnapshot,
+                    mode: _signalScanAnalysis == null ? _mode : 'signal_scan_once',
+                    frameIndex: _signalScanAnalysis == null && _mode == 'step' && _analysis?.frames.isNotEmpty == true ? _frameIndex : null,
+                    frameCount: _signalScanAnalysis == null && _mode == 'step' ? _analysis?.frames.length : null,
                     symbol: _symbolController.text.trim(),
                   ),
                 Expanded(
@@ -240,7 +302,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
             ),
             if (full != null && current != null)
               _layerStatusOverlay(full, current, activeLevel),
-            if (_loading)
+            if (_loading || _signalScanLoading)
               const Positioned.fill(
                 child: ColoredBox(
                   color: Color(0x66000000),
@@ -253,8 +315,9 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     );
   }
 
-  Widget _analysisToolStrip(MultiLevelChanSnapshot current) {
+  Widget _analysisToolStrip(MultiLevelChanSnapshot current, MultiLevelChanSnapshot? signalSnapshot) {
     final relationCount = current.relations.length;
+    final usingScan = _signalScanAnalysis != null;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(48, 4, 12, 0),
@@ -274,6 +337,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
             style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700),
           ),
           _diagChip('relations', '$relationCount', relationCount > 0),
+          _diagChip('signal_source', usingScan ? 'scan once' : 'current frame', true),
           OutlinedButton.icon(
             onPressed: relationCount == 0
                 ? null
@@ -283,12 +347,19 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
             style: _copyButtonStyle(),
           ),
           OutlinedButton.icon(
-            onPressed: () => setState(() => _signalPanelExpanded = !_signalPanelExpanded),
+            onPressed: signalSnapshot == null ? null : () => setState(() => _signalPanelExpanded = !_signalPanelExpanded),
             icon: Icon(_signalPanelExpanded ? Icons.expand_less : Icons.radar, size: 14),
             label: Text(_signalPanelExpanded ? '收起信号' : '区间信号'),
             style: _copyButtonStyle(),
           ),
+          OutlinedButton.icon(
+            onPressed: _signalScanLoading ? null : _scanSignals,
+            icon: const Icon(Icons.search, size: 14),
+            label: Text(_signalScanLoading ? '扫描中' : 'Scan Signal($_count)'),
+            style: _copyButtonStyle(),
+          ),
           _diagChip('chart_space', (_relationPanelExpanded || _signalPanelExpanded) ? 'expanded tools' : 'preserved', true),
+          _diagChip('scan', _signalScanStatus, usingScan),
         ],
       ),
     );
