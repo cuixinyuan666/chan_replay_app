@@ -35,7 +35,8 @@ Branch: origin_vespa_tdx
 - `5279e912dbaee634072f20e3b5efc74fd1fe91b4`: passed top-level levels into compact parser and added `frontend.response_bytes` to Time Log stages.
 - `7992b7a6d950999ff3a2b41008480228969d1395`: fixed copied Time Log/Result Validation diagnostics so `response_bytes` is printed as bytes and not sorted as milliseconds; added compact meta fields to copied Time Log and Result Validation.
 - `6ada07e1bb464ce1bf8a0710137e399d35cf7721`: propagated compact frame total fields into every compact_v1 frame meta.
-- Current update: recorded the compact frame total propagation fix; F1a remains pending one more re-test.
+- `231a9b07b67d107a0e7fc142e0e2a1b66637f14d`: added compact_v1 meta fields to Copy P0 and Copy Step diagnostics.
+- Current update: recorded Copy P0 / Copy Step compact meta implementation; runtime validation is pending.
 
 ## Current accepted work
 
@@ -151,6 +152,18 @@ First implementation batch completed:
   - Old full frame format remains supported.
 - `lib/data/python_multi_level_chan_analysis_source.dart` now passes top-level `levels` into the compact frame parser.
 - `lib/ui/widgets/multi_level_interval_signal_panel.dart` now prints compact meta and keeps response bytes separate from timing stages in copied logs.
+- `lib/ui/pages/multi_level_replay_page.dart` now adds compact meta fields to `Copy P0` and `Copy Step` diagnostics:
+  - `step_frame_format`
+  - `frame_policy`
+  - `frame_stride`
+  - `frames_total`
+  - `frames_returned`
+  - `frames_truncated`
+  - `max_return_frames`
+  - `include_bars_in_frames`
+  - `include_indicators_in_frames`
+  - `compact_transport_only`
+  - `chan_py_core_unchanged`
 
 First compact_v1 runtime diagnostic findings from user:
 
@@ -159,19 +172,17 @@ First compact_v1 runtime diagnostic findings from user:
 - Copy Step still rendered frame `0/29` with visible frame structures and no final-snapshot-as-step fallback.
 - Time Log after `7992b7a6...` correctly printed `response_bytes=4051090` as bytes and no longer put `frontend.response_bytes` inside `slowest_stages`.
 - Time Log / Result Validation showed `step_frame_format=compact_v1`, `frame_policy=full`, `frame_stride=1`, `include_bars_in_frames=false`, and `include_indicators_in_frames=false`.
-- `frames_total`, `frames_returned`, and `frames_truncated` were still blank in interval panel logs because those fields were not present on the current frame snapshot meta. This was fixed by `6ada07e1bb464ce1bf8a0710137e399d35cf7721`.
-- Copy P0 and Copy Step still do not print compact meta fields.
+- After `6ada07e1...`, Time Log / Result Validation also showed `frames_total=29`, `frames_returned=29`, and `frames_truncated=false`.
+- Copy P0 / Copy Step compact meta output is implemented but not runtime-verified yet.
 
 F1a implementation status:
 
 - Backend compact_v1 adapter: implemented.
 - Flutter compact_v1 parser compatibility: implemented.
 - Response bytes timing: implemented.
-- Copied Time Log / Result Validation compact meta: implemented.
-- Compact frame total propagation: implemented.
-- Runtime analyze after compact_v1: partially proved by user logs.
-- Runtime copied diagnostics after `6ada07e1bb464ce1bf8a0710137e399d35cf7721`: pending.
-- Copy P0 / Copy Step compact meta fields: still pending.
+- Copied Time Log / Result Validation compact meta: implemented and runtime-proven.
+- Compact frame total propagation: implemented and runtime-proven.
+- Copy P0 / Copy Step compact meta fields: implemented, pending runtime verification.
 - Compact-v1 result equivalence is not accepted yet.
 - `极速` mode remains not accepted and not exposed.
 
@@ -188,10 +199,9 @@ Forbidden for F1a remains:
 
 ## Current blockers / pending verification
 
-- Re-run `flutter analyze` after compact_v1 commits, especially `6ada07e1bb464ce1bf8a0710137e399d35cf7721`.
-- Runtime compact_v1 Copy Time Log and Copy Result Validation outputs must be pasted again after the frame-total propagation fix.
-- Copy diagnostics must show `step_frame_format: compact_v1`, `include_bars_in_frames: false`, `include_indicators_in_frames: false`, `frames_total`, `frames_returned`, and `frames_truncated`.
-- Copy P0 / Copy Step compact meta fields remain pending.
+- Re-run `flutter analyze` after `231a9b07b67d107a0e7fc142e0e2a1b66637f14d`.
+- Runtime compact_v1 Copy P0 and Copy Step outputs must be pasted after compact meta additions.
+- Copy P0 / Copy Step must show `step_frame_format: compact_v1`, `include_bars_in_frames: false`, `include_indicators_in_frames: false`, `frames_total`, `frames_returned`, and `frames_truncated`.
 - Result Validation for compact-v1 equivalence remains pending.
 - Strategy mode acceptance remains paused while F1a remains current priority.
 - Full-history/paged strict step replay remains deferred, but F1a/F4 are the planned path toward scalable strict replay.
@@ -207,15 +217,13 @@ Forbidden for F1a remains:
    - count `220`
    - max_step_frames `60`
    - start/end `2025-09-01` to `2025-10-20`
-4. Paste Copy Time Log.
-5. Paste Copy Result Validation.
-6. Expected fixed fields:
-   - `response_bytes: ...` as an independent field.
-   - no `frontend.response_bytes: ...ms` in `slowest_stages` or `stages`.
-   - `step_frame_format: compact_v1`.
-   - `include_bars_in_frames: false`.
-   - `include_indicators_in_frames: false`.
+4. Paste Copy P0.
+5. Paste Copy Step.
+6. Expected fixed fields in both outputs:
+   - `step_frame_format: compact_v1`
+   - `include_bars_in_frames: false`
+   - `include_indicators_in_frames: false`
    - `frames_total: 29` or another non-empty value.
    - `frames_returned: 29` or another non-empty value.
    - `frames_truncated: false` or another explicit value.
-7. If this passes, next code task is adding compact meta fields to Copy P0 / Copy Step and then implementing compact-v1 result equivalence comparison.
+7. If this passes, next code task is compact-v1 result equivalence comparison.
