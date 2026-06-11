@@ -12,6 +12,8 @@ Branch: origin_vespa_tdx
 - If diagnostics are needed, expose an in-app copy button.
 - Normal Windows user workflow uses App-managed bundled Python.
 - User-facing workflow must not require manually starting system Python, Conda Python, Windows Store Python, Termux Python, or any other external interpreter.
+- Validation mode and strategy mode must stay separate. Validation mode proves the engineering chain; strategy mode defines tradable interval-nest rules.
+- No strategy signal may be accepted unless Copy Signal proves its source BSPs, native relation range, strict-step visibility, and signal state.
 
 ## Latest important commits
 
@@ -203,10 +205,98 @@ Decision:
 - Full-history/paged strict step replay is not accepted yet.
 - Strategy-grade interval signal rules are not finalized; current accepted result is validation mode only.
 
+## Next selected track: Strategy-grade interval signal rules
+
+User decision:
+
+- The next implementation track is Track B: strategy-grade interval signal rules.
+- Full-history/paged strict step replay remains important, but is not the immediate next task.
+- Arbitrary BSP validation mode must stay as a diagnostics mode and must not be reused as the strategy mode.
+
+Goal:
+
+- Build a separate strategy layer on top of already-verified original chan.py BSP data and native `LevelRelation` ranges.
+- Strategy mode must produce interpretable interval-nest signals, not only arbitrary BSP validation matches.
+- Strategy mode must remain strict-step-safe: no final-snapshot confirmation, no future function, no bridge fallback, no Flutter/Dart Chan recalculation.
+
+Required initial strategy rules:
+
+1. `DAILY 2-buy + MIN30 1-buy`.
+2. `DAILY 3-buy + MIN30 1-buy`.
+3. `DAILY 3-buy + MIN30 2-buy`.
+
+Optional next-stage trigger after the DAILY/MIN30 path is verifiable:
+
+- `MIN30 strategy signal + MIN5 trigger`, using the same native relation and strict-step visibility rules.
+
+Required UI separation:
+
+- Keep `validation_any_bsp_pair` as diagnostics/engineering validation.
+- Add or expose a clearly separate strategy mode, for example `strategy_interval_nest_buy`.
+- UI labels must distinguish:
+  - `验证模式` / `validation mode`: arbitrary BSP engineering proof.
+  - `策略模式` / `strategy mode`: fixed strategy rules with signal semantics.
+- Copy Signal must export the current mode clearly; strategy output must never be confused with validation output.
+
+Required Copy Signal fields for strategy mode:
+
+- `signal_rule_mode: strategy_interval_nest_buy` or equivalent.
+- `strategy_rule_name`, for example `DAILY_2B_MIN30_1B`.
+- `selected_pair: DAILY->MIN30`.
+- `high_level`, `high_strategy_type`, `high_bsp_index`, `high_bsp_type`, `high_raw_index`, `high_time`, `high_confirmed`.
+- `low_level`, `low_trigger_type`, `low_bsp_index`, `low_bsp_type`, `low_raw_index`, `low_time`, `low_confirmed`.
+- `parent_relation_range`, `child_relation_range`, `child_union_range`.
+- `low_in_child_range: true`.
+- `relation_count_for_parent: >0`.
+- `signal_state: candidate|confirmed|invalidated`.
+- `visibleAt.frame` or equivalent exact current-frame/time proof.
+- `confirmedAt.frame` if confirmed.
+- `invalidatedAt.frame` and invalidation reason if invalidated.
+- `future_function_policy: current strict step frame only; no final snapshot signal confirmation`.
+- `source_policy: original chan.py BSP + native LevelRelation only`.
+- `fallback_to_bridge: false` when backend meta is available.
+- `status: ok` for accepted signals.
+
+Strategy state rules:
+
+- `candidate`: high-level BSP exists, native parent-child relation range exists, and lower-level trigger is visible but not fully confirmed.
+- `confirmed`: high-level BSP and lower-level trigger BSP are confirmed by original chan.py output and visible in the current strict step frame.
+- `invalidated`: signal was previously candidate/confirmed but fails a defined invalidation condition. The invalidation condition must be explicit and copied in diagnostics.
+
+Minimum acceptance cases:
+
+- At least one strict-step `DAILY 2-buy + MIN30 1-buy` strategy signal, or a no-signal diagnostic proving why the current selected window has no such original BSP/relation combination.
+- At least one strict-step `DAILY 3-buy + MIN30 1-buy` or `DAILY 3-buy + MIN30 2-buy` strategy diagnostic, even if it is a no-signal diagnostic.
+- All accepted strategy diagnostics must show the source BSP ids/indices, native relation range, strict-step visibility proof, and signal state.
+
+No-signal diagnostics must include:
+
+- high-level BSP counts by type.
+- low-level BSP counts by type.
+- native relation count for the selected pair.
+- selected strategy rule.
+- selected date/count/max_step_frames window.
+- reason no signal matched, such as missing high BSP, missing low trigger, low trigger outside child range, unconfirmed BSP, or no native relation.
+
+Blocked / not allowed before strategy acceptance:
+
+- Do not start statistics, scanner, training, score, trade plan, or report generation.
+- Do not claim validation mode equals trading strategy.
+- Do not use arbitrary BSP validation output as a strategy signal.
+- Do not add new Chan calculation logic in Flutter/Dart.
+- Do not use full final snapshot slicing as strict-step signal confirmation.
+
 ## Next task-party operation
 
-1. Decide next track:
-   - Track A: full-history/paged strict step replay.
-   - Track B: strategy-grade interval signal rules separate from validation mode.
-2. Keep arbitrary BSP validation mode for diagnostics only.
-3. If implementing strategy-grade interval rules, preserve the validation mode as a separate diagnostics panel/mode.
+1. Preserve existing validation mode as diagnostics only.
+2. Add a separate strategy mode for interval-nest buy signals.
+3. Implement the three initial rules:
+   - DAILY 2-buy + MIN30 1-buy.
+   - DAILY 3-buy + MIN30 1-buy.
+   - DAILY 3-buy + MIN30 2-buy.
+4. Add complete Copy Signal strategy diagnostics as listed above.
+5. Run `flutter analyze`.
+6. Provide Copy Signal outputs for strategy mode.
+7. Only after strategy mode is accepted, choose the next track:
+   - full-history/paged strict step replay, or
+   - statistics/scanner/training built on accepted strategy signals.
