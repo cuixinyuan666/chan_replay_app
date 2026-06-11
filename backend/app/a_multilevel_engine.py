@@ -347,6 +347,68 @@ def _analyze_multi_bridge(
     }
 
 
+def _empty_level_payload() -> dict[str, Any]:
+    return {
+        'bars': [],
+        'merged_bars': [],
+        'fx': [],
+        'bi': [],
+        'seg': [],
+        'zs': [],
+        'bsp': [],
+        'indicators': {},
+        'meta': {},
+    }
+
+
+def _diagnostic_failure_response(
+    *,
+    symbol: str,
+    market: str | None,
+    levels: list[str] | str | None,
+    adjust: str,
+    mode: str,
+    main_level: str | None,
+    clock_level: str | None,
+    exc: Exception,
+) -> dict[str, Any]:
+    code = normalize_symbol(symbol)
+    market_name = (market or infer_market(code)).upper()
+    level_order = _normalize_levels(levels)
+    main = (main_level or level_order[0]).upper()
+    if main not in level_order:
+        main = level_order[0]
+    clock = (clock_level or main).upper()
+    if clock not in level_order:
+        clock = main
+    return {
+        'ok': True,
+        'main_level': main,
+        'levels': {level: _empty_level_payload() for level in level_order},
+        'relations': [],
+        'frames': [],
+        'meta': {
+            'engine': 'chan.py',
+            'source': 'origin_vespa_tdx.backend.a_multilevel_engine.native_failure_diagnostic',
+            'mode': (mode or 'once').lower(),
+            'symbol': f'{code}.{market_name}',
+            'name': code,
+            'levels': level_order,
+            'main_level': main,
+            'clock_level': clock,
+            'adjust': adjust.upper(),
+            'native_cchan_lv_list': False,
+            'level_relation_mode': 'native_failed',
+            'fallback_to_bridge': False,
+            'native_diagnostic_failure': True,
+            'native_failure': str(exc),
+            'bridge_result_returned': False,
+            'chan_py_polluted': False,
+            'warnings': ['native CChan(lv_list) failed; bridge fallback is disabled by manual'],
+        },
+    }
+
+
 def analyze_multi(
     *,
     symbol: str,
@@ -376,7 +438,7 @@ def analyze_multi(
             config=config,
         )
     except Exception as exc:
-        bridge = _analyze_multi_bridge(
+        return _diagnostic_failure_response(
             symbol=symbol,
             market=market,
             levels=levels,
@@ -384,18 +446,5 @@ def analyze_multi(
             mode=mode,
             main_level=main_level,
             clock_level=clock_level,
-            start=start,
-            end=end,
-            count=count,
-            config=config,
+            exc=exc,
         )
-        meta = dict(bridge.get('meta')) if isinstance(bridge.get('meta'), dict) else {}
-        warnings = list(meta.get('warnings')) if isinstance(meta.get('warnings'), list) else []
-        warnings.insert(0, f'native CChan(lv_list) failed, fallback to bridge: {exc}')
-        meta.update({
-            'fallback_to_bridge': True,
-            'native_failure': str(exc),
-            'warnings': warnings,
-        })
-        bridge['meta'] = meta
-        return bridge
