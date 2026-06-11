@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'ashare_bsp_scanner_page.dart';
+import 'multi_level_replay_page.dart';
 import 'origin_replay_page_v2.dart';
 import 'research_backtest_page.dart';
 
@@ -13,8 +14,9 @@ class RootPage extends StatefulWidget {
 
 class _RootPageState extends State<RootPage> {
   static const int _replayIndex = 0;
-  static const int _scannerIndex = 1;
-  static const int _researchIndex = 2;
+  static const int _multiLevelIndex = 1;
+  static const int _scannerIndex = 2;
+  static const int _researchIndex = 3;
 
   int _index = _replayIndex;
   final Set<int> _visited = {_replayIndex};
@@ -37,6 +39,7 @@ class _RootPageState extends State<RootPage> {
             visited: _visited,
             builders: const [
               _RouteBuilder(child: OriginReplayPageV2()),
+              _RouteBuilder(child: MultiLevelReplayPage()),
               _RouteBuilder(child: AshareBspScannerPage()),
               _RouteBuilder(child: ResearchBacktestPage()),
             ],
@@ -111,6 +114,13 @@ class _RouteToolColumn extends StatelessWidget {
               icon: Icons.candlestick_chart,
               selected: currentIndex == _RootPageState._replayIndex,
               onPressed: () => onOpen(_RootPageState._replayIndex),
+            ),
+            const SizedBox(height: 6),
+            _RouteToolButton(
+              tooltip: '多级别',
+              icon: Icons.account_tree,
+              selected: currentIndex == _RootPageState._multiLevelIndex,
+              onPressed: () => onOpen(_RootPageState._multiLevelIndex),
             ),
             const SizedBox(height: 6),
             _RouteToolButton(
