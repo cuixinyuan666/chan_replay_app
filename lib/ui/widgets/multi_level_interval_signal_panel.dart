@@ -57,6 +57,11 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
 
   bool get _hasTimeLog => _timeLog != null;
 
+  Object? _compactMeta(String key, [Map<String, dynamic>? log]) {
+    final fromLog = log == null ? null : log[key];
+    return fromLog ?? widget.snapshot.meta[key] ?? '';
+  }
+
   List<_LevelPair> get _pairs {
     final relationPairs = <String, _LevelPair>{};
     for (final r in widget.snapshot.relations) {
@@ -603,6 +608,15 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'used_app_bundled_python: ${log['used_app_bundled_python'] ?? ''}',
       'native_cchan_lv_list: ${log['native_cchan_lv_list'] ?? ''}',
       'fallback_to_bridge: ${log['fallback_to_bridge'] ?? ''}',
+      'step_frame_format: ${_compactMeta('step_frame_format', log)}',
+      'frame_policy: ${_compactMeta('frame_policy', log)}',
+      'frame_stride: ${_compactMeta('frame_stride', log)}',
+      'frames_total: ${_compactMeta('frames_total', log)}',
+      'frames_returned: ${_compactMeta('frames_returned', log)}',
+      'frames_truncated: ${_compactMeta('frames_truncated', log)}',
+      'include_bars_in_frames: ${_compactMeta('include_bars_in_frames', log)}',
+      'include_indicators_in_frames: ${_compactMeta('include_indicators_in_frames', log)}',
+      'response_bytes: ${log['response_bytes'] ?? ''}',
       'total_elapsed_ms: ${log['total_elapsed_ms'] ?? ''}',
       'backend_elapsed_ms: ${log['backend_elapsed_ms'] ?? ''}',
       'frontend_elapsed_ms: ${log['frontend_elapsed_ms'] ?? ''}',
@@ -650,6 +664,14 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'selected_pair: ${pair?.label ?? ''}',
       'frame.index.local: ${widget.frameIndex ?? ''}',
       'frame.count.local: ${widget.frameCount ?? ''}',
+      'step_frame_format: ${_compactMeta('step_frame_format', log)}',
+      'frame_policy: ${_compactMeta('frame_policy', log)}',
+      'frame_stride: ${_compactMeta('frame_stride', log)}',
+      'frames_total: ${_compactMeta('frames_total', log)}',
+      'frames_returned: ${_compactMeta('frames_returned', log)}',
+      'frames_truncated: ${_compactMeta('frames_truncated', log)}',
+      'include_bars_in_frames: ${_compactMeta('include_bars_in_frames', log)}',
+      'include_indicators_in_frames: ${_compactMeta('include_indicators_in_frames', log)}',
       'baseline.main_level: ${widget.snapshot.mainLevel}',
       'baseline.levels: ${levels.join(',')}',
       'baseline.level_count: ${levels.length}',
@@ -699,14 +721,16 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     if (raw is! Map) return const {};
     final result = <String, int>{};
     for (final entry in raw.entries) {
+      final key = '${entry.key}';
+      if (key == 'frontend.response_bytes' || key.endsWith('.response_bytes')) continue;
       final value = entry.value;
       if (value is int) {
-        result['${entry.key}'] = value;
+        result[key] = value;
       } else if (value is num) {
-        result['${entry.key}'] = value.toInt();
+        result[key] = value.toInt();
       } else {
         final parsed = int.tryParse('$value');
-        if (parsed != null) result['${entry.key}'] = parsed;
+        if (parsed != null) result[key] = parsed;
       }
     }
     return result;
