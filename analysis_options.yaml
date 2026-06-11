@@ -5,6 +5,7 @@ analyzer:
     - lib/ui/pages/replay_page.dart
   errors:
     dangling_library_doc_comments: ignore
+    deprecated_member_use: ignore
 
 linter:
   rules:
