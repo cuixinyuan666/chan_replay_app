@@ -9,7 +9,7 @@ This file is the project manual for the multi-level and interval-nest work.
 Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86b
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
-Latest task-party code commit: afcc51f6a90e3f8ecb06d64a8f7fd6098afd7327
+Latest task-party code commit: 5e277427b35a65061abc2fd363e2dcf3906727ce
 Latest manual update commit: pending
 
 ## User objective
@@ -37,7 +37,7 @@ The file named `task checklist and contact.md` is the project manual. Future tas
 
 ## Current blockers
 
-- Native runtime result is not verified yet.
+- Native runtime result is not verified after data-window fix.
 - Native step frames are not implemented yet.
 - Interval-nest rule engine is not implemented yet.
 
@@ -133,3 +133,33 @@ Required local checks:
 Next task after local result:
 - If fallback_to_bridge=true, fix native_failure first.
 - If fallback_to_bridge is false and native_cchan_lv_list=true, implement native step frames.
+
+2026-06-10 user P0 result:
+
+Reported chips:
+- manual P0: needs check
+- native_cchan_lv_list: false
+- native_failure: sub-level K alignment failed
+- level_relation_mode: time_date_bridge
+- fallback_to_bridge: true
+- relations.length: 235
+- frames.length: 0
+
+Decision:
+- P0 failed because native CChan(lv_list) fell back to bridge.
+- Per manual, next work must fix native_failure before step frames or interval-nest features.
+
+Fix applied:
+- Commit: 5e277427b35a65061abc2fd363e2dcf3906727ce
+- File: backend/app/a_multilevel_native_engine.py
+- Cause: DAILY / MIN30 / MIN5 all used the same count value. DAILY count=800 covers far more dates than MIN30/MIN5 count=800, so chan.py found high-level bars without sub-level bars.
+- Change: lower levels now request expanded counts, all levels are then trimmed to a common date window before CSV preparation.
+- Requirement: keep chan.py kl_data_check enabled; do not bypass native validation.
+
+Required next local check:
+- Pull latest origin_vespa_tdx.
+- Run flutter analyze.
+- Run flutter run.
+- Open Multi-level replay.
+- Click Load in once mode.
+- Report manual P0 chips again.
