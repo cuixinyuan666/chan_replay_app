@@ -130,7 +130,6 @@ def _prepare_native_chan(
     bars_by_level: dict[str, list[dict[str, Any]]],
     adjust: str,
     config: dict[str, Any] | None,
-    trigger_step: bool,
 ) -> tuple[Any, Any, list[Any], str]:
     exporter = _load_exporter()
     chanpy_root = exporter.add_chanpy_path(_chanpy_path())
@@ -143,7 +142,7 @@ def _prepare_native_chan(
         csv_path = _bars_to_csv(bars_by_level[level], f'{prepared_code_base}_{level.lower()}')
         next_code = exporter.prepare_chanpy_csv(str(csv_path), chanpy_root, kl_type, prepared_code_base)
         prepared_code = prepared_code or str(next_code)
-    chan_config = CChanConfig(_config_dict(trigger_step=trigger_step, config=config))
+    chan_config = CChanConfig(_config_dict(trigger_step=False, config=config))
     chan = exporter.make_cchan(CChan, {
         'code': prepared_code or prepared_code_base,
         'begin_time': None,
@@ -201,7 +200,6 @@ def analyze_multi_native(
         bars_by_level=bars_by_level,
         adjust=adjust,
         config=config,
-        trigger_step=mode_name == 'step',
     )
 
     level_results: dict[str, dict[str, Any]] = {}
@@ -220,6 +218,9 @@ def analyze_multi_native(
         chan=chan,
         exporter=exporter,
     )
+    warnings = ['native CChan(lv_list) path is active']
+    if mode_name == 'step':
+        warnings.append('native step frames are not exported yet; final multi-level structures are returned')
 
     return {
         'ok': True,
@@ -242,9 +243,6 @@ def analyze_multi_native(
             'level_relation_mode': 'chan_parent_child',
             'chan_py_polluted': False,
             'native_step_frames': False,
-            'warnings': [
-                'native CChan(lv_list) path is active',
-                'step frames are not exported by native path yet' if mode_name == 'step' else '',
-            ],
+            'warnings': warnings,
         },
     }
