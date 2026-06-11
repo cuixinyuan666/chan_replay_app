@@ -79,8 +79,6 @@ class PythonMultiLevelChanAnalysisSource {
       return _loadViaAutoLocalBackend(payload);
     } on SocketException catch (_) {
       return _loadViaAutoLocalBackend(payload);
-    } on TimeoutException catch (_) {
-      return _loadViaAutoLocalBackend(payload);
     } on http.ClientException catch (e) {
       if (!_looksLikeConnectionFailure(e)) rethrow;
       return _loadViaAutoLocalBackend(payload);
@@ -113,14 +111,28 @@ class PythonMultiLevelChanAnalysisSource {
   ) async {
     final sourceBase = _trimTrailingSlash(sourceBaseUrl);
     final uri = Uri.parse('$sourceBase/api/chan/analyze_multi');
+    final timeout = _requestTimeout(payload);
     final response = await _client
         .post(
           uri,
           headers: {'content-type': 'application/json'},
           body: jsonEncode(payload),
         )
-        .timeout(const Duration(seconds: 60));
+        .timeout(
+          timeout,
+          onTimeout: () => throw TimeoutException(
+            'analyze_multi ${payload['mode'] ?? ''} 请求超时：${timeout.inSeconds}s，uri=$uri。'
+            '请降低 count / max_step_frames，或检查后端 step_load 性能。',
+            timeout,
+          ),
+        );
     return _decodeResponse(response, sourceBaseUrl: sourceBase);
+  }
+
+  Duration _requestTimeout(Map<String, dynamic> payload) {
+    final mode = '${payload['mode'] ?? ''}'.toLowerCase();
+    if (mode == 'step') return const Duration(seconds: 180);
+    return const Duration(seconds: 90);
   }
 
   PythonMultiLevelChanAnalysis _decodeResponse(http.Response response,
