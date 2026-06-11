@@ -16,7 +16,7 @@ Latest root default commit: 6a88fcbd67a67512775a6eed7e5541458c3c5724
 Latest relation panel commit: 5e1266269edbe78637bd6f03661ede27401b0403
 Latest relation locate type fix commit: 6f8fd5d9f07003c69215609c46d41ef87c59309a
 Latest relation page wiring commit: a6f7d34463aeff1b753457ca6b4dff6577d888bf
-Latest manual update commit: pending
+Latest manual update commit: Batch B accepted; marker finalized in this commit
 
 ## User objective
 
