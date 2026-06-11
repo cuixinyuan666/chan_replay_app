@@ -140,7 +140,6 @@ class PythonMultiLevelChanAnalysisSource {
           ),
         );
     stages['frontend.http_round_trip'] = httpSw.elapsedMilliseconds;
-    stages['frontend.response_bytes'] = response.bodyBytes.length;
     return _decodeResponse(
       response,
       sourceBaseUrl: sourceBase,
@@ -149,6 +148,7 @@ class PythonMultiLevelChanAnalysisSource {
       totalSw: totalSw,
       stages: stages,
       requestContext: requestContext,
+      responseBytes: response.bodyBytes.length,
     );
   }
 
@@ -168,6 +168,7 @@ class PythonMultiLevelChanAnalysisSource {
     required Stopwatch totalSw,
     required Map<String, int> stages,
     required Map<String, dynamic> requestContext,
+    required int responseBytes,
   }) {
     final bodySw = Stopwatch()..start();
     final body = utf8.decode(response.bodyBytes);
@@ -194,11 +195,50 @@ class PythonMultiLevelChanAnalysisSource {
       throw Exception(
           decoded['error'] ?? 'chan.py multi-level calculation failed.');
     }
+
     final parseSw = Stopwatch()..start();
-    final analysis = parse(decoded);
+    final topParseSw = Stopwatch()..start();
+    final snapshot = MultiLevelChanAnalysisParser.parseSnapshot(
+      decoded,
+      parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
+    );
+    stages['frontend.parse.top_snapshot'] = topParseSw.elapsedMilliseconds;
+    if (snapshot == null) {
+      throw const FormatException('chan.py multi-level response missing levels structure');
+    }
+
+    final rawFrames = decoded['frames'];
+    final rawFrameCount = rawFrames is List ? rawFrames.length : 0;
+    final framesParseSw = Stopwatch()..start();
+    final frames = MultiLevelChanAnalysisParser.parseFrames(
+      rawFrames,
+      baseLevels: decoded['levels'],
+      parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
+    );
+    stages['frontend.parse.frames'] = framesParseSw.elapsedMilliseconds;
+
+    final signalsParseSw = Stopwatch()..start();
+    final intervalSignals = _parseIntervalNestSignals(
+      decoded['interval_nest_signals'] ?? decoded['intervalNestSignals'],
+    );
+    stages['frontend.parse.interval_signals'] = signalsParseSw.elapsedMilliseconds;
     stages['frontend.parse.snapshot_frames_relations_bsp'] = parseSw.elapsedMilliseconds;
 
+    final decodedMeta = decoded['meta'] is Map
+        ? Map<String, dynamic>.from(decoded['meta'] as Map)
+        : const <String, dynamic>{};
+    final analysis = PythonMultiLevelChanAnalysis(
+      snapshot: snapshot,
+      frames: frames,
+      intervalNestSignals: intervalSignals,
+      meta: decodedMeta,
+    );
+
     final meta = Map<String, dynamic>.from(analysis.meta);
+    meta['raw_frame_count'] = rawFrameCount;
+    meta['parsed_frame_count'] = frames.length;
+    meta['parsed_level_count'] = snapshot.levels.length;
+    meta['lazy_frame_parsing'] = false;
     if (backendDiagnostics != null) {
       meta['backend_runtime'] = backendDiagnostics;
       meta['backend_url'] = backendDiagnostics['backend_url'];
@@ -213,6 +253,7 @@ class PythonMultiLevelChanAnalysisSource {
       requestContext: requestContext,
       sourceBaseUrl: sourceBaseUrl,
       backendDiagnostics: backendDiagnostics,
+      responseBytes: responseBytes,
     );
     meta['time_log'] = timeLog;
     final enrichedSnapshot = _snapshotWithMeta(analysis.snapshot, {'time_log': timeLog});
@@ -252,6 +293,7 @@ class PythonMultiLevelChanAnalysisSource {
     required Map<String, dynamic> requestContext,
     String? sourceBaseUrl,
     Map<String, dynamic>? backendDiagnostics,
+    required int responseBytes,
   }) {
     final frontendTotal = stages['frontend.total'] ?? 0;
     final backendElapsed = _numToInt(meta['backend_elapsed_ms']) ?? stages['frontend.http_round_trip'] ?? 0;
@@ -272,11 +314,25 @@ class PythonMultiLevelChanAnalysisSource {
       'total_elapsed_ms': frontendTotal,
       'backend_elapsed_ms': backendElapsed,
       'frontend_elapsed_ms': frontendTotal,
-      'response_bytes': stages['frontend.response_bytes'],
+      'response_bytes': responseBytes,
+      'raw_frame_count': meta['raw_frame_count'],
+      'parsed_frame_count': meta['parsed_frame_count'],
+      'parsed_level_count': meta['parsed_level_count'],
+      'lazy_frame_parsing': meta['lazy_frame_parsing'],
       'stages': Map<String, int>.from(stages),
       'used_app_bundled_python': (meta['python_runtime'] ?? runtime['python_runtime']) == 'app_bundled',
       'native_cchan_lv_list': meta['native_cchan_lv_list'],
       'fallback_to_bridge': meta['fallback_to_bridge'] ?? false,
+      'step_frame_format': meta['step_frame_format'],
+      'frame_policy': meta['frame_policy'],
+      'frame_stride': meta['frame_stride'],
+      'frames_total': meta['frames_total'],
+      'frames_returned': meta['frames_returned'],
+      'frames_truncated': meta['frames_truncated'],
+      'include_bars_in_frames': meta['include_bars_in_frames'],
+      'include_indicators_in_frames': meta['include_indicators_in_frames'],
+      'compact_validation_status': meta['compact_validation_status'],
+      'compact_validation_mismatch_count': meta['compact_validation_mismatch_count'],
       'status': 'ok',
     };
   }
