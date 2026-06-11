@@ -687,4 +687,5 @@ def analyze_multi_native(
         adjust=adjust,
         main=main,
         clock=clock,
+        config=config,
     )
