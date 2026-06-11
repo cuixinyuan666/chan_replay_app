@@ -10,7 +10,7 @@ class MultiLevelRelationPanel extends StatefulWidget {
   final int? frameIndex;
   final int? frameCount;
   final String symbol;
-  final ValueChanged<_RelationLocateRequest> onLocate;
+  final ValueChanged<RelationLocateRequest> onLocate;
 
   const MultiLevelRelationPanel({
     super.key,
@@ -66,12 +66,28 @@ class _MultiLevelRelationPanelState extends State<MultiLevelRelationPanel> {
           _chip('source', 'native relations', true),
           _chip('targets', '${targets.length}', targets.isNotEmpty),
           _chip('selected', target == null ? '-' : '${_targetIndex + 1}/${targets.length}', target != null),
-          if (target != null) _chip('parent', '${target.parentLevel} ${target.structureType}#${target.structureIndex} raw:${target.parentStartRawIndex}-${target.parentEndRawIndex}', true),
-          if (target != null) _chip('child', '${target.childLevel} raw:${target.childStartRawIndex}-${target.childEndRawIndex}', true),
+          if (target != null)
+            _chip(
+              'parent',
+              '${target.parentLevel} ${target.structureType}#${target.structureIndex} raw:${target.parentStartRawIndex}-${target.parentEndRawIndex}',
+              true,
+            ),
+          if (target != null)
+            _chip('child', '${target.childLevel} raw:${target.childStartRawIndex}-${target.childEndRawIndex}', true),
           _smallButton('Prev', targets.isEmpty ? null : () => _setTarget(_targetIndex - 1, targets.length)),
           _smallButton('Next', targets.isEmpty ? null : () => _setTarget(_targetIndex + 1, targets.length)),
-          _smallButton('Locate Parent', target == null ? null : () => widget.onLocate(_RelationLocateRequest(target.parentLevel, target.parentStartRawIndex, target.parentEndRawIndex))),
-          _smallButton('Locate Child', target == null ? null : () => widget.onLocate(_RelationLocateRequest(target.childLevel, target.childStartRawIndex, target.childEndRawIndex))),
+          _smallButton(
+            'Locate Parent',
+            target == null
+                ? null
+                : () => widget.onLocate(RelationLocateRequest(target.parentLevel, target.parentStartRawIndex, target.parentEndRawIndex)),
+          ),
+          _smallButton(
+            'Locate Child',
+            target == null
+                ? null
+                : () => widget.onLocate(RelationLocateRequest(target.childLevel, target.childStartRawIndex, target.childEndRawIndex)),
+          ),
           OutlinedButton.icon(
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: _copyText(pair, targets, target)));
@@ -341,10 +357,10 @@ class _RelationTarget {
   });
 }
 
-class _RelationLocateRequest {
+class RelationLocateRequest {
   final String level;
   final int startRawIndex;
   final int endRawIndex;
 
-  const _RelationLocateRequest(this.level, this.startRawIndex, this.endRawIndex);
+  const RelationLocateRequest(this.level, this.startRawIndex, this.endRawIndex);
 }
