@@ -59,10 +59,13 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
 
   MultiLevelChanSnapshot? get _full => _analysis?.snapshot;
 
+  bool get _stepFramesEmpty => _mode == 'step' && _analysis != null && _analysis!.frames.isEmpty;
+
   MultiLevelChanSnapshot? get _current {
     final analysis = _analysis;
     if (analysis == null) return null;
-    if (_mode == 'step' && analysis.frames.isNotEmpty) {
+    if (_mode == 'step') {
+      if (analysis.frames.isEmpty) return null;
       final idx = _frameIndex.clamp(0, analysis.frames.length - 1).toInt();
       return analysis.frames[idx];
     }
@@ -123,7 +126,12 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         _viewEndIndex = null;
         _crosshairIndex = null;
         _priceScale = 1.0;
-        _status = _buildStatus(analysis, snapshot: _mode == 'step' && analysis.frames.isNotEmpty ? analysis.frames.first : analysis.snapshot);
+        _status = _mode == 'step' && analysis.frames.isEmpty
+            ? _blockedStatus(analysis)
+            : _buildStatus(
+                analysis,
+                snapshot: _mode == 'step' && analysis.frames.isNotEmpty ? analysis.frames.first : analysis.snapshot,
+              );
       });
       _showMessage(_status);
     } catch (e) {
@@ -166,43 +174,45 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                     ),
                   ),
                 Expanded(
-                  child: snapshot == null || snapshot.rawBars.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'Load analyze_multi to show multi-level chart.',
-                            style: TextStyle(color: Colors.white60),
-                          ),
-                        )
-                      : OriginKlineChart(
-                          snapshot: snapshot,
-                          showFx: true,
-                          showFxLine: true,
-                          showFxText: true,
-                          showBi: true,
-                          showBiText: false,
-                          showSeg: true,
-                          showSegText: true,
-                          showZs: true,
-                          showBiBsp: true,
-                          showSegBsp: true,
-                          showMergedBars: false,
-                          showEasyTdxIndicators: true,
-                          easyTdxSubPanelCount: 2,
-                          drawingStorageKey: 'multi_${_symbolController.text}_$activeLevel',
-                          symbolLabel: '${_symbolController.text} $activeLevel',
-                          windowSize: _windowSize,
-                          priceScale: _priceScale,
-                          viewEndIndex: _viewEndIndex,
-                          crosshairIndex: _crosshairIndex,
-                          onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
-                          onPanBars: _panChartByBars,
-                          onWindowSizeChanged: (v) => setState(() => _windowSize = v),
-                          onPriceScaleChanged: (v) => setState(() => _priceScale = v),
-                        ),
+                  child: _stepFramesEmpty
+                      ? _strictStepBlockedPanel()
+                      : snapshot == null || snapshot.rawBars.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'Load analyze_multi to show multi-level chart.',
+                                style: TextStyle(color: Colors.white60),
+                              ),
+                            )
+                          : OriginKlineChart(
+                              snapshot: snapshot,
+                              showFx: true,
+                              showFxLine: true,
+                              showFxText: true,
+                              showBi: true,
+                              showBiText: false,
+                              showSeg: true,
+                              showSegText: true,
+                              showZs: true,
+                              showBiBsp: true,
+                              showSegBsp: true,
+                              showMergedBars: false,
+                              showEasyTdxIndicators: true,
+                              easyTdxSubPanelCount: 2,
+                              drawingStorageKey: 'multi_${_symbolController.text}_$activeLevel',
+                              symbolLabel: '${_symbolController.text} $activeLevel',
+                              windowSize: _windowSize,
+                              priceScale: _priceScale,
+                              viewEndIndex: _viewEndIndex,
+                              crosshairIndex: _crosshairIndex,
+                              onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
+                              onPanBars: _panChartByBars,
+                              onWindowSizeChanged: (v) => setState(() => _windowSize = v),
+                              onPriceScaleChanged: (v) => setState(() => _priceScale = v),
+                            ),
                 ),
               ],
             ),
-            if (full != null)
+            if (full != null && current != null)
               Positioned(
                 right: 12,
                 top: _analysis == null
@@ -212,7 +222,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                   constraints: const BoxConstraints(maxWidth: 360),
                   child: MultiLevelLayerStatusPanel(
                     fullSnapshot: full,
-                    currentSnapshot: current ?? full,
+                    currentSnapshot: current,
                     activeLevel: activeLevel,
                     clockMode: _viewState.clockMode,
                     compact: true,
@@ -226,6 +236,37 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                   child: Center(child: CircularProgressIndicator()),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _strictStepBlockedPanel() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(28),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0x332C1D1D),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFFFB74D)),
+        ),
+        child: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFFFB74D), size: 32),
+            SizedBox(height: 10),
+            Text(
+              'Strict step blocked: frames.length = 0',
+              style: TextStyle(color: Color(0xFFFFB74D), fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+            SizedBox(height: 8),
+            Text(
+              '当前是 step 模式，但后端未返回原生 step frames。页面不会用最终完整快照伪装逐K结果。请点击 Copy Step 复制诊断。',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
           ],
         ),
       ),
@@ -294,7 +335,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final nativeFailure = meta['native_failure'];
     final relationsLength = analysis.snapshot.relations.length;
     final framesLength = analysis.frames.length;
-    final okNative = native == true && relationMode == 'chan_parent_child' && fallback != true;
+    final okNative = native == true && relationMode == 'chan_parent_child' && fallback != true && (_mode != 'step' || framesLength > 0);
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(48, 8, 12, 0),
@@ -309,12 +350,13 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          _diagChip('manual P0', okNative ? 'native once ok' : 'needs check', okNative),
+          _diagChip('manual P0', okNative ? 'native step ok' : 'needs check', okNative),
           _diagChip('native_cchan_lv_list', '$native', native == true),
           _diagChip('level_relation_mode', '$relationMode', relationMode == 'chan_parent_child'),
           _diagChip('fallback_to_bridge', '${fallback ?? false}', fallback != true),
           _diagChip('relations.length', '$relationsLength', relationsLength > 0),
           _diagChip('frames.length', '$framesLength', _mode != 'step' || framesLength > 0),
+          if (_stepFramesEmpty) _diagChip('strict_step_blocked', 'true', false),
           if (nativeFailure != null) _diagChip('native_failure', '$nativeFailure', false),
           _copyP0Button(analysis),
           if (_mode == 'step') _copyStepButton(analysis),
@@ -486,6 +528,11 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     if (next != current) setState(() => _viewEndIndex = next);
   }
 
+  String _blockedStatus(PythonMultiLevelChanAnalysis analysis) {
+    final meta = analysis.meta;
+    return 'analyze_multi STEP strict_step_blocked:true native:${meta['native_cchan_lv_list']} relation:${meta['level_relation_mode']} fallback:${meta['fallback_to_bridge'] ?? false} frames:0';
+  }
+
   String _buildStatus(PythonMultiLevelChanAnalysis analysis, {MultiLevelChanSnapshot? snapshot}) {
     final snap = snapshot ?? analysis.snapshot;
     final meta = analysis.meta;
@@ -519,12 +566,13 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final snapshot = analysis.snapshot;
     return [
       'manual P0 diagnostics',
-      'status_summary: ${_buildStatus(analysis)}',
-      'level_summary: ${_buildLevelSummary(snapshot)}',
+      'status_summary: ${_stepFramesEmpty ? _blockedStatus(analysis) : _buildStatus(analysis)}',
+      'level_summary: ${_stepFramesEmpty ? '<final snapshot diagnostics only; not rendered as strict step>' : _buildLevelSummary(snapshot)}',
       'mode: $_mode',
       'symbol: ${_symbolController.text.trim()}',
       'market: ${_marketController.text.trim().toUpperCase()}',
       'levels: ${snapshot.levels.join(',')}',
+      'strict_step_blocked: $_stepFramesEmpty',
       'native_cchan_lv_list: ${meta['native_cchan_lv_list']}',
       'level_relation_mode: ${meta['level_relation_mode']}',
       'fallback_to_bridge: ${meta['fallback_to_bridge'] ?? false}',
@@ -545,20 +593,24 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   String _buildStepDiagnosticText(PythonMultiLevelChanAnalysis analysis) {
     final meta = analysis.meta;
     final frames = analysis.frames;
-    final safeIndex = frames.isEmpty ? 0 : _frameIndex.clamp(0, frames.length - 1).toInt();
-    final frame = frames.isEmpty ? analysis.snapshot : frames[safeIndex];
-    final frameMeta = frame.meta;
+    final hasFrame = frames.isNotEmpty;
+    final safeIndex = hasFrame ? _frameIndex.clamp(0, frames.length - 1).toInt() : 0;
+    final frame = hasFrame ? frames[safeIndex] : null;
+    final frameMeta = frame?.meta ?? const <String, dynamic>{};
     return [
       'manual step diagnostics',
       'button: Copy Step',
       'copy_step_visible: true',
-      'step_controls_visible: ${frames.isNotEmpty}',
+      'step_controls_visible: $hasFrame',
+      'strict_step_blocked: ${_mode == 'step' && !hasFrame}',
+      'frame_source: ${hasFrame ? 'native_step_frame' : 'none'}',
+      'final_snapshot_rendered_as_step: false',
       'mode: $_mode',
       'symbol: ${_symbolController.text.trim()}',
       'market: ${_marketController.text.trim().toUpperCase()}',
       'levels: ${analysis.snapshot.levels.join(',')}',
-      'frame.index.local: $safeIndex',
-      'frame.number.local: ${frames.isEmpty ? 0 : safeIndex + 1}/${frames.length}',
+      'frame.index.local: ${hasFrame ? '$safeIndex' : ''}',
+      'frame.number.local: ${hasFrame ? '${safeIndex + 1}/${frames.length}' : '0/${frames.length}'}',
       'frame.cursor.native: ${frameMeta['cursor'] ?? frameMeta['frame_index'] ?? ''}',
       'frame.current_time: ${frameMeta['current_time'] ?? ''}',
       'native_cchan_lv_list: ${meta['native_cchan_lv_list']}',
@@ -571,10 +623,10 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'native_step_frames_limit: ${meta['native_step_frames_limit'] ?? ''}',
       'native_step_frames_truncated: ${meta['native_step_frames_truncated'] ?? ''}',
       'frames.length: ${frames.length}',
-      'frame.relations.length: ${frame.relations.length}',
-      'status_summary.current_frame: ${_buildStatus(analysis, snapshot: frame)}',
-      'level_summary.current_frame: ${_buildLevelSummary(frame)}',
-      'level_summary.final: ${_buildLevelSummary(analysis.snapshot)}',
+      'frame.relations.length: ${frame?.relations.length ?? ''}',
+      'status_summary.current_frame: ${hasFrame ? _buildStatus(analysis, snapshot: frame) : '<none; strict step blocked>'}',
+      'level_summary.current_frame: ${hasFrame ? _buildLevelSummary(frame) : '<none; strict step blocked>'}',
+      'level_summary.final_snapshot_for_diagnostics: ${_buildLevelSummary(analysis.snapshot)}',
       'native_data_window: ${meta['native_data_window'] ?? ''}',
     ].join('\n');
   }
