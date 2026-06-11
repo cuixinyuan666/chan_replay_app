@@ -29,7 +29,7 @@ Branch: origin_vespa_tdx
 - `6264c1e47bde70aa230f2a557d385ffc393a5e3b`: accepted user-provided step and once Time Logs in the manual.
 - `b2db4aa399133477606a58fe93643ce0489dfdf6`: added interval rule context fields to copied Time Logs.
 - `0ae7c864bba799093d7c94c8eda29c0131ae692a`: added `Copy Result Validation` F0 gate to interval signal panel.
-- Current update: added `compact_v1` step-frame lightweight export and indicator de-duplication task as the current performance priority.
+- Current update: accepted user-provided F0 `Copy Result Validation` output with `validation_status: blocked`; F1a compact_v1 is now the current implementation priority.
 - Earlier accepted commits remain valid: bundled Python backend, native `analyze_multi`, strict step, relation navigation, Scan Signal, arbitrary BSP validation mode.
 
 ## Current accepted work
@@ -44,6 +44,7 @@ Branch: origin_vespa_tdx
 - P0 Time Log Scan Signal / once path: runtime accepted.
 - P0 Time Log interval-panel step timing path: runtime accepted.
 - P0 Time Log strategy context with explicit fields: runtime accepted by user-provided log.
+- F0 Copy Result Validation blocked gate: runtime accepted.
 
 ## Runtime verification accepted: App-bundled Python / Copy P0
 
@@ -106,112 +107,74 @@ User supplied strategy no-signal diagnostics for frame `0/29`:
 Decision:
 
 - Strategy mode no-signal diagnostics are structurally useful.
-- Strategy acceptance can resume only after F0 Result Validation output is runtime-verified.
+- Strategy acceptance remains behind performance work priority unless user explicitly changes track.
 
 ## P0 Time Log instrumentation
 
-Implemented in `lib/data/python_multi_level_chan_analysis_source.dart`:
+Implemented and accepted:
 
-- Added `trace_id` for each `analyze_multi` request.
-- Added frontend timing stages into `analysis.meta.time_log`:
-  - `frontend.request_build`
-  - `frontend.backend_ready`
-  - `frontend.http_round_trip`
-  - `frontend.body_decode`
-  - `frontend.json_decode`
-  - `frontend.parse.snapshot_frames_relations_bsp`
-  - `frontend.total`
-- Added request/runtime/backend context into `time_log`.
-- Propagated `time_log` into final snapshot meta and each step frame snapshot meta.
-- No chan.py calculation semantics changed.
+- Metadata path implemented in `lib/data/python_multi_level_chan_analysis_source.dart`.
+- `Copy Time Log` implemented in `lib/ui/widgets/multi_level_interval_signal_panel.dart`.
+- Runtime step Load Time Log accepted.
+- Runtime Scan Signal / once Time Log accepted.
+- Runtime strategy context Time Log with explicit rule fields accepted.
+- P0 Time Log fully accepted.
+
+## F0 Result Validation foundation
 
 Implemented in `lib/ui/widgets/multi_level_interval_signal_panel.dart`:
 
-- Added visible `Copy Time Log` button next to `Copy Signal`.
-- Added context fields to copied logs:
-  - `time_log_context: interval_signal_panel`
-  - `rule_mode_ui`
-  - `signal_rule_mode`
-  - `strategy_rule_name`
-  - `strategy_high_type`
-  - `strategy_low_trigger_type`
-  - `selected_pair`
-  - `frame.index.local`
-  - `frame.count.local`
-  - `backend_request_mode`
+- Added visible `Copy Result Validation` button next to `Copy Signal` and `Copy Time Log`.
+- Current implementation does not enable any fast candidate.
+- Current output reports:
+  - `validation_phase: F0`
+  - `baseline_source: original chan.py analyze_multi`
+  - `fast_candidate_enabled: false`
+  - `validation_status: blocked`
+  - `blocked_reason: no fast candidate mode/cache/compact payload configured`
+  - request parameters.
+  - baseline raw/K/FX/BI/SEG/ZS/BSP counts per level.
+  - total relation count and selected pair relation count.
+  - current rule signal count.
+  - sampled BSP rows.
+  - sampled relation rows.
+  - acceptance policy.
+- This satisfies the F0 gate requirement that speed mode cannot be accepted without validation output.
 
-Runtime Time Log accepted: normal step Load:
+Runtime accepted F0 blocked output:
 
-- trace_id: `ml-1781194131809617`
-- mode: `step`
-- symbol: `600340`
-- levels: `DAILY,MIN30,MIN5`
-- count: `220`
-- max_step_frames: `60`
-- start/end: `2025-09-01` to `2025-10-20`
-- python_runtime: `app_bundled`
-- process_source: `app_managed`
-- used_app_bundled_python: `true`
-- native_cchan_lv_list: `true`
-- fallback_to_bridge: `false`
-- total_elapsed_ms: `32729`
-- backend_elapsed_ms: `12186`
-- frontend_elapsed_ms: `32729`
-- status: `ok`
+- request.mode: `step`
+- request.symbol: `600340`
+- request.market: `SH`
+- request.levels: `DAILY,MIN30,MIN5`
+- request.count: `220`
+- request.max_step_frames: `60`
+- request.start/end: `2025-09-01` to `2025-10-20`
+- rule_mode_ui: `validation`
+- signal_rule_mode: `validation_any_bsp_pair`
+- selected_pair: `DAILY->MIN30`
+- frame.index.local: `0`
+- frame.count.local: `29`
+- baseline.main_level: `DAILY`
+- baseline.level_count: `3`
+- baseline.relation_count.total: `9`
+- baseline.relation_count.selected_pair: `1`
+- baseline.signal_count.current_rule: `0`
+- baseline.level_counts:
+  - DAILY: `raw=1,k=1,fx=0,bi=0,seg=0,zs=0,bsp=0`
+  - MIN30: `raw=8,k=4,fx=1,bi=0,seg=0,zs=0,bsp=0`
+  - MIN5: `raw=48,k=4,fx=2,bi=0,seg=0,zs=0,bsp=0`
+- baseline.sample_relation: `DAILY->MIN30:parent=0:child=0-7`
+- validation_status: `blocked`
+- status: `blocked`
 
-Runtime Time Log accepted: Scan Signal / once:
+F0 acceptance status:
 
-- trace_id: `ml-1781194209519646`
-- mode: `once`
-- symbol: `600340`
-- levels: `DAILY,MIN30,MIN5`
-- count: `220`
-- start/end: `2025-09-01` to `2025-10-20`
-- python_runtime: `app_bundled`
-- process_source: `app_managed`
-- used_app_bundled_python: `true`
-- native_cchan_lv_list: `true`
-- fallback_to_bridge: `false`
-- total_elapsed_ms: `12153`
-- backend_elapsed_ms: `8738`
-- frontend_elapsed_ms: `12153`
-- status: `ok`
-
-Runtime Time Log accepted: strategy context with explicit fields:
-
-- `time_log_context: interval_signal_panel`
-- `rule_mode_ui: strategy`
-- `signal_rule_mode: strategy_interval_nest_buy`
-- `strategy_rule_name: DAILY_2B_MIN30_1B`
-- `strategy_high_type: 2-buy`
-- `strategy_low_trigger_type: 1-buy`
-- `selected_pair: DAILY->MIN30`
-- `backend_request_mode: step`
-- trace_id: `ml-1781195049889660`
-- mode: `strategy`
-- symbol: `600340`
-- levels: `DAILY,MIN30,MIN5`
-- count: `220`
-- max_step_frames: `60`
-- start/end: `2025-09-01` to `2025-10-20`
-- python_runtime: `app_bundled`
-- process_source: `app_managed`
-- native_cchan_lv_list: `true`
-- fallback_to_bridge: `false`
-- total_elapsed_ms: `26470`
-- backend_elapsed_ms: `10678`
-- frontend_elapsed_ms: `26470`
-- status: `ok`
-
-P0 Time Log acceptance status:
-
-- Metadata path: implemented.
-- Copy Time Log UI: implemented.
-- Runtime step Load Time Log: accepted.
-- Runtime Scan Signal / once Time Log: accepted.
-- Runtime interval-panel step Time Log: accepted.
-- Runtime strategy context Time Log with explicit rule fields: accepted.
-- P0 Time Log: fully accepted.
+- UI/action implemented.
+- Runtime Copy Result Validation output accepted.
+- `validation_status: blocked` is expected because no fast candidate exists.
+- `极速` mode remains not accepted and not implemented.
+- F1a compact_v1 work may start.
 
 ## Supervisor analysis from accepted Time Logs
 
@@ -248,48 +211,9 @@ Target performance goals for the accepted test window `600340 / SH / DAILY,MIN30
 - Scan Signal / once warm target: below `3s`.
 - UI panel interactions after data is loaded: below `500ms` where no backend recomputation is required.
 
-## Phase F0: result validation foundation, before any speed switch is accepted
-
-Required behavior:
-
-- Add `Copy Result Validation` panel/action.
-- Run baseline mode and fast candidate mode on the same request parameters when fast candidate exists.
-- Compare structure-level results before exposing `极速` mode as accepted.
-- If no fast candidate exists, validation must report `validation_status: blocked` and must not allow any speed mode acceptance.
-
-Implemented in `lib/ui/widgets/multi_level_interval_signal_panel.dart`:
-
-- Added visible `Copy Result Validation` button next to `Copy Signal` and `Copy Time Log`.
-- Current implementation does not enable any fast candidate.
-- Current output reports:
-  - `validation_phase: F0`
-  - `baseline_source: original chan.py analyze_multi`
-  - `fast_candidate_enabled: false`
-  - `validation_status: blocked`
-  - `blocked_reason: no fast candidate mode/cache/compact payload configured`
-  - request parameters.
-  - baseline raw/K/FX/BI/SEG/ZS/BSP counts per level.
-  - total relation count and selected pair relation count.
-  - current rule signal count.
-  - sampled BSP rows.
-  - sampled relation rows.
-  - acceptance policy.
-- This satisfies the F0 gate requirement that speed mode cannot be accepted without validation output.
-
-F0 acceptance status:
-
-- UI/action implemented.
-- Runtime Copy Result Validation output: pending user paste.
-- Since no fast candidate exists, expected status is `validation_status: blocked`.
-- `极速` mode remains not accepted and not implemented.
-
 ## Phase F1a: step frames compact_v1 export and indicator de-duplication
 
-Current priority:
-
-- This is now the first implementation task after F0 runtime `Copy Result Validation` output is checked.
-- This task addresses the accepted Time Log bottleneck directly: large frames payload, repeated bars, repeated indicators, JSON decode, frontend parse, and frame materialization.
-- This task is part of the `极速` plan, but it is not a separate Chan calculation engine.
+Current priority after F0 acceptance.
 
 Goal:
 
@@ -298,248 +222,35 @@ Goal:
 - Reduce repeated JSON, repeated K-line arrays, repeated indicator arrays, and unnecessary frontend parsing.
 - Preserve final chart and diagnostic equivalence with the pre-optimization baseline.
 
-Core rule:
+Required compact format and behavior:
 
-- `chan.py` remains the only Chan calculation source.
-- Every frame's FX/BI/SEG/ZS/BSP must come from the current `CChan` object returned by original chan.py step iteration.
-- Flutter/Dart must not calculate FX/BI/SEG/ZS/BSP or multi-level parent-child relations.
-
-### F1a.1 Do not return `bars[:i+1]` inside every frame
-
-Problem:
-
-- Old step export may put visible bars into each frame.
-- For N bars, repeated `bars[:i+1]` creates approximately `N*(N+1)/2` serialized bars.
-- This inflates response bytes, backend JSON serialization time, frontend JSON decode time, parse time, and memory.
-
-Required compact format:
-
-```json
-{
-  "bars": [
-    {"time": "...", "open": 0, "high": 0, "low": 0, "close": 0}
-  ],
-  "frames": [
-    {
-      "cursor": 120,
-      "visible_count": 121,
-      "merged_bars": [],
-      "fx": [],
-      "bi": [],
-      "seg": [],
-      "zs": [],
-      "bsp": []
-    }
-  ]
-}
-```
-
-Backend requirement:
-
-- Top-level result keeps full `bars` once.
+- Top-level result keeps full bars once.
 - Frame object must not include `bars` by default.
 - Frame object must include `cursor` and `visible_count`.
 - Frame structures remain current-frame structures exported from original chan.py.
-
-Flutter requirement:
-
-- New parser path must render visible bars from top-level bars plus `visible_count`.
-- Parser may temporarily support old `frame.bars` for compatibility.
-- New default export must be `compact_v1` and must not include `frame.bars`.
-
-### F1a.2 Do not recalculate or return full indicators in every frame
-
-Problem:
-
-- Display indicators such as VOL/MA/BOLL/MACD should not be rebuilt from scratch for each `frame_bars` prefix.
-- Per-frame full indicators inflate CPU and payload size and can create future-data risks if not clipped correctly.
-
-Backend requirement:
-
-- Once mode: top-level bars and top-level indicators are allowed.
-- Step mode: compute top-level indicators once for top-level bars.
+- Step mode should compute top-level indicators once for top-level bars.
 - Frame object must not include full indicators by default.
-- Remove or disable per-frame calls equivalent to `build_display_indicators(frame_bars, config)`.
+- Request/config fields must support:
+  - `frame_policy`
+  - `frame_stride`
+  - `frame_start`
+  - `frame_end`
+  - `max_return_frames`
+  - `include_bars_in_frames`
+  - `include_indicators_in_frames`
+- Backend meta must include:
+  - `step_frame_format: compact_v1`
+  - `frame_policy`
+  - `frame_stride`
+  - `frames_total`
+  - `frames_returned`
+  - `frames_truncated`
+  - `include_bars_in_frames`
+  - `include_indicators_in_frames`
+- Copy diagnostics must include compact meta and payload/parse timings.
+- Copy Result Validation must compare compact result against baseline before compact output can be accepted as a fast path.
 
-Flutter requirement:
-
-- In step replay, chart indicators must be clipped by current frame `visible_count`.
-- Crosshair and tooltip must not read or display indicator values beyond `visible_count`.
-- This clipping is required to avoid future-data leakage in replay.
-
-Validation:
-
-- Same bars must produce consistent once top-level indicators and step top-level indicators.
-- Any frame must display only bars/indicators up to `visible_count`.
-
-### F1a.3 Add frame export policy
-
-Required request/config fields:
-
-```json
-{
-  "frame_policy": "full | stride | window | latest",
-  "frame_stride": 1,
-  "frame_start": null,
-  "frame_end": null,
-  "max_return_frames": 300,
-  "include_bars_in_frames": false,
-  "include_indicators_in_frames": false
-}
-```
-
-Policies:
-
-- `full`: export every original chan.py step frame. Only for small/debug windows. Recommended hard limit: `count <= 300`.
-- `stride`: export every Nth frame. UI must label this as fast/skip-frame replay, not strict full replay.
-- `window`: export only frames in `[frame_start, frame_end]`. Use for local strict replay around a time region.
-- `latest`: export only the final step frame. Use only when a step-final state is required; for normal final charts prefer once mode.
-
-Recommended defaults:
-
-- Normal step request:
-
-```json
-{
-  "frame_policy": "stride",
-  "frame_stride": 5,
-  "max_return_frames": 300,
-  "include_bars_in_frames": false,
-  "include_indicators_in_frames": false
-}
-```
-
-- Strict step debug:
-
-```json
-{
-  "frame_policy": "full",
-  "frame_stride": 1,
-  "max_return_frames": 300
-}
-```
-
-- Long multi-level window replay:
-
-```json
-{
-  "frame_policy": "window",
-  "frame_start": 0,
-  "frame_end": 300,
-  "include_bars_in_frames": false,
-  "include_indicators_in_frames": false
-}
-```
-
-UI requirement:
-
-- UI must display current `frame_policy`, total frames, returned frames, and truncated status.
-- If `stride`, `window`, `latest`, or `frames_truncated=true`, UI must clearly warn that the current view is not full strict one-by-one replay.
-
-### F1a.4 Meta contract
-
-Backend meta must include:
-
-```json
-{
-  "step_frame_format": "compact_v1",
-  "frame_policy": "stride",
-  "frame_stride": 5,
-  "frames_total": 3000,
-  "frames_returned": 300,
-  "frames_truncated": true,
-  "include_bars_in_frames": false,
-  "include_indicators_in_frames": false
-}
-```
-
-Copy diagnostics must include the same meta in `Copy Step`, `Copy P0`, `Copy Time Log`, and `Copy Result Validation` when available.
-
-### F1a.5 Multi-level compact structure
-
-Multi-level response should not put each level's bars inside every frame.
-
-Recommended structure:
-
-```json
-{
-  "levels": {
-    "DAILY": {"bars": [], "indicators": {}},
-    "MIN30": {"bars": [], "indicators": {}},
-    "MIN5": {"bars": [], "indicators": {}}
-  },
-  "frames": [
-    {
-      "cursor": 120,
-      "current_time": "2025-01-01 15:00:00",
-      "levels": {
-        "DAILY": {"visible_count": 121, "merged_bars": [], "fx": [], "bi": [], "seg": [], "zs": [], "bsp": []},
-        "MIN30": {"visible_count": 800, "merged_bars": [], "fx": [], "bi": [], "seg": [], "zs": [], "bsp": []},
-        "MIN5": {"visible_count": 4800, "merged_bars": [], "fx": [], "bi": [], "seg": [], "zs": [], "bsp": []}
-      },
-      "relations": []
-    }
-  ]
-}
-```
-
-Principles:
-
-- Each level's bars are returned once at top-level for that level.
-- Each frame carries only that level's `visible_count` and current structures.
-- Relations remain current-frame relations and must come from native backend relation data.
-
-### F1a.6 Result validation and acceptance
-
-Required validation:
-
-- `Copy Result Validation` must compare baseline and compact result for the same request.
-- It must report:
-  - once final merged/K/FX/BI/SEG/ZS/BSP counts unchanged.
-  - step final frame structures unchanged.
-  - multi-level final structures unchanged per level.
-  - relation counts unchanged or mismatch explicitly reported.
-  - signal counts by rule unchanged or mismatch explicitly reported.
-  - `validation_status: match|mismatch|blocked`.
-
-No future-data acceptance:
-
-- Any frame must show only `visible_count` bars.
-- Any frame must show only indicators up to `visible_count`.
-- Crosshair/tooltip must not access future bars/indicators.
-- FX/BI/SEG/ZS/BSP structures in a frame must not reference K-line indexes beyond visible range.
-
-Payload acceptance:
-
-- `frame.bars` must be absent by default in new compact output.
-- `frame.indicators` full arrays must be absent by default.
-- JSON response bytes must be reported in Time Log before and after compact mode.
-- JSON size should materially decrease for the same step request.
-
-UI acceptance:
-
-- UI displays `step_frame_format`, `frame_policy`, `frames_total`, `frames_returned`, and `frames_truncated`.
-- UI distinguishes full strict step from stride/window/latest replay.
-- Compatibility parser may read old `frame.bars`, but new export contract is `compact_v1`.
-
-### F1a.7 Deliverables
-
-Task party must deliver:
-
-1. Backend `step_frame_format: compact_v1` output.
-2. Single-level step does not repeat `bars` inside frames.
-3. Single-level step does not repeat full indicators inside frames.
-4. Multi-level step does not repeat each level's bars inside frames.
-5. `frame_policy`, `frame_stride`, `frame_start`, `frame_end`, `max_return_frames` support.
-6. `include_bars_in_frames=false` and `include_indicators_in_frames=false` default behavior.
-7. Flutter parser support for `compact_v1` plus temporary old-format compatibility.
-8. UI display for `frame_policy` / `frames_total` / `frames_returned` / `frames_truncated`.
-9. Copy diagnostics include compact meta and payload/parse timings.
-10. Copy Result Validation proves compact output matches baseline.
-11. Time Log shows JSON bytes, backend serialize time, frontend decode time, frontend parse time before/after.
-12. Clear statement that `chan.py` core logic was not changed.
-
-### F1a.8 Forbidden for this task
+Forbidden for F1a:
 
 - Modify `chan.py` core FX/BI/SEG/ZS/BSP logic.
 - Recalculate Chan structures in Flutter/Dart.
@@ -550,78 +261,20 @@ Task party must deliver:
 - Continue writing full indicators into every frame by default.
 - Hide mismatch between compact output and baseline output.
 
-## Future phases after F1a compact_v1 validation
-
-Phase F1b: raw data cache.
-
-- Cache raw bars only before chan.py calculation.
-- On cache hit, still run original chan.py using cached raw bars.
-- Add cache timing fields to Time Log.
-
-Phase F2: baseline result cache for identical requests.
-
-- Cache baseline original chan.py analysis output for identical request parameters and raw-data digest.
-- On exact cache hit, return cached baseline result, clearly marked as `fast_cache_hit: true`.
-- Result Validation must compare cached return against baseline at least once and report `match`.
-
-Phase F3: additional response-size and frontend parse reduction.
-
-- Build on compact_v1.
-- Avoid duplicating large unchanged structures across every step frame.
-- Use shared baseline payload plus frame deltas or frame indexes only if Result Validation passes.
-
-Phase F4: step-frame paging / lazy strict replay.
-
-- Preserve strict-step semantics by serving original chan.py step frames in pages.
-- Do not use final snapshot slicing.
-- Result Validation must compare sampled frames across pages against baseline full step output.
-
-Phase F5: strategy/signal fast reuse.
-
-- Strategy rules may run on already parsed original chan.py BSP and native `LevelRelation` data without recomputing chan.py.
-- This is only signal filtering over original chan.py output, not Chan structure calculation.
-
-Forbidden optimization directions:
-
-- Reimplement Chan FX/BI/SEG/ZS/BSP in Flutter/Dart.
-- Return approximate Chan structures.
-- Skip original chan.py calculation for accepted output unless returning an exact cached baseline result generated by original chan.py.
-- Use final snapshot slicing as strict-step proof.
-- Hide mismatches between fast result and baseline result.
-- Treat faster but different output as accepted.
-
 ## Current blockers / pending verification
 
-- Re-run `flutter analyze` after `0ae7c864bba799093d7c94c8eda29c0131ae692a` and after compact_v1 changes.
-- Runtime `Copy Result Validation` output must be pasted and checked.
-- Expected F0 status now: `validation_status: blocked`, because no fast candidate exists.
-- F1a compact_v1 implementation is now the current performance priority after F0 output is checked.
-- Strategy mode acceptance is paused until F0 and F1a validation requirements are satisfied.
+- Re-run `flutter analyze` after `0ae7c864bba799093d7c94c8eda29c0131ae692a` and after F1a changes.
+- F1a compact_v1 implementation is now the current performance priority.
+- Strategy mode acceptance is paused while F1a remains the current priority.
 - Full-history/paged strict step replay remains deferred, but F1a/F4 are the planned path toward scalable strict replay.
 - `极速` mode implementation must follow F0 then F1a; no speed mode is accepted yet.
 
 ## Next task-party operation
 
-1. Run `git pull`.
-2. Run `flutter analyze`.
-3. Open multi-level page and perform normal step Load.
-4. Open `区间信号`.
-5. Click `Copy Result Validation`; paste the result.
-6. Expected F0 fields:
-   - `result validation diagnostics`
-   - `button: Copy Result Validation`
-   - `validation_phase: F0`
-   - `baseline_source: original chan.py analyze_multi`
-   - `fast_candidate_enabled: false`
-   - `validation_status: blocked`
-   - `blocked_reason: no fast candidate mode/cache/compact payload configured`
-   - baseline level counts.
-   - relation counts.
-   - sampled BSP/relation rows.
-7. After F0 output is accepted, implement F1a `compact_v1` step frame export and indicator de-duplication.
-8. After F1a implementation, provide:
-   - Copy Time Log before/after timings.
-   - Copy Result Validation with `validation_status: match` or exact mismatch details.
-   - Copy Step / Copy P0 showing `step_frame_format: compact_v1` and frame policy meta.
-   - JSON size comparison.
-9. Do not continue strategy acceptance, raw-data cache, result cache, or Rust/other rewrites before F1a is validated.
+1. Inspect backend `analyze_multi` response construction.
+2. Identify where step frames include repeated bars and indicators.
+3. Add compact_v1 backend meta fields without modifying chan.py core.
+4. Add `include_bars_in_frames=false` and `include_indicators_in_frames=false` default behavior at App adapter/export layer.
+5. Add Flutter parser compatibility for compact frames plus old full-frame fallback.
+6. Re-run `flutter analyze`.
+7. Provide Copy P0 / Copy Step / Copy Time Log / Copy Result Validation outputs for compact_v1.
