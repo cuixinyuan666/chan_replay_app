@@ -48,6 +48,15 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     'DAILY_3B_MIN30_2B',
   ];
 
+  Map<String, dynamic>? get _timeLog {
+    final raw = widget.snapshot.meta['time_log'];
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
+  bool get _hasTimeLog => _timeLog != null;
+
   List<_LevelPair> get _pairs {
     final relationPairs = <String, _LevelPair>{};
     for (final r in widget.snapshot.relations) {
@@ -109,6 +118,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
           ),
           _chip('rule', _ruleChipLabel, true),
           _chip('source', 'chan.py BSP + native relation', true),
+          if (_hasTimeLog) _chip('time_log', 'ready', true),
           if (_isStrategyMode) _chip('strategy', 'candidate only', false),
           if (pair != null) _chip('pair', pair.label, true),
           _chip('signals', '${signals.length}', signals.isNotEmpty),
@@ -138,6 +148,21 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
             },
             icon: const Icon(Icons.copy, size: 14),
             label: const Text('Copy Signal'),
+            style: _buttonStyle(),
+          ),
+          OutlinedButton.icon(
+            onPressed: _hasTimeLog
+                ? () async {
+                    await Clipboard.setData(ClipboardData(text: _copyTimeLogText()));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Time Log copied'), duration: Duration(seconds: 3)),
+                      );
+                    }
+                  }
+                : null,
+            icon: const Icon(Icons.timer, size: 14),
+            label: const Text('Copy Time Log'),
             style: _buttonStyle(),
           ),
         ],
@@ -520,6 +545,68 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'warnings: ${signal.warnings.join(' | ')}',
       'status: ok',
     ].join('\n');
+  }
+
+  String _copyTimeLogText() {
+    final log = _timeLog;
+    if (log == null) {
+      return [
+        'time log diagnostics',
+        'button: Copy Time Log',
+        'status: missing time_log in snapshot.meta',
+      ].join('\n');
+    }
+    final stages = _stageMap(log['stages']);
+    final slow = stages.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    return [
+      'time log diagnostics',
+      'button: Copy Time Log',
+      'trace_id: ${log['trace_id'] ?? ''}',
+      'mode: ${log['mode'] ?? widget.mode}',
+      'symbol: ${log['symbol'] ?? widget.symbol}',
+      'market: ${log['market'] ?? ''}',
+      'levels: ${_formatList(log['levels'])}',
+      'count: ${log['count'] ?? ''}',
+      'max_step_frames: ${log['max_step_frames'] ?? ''}',
+      'start: ${log['start'] ?? ''}',
+      'end: ${log['end'] ?? ''}',
+      'backend_url: ${log['backend_url'] ?? ''}',
+      'python_runtime: ${log['python_runtime'] ?? ''}',
+      'process_source: ${log['process_source'] ?? ''}',
+      'used_app_bundled_python: ${log['used_app_bundled_python'] ?? ''}',
+      'native_cchan_lv_list: ${log['native_cchan_lv_list'] ?? ''}',
+      'fallback_to_bridge: ${log['fallback_to_bridge'] ?? ''}',
+      'total_elapsed_ms: ${log['total_elapsed_ms'] ?? ''}',
+      'backend_elapsed_ms: ${log['backend_elapsed_ms'] ?? ''}',
+      'frontend_elapsed_ms: ${log['frontend_elapsed_ms'] ?? ''}',
+      'slowest_stages:',
+      for (var i = 0; i < slow.length && i < 10; i++) '${i + 1}. ${slow[i].key}: ${slow[i].value}ms',
+      'stages:',
+      for (final entry in stages.entries) '${entry.key}: ${entry.value}ms',
+      'status: ${log['status'] ?? 'ok'}',
+    ].join('\n');
+  }
+
+  Map<String, int> _stageMap(Object? raw) {
+    if (raw is! Map) return const {};
+    final result = <String, int>{};
+    for (final entry in raw.entries) {
+      final value = entry.value;
+      if (value is int) {
+        result['${entry.key}'] = value;
+      } else if (value is num) {
+        result['${entry.key}'] = value.toInt();
+      } else {
+        final parsed = int.tryParse('$value');
+        if (parsed != null) result['${entry.key}'] = parsed;
+      }
+    }
+    return result;
+  }
+
+  String _formatList(Object? raw) {
+    if (raw is Iterable) return raw.map((e) => '$e').join(',');
+    return '${raw ?? ''}';
   }
 
   List<String> _copyHeader(_LevelPair pair, String availablePairs) {
