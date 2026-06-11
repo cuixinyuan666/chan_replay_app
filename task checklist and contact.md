@@ -9,7 +9,7 @@ This file is the project manual for the multi-level and interval-nest work.
 Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86b
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
-Latest task-party code commit: 5e277427b35a65061abc2fd363e2dcf3906727ce
+Latest task-party code commit: 1cc0b53211d5a3fa895d8259b3f54f1edf5fb0af
 Latest observed head during 2026-06-10 review: 166a46bdfe37276158f05f76bf2602de7c690467
 Latest manual update commit: pending
 
@@ -41,18 +41,17 @@ Hard rules added by user:
 - Multi-level parser and source exist.
 - Independent MultiLevelReplayPage exists.
 - RootPage has a multi-level entry.
-- Bridge analyze_multi exists as fallback.
+- Bridge analyze_multi exists only as a prototype/fallback and is not accepted as success.
 - Native CChan lv_list engine exists.
-- analyze_multi is native-first with bridge fallback.
-- MultiLevelReplayPage now displays manual P0 diagnostics after Load.
+- MultiLevelReplayPage displays manual P0 diagnostics after Load.
+- MultiLevelReplayPage has a one-click P0 diagnostics copy button named `Copy P0`.
 
 ## Current blockers
 
-- Native runtime result is not verified after data-window fix.
+- Native runtime result is not verified after parent-time fix.
 - Native step frames are not implemented yet.
 - Interval-nest rule engine is not implemented yet.
 - Bridge fallback must be removed or treated only as an explicit failure/debug path for core Chan calculation.
-- In-app one-click copy diagnostics are required for future debugging requests.
 
 ## 16 requested items
 
@@ -83,7 +82,7 @@ Hard rules added by user:
 - [ ] Implement native step frames.
 - [ ] Verify step mode frames are not empty.
 - [ ] Remove or disable bridge fallback as accepted behavior for core Chan calculation.
-- [ ] Add one-click copy button for P0 diagnostic fields in MultiLevelReplayPage.
+- [x] Add one-click copy button for P0 diagnostic fields in MultiLevelReplayPage.
 
 ## P1 checklist
 
@@ -177,14 +176,6 @@ Fix applied:
 - Change: lower levels now request expanded counts, all levels are then trimmed to a common date window before CSV preparation.
 - Requirement: keep chan.py kl_data_check enabled; do not bypass native validation.
 
-Required next local check:
-- Pull latest origin_vespa_tdx.
-- Run flutter analyze.
-- Run flutter run.
-- Open Multi-level replay.
-- Click Load in once mode.
-- Report manual P0 chips again.
-
 2026-06-10 supervisor review after latest push:
 
 Checked head: 166a46bdfe37276158f05f76bf2602de7c690467
@@ -193,3 +184,32 @@ Accepted: data-window fix commit was recorded in the manual. The fix keeps chan.
 Not accepted: latest head is a manual-only commit; native runtime after the data-window fix is still not verified. Native step frames are still not implemented. Bridge fallback still exists and must not be counted as success for core Chan calculation.
 New user rules added: original chan.py only; no invented Chan logic; no accepted fallback for core Chan calculation; add in-app one-click copy buttons for diagnostics.
 Next task: task party must add or confirm an in-app one-click copy button for P0 diagnostics, then the user should click that button after Multi-level -> Load and paste the copied text. If fallback is still true, fix native_failure. If native succeeds, implement native step frames.
+
+2026-06-10 second P0 report and fixes:
+
+User result: native still fell back to bridge with sub-level alignment failure; flutter analyze reported four withOpacity deprecation info items.
+
+Fixes applied:
+- Commit: 11c25deffb03b85b3e5e4b62c974f67a9ab36bcc
+  - File: backend/app/a_multilevel_native_engine.py
+  - Cause refined: chan.py CSV_API parses non-intraday YYYY-MM-DD as 00:00, while intraday child bars are later in the same day. Native parent-child matching therefore failed to attach children to same-day parent bars.
+  - Change: non-intraday parent levels are written to chan.py CSV at 23:59 only for native CSV loading. UI/output bars keep original times.
+- Commit: 93a2a96a31597f8a7565fd1ed3de0893a7a39b69
+  - File: lib/ui/pages/multi_level_replay_page.dart
+  - Change: replaced deprecated withOpacity usage.
+- Commit: cfee607a3491e2d19c9ebe5e13d658306bee8d05
+  - File: lib/ui/widgets/multi_level_layer_status_panel.dart
+  - Change: replaced deprecated withOpacity usage.
+- Commit: 1cc0b53211d5a3fa895d8259b3f54f1edf5fb0af
+  - File: lib/ui/pages/multi_level_replay_page.dart
+  - Change: added one-click `Copy P0` diagnostics button.
+
+Required next local check:
+- Stop any old Python backend process that may still be serving old code.
+- Pull latest origin_vespa_tdx.
+- Run flutter analyze.
+- Run flutter run.
+- Open Multi-level replay.
+- Click Load in once mode.
+- Click `Copy P0`.
+- Paste the copied diagnostics.
