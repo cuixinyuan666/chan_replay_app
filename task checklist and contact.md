@@ -6,7 +6,7 @@ This file is the project manual for the multi-level and interval-nest work.
 
 ## Current review baseline
 
-Latest observed head before this supervisor update: d39d57353af3a3ae51bec11022e5c6193a46e8ff
+Latest observed head before this supervisor update: 29e2d190166d93bec3291ab79a05a9a2aaad263f
 Latest multi-level strict-step UI commit: 763d6219e7aaa5732f7d62aca1474c5a0c4b9303
 Latest multi-level compile-fix commit: 62767e6d7134e2512901ef876514a61f39a8f1af
 Latest single-level strict replay page commit: bb5f9faeeea18bffdd12afd4f5d4b3d0d3790d70
@@ -21,6 +21,8 @@ Latest interval signal page wiring commit: b1afcae8891837e1cd615be2d6d3803f25647
 Latest layer status minimize support commit: 622d45043c6c28ee1b122ae5ba838b6ab55e624d
 Latest layer status default-minimized wiring commit: 2cba9fc38e3ed7842036965665ef83e6ce8026f4
 Latest analyzer cleanup commit: b9d0994286f4f070f771f34af11dd7ef593e1444
+Latest no-signal diagnostic enhancement commit: 1653fd995e3ffe9c8a2d0e6f067463e29713a025
+Latest duplicate Copy Step cleanup commit: 6ebe90c626d673122dab45f3db41a833eca45f8e
 Latest manual update commit: pending
 
 ## User objective
@@ -56,6 +58,7 @@ The file named `task checklist and contact.md` is the project manual. Future tas
 - MultiLevelReplayPage has `Copy P0`, `Copy Step`, `Copy Relation`, and `Copy Signal` diagnostics.
 - MultiLevelReplayPage fails loudly when step frames are empty.
 - Multi-level layer status no longer covers action buttons on initial load; it is minimized by default and restored by the bottom-right `图层状态` button.
+- The duplicate Copy Step button in the step-control bar was removed; Copy Step remains in the diagnostics/P0 bar.
 - `OriginReplayStrictPage` uses backend returned frames only in step mode and has one-click `Copy Step` diagnostics.
 - Batch B relation targeting implementation has been supervisor-verified in code and runtime-accepted by Copy Relation diagnostics.
 
@@ -63,7 +66,7 @@ The file named `task checklist and contact.md` is the project manual. Future tas
 
 - Multi-level lightweight step is verified, but full-history non-truncated or paged step replay is not accepted yet.
 - Legacy `OriginReplayPageV2` still exists and still contains `_sliceSnapshot`; it is not the active Replay route now, but should be deleted, renamed legacy, or refactored later if direct use is needed.
-- Batch C signal MVP is implemented in code but not runtime-verified by Copy Signal yet.
+- Batch C signal MVP is implemented in code but not runtime-accepted yet because the copied current frame had no signal.
 
 ## Batch A: Strict step replay closure
 
@@ -101,16 +104,33 @@ Implemented scope:
 - Added signal state as candidate/confirmed based on BSP confirmation flags.
 - Added visibleAt/confirmedAt frame fields.
 - Added `Copy Signal` diagnostics.
+- Enhanced no-signal Copy Signal diagnostics to include high/low BSP counts, type-specific buy counts, native relation count, and future-function policy.
 - No synthetic Chan structures are allowed or added.
 
 Implementation commits:
 - `ee21e713745e2219b3bdda9c46f03d3d21fd7d63`: added `lib/ui/widgets/multi_level_interval_signal_panel.dart`.
 - `b1afcae8891837e1cd615be2d6d3803f2564739f`: wired the signal panel into `MultiLevelReplayPage`.
+- `1653fd995e3ffe9c8a2d0e6f067463e29713a025`: enriched no-signal Copy Signal diagnostics.
 
-UI obstruction fix:
+UI obstruction and duplication fixes:
 - `622d45043c6c28ee1b122ae5ba838b6ab55e624d`: added optional minimize action to `MultiLevelLayerStatusPanel`.
 - `2cba9fc38e3ed7842036965665ef83e6ce8026f4`: changed `MultiLevelReplayPage` so layer status is minimized by default and restored by the bottom-right `图层状态` button.
 - `b9d0994286f4f070f771f34af11dd7ef593e1444`: cleared strict replay final-field analyzer hints.
+- `6ebe90c626d673122dab45f3db41a833eca45f8e`: removed duplicate Copy Step button from the step-control bar.
+
+User Copy Signal result:
+- mode: step
+- symbol: 600340
+- frame.index.local: 0
+- frame.count.local: 24
+- signal_source: original chan.py BSP + native LevelRelation
+- available_signals: 0
+- status: no signal for DAILY/MIN30 MVP scope
+
+Interpretation:
+- The current copied frame does not contain a DAILY/MIN30 MVP interval-nest signal.
+- This does not prove the signal engine is invalid; it means Batch C is not accepted yet because no actual signal instance was available in the copied frame.
+- The next Copy Signal output should use the enhanced diagnostics to decide whether the frame truly lacks matching BSPs or whether BSP type matching needs adjustment.
 
 Copy Signal expected fields:
 - `signal_source: original chan.py BSP + native LevelRelation`
@@ -128,17 +148,14 @@ Copy Signal expected fields:
 - `status`
 
 Batch C acceptance rule:
-- Batch C is not accepted until the user pastes Copy Signal diagnostics.
-- Copy Signal must show source BSP ids/indices, parent relation range, child relation range, visibleAt/confirmedAt, and candidate/confirmed/invalidated state.
+- Batch C is not accepted until the user pastes Copy Signal diagnostics with at least one actual signal or provides enhanced no-signal diagnostics proving the current sample window has no matching BSP inputs.
+- Copy Signal for an actual signal must show source BSP ids/indices, parent relation range, child relation range, visibleAt/confirmedAt, and candidate/confirmed/invalidated state.
 - No synthetic Chan structures are allowed.
 
 ## Next user operation
 
 - Pull latest.
 - Run `flutter analyze` and `flutter run`.
-- Confirm the layer status starts minimized as the bottom-right `图层状态` button.
-- Click `图层状态` to restore the floating window, then click the minus icon to minimize again.
-- Wait for Multi-level default step load.
-- Use the Interval signal MVP panel.
-- Click `Copy Signal`.
-- Paste Copy Signal diagnostics for at least one DAILY/MIN30 signal.
+- Confirm duplicate Copy Step no longer appears in the step-control bar.
+- Confirm Copy Step still appears in the diagnostics/P0 bar.
+- Click `Copy Signal` again and paste the enhanced no-signal diagnostics, or move the step slider to later frames and paste a Copy Signal output with available_signals > 0.
