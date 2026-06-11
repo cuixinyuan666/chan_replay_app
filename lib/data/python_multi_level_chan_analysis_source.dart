@@ -252,6 +252,15 @@ class PythonMultiLevelChanAnalysisSource {
   }
 }
 
+class _PythonMultiLevelBackendMismatch implements Exception {
+  final String message;
+
+  const _PythonMultiLevelBackendMismatch(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class _LocalPythonMultiLevelChanProcess {
   final Process process;
   final String baseUrl;
