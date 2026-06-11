@@ -29,6 +29,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   PythonMultiLevelChanAnalysis? _analysis;
   MultiLevelViewState _viewState = MultiLevelViewState.disabled();
   bool _loading = false;
+  bool _layerPanelExpanded = false;
   String _mode = 'step';
   int _count = 40;
   int _frameIndex = 0;
@@ -95,6 +96,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     }
     setState(() {
       _loading = true;
+      _layerPanelExpanded = false;
       _status = 'loading analyze_multi...';
     });
     final source = PythonMultiLevelChanAnalysisSource(
@@ -232,22 +234,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
               ],
             ),
             if (full != null && current != null)
-              Positioned(
-                right: 12,
-                top: _analysis == null
-                    ? 118
-                    : (_analysis!.frames.isNotEmpty ? 230 : 170),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 360),
-                  child: MultiLevelLayerStatusPanel(
-                    fullSnapshot: full,
-                    currentSnapshot: current,
-                    activeLevel: activeLevel,
-                    clockMode: _viewState.clockMode,
-                    compact: true,
-                  ),
-                ),
-              ),
+              _layerStatusOverlay(full, current, activeLevel),
             if (_loading)
               const Positioned.fill(
                 child: ColoredBox(
@@ -256,6 +243,55 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _layerStatusOverlay(
+    MultiLevelChanSnapshot full,
+    MultiLevelChanSnapshot current,
+    String activeLevel,
+  ) {
+    if (!_layerPanelExpanded) {
+      return Positioned(
+        right: 12,
+        bottom: 18,
+        child: Tooltip(
+          message: '恢复多级别图层状态窗口',
+          child: Material(
+            color: Colors.transparent,
+            child: OutlinedButton.icon(
+              onPressed: () => setState(() => _layerPanelExpanded = true),
+              icon: const Icon(Icons.layers, size: 16),
+              label: const Text('图层状态'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF8AB4FF),
+                backgroundColor: const Color(0xDD11141B),
+                side: const BorderSide(color: Color(0x668AB4FF)),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Positioned(
+      right: 12,
+      top: _analysis == null
+          ? 118
+          : (_analysis!.frames.isNotEmpty ? 230 : 170),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: MultiLevelLayerStatusPanel(
+          fullSnapshot: full,
+          currentSnapshot: current,
+          activeLevel: activeLevel,
+          clockMode: _viewState.clockMode,
+          compact: true,
+          onMinimize: () => setState(() => _layerPanelExpanded = false),
         ),
       ),
     );
