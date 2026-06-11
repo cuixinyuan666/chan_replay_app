@@ -29,6 +29,7 @@ app.add_middleware(
 _CONTROL_QUERY_KEYS = {'mode', 'symbol', 'market', 'freq', 'period', 'adjust', 'count', 'start', 'end'}
 _BOOL_TRUE = {'1', 'true', 'yes', 'y', 'on'}
 _BOOL_FALSE = {'0', 'false', 'no', 'n', 'off'}
+_COMPACT_STRUCTURE_KEYS = ('merged_bars', 'fx', 'bi', 'seg', 'zs', 'bsp')
 
 
 def _boolish(value: Any) -> Any:
@@ -106,6 +107,16 @@ def _compact_int(payload: dict[str, Any], config: dict[str, Any], key: str, defa
     return _intish(_compact_value(payload, config, key, default), default, minimum=minimum, maximum=maximum)
 
 
+def _list_len(value: Any) -> int:
+    return len(value) if isinstance(value, list) else 0
+
+
+def _add_compact_mismatch(state: dict[str, Any], message: str) -> None:
+    state['count'] = int(state.get('count') or 0) + 1
+    if not state.get('first'):
+        state['first'] = message
+
+
 def _compact_multilevel_step_result(
     result: dict[str, object],
     payload: dict[str, Any],
@@ -148,8 +159,10 @@ def _compact_multilevel_step_result(
     frames_truncated = frames_returned < frames_total
 
     compact_frames: list[Any] = []
-    for frame in selected_frames:
+    validation_state: dict[str, Any] = {'count': 0, 'first': ''}
+    for frame_index, frame in enumerate(selected_frames):
         if not isinstance(frame, dict):
+            _add_compact_mismatch(validation_state, f'frame[{frame_index}] is not object')
             compact_frames.append(frame)
             continue
         next_frame = dict(frame)
@@ -158,6 +171,7 @@ def _compact_multilevel_step_result(
             next_levels: dict[str, Any] = {}
             for level_name, level_payload in frame_levels.items():
                 if not isinstance(level_payload, dict):
+                    _add_compact_mismatch(validation_state, f'frame[{frame_index}].{level_name} is not object')
                     next_levels[level_name] = level_payload
                     continue
                 next_level = dict(level_payload)
@@ -168,8 +182,22 @@ def _compact_multilevel_step_result(
                     next_level.pop('bars', None)
                 if not include_indicators:
                     next_level.pop('indicators', None)
+
+                if next_level.get('visible_count') != visible_count:
+                    _add_compact_mismatch(validation_state, f'frame[{frame_index}].{level_name}.visible_count changed')
+                if not include_bars and 'bars' in next_level:
+                    _add_compact_mismatch(validation_state, f'frame[{frame_index}].{level_name}.bars not removed')
+                if include_bars and _list_len(next_level.get('bars')) != visible_count:
+                    _add_compact_mismatch(validation_state, f'frame[{frame_index}].{level_name}.bars length mismatch')
+                if not include_indicators and 'indicators' in next_level:
+                    _add_compact_mismatch(validation_state, f'frame[{frame_index}].{level_name}.indicators not removed')
+                for key in _COMPACT_STRUCTURE_KEYS:
+                    if _list_len(level_payload.get(key)) != _list_len(next_level.get(key)):
+                        _add_compact_mismatch(validation_state, f'frame[{frame_index}].{level_name}.{key} length mismatch')
                 next_levels[level_name] = next_level
             next_frame['levels'] = next_levels
+        else:
+            _add_compact_mismatch(validation_state, f'frame[{frame_index}].levels missing')
         frame_meta = dict(next_frame.get('meta')) if isinstance(next_frame.get('meta'), dict) else {}
         frame_meta.update({
             'step_frame_format': 'compact_v1',
@@ -184,6 +212,19 @@ def _compact_multilevel_step_result(
         })
         next_frame['meta'] = frame_meta
         compact_frames.append(next_frame)
+
+    validation_status = 'match' if int(validation_state.get('count') or 0) == 0 else 'mismatch'
+    validation_meta = {
+        'compact_validation_scope': 'backend_precompact_vs_compact_transport',
+        'compact_validation_status': validation_status,
+        'compact_validation_mismatch_count': int(validation_state.get('count') or 0),
+        'compact_validation_first_mismatch': validation_state.get('first') or '',
+    }
+    for frame in compact_frames:
+        if isinstance(frame, dict):
+            frame_meta = dict(frame.get('meta')) if isinstance(frame.get('meta'), dict) else {}
+            frame_meta.update(validation_meta)
+            frame['meta'] = frame_meta
 
     next_result = dict(result)
     next_result['frames'] = compact_frames
@@ -201,6 +242,7 @@ def _compact_multilevel_step_result(
         'include_indicators_in_frames': include_indicators,
         'compact_transport_only': True,
         'chan_py_core_unchanged': True,
+        **validation_meta,
     })
     next_result['meta'] = meta
     return next_result
