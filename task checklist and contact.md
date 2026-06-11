@@ -22,7 +22,9 @@ Branch: origin_vespa_tdx
 
 - `a1998b519e6985b9d0365cd1b960adf39a97c2a0`: implemented initial `strategy_interval_nest_buy` mode with manual DAILY/MIN30 rules.
 - `3b8d1eb571204cbb551c64656612b19ea9125a1b`: added frontend `analyze_multi` timing metadata into `analysis.meta.time_log`.
-- Earlier accepted commits remain valid: bundled Python backend, native `analyze_multi`, strict step, relation navigation, Scan Signal, arbitrary BSP validation mode, clean analyze before strategy patch.
+- `40a694d222aad49002a66d514b11f8cce9ab0e82`: propagated `time_log` into final snapshot and step frame metadata.
+- `218b6ae8ec2612bf75e699ce09f2b9697d290185`: added `Copy Time Log` button next to `Copy Signal` in interval signal panel.
+- Earlier accepted commits remain valid: bundled Python backend, native `analyze_multi`, strict step, relation navigation, Scan Signal, arbitrary BSP validation mode, clean analyze before strategy/time-log patches.
 
 ## Current accepted work
 
@@ -105,7 +107,7 @@ User requirement:
 - The supervisor will use Time Log to plan later `极速` mode.
 - No optimization work is allowed before Time Log acceptance.
 
-Stage 1 implemented in `lib/data/python_multi_level_chan_analysis_source.dart`:
+Implemented in `lib/data/python_multi_level_chan_analysis_source.dart`:
 
 - Added `trace_id` for each `analyze_multi` request.
 - Added frontend timing stages into `analysis.meta.time_log`:
@@ -132,26 +134,33 @@ Stage 1 implemented in `lib/data/python_multi_level_chan_analysis_source.dart`:
   - used_app_bundled_python
   - native_cchan_lv_list
   - fallback_to_bridge
+- Propagated `time_log` into final snapshot meta and each step frame snapshot meta, so widgets can copy the timing block from current frame or scan snapshot.
 - No chan.py calculation semantics changed.
 
-Stage 1 not yet accepted because UI copy is still missing.
+Implemented in `lib/ui/widgets/multi_level_interval_signal_panel.dart`:
 
-Required next implementation step:
-
-- Add visible `Copy Time Log` button near Copy P0 / Copy Step / Copy Signal on multi-level page.
-- The button must read `analysis.meta.time_log` or `signalScanAnalysis.meta.time_log` and copy a plain-text block with:
+- Added visible `Copy Time Log` button next to `Copy Signal`.
+- The button reads `widget.snapshot.meta['time_log']`.
+- The copied plain-text output includes:
   - `time log diagnostics`
   - `button: Copy Time Log`
   - trace_id
   - mode / symbol / market / levels / count / max_step_frames / start / end
   - backend_url
   - python_runtime / process_source
+  - used_app_bundled_python
   - native_cchan_lv_list
   - fallback_to_bridge
   - total_elapsed_ms / backend_elapsed_ms / frontend_elapsed_ms
   - slowest top 10 stages sorted by duration
   - full stages table
   - status
+
+Implementation status:
+
+- Time Log metadata path: implemented.
+- Copy Time Log UI: implemented in interval signal panel.
+- Runtime Time Log acceptance: pending user pasted logs.
 
 ## Future track after Time Log: 极速 mode planning
 
@@ -177,8 +186,7 @@ Forbidden:
 
 ## Current blockers / pending verification
 
-- P0 Time Log UI copy button is not yet implemented.
-- Re-run `flutter analyze` after `3b8d1eb571204cbb551c64656612b19ea9125a1b`.
+- Re-run `flutter analyze` after `40a694d222aad49002a66d514b11f8cce9ab0e82` and `218b6ae8ec2612bf75e699ce09f2b9697d290185`.
 - Runtime Copy Time Log must be provided for at least:
   1. normal `Load` in step mode.
   2. `Scan Signal` / once mode.
@@ -188,8 +196,10 @@ Forbidden:
 
 ## Next task-party operation
 
-1. Implement visible `Copy Time Log` button on multi-level page.
-2. Re-run `flutter analyze`.
-3. Provide Copy Time Log output for normal step Load.
-4. Provide Copy Time Log output for Scan Signal / once mode.
-5. Only after Time Log is accepted, resume strategy-mode acceptance or full-history/paged strict step track.
+1. Run `git pull`.
+2. Run `flutter analyze`.
+3. Open multi-level page and perform normal `Load` in step mode.
+4. Open `区间信号` and click `Copy Time Log`; paste the result.
+5. Click `Scan Signal`, then click `Copy Time Log`; paste the result.
+6. If strategy mode is tested, keep `rule mode=strategy`, click `Copy Time Log`; paste the result.
+7. Only after Time Log is accepted, resume strategy-mode acceptance or full-history/paged strict step track.
