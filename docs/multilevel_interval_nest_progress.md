@@ -146,27 +146,72 @@ file: lib/data/multi_level_chan_analysis_parser.dart
 - 解析 relations。
 - 解析 main_level 和 meta.levels。
 - 解析多级别 frames。
-- 通过注入 ChanSnapshotParser 复用现有单级别 _parseSnapshot，避免重复实现 FX / BI / SEG / ZS / BSP 解析。
+- 通过注入 ChanSnapshotParser 复用单级别快照解析器，避免重复实现 FX / BI / SEG / ZS / BSP 解析。
+```
+
+### 9. 公共 ChanSnapshot JSON 解析器
+
+```text
+commit: 2a87332b69e2eee1d08b86f0bcf204290222e416
+file: lib/data/chan_snapshot_json_parser.dart
+```
+
+完成内容：
+
+```text
+- 新增 ChanSnapshotJsonParser。
+- 将后端 JSON 解析为现有 ChanSnapshot。
+- 只解析后端结果，不在 Flutter 计算缠论结构。
+- 为多级别客户端提供可复用单级别快照解析能力。
+- 暂未替换现有 PythonChanAnalysisSource 内部解析逻辑，避免长文件误覆盖。
+```
+
+### 10. 独立多级别分析客户端
+
+```text
+commit: b44442e2897b639879942f49673e3d31bd82dfdd
+file: lib/data/python_multi_level_chan_analysis_source.dart
+```
+
+完成内容：
+
+```text
+- 新增 PythonMultiLevelChanAnalysisSource。
+- 新增 PythonMultiLevelChanAnalysis 结果载体。
+- 支持 POST /api/chan/analyze_multi。
+- 请求字段支持 mode、market、symbol、lv_list、adjust、config、main_level、clock_level、count、start、end。
+- 复用 ChanSnapshotJsonParser 和 MultiLevelChanAnalysisParser。
+- 解析可选 interval_nest_signals。
+```
+
+限制说明：
+
+```text
+- 暂未接入现有复盘页面。
+- 暂未替换 PythonChanAnalysisSource.analyze()。
+- 暂未支持 Windows 自动后台启动本地 Python 服务。
+- 暂未支持 Android MethodChannel 多级别调用。
+- 后端 /api/chan/analyze_multi 尚未实现前，此客户端不能完成真实请求。
 ```
 
 ## 当前完成度
 
 ```text
-阶段 0：架构文档与接口契约        已完成
-阶段 1A：Flutter 多级别基础模型    已完成
-阶段 1B：多级别 JSON 解析器        已完成
-阶段 1C：PythonChanAnalysisSource 接入    未完成
-阶段 2：后端 analyze_multi              未完成
-阶段 3：UI 级别切换与图层面板          未完成
-阶段 4：高级别定位低级别区间          未完成
-阶段 5：多级别严格逐K                 未完成
-阶段 6：区间套信号引擎                未完成
+阶段 0：架构文档与接口契约              已完成
+阶段 1A：Flutter 多级别基础模型          已完成
+阶段 1B：多级别 JSON 解析器              已完成
+阶段 1C：独立 analyze_multi 客户端        已完成（未接 UI / 未接自动本地服务）
+阶段 2：后端 analyze_multi                未完成
+阶段 3：UI 级别切换与图层面板            未完成
+阶段 4：高级别定位低级别区间            未完成
+阶段 5：多级别严格逐K                   未完成
+阶段 6：区间套信号引擎                  未完成
 阶段 7：评分、交易计划、训练、统计、选股 未完成
 ```
 
 ## 当前代码影响范围
 
-当前已提交内容只新增模型、解析器和文档：
+当前已提交内容主要新增模型、解析器、独立客户端和文档：
 
 ```text
 新增：docs/multilevel_interval_nest_plan.md
@@ -177,6 +222,8 @@ file: lib/data/multi_level_chan_analysis_parser.dart
 新增：lib/core/models/signal_visibility_state.dart
 新增：lib/core/models/interval_nest_signal.dart
 新增：lib/data/multi_level_chan_analysis_parser.dart
+新增：lib/data/chan_snapshot_json_parser.dart
+新增：lib/data/python_multi_level_chan_analysis_source.dart
 ```
 
 尚未修改：
@@ -193,48 +240,37 @@ python/chan.py
 
 ## 下一步任务
 
-### 下一步 1：扩展 PythonChanAnalysis
+### 下一步 1：后端 analyze_multi
 
 目标：
 
 ```text
-保留 snapshot / frames
-新增 multiSnapshot / multiFrames
-```
-
-计划：
-
-```dart
-class PythonChanAnalysis {
-  final ChanSnapshot snapshot;
-  final List<ChanSnapshot> frames;
-  final MultiLevelChanSnapshot? multiSnapshot;
-  final List<MultiLevelChanSnapshot> multiFrames;
-  final Map<String, dynamic> meta;
-}
-```
-
-### 下一步 2：新增 analyzeMulti()
-
-目标：
-
-```text
-新增 POST /api/chan/analyze_multi 客户端请求方法。
-不替换 analyze()。
-不影响 analyzeBars()。
-```
-
-### 下一步 3：后端 analyze_multi
-
-目标：
-
-```text
-后端接收 lv_list。
+新增 POST /api/chan/analyze_multi。
+接收 lv_list。
 调用 chan.py 多级别能力。
-返回 levels / relations / frames。
+返回 levels / relations / frames / meta。
 ```
 
-### 下一步 4：UI 多级别切换
+注意：
+
+```text
+不修改 python/chan.py 内部逻辑。
+只在 App 自主扩展层中新增序列化与接口。
+```
+
+### 下一步 2：现有 source 兼容接入
+
+目标：
+
+```text
+在确认 standalone source 可用后，再考虑把 PythonChanAnalysisSource 扩展为：
+- 保留 snapshot / frames
+- 新增 multiSnapshot / multiFrames
+```
+
+当前不急于改该长文件，避免误覆盖。
+
+### 下一步 3：UI 多级别切换
 
 目标：
 
@@ -243,11 +279,21 @@ class PythonChanAnalysis {
 暂不做复杂区间套联动。
 ```
 
+### 下一步 4：多级别图层状态
+
+目标：
+
+```text
+一次性显示：显示各级别全量数量。
+严格逐K：显示各级别 当前/全量 数量。
+```
+
 ## 风险记录
 
 ```text
 1. GitHub contents API 每次 create_file/update_file 会直接在远端分支产生提交，不是本地暂存后统一 push。
 2. 后续修改 python_chan_analysis_source.dart 时文件较长，应避免整文件误覆盖。
-3. 最好先用小提交扩展模型和解析器，再单独提交 source 接入。
-4. 后端 analyze_multi 未完成前，前端 multiSnapshot 只能解析模拟或未来接口返回。
+3. 当前新增 standalone source 是为了降低对现有稳定单级别流程的影响。
+4. 后端 analyze_multi 未完成前，前端 multi-level client 只能解析模拟或未来接口返回。
+5. Windows 自动启动本地 Python 和 Android MethodChannel 多级别调用需要单独补齐。
 ```
