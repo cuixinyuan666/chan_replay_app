@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/models/multi_level_view_state.dart';
@@ -271,6 +272,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       child: Wrap(
         spacing: 8,
         runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           _diagChip('manual P0', okNative ? 'native once ok' : 'needs check', okNative),
           _diagChip('native_cchan_lv_list', '$native', native == true),
@@ -279,7 +281,25 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
           _diagChip('relations.length', '$relationsLength', relationsLength > 0),
           _diagChip('frames.length', '$framesLength', _mode != 'step' || framesLength > 0),
           if (nativeFailure != null) _diagChip('native_failure', '$nativeFailure', false),
+          _copyP0Button(analysis),
         ],
+      ),
+    );
+  }
+
+  Widget _copyP0Button(PythonMultiLevelChanAnalysis analysis) {
+    return OutlinedButton.icon(
+      onPressed: () async {
+        await Clipboard.setData(ClipboardData(text: _buildP0DiagnosticText(analysis)));
+        _showMessage('P0 diagnostics copied');
+      },
+      icon: const Icon(Icons.copy, size: 14),
+      label: const Text('Copy P0'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF8AB4FF),
+        side: const BorderSide(color: Color(0x668AB4FF)),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -360,6 +380,27 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       if (s != null) parts.add('$level K:${s.rawBars.length} BI:${s.bis.length}');
     }
     return 'analyze_multi ${_mode.toUpperCase()} native:$native relation:$relationMode fallback:${fallback ?? false} relations:${snapshot.relations.length} frames:${analysis.frames.length} ${parts.join(' | ')}';
+  }
+
+  String _buildP0DiagnosticText(PythonMultiLevelChanAnalysis analysis) {
+    final meta = analysis.meta;
+    final snapshot = analysis.snapshot;
+    return [
+      'manual P0 diagnostics',
+      'mode: $_mode',
+      'symbol: ${_symbolController.text.trim()}',
+      'market: ${_marketController.text.trim().toUpperCase()}',
+      'levels: ${snapshot.levels.join(',')}',
+      'native_cchan_lv_list: ${meta['native_cchan_lv_list']}',
+      'level_relation_mode: ${meta['level_relation_mode']}',
+      'fallback_to_bridge: ${meta['fallback_to_bridge'] ?? false}',
+      'native_failure: ${meta['native_failure'] ?? ''}',
+      'relations.length: ${snapshot.relations.length}',
+      'frames.length: ${analysis.frames.length}',
+      'source: ${meta['source'] ?? ''}',
+      'native_data_window: ${meta['native_data_window'] ?? ''}',
+      'native_csv_time_policy: ${meta['native_csv_time_policy'] ?? ''}',
+    ].join('\n');
   }
 
   void _showMessage(String message) {
