@@ -29,12 +29,52 @@ class MultiLevelIntervalSignalPanel extends StatefulWidget {
 
 class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignalPanel> {
   int _selectedIndex = 0;
+  int _pairIndex = 0;
+  String _directionFilter = 'same';
+  String _highTypeFilter = 'ANY';
+  String _lowTypeFilter = 'ANY';
+
+  bool get _isScanMode => widget.mode == 'signal_scan_once';
+
+  List<_LevelPair> get _pairs {
+    final relationPairs = <String, _LevelPair>{};
+    for (final r in widget.snapshot.relations) {
+      relationPairs['${r.parentLevel}->${r.childLevel}'] = _LevelPair(r.parentLevel, r.childLevel);
+    }
+    if (relationPairs.isNotEmpty) return relationPairs.values.toList();
+    final levels = widget.snapshot.levels;
+    return [
+      for (var i = 0; i < levels.length - 1; i++) _LevelPair(levels[i], levels[i + 1]),
+    ];
+  }
+
+  _LevelPair? get _selectedPair {
+    final pairs = _pairs;
+    if (pairs.isEmpty) return null;
+    if (_pairIndex >= pairs.length) _pairIndex = pairs.length - 1;
+    return pairs[_pairIndex.clamp(0, pairs.length - 1).toInt()];
+  }
+
+  List<String> _typeOptionsForLevel(String level) {
+    final snapshot = widget.snapshot.of(level);
+    final types = <String>{'ANY'};
+    for (final bsp in snapshot?.bsps ?? const <BspPoint>[]) {
+      final text = bsp.type.trim();
+      if (text.isNotEmpty) types.add(text);
+    }
+    return types.toList();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final signals = _buildSignals();
+    final pair = _selectedPair;
+    final signals = _buildSignals(pair);
     if (_selectedIndex >= signals.length) _selectedIndex = signals.isEmpty ? 0 : signals.length - 1;
     final selected = signals.isEmpty ? null : signals[_selectedIndex];
+    final highTypes = pair == null ? const <String>['ANY'] : _typeOptionsForLevel(pair.parentLevel);
+    final lowTypes = pair == null ? const <String>['ANY'] : _typeOptionsForLevel(pair.childLevel);
+    if (!highTypes.contains(_highTypeFilter)) _highTypeFilter = 'ANY';
+    if (!lowTypes.contains(_lowTypeFilter)) _lowTypeFilter = 'ANY';
 
     return Container(
       width: double.infinity,
@@ -51,22 +91,27 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           const Text(
-            'Interval signal MVP',
+            'Interval validation',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
           ),
+          _chip('rule', 'any BSP pair', true),
           _chip('source', 'chan.py BSP + native relation', true),
-          _chip('scope', 'DAILY->MIN30', true),
+          if (pair != null) _chip('pair', pair.label, true),
           _chip('signals', '${signals.length}', signals.isNotEmpty),
+          _pairDropdown(),
+          _directionDropdown(),
+          _typeDropdown('high type', _highTypeFilter, highTypes, (v) => setState(() => _highTypeFilter = v)),
+          _typeDropdown('low type', _lowTypeFilter, lowTypes, (v) => setState(() => _lowTypeFilter = v)),
           if (selected != null) _chip('selected', '${_selectedIndex + 1}/${signals.length}', true),
           if (selected != null) _chip('state', selected.signal.state.wireName, selected.signal.state != SignalVisibilityState.invalid),
-          if (selected != null) _chip('pattern', '${selected.signal.highPattern}+${selected.signal.lowTrigger}', true),
+          if (selected != null) _chip('pattern', '${selected.highBsp.type}->${selected.lowBsp.type}', true),
           if (selected != null) _chip('parent', 'raw:${selected.parentRelation.parentRawIndex}', true),
           if (selected != null) _chip('child', 'raw:${selected.lowBsp.rawIndex}', true),
           _smallButton('Prev', signals.isEmpty ? null : () => _setSelected(_selectedIndex - 1, signals.length)),
           _smallButton('Next', signals.isEmpty ? null : () => _setSelected(_selectedIndex + 1, signals.length)),
           OutlinedButton.icon(
             onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: _copySignalText(signals, selected)));
+              await Clipboard.setData(ClipboardData(text: _copySignalText(pair, signals, selected)));
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Signal diagnostics copied'), duration: Duration(seconds: 3)),
@@ -82,52 +127,114 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     );
   }
 
-  String get _highLevel => widget.snapshot.levels.contains('DAILY')
-      ? 'DAILY'
-      : (widget.snapshot.levels.isNotEmpty ? widget.snapshot.levels.first : '');
+  Widget _pairDropdown() {
+    final pairs = _pairs;
+    if (pairs.isEmpty) return _chip('pair', 'none', false);
+    return SizedBox(
+      width: 150,
+      child: DropdownButtonFormField<int>(
+        value: _pairIndex.clamp(0, pairs.length - 1).toInt(),
+        dropdownColor: const Color(0xFF20242E),
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        decoration: _dropdownDecoration('level pair'),
+        items: [
+          for (var i = 0; i < pairs.length; i++) DropdownMenuItem(value: i, child: Text(pairs[i].label)),
+        ],
+        onChanged: (v) => setState(() {
+          _pairIndex = v ?? 0;
+          _selectedIndex = 0;
+          _highTypeFilter = 'ANY';
+          _lowTypeFilter = 'ANY';
+        }),
+      ),
+    );
+  }
 
-  String get _lowLevel => widget.snapshot.levels.contains('MIN30')
-      ? 'MIN30'
-      : (widget.snapshot.levels.length > 1 ? widget.snapshot.levels[1] : '');
+  Widget _directionDropdown() {
+    const values = ['all', 'same', 'buy', 'sell', 'mixed'];
+    return SizedBox(
+      width: 116,
+      child: DropdownButtonFormField<String>(
+        value: _directionFilter,
+        dropdownColor: const Color(0xFF20242E),
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        decoration: _dropdownDecoration('direction'),
+        items: [
+          for (final value in values) DropdownMenuItem(value: value, child: Text(value)),
+        ],
+        onChanged: (v) => setState(() {
+          _directionFilter = v ?? 'same';
+          _selectedIndex = 0;
+        }),
+      ),
+    );
+  }
 
-  List<_SignalMatch> _buildSignals() {
-    final highLevel = _highLevel;
-    final lowLevel = _lowLevel;
-    final high = widget.snapshot.of(highLevel);
-    final low = widget.snapshot.of(lowLevel);
+  Widget _typeDropdown(String label, String value, List<String> values, ValueChanged<String> onChanged) {
+    return SizedBox(
+      width: 126,
+      child: DropdownButtonFormField<String>(
+        value: value,
+        dropdownColor: const Color(0xFF20242E),
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        decoration: _dropdownDecoration(label),
+        items: [
+          for (final item in values) DropdownMenuItem(value: item, child: Text(item)),
+        ],
+        onChanged: (v) {
+          if (v != null) {
+            onChanged(v);
+            _selectedIndex = 0;
+          }
+        },
+      ),
+    );
+  }
+
+  InputDecoration _dropdownDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white54, fontSize: 10),
+      isDense: true,
+      filled: true,
+      fillColor: const Color(0xFF1C2330),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: Colors.white24),
+      ),
+    );
+  }
+
+  List<_SignalMatch> _buildSignals(_LevelPair? pair) {
+    if (pair == null) return const [];
+    final high = widget.snapshot.of(pair.parentLevel);
+    final low = widget.snapshot.of(pair.childLevel);
     if (high == null || low == null || high.bsps.isEmpty || low.bsps.isEmpty) return const [];
 
     final result = <_SignalMatch>[];
-    for (final highBsp in high.bsps.where((b) => b.isBuy && (_isType2(b) || _isType3(b)))) {
+    for (final highBsp in high.bsps.where(_matchesHighFilter)) {
       final relations = widget.snapshot.relationsForParentRange(
-        parentLevel: highLevel,
-        childLevel: lowLevel,
+        parentLevel: pair.parentLevel,
+        childLevel: pair.childLevel,
         startParentRawIndex: highBsp.rawIndex,
         endParentRawIndex: highBsp.rawIndex,
       );
       if (relations.isEmpty) continue;
       final childStart = relations.map((r) => r.childStartRawIndex).reduce((a, b) => a < b ? a : b);
       final childEnd = relations.map((r) => r.childEndRawIndex).reduce((a, b) => a > b ? a : b);
-      final lowCandidates = low.bsps.where((b) {
-        if (!b.isBuy) return false;
-        if (b.rawIndex < childStart || b.rawIndex > childEnd) return false;
-        if (_isType2(highBsp)) return _isType1(b);
-        if (_isType3(highBsp)) return _isType1(b) || _isType2(b);
-        return false;
-      });
-      for (final lowBsp in lowCandidates) {
+      for (final lowBsp in low.bsps.where((b) => _matchesLowFilter(b, highBsp, childStart, childEnd))) {
+        final relation = _relationContaining(relations, lowBsp.rawIndex) ?? relations.first;
         final state = highBsp.confirmed && lowBsp.confirmed
             ? SignalVisibilityState.confirmed
             : SignalVisibilityState.candidate;
-        final highPattern = _isType2(highBsp) ? '2-buy' : '3-buy';
-        final lowTrigger = _isType1(lowBsp) ? '1-buy' : '2-buy';
-        final relation = _relationContaining(relations, lowBsp.rawIndex) ?? relations.first;
+        final direction = _directionOfPair(highBsp, lowBsp);
         final signal = IntervalNestSignal(
-          direction: 'buy',
-          highLevel: highLevel,
-          lowLevel: lowLevel,
-          highPattern: highPattern,
-          lowTrigger: lowTrigger,
+          direction: direction,
+          highLevel: pair.parentLevel,
+          lowLevel: pair.childLevel,
+          highPattern: highBsp.type,
+          lowTrigger: lowBsp.type,
           highRawIndex: highBsp.rawIndex,
           lowRawIndex: lowBsp.rawIndex,
           score: state == SignalVisibilityState.confirmed ? 1.0 : 0.5,
@@ -136,14 +243,20 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
             'high level BSP is from original chan.py output',
             'low level BSP is from original chan.py output',
             'high-low range is bound by native LevelRelation',
+            'validation mode accepts arbitrary BSP type combinations',
           ],
-          warnings: const [
-            'MVP signal only; no trading plan or quality score yet',
-            'Accepted on current lightweight step frame only',
+          warnings: [
+            _isScanMode
+                ? 'Scan snapshot candidate only; verify in strict step before formal step acceptance'
+                : 'Visible in current strict step frame; still not a trading plan',
           ],
-          observedAtCursor: widget.frameIndex,
-          confirmedAtCursor: state == SignalVisibilityState.confirmed ? widget.frameIndex : null,
+          observedAtCursor: _isScanMode ? null : widget.frameIndex,
+          confirmedAtCursor: !_isScanMode && state == SignalVisibilityState.confirmed ? widget.frameIndex : null,
           meta: {
+            'rule_mode': 'validation_any_bsp_pair',
+            'direction_filter': _directionFilter,
+            'high_type_filter': _highTypeFilter,
+            'low_type_filter': _lowTypeFilter,
             'relation_source': 'native chan_parent_child LevelRelation',
             'parent_relation_range': '${relation.parentRawIndex}-${relation.parentRawIndex}',
             'child_relation_range': '${relation.childStartRawIndex}-${relation.childEndRawIndex}',
@@ -173,6 +286,44 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     return result;
   }
 
+  bool _matchesHighFilter(BspPoint point) {
+    if (_highTypeFilter != 'ANY' && point.type != _highTypeFilter) return false;
+    return _matchesDirectionSide(point, isHigh: true, highPoint: point);
+  }
+
+  bool _matchesLowFilter(BspPoint lowPoint, BspPoint highPoint, int childStart, int childEnd) {
+    if (lowPoint.rawIndex < childStart || lowPoint.rawIndex > childEnd) return false;
+    if (_lowTypeFilter != 'ANY' && lowPoint.type != _lowTypeFilter) return false;
+    return _matchesDirectionPair(highPoint, lowPoint);
+  }
+
+  bool _matchesDirectionSide(BspPoint point, {required bool isHigh, required BspPoint highPoint}) {
+    if (_directionFilter == 'buy') return point.isBuy;
+    if (_directionFilter == 'sell') return point.isSell;
+    return true;
+  }
+
+  bool _matchesDirectionPair(BspPoint highPoint, BspPoint lowPoint) {
+    if (_directionFilter == 'all') return true;
+    if (_directionFilter == 'buy') return highPoint.isBuy && lowPoint.isBuy;
+    if (_directionFilter == 'sell') return highPoint.isSell && lowPoint.isSell;
+    if (_directionFilter == 'same') {
+      return (highPoint.isBuy && lowPoint.isBuy) || (highPoint.isSell && lowPoint.isSell);
+    }
+    if (_directionFilter == 'mixed') {
+      return (highPoint.isBuy && lowPoint.isSell) || (highPoint.isSell && lowPoint.isBuy);
+    }
+    return true;
+  }
+
+  String _directionOfPair(BspPoint highPoint, BspPoint lowPoint) {
+    if (highPoint.isBuy && lowPoint.isBuy) return 'buy';
+    if (highPoint.isSell && lowPoint.isSell) return 'sell';
+    if (highPoint.isBuy && lowPoint.isSell) return 'mixed_buy_sell';
+    if (highPoint.isSell && lowPoint.isBuy) return 'mixed_sell_buy';
+    return 'unknown';
+  }
+
   LevelRelation? _relationContaining(List<LevelRelation> relations, int childRawIndex) {
     for (final relation in relations) {
       if (childRawIndex >= relation.childStartRawIndex && childRawIndex <= relation.childEndRawIndex) {
@@ -182,59 +333,101 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     return null;
   }
 
-  bool _isType1(BspPoint point) => _normalizedType(point).contains('1');
-  bool _isType2(BspPoint point) => _normalizedType(point).contains('2');
-  bool _isType3(BspPoint point) => _normalizedType(point).contains('3');
-
-  String _normalizedType(BspPoint point) {
-    return point.type.toLowerCase().replaceAll(' ', '').replaceAll('_', '').replaceAll('-', '');
-  }
-
   void _setSelected(int next, int total) {
     if (total <= 0) return;
     setState(() => _selectedIndex = next.clamp(0, total - 1).toInt());
   }
 
-  String _copySignalText(List<_SignalMatch> signals, _SignalMatch? selected) {
-    if (selected == null) {
-      final highLevel = _highLevel;
-      final lowLevel = _lowLevel;
-      final high = widget.snapshot.of(highLevel);
-      final low = widget.snapshot.of(lowLevel);
-      final highBsps = high?.bsps ?? const <BspPoint>[];
-      final lowBsps = low?.bsps ?? const <BspPoint>[];
-      final highType2Buy = highBsps.where((b) => b.isBuy && _isType2(b)).length;
-      final highType3Buy = highBsps.where((b) => b.isBuy && _isType3(b)).length;
-      final lowType1Buy = lowBsps.where((b) => b.isBuy && _isType1(b)).length;
-      final lowType2Buy = lowBsps.where((b) => b.isBuy && _isType2(b)).length;
-      final relationCount = widget.snapshot.relations
-          .where((r) => r.parentLevel == highLevel && r.childLevel == lowLevel)
-          .length;
+  String _copySignalText(_LevelPair? pair, List<_SignalMatch> signals, _SignalMatch? selected) {
+    final availablePairs = _pairs.map((p) => p.label).join(',');
+    if (pair == null) {
       return [
         'manual interval signal diagnostics',
         'button: Copy Signal',
         'mode: ${widget.mode}',
         'symbol: ${widget.symbol}',
-        'frame.index.local: ${widget.frameIndex ?? ''}',
-        'frame.count.local: ${widget.frameCount ?? ''}',
-        'signal_source: original chan.py BSP + native LevelRelation',
-        'signal_scope: DAILY/MIN30 MVP',
-        'available_signals: 0',
-        'high_level: $highLevel',
-        'low_level: $lowLevel',
-        'high_bsp_count: ${highBsps.length}',
-        'high_buy_type2_count: $highType2Buy',
-        'high_buy_type3_count: $highType3Buy',
-        'low_bsp_count: ${lowBsps.length}',
-        'low_buy_type1_count: $lowType1Buy',
-        'low_buy_type2_count: $lowType2Buy',
-        'native_relation_count: $relationCount',
-        'future_function_policy: current frame only; no final snapshot signal confirmation',
-        'diagnosis: no signal matched current DAILY/MIN30 MVP rules in this frame',
-        'status: no signal for DAILY/MIN30 MVP scope',
+        'signal_rule_mode: validation_any_bsp_pair',
+        'available_pairs: $availablePairs',
+        'status: no available native relation pair',
       ].join('\n');
     }
+    final high = widget.snapshot.of(pair.parentLevel);
+    final low = widget.snapshot.of(pair.childLevel);
+    final highBsps = high?.bsps ?? const <BspPoint>[];
+    final lowBsps = low?.bsps ?? const <BspPoint>[];
+    final relationCount = widget.snapshot.relations
+        .where((r) => r.parentLevel == pair.parentLevel && r.childLevel == pair.childLevel)
+        .length;
+
+    if (selected == null) {
+      return [
+        ..._copyHeader(pair, availablePairs),
+        'available_signals: 0',
+        'high_bsp_count: ${highBsps.length}',
+        'high_buy_count: ${highBsps.where((b) => b.isBuy).length}',
+        'high_sell_count: ${highBsps.where((b) => b.isSell).length}',
+        'high_type_counts: ${_typeCounts(highBsps)}',
+        'low_bsp_count: ${lowBsps.length}',
+        'low_buy_count: ${lowBsps.where((b) => b.isBuy).length}',
+        'low_sell_count: ${lowBsps.where((b) => b.isSell).length}',
+        'low_type_counts: ${_typeCounts(lowBsps)}',
+        'native_relation_count_for_pair: $relationCount',
+        'candidate_rule: high BSP at parent level + low BSP inside native child range; arbitrary BSP type combination',
+        'future_function_policy: ${_futurePolicy}',
+        'diagnosis: no candidate matched current custom filters in this ${_isScanMode ? 'scan snapshot' : 'step frame'}',
+        'status: no signal for custom validation scope',
+      ].join('\n');
+    }
+
     final signal = selected.signal;
+    return [
+      ..._copyHeader(pair, availablePairs),
+      'available_signals: ${signals.length}',
+      'selected_signal.local: ${_selectedIndex + 1}',
+      'direction: ${signal.direction}',
+      'state: ${signal.state.wireName}',
+      'score: ${signal.score}',
+      'strict_step_verified: ${_isScanMode ? 'false' : 'true'}',
+      'high_level: ${signal.highLevel}',
+      'high_pattern: ${signal.highPattern}',
+      'high_bsp_index: ${selected.highBsp.index}',
+      'high_bsp_type: ${selected.highBsp.type}',
+      'high_raw_index: ${selected.highBsp.rawIndex}',
+      'high_time: ${selected.highBsp.time ?? ''}',
+      'high_price: ${selected.highBsp.price}',
+      'high_confirmed: ${selected.highBsp.confirmed}',
+      'high_bi_index: ${selected.highBsp.biIndex ?? ''}',
+      'high_seg_index: ${selected.highBsp.segIndex ?? ''}',
+      'high_zs_index: ${selected.highBsp.zsIndex ?? ''}',
+      'low_level: ${signal.lowLevel}',
+      'low_trigger: ${signal.lowTrigger}',
+      'low_bsp_index: ${selected.lowBsp.index}',
+      'low_bsp_type: ${selected.lowBsp.type}',
+      'low_raw_index: ${selected.lowBsp.rawIndex}',
+      'low_time: ${selected.lowBsp.time ?? ''}',
+      'low_price: ${selected.lowBsp.price}',
+      'low_confirmed: ${selected.lowBsp.confirmed}',
+      'low_bi_index: ${selected.lowBsp.biIndex ?? ''}',
+      'low_seg_index: ${selected.lowBsp.segIndex ?? ''}',
+      'low_zs_index: ${selected.lowBsp.zsIndex ?? ''}',
+      'parent_relation_range: ${selected.parentRelation.parentRawIndex}-${selected.parentRelation.parentRawIndex}',
+      'child_relation_range: ${selected.parentRelation.childStartRawIndex}-${selected.parentRelation.childEndRawIndex}',
+      'child_union_range: ${selected.childStartRawIndex}-${selected.childEndRawIndex}',
+      'low_in_child_range: ${selected.lowBsp.rawIndex >= selected.childStartRawIndex && selected.lowBsp.rawIndex <= selected.childEndRawIndex}',
+      'relation_count_for_parent: ${selected.relationCount}',
+      'native_relation_count_for_pair: $relationCount',
+      'visibleAt.frame: ${signal.observedAtCursor ?? ''}',
+      'confirmedAt.frame: ${signal.confirmedAtCursor ?? ''}',
+      'invalidatedAt.frame: ${signal.invalidatedAtCursor ?? ''}',
+      'future_function_policy: ${_futurePolicy}',
+      'candidate_rule: high BSP at parent level + low BSP inside native child range; arbitrary BSP type combination',
+      'reasons: ${signal.reasons.join(' | ')}',
+      'warnings: ${signal.warnings.join(' | ')}',
+      'status: ok',
+    ].join('\n');
+  }
+
+  List<String> _copyHeader(_LevelPair pair, String availablePairs) {
     return [
       'manual interval signal diagnostics',
       'button: Copy Signal',
@@ -243,36 +436,30 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'frame.index.local: ${widget.frameIndex ?? ''}',
       'frame.count.local: ${widget.frameCount ?? ''}',
       'signal_source: original chan.py BSP + native LevelRelation',
-      'signal_scope: DAILY/MIN30 MVP',
-      'available_signals: ${signals.length}',
-      'selected_signal.local: ${_selectedIndex + 1}',
-      'direction: ${signal.direction}',
-      'state: ${signal.state.wireName}',
-      'score: ${signal.score}',
-      'high_level: ${signal.highLevel}',
-      'high_pattern: ${signal.highPattern}',
-      'high_bsp_index: ${selected.highBsp.index}',
-      'high_bsp_type: ${selected.highBsp.type}',
-      'high_raw_index: ${selected.highBsp.rawIndex}',
-      'high_time: ${selected.highBsp.time ?? ''}',
-      'low_level: ${signal.lowLevel}',
-      'low_trigger: ${signal.lowTrigger}',
-      'low_bsp_index: ${selected.lowBsp.index}',
-      'low_bsp_type: ${selected.lowBsp.type}',
-      'low_raw_index: ${selected.lowBsp.rawIndex}',
-      'low_time: ${selected.lowBsp.time ?? ''}',
-      'parent_relation_range: ${selected.parentRelation.parentRawIndex}-${selected.parentRelation.parentRawIndex}',
-      'child_relation_range: ${selected.parentRelation.childStartRawIndex}-${selected.parentRelation.childEndRawIndex}',
-      'child_union_range: ${selected.childStartRawIndex}-${selected.childEndRawIndex}',
-      'relation_count_for_parent: ${selected.relationCount}',
-      'visibleAt.frame: ${signal.observedAtCursor ?? ''}',
-      'confirmedAt.frame: ${signal.confirmedAtCursor ?? ''}',
-      'invalidatedAt.frame: ${signal.invalidatedAtCursor ?? ''}',
-      'future_function_policy: current frame only; no final snapshot signal confirmation',
-      'reasons: ${signal.reasons.join(' | ')}',
-      'warnings: ${signal.warnings.join(' | ')}',
-      'status: ok',
-    ].join('\n');
+      'signal_rule_mode: validation_any_bsp_pair',
+      'signal_scope: arbitrary adjacent native relation pair',
+      'scan_candidate_only: ${_isScanMode ? 'true' : 'false'}',
+      'strict_step_frame_mode: ${_isScanMode ? 'false' : 'true'}',
+      'available_pairs: $availablePairs',
+      'selected_pair: ${pair.label}',
+      'parent_level: ${pair.parentLevel}',
+      'child_level: ${pair.childLevel}',
+      'direction_filter: $_directionFilter',
+      'high_type_filter: $_highTypeFilter',
+      'low_type_filter: $_lowTypeFilter',
+    ];
+  }
+
+  String get _futurePolicy => _isScanMode
+      ? 'scan snapshot only; must be verified by strict step before step acceptance'
+      : 'current strict step frame only; no final snapshot signal confirmation';
+
+  String _typeCounts(List<BspPoint> points) {
+    final counts = <String, int>{};
+    for (final point in points) {
+      counts[point.type] = (counts[point.type] ?? 0) + 1;
+    }
+    return counts.entries.map((e) => '${e.key}:${e.value}').join(',');
   }
 
   Widget _smallButton(String label, VoidCallback? onPressed) {
@@ -304,6 +491,15 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       child: Text('$label: $value', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
+}
+
+class _LevelPair {
+  final String parentLevel;
+  final String childLevel;
+
+  const _LevelPair(this.parentLevel, this.childLevel);
+
+  String get label => '$parentLevel->$childLevel';
 }
 
 class _SignalMatch {
