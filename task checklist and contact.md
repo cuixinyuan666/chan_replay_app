@@ -24,6 +24,8 @@ Branch: origin_vespa_tdx
 - `3b8d1eb571204cbb551c64656612b19ea9125a1b`: added frontend `analyze_multi` timing metadata into `analysis.meta.time_log`.
 - `40a694d222aad49002a66d514b11f8cce9ab0e82`: propagated `time_log` into final snapshot and step frame metadata.
 - `218b6ae8ec2612bf75e699ce09f2b9697d290185`: added `Copy Time Log` button next to `Copy Signal` in interval signal panel.
+- `6801eaf341e8bb4d7ebf798452436ea75140e32c`: recorded Copy Time Log implementation in the manual.
+- Current update: accepted user-provided normal step and once/Scan Signal Time Logs; strategy context Time Log remains pending after context-output fix.
 - Earlier accepted commits remain valid: bundled Python backend, native `analyze_multi`, strict step, relation navigation, Scan Signal, arbitrary BSP validation mode, clean analyze before strategy/time-log patches.
 
 ## Current accepted work
@@ -34,6 +36,8 @@ Branch: origin_vespa_tdx
 - Batch C arbitrary BSP pair strict-step validation: accepted using real easy-tdx/original chan.py data.
 - Flutter analyze: previously accepted clean before strategy/time-log patches.
 - Legacy `OriginReplayPageV2` / `_sliceSnapshot` blocker: cleared by code search.
+- P0 Time Log normal step Load path: runtime accepted.
+- P0 Time Log Scan Signal / once path: runtime accepted.
 
 ## Runtime verification accepted: App-bundled Python / Copy P0
 
@@ -96,7 +100,7 @@ User supplied strategy no-signal diagnostics for frame `0/29`:
 Decision:
 
 - Strategy mode no-signal diagnostics are structurally useful but cannot be accepted yet, because P0 Time Log supersedes further functional acceptance.
-- No strategy signal acceptance may be recorded until Time Log is accepted.
+- No strategy signal acceptance may be recorded until Time Log is fully accepted.
 
 ## P0 Time Log instrumentation
 
@@ -141,26 +145,60 @@ Implemented in `lib/ui/widgets/multi_level_interval_signal_panel.dart`:
 
 - Added visible `Copy Time Log` button next to `Copy Signal`.
 - The button reads `widget.snapshot.meta['time_log']`.
-- The copied plain-text output includes:
-  - `time log diagnostics`
-  - `button: Copy Time Log`
-  - trace_id
-  - mode / symbol / market / levels / count / max_step_frames / start / end
-  - backend_url
-  - python_runtime / process_source
-  - used_app_bundled_python
-  - native_cchan_lv_list
-  - fallback_to_bridge
-  - total_elapsed_ms / backend_elapsed_ms / frontend_elapsed_ms
-  - slowest top 10 stages sorted by duration
-  - full stages table
-  - status
+- The copied plain-text output includes trace/request/runtime totals, slowest top 10 stages, and full stage table.
 
-Implementation status:
+Runtime Time Log accepted: normal step Load:
 
-- Time Log metadata path: implemented.
-- Copy Time Log UI: implemented in interval signal panel.
-- Runtime Time Log acceptance: pending user pasted logs.
+- trace_id: `ml-1781194131809617`
+- mode: `step`
+- symbol: `600340`
+- levels: `DAILY,MIN30,MIN5`
+- count: `220`
+- max_step_frames: `60`
+- start/end: `2025-09-01` to `2025-10-20`
+- python_runtime: `app_bundled`
+- process_source: `app_managed`
+- used_app_bundled_python: `true`
+- native_cchan_lv_list: `true`
+- fallback_to_bridge: `false`
+- total_elapsed_ms: `32729`
+- backend_elapsed_ms: `12186`
+- frontend_elapsed_ms: `32729`
+- slowest stages include frontend parse, http round-trip, backend ready, JSON decode.
+- status: `ok`
+
+Runtime Time Log accepted: Scan Signal / once:
+
+- trace_id: `ml-1781194209519646`
+- mode: `once`
+- symbol: `600340`
+- levels: `DAILY,MIN30,MIN5`
+- count: `220`
+- start/end: `2025-09-01` to `2025-10-20`
+- python_runtime: `app_bundled`
+- process_source: `app_managed`
+- used_app_bundled_python: `true`
+- native_cchan_lv_list: `true`
+- fallback_to_bridge: `false`
+- total_elapsed_ms: `12153`
+- backend_elapsed_ms: `8738`
+- frontend_elapsed_ms: `12153`
+- slowest stages include HTTP round-trip, backend ready, parse.
+- status: `ok`
+
+Strategy context Time Log:
+
+- User pasted a third Time Log that is identical to the once/Scan Signal log, with the same trace_id `ml-1781194209519646` and `mode: once`.
+- This proves the underlying once snapshot timing but does not distinguish strategy UI context.
+- Latest code now supports Copy Time Log from the current interval panel context after `time_log` propagation; strategy context should be retested after pulling latest commits.
+
+P0 Time Log acceptance status:
+
+- Metadata path: implemented.
+- Copy Time Log UI: implemented.
+- Runtime step Load Time Log: accepted.
+- Runtime Scan Signal / once Time Log: accepted.
+- Runtime strategy context Time Log: pending retest after latest context-output fix.
 
 ## Future track after Time Log: 极速 mode planning
 
@@ -187,19 +225,14 @@ Forbidden:
 ## Current blockers / pending verification
 
 - Re-run `flutter analyze` after `40a694d222aad49002a66d514b11f8cce9ab0e82` and `218b6ae8ec2612bf75e699ce09f2b9697d290185`.
-- Runtime Copy Time Log must be provided for at least:
-  1. normal `Load` in step mode.
-  2. `Scan Signal` / once mode.
-  3. strategy mode Copy Signal path if strategy mode is tested.
-- Strategy mode acceptance is paused until Time Log is accepted.
+- Runtime strategy context Copy Time Log must be retested after latest code.
+- Strategy mode acceptance is paused until Time Log is fully accepted.
 - Full-history/paged strict step replay remains deferred.
 
 ## Next task-party operation
 
 1. Run `git pull`.
 2. Run `flutter analyze`.
-3. Open multi-level page and perform normal `Load` in step mode.
-4. Open `区间信号` and click `Copy Time Log`; paste the result.
-5. Click `Scan Signal`, then click `Copy Time Log`; paste the result.
-6. If strategy mode is tested, keep `rule mode=strategy`, click `Copy Time Log`; paste the result.
-7. Only after Time Log is accepted, resume strategy-mode acceptance or full-history/paged strict step track.
+3. Open multi-level page and perform normal step Load.
+4. Open `区间信号`, set `rule mode=strategy`, then click `Copy Time Log`; paste the result.
+5. Once strategy context Time Log is accepted, resume strategy-mode acceptance or full-history/paged strict step track.
