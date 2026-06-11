@@ -122,7 +122,7 @@ class PythonMultiLevelChanAnalysisSource {
           timeout,
           onTimeout: () => throw TimeoutException(
             'analyze_multi ${payload['mode'] ?? ''} 请求超时：${timeout.inSeconds}s，uri=$uri。'
-            '请降低 count / max_step_frames，或检查后端 step_load 性能。',
+            'step 回放请降低 count / max_step_frames；找信号请使用 Scan Signal/once 扫描，避免返回大量 step frames。',
             timeout,
           ),
         );
@@ -131,7 +131,9 @@ class PythonMultiLevelChanAnalysisSource {
 
   Duration _requestTimeout(Map<String, dynamic> payload) {
     final mode = '${payload['mode'] ?? ''}'.toLowerCase();
+    final count = payload['count'] is int ? payload['count'] as int : 0;
     if (mode == 'step') return const Duration(seconds: 180);
+    if (count >= 300) return const Duration(seconds: 180);
     return const Duration(seconds: 90);
   }
 
@@ -261,121 +263,25 @@ class _LocalPythonMultiLevelChanProcess {
   }
 
   static Future<_LocalPythonMultiLevelChanProcess> start() async {
-    final appEngine = await _findAppEngine();
-    final port = await _pickFreePort();
-    final baseUrl = 'http://127.0.0.1:$port';
-    final candidates = _pythonCandidates(appEngine);
-    Object? lastError;
-    for (final candidate in candidates) {
-      try {
-        final process = await Process.start(
-          candidate.executable,
-          [appEngine.path, '--host', '127.0.0.1', '--port', '$port'],
-          workingDirectory: appEngine.parent.parent.path,
-          runInShell: false,
-          environment: {'PYTHONIOENCODING': 'utf-8'},
-          mode: ProcessStartMode.normal,
-        );
-        final runner = _LocalPythonMultiLevelChanProcess._(process, baseUrl);
-        await runner._waitUntilReady();
-        return runner;
-      } catch (e) {
-        lastError = '${candidate.executable}: $e';
-      }
+    final script = File('python/a_server.py');
+    if (!await script.exists()) {
+      throw StateError('找不到 python/a_server.py，无法启动本地 chan.py 后端');
     }
-    throw Exception(
-        '无法后台启动 Python chan.py 本地服务。仅允许使用内置 Python：python/python.exe。最后错误：$lastError');
-  }
-
-  static Future<File> _findAppEngine() async {
-    final checked = <String>{};
-    final starts = <Directory>[
-      Directory.current,
-      File(Platform.resolvedExecutable).parent,
-    ];
-    for (final start in starts) {
-      var dir = start.absolute;
-      for (var i = 0; i < 8; i++) {
-        if (!checked.add(dir.path)) break;
-        for (final candidate in _appEngineCandidatesFrom(dir)) {
-          if (await candidate.exists()) return candidate;
-        }
-        final parent = dir.parent;
-        if (parent.path == dir.path) break;
-        dir = parent;
-      }
-    }
-    throw Exception('找不到 python/app_engine.py');
-  }
-
-  static List<File> _appEngineCandidatesFrom(Directory dir) {
-    final sep = Platform.pathSeparator;
-    return [
-      File('${dir.path}${sep}python${sep}app_engine.py'),
-      File('${dir.path}${sep}data${sep}python${sep}app_engine.py'),
-      File('${dir.path}${sep}app_engine.py'),
-    ];
-  }
-
-  static Future<int> _pickFreePort() async {
-    final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-    final port = socket.port;
-    await socket.close();
-    return port;
-  }
-
-  static List<_PythonCandidate> _pythonCandidates(File appEngine) {
-    final sep = Platform.pathSeparator;
-    final bundledPython = File('${appEngine.parent.path}${sep}python.exe');
-    if (!bundledPython.existsSync()) {
-      throw Exception('找不到内置 Python：${bundledPython.path}');
-    }
-    return [_PythonCandidate(bundledPython.path)];
-  }
-
-  Future<void> _waitUntilReady() async {
-    final deadline = DateTime.now().add(const Duration(seconds: 25));
-    Object? lastError;
-    while (DateTime.now().isBefore(deadline)) {
-      final exitCode = await process.exitCode
-          .timeout(const Duration(milliseconds: 10), onTimeout: () => -999999);
-      if (exitCode != -999999) {
-        throw Exception(
-            'Python chan.py 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
-      }
-      try {
-        final client = HttpClient();
-        final request = await client
-            .getUrl(Uri.parse('$baseUrl/health'))
-            .timeout(const Duration(milliseconds: 700));
-        final response =
-            await request.close().timeout(const Duration(milliseconds: 700));
-        client.close(force: true);
-        if (response.statusCode >= 200 && response.statusCode < 300) return;
-      } catch (e) {
-        lastError = e;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-    }
-    dispose();
-    throw Exception('Python chan.py 本地服务启动超时：$lastError，stderr=${_stderr.toString()}');
+    final port = 3714;
+    final process = await Process.start(
+      'python',
+      [script.path, '--host', '127.0.0.1', '--port', '$port'],
+      runInShell: true,
+    );
+    final instance = _LocalPythonMultiLevelChanProcess._(
+      process,
+      'http://127.0.0.1:$port',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 850));
+    return instance;
   }
 
   void dispose() {
-    try {
-      process.kill(ProcessSignal.sigterm);
-    } catch (_) {}
+    process.kill();
   }
-}
-
-class _PythonCandidate {
-  final String executable;
-  const _PythonCandidate(this.executable);
-}
-
-class _PythonMultiLevelBackendMismatch implements Exception {
-  final String message;
-  const _PythonMultiLevelBackendMismatch(this.message);
-  @override
-  String toString() => message;
 }
