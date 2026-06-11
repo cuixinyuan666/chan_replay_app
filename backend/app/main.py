@@ -141,6 +141,12 @@ def _compact_multilevel_step_result(
     if len(selected_frames) > max_return_frames:
         selected_frames = selected_frames[-max_return_frames:]
 
+    meta = dict(result.get('meta')) if isinstance(result.get('meta'), dict) else {}
+    native_total = meta.get('native_step_frames_total')
+    frames_total = native_total if isinstance(native_total, int) else len(frames)
+    frames_returned = len(selected_frames)
+    frames_truncated = frames_returned < frames_total
+
     compact_frames: list[Any] = []
     for frame in selected_frames:
         if not isinstance(frame, dict):
@@ -169,6 +175,10 @@ def _compact_multilevel_step_result(
             'step_frame_format': 'compact_v1',
             'frame_policy': frame_policy,
             'frame_stride': frame_stride,
+            'frames_total': frames_total,
+            'frames_returned': frames_returned,
+            'frames_truncated': frames_truncated,
+            'max_return_frames': max_return_frames,
             'include_bars_in_frames': include_bars,
             'include_indicators_in_frames': include_indicators,
         })
@@ -177,9 +187,6 @@ def _compact_multilevel_step_result(
 
     next_result = dict(result)
     next_result['frames'] = compact_frames
-    meta = dict(next_result.get('meta')) if isinstance(next_result.get('meta'), dict) else {}
-    native_total = meta.get('native_step_frames_total')
-    frames_total = native_total if isinstance(native_total, int) else len(frames)
     meta.update({
         'step_frame_format': 'compact_v1',
         'frame_policy': frame_policy,
@@ -187,8 +194,8 @@ def _compact_multilevel_step_result(
         'frame_start': frame_start_raw,
         'frame_end': frame_end_raw,
         'frames_total': frames_total,
-        'frames_returned': len(compact_frames),
-        'frames_truncated': len(compact_frames) < frames_total,
+        'frames_returned': frames_returned,
+        'frames_truncated': frames_truncated,
         'max_return_frames': max_return_frames,
         'include_bars_in_frames': include_bars,
         'include_indicators_in_frames': include_indicators,
