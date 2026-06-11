@@ -50,14 +50,20 @@ class PythonMultiLevelChanAnalysisSource {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
+    final traceId = 'ml-${DateTime.now().microsecondsSinceEpoch}';
+    final totalSw = Stopwatch()..start();
+    final stages = <String, int>{};
+
+    final requestBuildSw = Stopwatch()..start();
+    final normalizedLevels = [
+      for (final level in levels)
+        if (level.trim().isNotEmpty) level.trim().toUpperCase(),
+    ];
     final payload = <String, dynamic>{
       'mode': mode,
       'symbol': code.trim(),
       'market': market.trim().toUpperCase(),
-      'lv_list': [
-        for (final level in levels)
-          if (level.trim().isNotEmpty) level.trim().toUpperCase(),
-      ],
+      'lv_list': normalizedLevels,
       'adjust': adjust.trim().toUpperCase(),
       'config': config,
       if (mainLevel != null && mainLevel.trim().isNotEmpty)
@@ -68,6 +74,7 @@ class PythonMultiLevelChanAnalysisSource {
       if (startDate != null) 'start': _fmtDate(startDate),
       if (endDate != null) 'end': _fmtDate(endDate),
     };
+    stages['frontend.request_build'] = requestBuildSw.elapsedMilliseconds;
 
     if (Platform.isAndroid) {
       throw UnsupportedError(
@@ -75,9 +82,28 @@ class PythonMultiLevelChanAnalysisSource {
       );
     }
 
+    final readySw = Stopwatch()..start();
     final sourceBase =
         Platform.isWindows ? await _readyAppManagedBaseUrl() : baseUrl;
-    return _postAnalyzeMulti(sourceBase, payload);
+    stages['frontend.backend_ready'] = readySw.elapsedMilliseconds;
+
+    return _postAnalyzeMulti(
+      sourceBase,
+      payload,
+      traceId: traceId,
+      totalSw: totalSw,
+      stages: stages,
+      requestContext: {
+        'mode': mode,
+        'symbol': code.trim(),
+        'market': market.trim().toUpperCase(),
+        'levels': normalizedLevels,
+        'count': count,
+        'max_step_frames': config['max_step_frames'],
+        'start': startDate == null ? null : _fmtDate(startDate),
+        'end': endDate == null ? null : _fmtDate(endDate),
+      },
+    );
   }
 
   Future<String> _readyAppManagedBaseUrl() async {
@@ -89,11 +115,16 @@ class PythonMultiLevelChanAnalysisSource {
 
   Future<PythonMultiLevelChanAnalysis> _postAnalyzeMulti(
     String sourceBaseUrl,
-    Map<String, dynamic> payload,
-  ) async {
+    Map<String, dynamic> payload, {
+    required String traceId,
+    required Stopwatch totalSw,
+    required Map<String, int> stages,
+    required Map<String, dynamic> requestContext,
+  }) async {
     final sourceBase = _trimTrailingSlash(sourceBaseUrl);
     final uri = Uri.parse('$sourceBase/api/chan/analyze_multi');
     final timeout = _requestTimeout(payload);
+    final httpSw = Stopwatch()..start();
     final response = await _client
         .post(
           uri,
@@ -108,10 +139,15 @@ class PythonMultiLevelChanAnalysisSource {
             timeout,
           ),
         );
+    stages['frontend.http_round_trip'] = httpSw.elapsedMilliseconds;
     return _decodeResponse(
       response,
       sourceBaseUrl: sourceBase,
       backendDiagnostics: _localProcess?.diagnostics,
+      traceId: traceId,
+      totalSw: totalSw,
+      stages: stages,
+      requestContext: requestContext,
     );
   }
 
@@ -127,8 +163,14 @@ class PythonMultiLevelChanAnalysisSource {
     http.Response response, {
     String? sourceBaseUrl,
     Map<String, dynamic>? backendDiagnostics,
+    required String traceId,
+    required Stopwatch totalSw,
+    required Map<String, int> stages,
+    required Map<String, dynamic> requestContext,
   }) {
+    final bodySw = Stopwatch()..start();
     final body = utf8.decode(response.bodyBytes);
+    stages['frontend.body_decode'] = bodySw.elapsedMilliseconds;
     if (response.statusCode < 200 || response.statusCode >= 300) {
       if (response.statusCode == 404) {
         throw Exception(
@@ -139,7 +181,9 @@ class PythonMultiLevelChanAnalysisSource {
         'chan.py multi-level engine returned ${response.statusCode}: $body',
       );
     }
+    final jsonSw = Stopwatch()..start();
     final decoded = jsonDecode(body);
+    stages['frontend.json_decode'] = jsonSw.elapsedMilliseconds;
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException(
         'chan.py multi-level engine did not return a JSON object.',
@@ -149,12 +193,26 @@ class PythonMultiLevelChanAnalysisSource {
       throw Exception(
           decoded['error'] ?? 'chan.py multi-level calculation failed.');
     }
+    final parseSw = Stopwatch()..start();
     final analysis = parse(decoded);
-    if (backendDiagnostics == null) return analysis;
+    stages['frontend.parse.snapshot_frames_relations_bsp'] = parseSw.elapsedMilliseconds;
+
     final meta = Map<String, dynamic>.from(analysis.meta);
-    meta['backend_runtime'] = backendDiagnostics;
-    meta['backend_url'] = backendDiagnostics['backend_url'];
-    meta['python_runtime'] = backendDiagnostics['python_runtime'];
+    if (backendDiagnostics != null) {
+      meta['backend_runtime'] = backendDiagnostics;
+      meta['backend_url'] = backendDiagnostics['backend_url'];
+      meta['python_runtime'] = backendDiagnostics['python_runtime'];
+    }
+    totalSw.stop();
+    stages['frontend.total'] = totalSw.elapsedMilliseconds;
+    meta['time_log'] = _buildTimeLog(
+      traceId: traceId,
+      meta: meta,
+      stages: stages,
+      requestContext: requestContext,
+      sourceBaseUrl: sourceBaseUrl,
+      backendDiagnostics: backendDiagnostics,
+    );
     return PythonMultiLevelChanAnalysis(
       snapshot: analysis.snapshot,
       frames: analysis.frames,
@@ -163,13 +221,55 @@ class PythonMultiLevelChanAnalysisSource {
     );
   }
 
+  Map<String, dynamic> _buildTimeLog({
+    required String traceId,
+    required Map<String, dynamic> meta,
+    required Map<String, int> stages,
+    required Map<String, dynamic> requestContext,
+    String? sourceBaseUrl,
+    Map<String, dynamic>? backendDiagnostics,
+  }) {
+    final frontendTotal = stages['frontend.total'] ?? 0;
+    final backendElapsed = _numToInt(meta['backend_elapsed_ms']) ?? stages['frontend.http_round_trip'] ?? 0;
+    final runtime = backendDiagnostics ?? const <String, dynamic>{};
+    return {
+      'trace_id': traceId,
+      'mode': requestContext['mode'],
+      'symbol': requestContext['symbol'],
+      'market': requestContext['market'],
+      'levels': requestContext['levels'],
+      'count': requestContext['count'],
+      'max_step_frames': requestContext['max_step_frames'],
+      'start': requestContext['start'],
+      'end': requestContext['end'],
+      'backend_url': meta['backend_url'] ?? runtime['backend_url'] ?? sourceBaseUrl ?? '',
+      'python_runtime': meta['python_runtime'] ?? runtime['python_runtime'] ?? '',
+      'process_source': runtime['process_source'] ?? '',
+      'total_elapsed_ms': frontendTotal,
+      'backend_elapsed_ms': backendElapsed,
+      'frontend_elapsed_ms': frontendTotal,
+      'stages': Map<String, int>.from(stages),
+      'used_app_bundled_python': (meta['python_runtime'] ?? runtime['python_runtime']) == 'app_bundled',
+      'native_cchan_lv_list': meta['native_cchan_lv_list'],
+      'fallback_to_bridge': meta['fallback_to_bridge'] ?? false,
+      'status': 'ok',
+    };
+  }
+
+  int? _numToInt(Object? value) {
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is num) return value.toInt();
+    return null;
+  }
+
   static PythonMultiLevelChanAnalysis parse(Map<String, dynamic> data) {
     final snapshot = MultiLevelChanAnalysisParser.parseSnapshot(
       data,
       parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
     );
     if (snapshot == null) {
-      throw const FormatException('chan.py 澶氱骇鍒繑鍥炵己灏?levels 缁撴瀯');
+      throw const FormatException('chan.py multi-level response missing levels structure');
     }
 
     final frames = MultiLevelChanAnalysisParser.parseFrames(
