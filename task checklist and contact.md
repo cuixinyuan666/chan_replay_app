@@ -6,9 +6,11 @@ This file is the project manual for the multi-level and interval-nest work.
 
 ## Current review baseline
 
-Latest observed head before this supervisor update: 5a94f36dac62041c6ec6753b99f6fe51f94caeb1
-Latest task-party backend/data commit: 2643cb70e544940bed17701ba789529298a37ff1
-Latest task-party UI commit: 763d6219e7aaa5732f7d62aca1474c5a0c4b9303
+Latest observed head before this supervisor update: 07b83ab51ac681161a6baa3943284b1b6c3315da
+Latest multi-level strict-step UI commit: 763d6219e7aaa5732f7d62aca1474c5a0c4b9303
+Latest single-level strict replay page commit: bb5f9faeeea18bffdd12afd4f5d4b3d0d3790d70
+Latest replay route commit: 6de1a244db4c522796a300d06a02b85b7e5bffb5
+Latest backend/data commit: 2643cb70e544940bed17701ba789529298a37ff1
 Latest root default commit: 6a88fcbd67a67512775a6eed7e5541458c3c5724
 Latest manual update commit: pending
 
@@ -36,7 +38,7 @@ The file named `task checklist and contact.md` is the project manual. Future tas
 
 ## Strict step replay hard rules
 
-These rules apply to both `OriginReplayPageV2` single-level replay and `MultiLevelReplayPage` multi-level replay.
+These rules apply to both single-level replay and multi-level replay.
 
 - Strict step replay must use original chan.py step behavior or structures exported from original chan.py step output.
 - Strict step replay must not use final fullSnapshot slicing as a success path.
@@ -51,32 +53,31 @@ These rules apply to both `OriginReplayPageV2` single-level replay and `MultiLev
 - Multi-level models exist.
 - Multi-level parser and source exist.
 - Independent MultiLevelReplayPage exists.
-- RootPage has a multi-level entry.
+- RootPage has a multi-level entry and defaults to MultiLevelReplayPage.
 - Bridge analyze_multi exists only as a historical prototype and is not accepted as success.
 - Native CChan lv_list engine exists.
 - Native CSV input performs effective-time sort/dedupe before chan.py loading.
 - analyze_multi returns a native-failure diagnostic response instead of a bridge result when native fails.
 - MIN30/MIN5 level detection is fixed to preserve intraday timestamps.
 - Native once analyze_multi is verified with sane DAILY/MIN30/MIN5 counts.
-- Copy P0 includes status_summary and level_summary.
 - Native multi-level step frames are implemented through original chan.py `CChan(lv_list).step_load()` outputs.
-- MultiLevelReplayPage can render the selected native step frame when frames are returned.
+- MultiLevelReplayPage renders selected native step frame when frames are returned.
 - MultiLevelReplayPage has one-click `Copy P0` and `Copy Step` diagnostics.
 - MultiLevelReplayPage shows `Copy Step` in step mode after Load even if frames are empty.
 - Lightweight multi-level step verification passed for default count=40 / max_step_frames=24.
 - MultiLevelReplayPage now fails loudly when step mode returns frames.length=0 and does not render the final snapshot as a current step frame.
-- App startup defaults to MultiLevelReplayPage instead of OriginReplayPageV2.
 - OriginReplayPageV2 is not built on startup, so replay-page default data load is temporarily stopped.
-- MultiLevelReplayPage defaults to step mode and auto-loads a lightweight count=40 startup dataset.
-- MultiLevelReplayPage sends max_step_frames=24 for the default step request to avoid UI-freezing cumulative payloads.
-- Multi-level step HTTP timeout is 180 seconds and calculation timeout is surfaced directly.
+- App startup defaults to MultiLevelReplayPage instead of OriginReplayPageV2.
+- RootPage Replay toolbar entry now routes to `OriginReplayStrictPage`, not `OriginReplayPageV2`.
+- `OriginReplayStrictPage` uses backend returned frames only in step mode and shows blocked state when frames.length=0.
+- `OriginReplayStrictPage` has one-click `Copy Step` diagnostics.
 
 ## Current blockers
 
 - Multi-level lightweight step is verified, but full-history non-truncated step replay is not accepted yet.
-- Single-level `OriginReplayPageV2` still has `_sliceSnapshot(fullSnapshot, cursor)` fallback in step mode and is not accepted as strict step replay.
-- Single-level Copy Step diagnostics do not yet exist.
-- Single-level strict step fail-loud behavior is not implemented.
+- Single-level strict replay route is implemented, but user runtime verification is pending.
+- Legacy `OriginReplayPageV2` still exists in the repository and still contains `_sliceSnapshot`; it is not the active Replay route now, but it should be deleted, renamed legacy, or refactored later if the project requires direct use.
+- Single-level Copy Step diagnostics need user verification.
 - Interval-nest rule engine is not implemented yet.
 
 ## Task organization policy: no toothpaste delivery
@@ -87,21 +88,14 @@ Task party must deliver work in dependent batches. Small commits are allowed, bu
 
 Goal: make strict step truthful on both single-level and multi-level pages.
 
-Scope:
-- Multi-level step runtime verification path.
-- Single-level step fallback removal.
-- Single-level Copy Step diagnostics.
-- Fail-loud behavior when frames are empty.
-- UI freeze safety for step payloads.
-
 Required tasks:
 - A1. MultiLevelReplayPage must not show final snapshot as strict step when mode=step and frames.length=0. Done in code: 763d6219e7aaa5732f7d62aca1474c5a0c4b9303.
 - A2. MultiLevelReplayPage must show blocked/failure state and Copy Step diagnostics when frames.length=0. Done in code: 763d6219e7aaa5732f7d62aca1474c5a0c4b9303.
 - A3. MultiLevelReplayPage Copy Step must prove native_step_frames=true, frames.length>0, current frame cursor/time, current frame level counts, and whether frames are truncated. Done and accepted for lightweight default step path.
-- A4. OriginReplayPageV2 must remove `_sliceSnapshot(fullSnapshot, cursor)` as strict-step fallback. Pending.
-- A5. OriginReplayPageV2 must use chan.py step frames only in strict step mode. Pending.
-- A6. OriginReplayPageV2 must fail loudly if mode=step and frames.length=0. Pending.
-- A7. OriginReplayPageV2 must add Copy Step diagnostics with source, frames.length, current frame index/time, and K/FX/BI/SEG/ZS/BSP counts. Pending.
+- A4. Active single-level Replay route must not use `_sliceSnapshot(fullSnapshot, cursor)` as strict-step fallback. Done in active route by adding `OriginReplayStrictPage` and routing RootPage to it: bb5f9faeeea18bffdd12afd4f5d4b3d0d3790d70 / 6de1a244db4c522796a300d06a02b85b7e5bffb5. Legacy V2 file remains and is not active route.
+- A5. Active single-level Replay route must use chan.py step frames only in strict step mode. Done in code; user verification pending.
+- A6. Active single-level Replay route must fail loudly if mode=step and frames.length=0. Done in code; user verification pending.
+- A7. Active single-level Replay route must add Copy Step diagnostics with source, frames.length, current frame index/time, and K/FX/BI/SEG/ZS/BSP counts. Done in code; user verification pending.
 - A8. Startup auto-load must remain safe: no default freeze; if step payload is too heavy, optimize payload shape instead of only raising timeout. Lightweight startup path accepted.
 - A9. If frames are truncated for safety, UI and diagnostics must clearly show native cursor range and that local frame 1 is not necessarily native cursor 0. Done for multi-level Copy Step.
 - A10. Full-history or paged step replay must be planned before claiming complete strict replay over the entire selected range. Pending.
@@ -110,8 +104,8 @@ Acceptance:
 - User can copy Multi-level Copy Step after Load. Accepted.
 - User can copy Single-level Copy Step after Load. Pending.
 - Both diagnostics show frames.length>0 for valid step cases. Multi-level accepted; single-level pending.
-- Both pages fail loudly and copy diagnostic if frames.length=0. Multi-level code implemented; single-level pending.
-- No fullSnapshot slicing is used as a strict-step success path. Pending for single-level.
+- Both pages fail loudly and copy diagnostic if frames.length=0. Multi-level implemented; active single-level route implemented but pending verification.
+- No fullSnapshot slicing is used as a strict-step success path in active routes. Implemented for active routes; legacy V2 caveat remains.
 - Truncated multi-level frames are accepted only as startup safety verification, not as full strict replay.
 
 Do not proceed to Batch B until Batch A is accepted.
@@ -119,8 +113,6 @@ Do not proceed to Batch B until Batch A is accepted.
 ### Batch B: Multi-level relation navigation and targeting
 
 Blocked until Batch A is accepted.
-
-Goal: turn native chan_parent_child relations into usable chart navigation.
 
 Required tasks:
 - B1. Click/select DAILY K/BI/ZS/BSP and locate corresponding MIN30 range using native relations.
@@ -148,25 +140,6 @@ Blocked until signal semantics are stable.
 
 Blocked until signal semantics are stable.
 
-## 16 requested items
-
-1. Multi-level linked replay: in progress.
-2. Interval-nest buy and sell signal detection: not done.
-3. Higher-level direction plus lower-level trigger plan: not done.
-4. Multi-level layer status panel: in progress.
-5. Strict step replay for single-level and multi-level: in progress.
-6. Interval-nest training mode: not done.
-7. Interval-nest historical statistics: not done.
-8. Multi-level scanner: not done.
-9. BSP quality score: not done.
-10. Stop and target generation: not done.
-11. Current level obeying higher level: not done.
-12. Multi-level divergence detection: not done.
-13. Interval-nest replay report: not done.
-14. Visibility and future-data risk marking: in progress.
-15. Signal replay timeline: not done.
-16. TV toolbar and indicator linkage: in progress.
-
 ## P0 checklist
 
 - [x] Verify native analyze_multi runtime result.
@@ -180,7 +153,7 @@ Blocked until signal semantics are stable.
 - [x] Verify lightweight multi-level step mode frames are not empty.
 - [x] MultiLevelReplayPage fails loudly instead of showing final snapshot when mode=step and frames.length=0.
 - [ ] Plan or implement full-history/paged multi-level step replay beyond truncated startup safety profile.
-- [ ] Remove strict-step `_sliceSnapshot(fullSnapshot, cursor)` fallback from single-level OriginReplayPageV2.
+- [x] Active single-level Replay route avoids strict-step `_sliceSnapshot(fullSnapshot, cursor)` fallback.
 - [ ] Verify single-level step mode frames are not empty and sourced from chan.py step output.
 - [ ] Verify both single-level and multi-level strict step fail loudly if frames are empty.
 - [x] Remove or disable bridge fallback as accepted behavior for multi-level core Chan calculation.
@@ -192,7 +165,8 @@ Blocked until signal semantics are stable.
 - [x] Add replay controls to MultiLevelReplayPage.
 - [x] Use current frame in MultiLevelReplayPage step mode when frames are present.
 - [x] Use current frame in MultiLevelLayerStatusPanel when frames are present.
-- [ ] Add/verify single-level Copy Step diagnostics.
+- [x] Add single-level Copy Step diagnostics in active Replay route.
+- [ ] Verify single-level Copy Step diagnostics.
 - [ ] Implement DAILY to MIN30 targeting.
 - [ ] Implement MIN30 to MIN5 targeting.
 - [x] Add one-click copy button for multi-level step-frame diagnostics.
@@ -210,8 +184,8 @@ Blocked until signal semantics are stable.
 8. Does Copy Step show native_step_frames=true and frames.length > 0?
 9. Does Copy Step include current-frame level_summary and frame cursor/current_time?
 10. Does Copy Step show whether frames are truncated and what native cursor range is returned?
-11. Does single-level strict step still call `_sliceSnapshot(fullSnapshot, cursor)` when frames are empty?
-12. Does single-level Copy Step prove frames.length > 0 and source is chan.py step output?
+11. Does active single-level strict route use `OriginReplayStrictPage` instead of legacy `OriginReplayPageV2`?
+12. Does active single-level Copy Step prove frames.length > 0 and source is chan.py step output?
 13. Is Copy Step visible in multi-level step mode even when frames.length is zero?
 14. Does app startup default to MultiLevelReplayPage and avoid building OriginReplayPageV2?
 15. Does default MultiLevelReplayPage auto-load step mode with count=40 and max_step_frames=24?
@@ -273,7 +247,7 @@ Backend commits:
 Frontend commits:
 - Commit: 9b76ca7e6d6cb9bdb58cd171046f6982726e95b4
   - File: lib/ui/pages/multi_level_replay_page.dart
-  - Change: step mode renders selected native frame when frames are present; added frame slider, previous/next controls, current frame label, current-frame layer panel, and `Copy Step` diagnostics button.
+  - Change: step mode renders selected native frame when frames are present.
 - Commit: 55fabb72756e072a6d7ffe2b2858a05560f33b5a
   - File: lib/ui/pages/multi_level_replay_page.dart
   - Change: fixed Copy Step visibility in the P0 diagnostics bar.
@@ -285,7 +259,7 @@ Decision:
 - Multi-level native step frames are implemented in code.
 - Multi-level runtime verification is accepted after Copy Step diagnostics.
 - Multi-level empty-frame fail-loud behavior is implemented in code.
-- P0 remains open for single-level strict-step fallback removal and single-level Copy Step diagnostics.
+- P0 remains open for active single-level route runtime verification and full-history/paged plan.
 
 2026-06-10 default startup / timeout / freeze change:
 
@@ -345,10 +319,25 @@ Decision:
 - Returned frames are truncated for safety: local frame 1/24 starts at native cursor 16, not native cursor 0.
 - This is acceptable for startup safety and current-frame rendering verification.
 - This is not yet accepted as complete full-history strict replay over the entire selected range.
-- Batch A remains open because single-level strict step fallback is not fixed, single-level Copy Step is missing, and full-history/paged step plan is still needed.
 
-Next task:
-- Continue Batch A.
-- Remove single-level `OriginReplayPageV2` `_sliceSnapshot(fullSnapshot, cursor)` strict-step fallback.
-- Add single-level Copy Step diagnostics.
-- Make single-level step fail loudly when frames.length=0.
+2026-06-10 active single-level strict route implementation:
+
+Commits:
+- Commit: bb5f9faeeea18bffdd12afd4f5d4b3d0d3790d70
+  - File: lib/ui/pages/origin_replay_strict_page.dart
+  - Change: added active single-level strict replay page. It renders backend step frames only in step mode, blocks when frames.length=0, and provides Copy Step diagnostics.
+- Commit: 6de1a244db4c522796a300d06a02b85b7e5bffb5
+  - File: lib/ui/pages/root_page.dart
+  - Change: Replay route now imports and builds OriginReplayStrictPage instead of OriginReplayPageV2.
+
+Decision:
+- Active app route for single-level replay no longer uses `_sliceSnapshot(fullSnapshot, cursor)` as strict-step success path.
+- Runtime verification is still required: user must open Replay, wait/load step, click Copy Step, and paste diagnostics.
+- Legacy OriginReplayPageV2 remains in repository and should not be treated as accepted strict-step implementation.
+
+Next user operation after task party finishes:
+- Pull latest.
+- Run flutter analyze.
+- Run flutter run.
+- For multi-level: default page can still be checked with Copy Step.
+- For single-level: click left-bottom `复盘`, use the new Single-level strict replay page, click `Copy Step`, and paste diagnostics.
