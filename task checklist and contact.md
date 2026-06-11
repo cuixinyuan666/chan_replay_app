@@ -9,6 +9,8 @@ This file is the project manual for the multi-level and interval-nest work.
 Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86b
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
+Latest task-party code commit: afcc51f6a90e3f8ecb06d64a8f7fd6098afd7327
+Latest manual update commit: pending
 
 ## User objective
 
@@ -20,6 +22,8 @@ The app should support multi-level replay, strict step replay, high-level to low
 
 All future checks use the latest push on origin_vespa_tdx.
 
+The file named `task checklist and contact.md` is the project manual. Future task execution must follow this manual. Before finishing a task batch, update this manual and add detailed commit notes.
+
 ## Current accepted work
 
 - Multi-level models exist.
@@ -29,6 +33,7 @@ All future checks use the latest push on origin_vespa_tdx.
 - Bridge analyze_multi exists as fallback.
 - Native CChan lv_list engine exists.
 - analyze_multi is native-first with bridge fallback.
+- MultiLevelReplayPage now displays manual P0 diagnostics after Load.
 
 ## Current blockers
 
@@ -113,3 +118,18 @@ Result: partially passed.
 Accepted: multi-level models, native engine file, native-first routing, independent multi-level page entry.
 Not accepted: native runtime not verified, native step frames not implemented, interval-nest rule engine not implemented.
 Next task: report native once meta and relations. If fallback occurs, fix native_failure first. If native succeeds, implement native step frames.
+
+2026-06-10 task-party update:
+
+Result: still pending local verification.
+Accepted in this batch: MultiLevelReplayPage displays manual P0 diagnostics so the user can report native runtime fields without reading raw JSON.
+Not accepted yet: native runtime, native step frames, interval-nest rule engine.
+Required local checks:
+- Run flutter analyze.
+- Run flutter run.
+- Open Multi-level replay.
+- Click Load in once mode.
+- Report visible manual P0 chips: native_cchan_lv_list, level_relation_mode, fallback_to_bridge, native_failure, frames.length, relations.length.
+Next task after local result:
+- If fallback_to_bridge=true, fix native_failure first.
+- If fallback_to_bridge is false and native_cchan_lv_list=true, implement native step frames.
