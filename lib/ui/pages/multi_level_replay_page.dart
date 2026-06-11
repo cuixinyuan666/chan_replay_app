@@ -30,6 +30,8 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   MultiLevelViewState _viewState = MultiLevelViewState.disabled();
   bool _loading = false;
   bool _layerPanelExpanded = false;
+  bool _relationPanelExpanded = false;
+  bool _signalPanelExpanded = false;
   String _mode = 'step';
   int _count = 40;
   int _frameIndex = 0;
@@ -97,6 +99,8 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     setState(() {
       _loading = true;
       _layerPanelExpanded = false;
+      _relationPanelExpanded = false;
+      _signalPanelExpanded = false;
       _status = 'loading analyze_multi...';
     });
     final source = PythonMultiLevelChanAnalysisSource(
@@ -177,7 +181,8 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                       }),
                     ),
                   ),
-                if (current != null && current.relations.isNotEmpty)
+                if (current != null) _analysisToolStrip(current),
+                if (current != null && _relationPanelExpanded && current.relations.isNotEmpty)
                   MultiLevelRelationPanel(
                     snapshot: current,
                     mode: _mode,
@@ -186,7 +191,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                     symbol: _symbolController.text.trim(),
                     onLocate: _locateRelationTarget,
                   ),
-                if (current != null)
+                if (current != null && _signalPanelExpanded)
                   MultiLevelIntervalSignalPanel(
                     snapshot: current,
                     mode: _mode,
@@ -244,6 +249,47 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _analysisToolStrip(MultiLevelChanSnapshot current) {
+    final relationCount = current.relations.length;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(48, 4, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0x1A8AB4FF),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x448AB4FF)),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text(
+            '工具面板',
+            style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          _diagChip('relations', '$relationCount', relationCount > 0),
+          OutlinedButton.icon(
+            onPressed: relationCount == 0
+                ? null
+                : () => setState(() => _relationPanelExpanded = !_relationPanelExpanded),
+            icon: Icon(_relationPanelExpanded ? Icons.expand_less : Icons.account_tree, size: 14),
+            label: Text(_relationPanelExpanded ? '收起关系' : '关系定位'),
+            style: _copyButtonStyle(),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => setState(() => _signalPanelExpanded = !_signalPanelExpanded),
+            icon: Icon(_signalPanelExpanded ? Icons.expand_less : Icons.radar, size: 14),
+            label: Text(_signalPanelExpanded ? '收起信号' : '区间信号'),
+            style: _copyButtonStyle(),
+          ),
+          _diagChip('chart_space', (_relationPanelExpanded || _signalPanelExpanded) ? 'expanded tools' : 'preserved', true),
+        ],
       ),
     );
   }
