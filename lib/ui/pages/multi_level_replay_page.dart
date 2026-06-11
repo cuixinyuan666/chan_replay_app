@@ -91,7 +91,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         _viewEndIndex = null;
         _crosshairIndex = null;
         _priceScale = 1.0;
-        _status = _buildStatus(analysis.snapshot);
+        _status = _buildStatus(analysis);
       });
       _showMessage(_status);
     } catch (e) {
@@ -117,6 +117,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
             Column(
               children: [
                 _header(),
+                if (_analysis != null) _manualP0Panel(_analysis!),
                 if (full != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(48, 8, 12, 8),
@@ -170,7 +171,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
             if (full != null)
               Positioned(
                 right: 12,
-                top: 118,
+                top: _analysis == null ? 118 : 170,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 360),
                   child: MultiLevelLayerStatusPanel(
@@ -249,6 +250,56 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     );
   }
 
+  Widget _manualP0Panel(PythonMultiLevelChanAnalysis analysis) {
+    final meta = analysis.meta;
+    final native = meta['native_cchan_lv_list'];
+    final relationMode = meta['level_relation_mode'];
+    final fallback = meta['fallback_to_bridge'];
+    final nativeFailure = meta['native_failure'];
+    final relationsLength = analysis.snapshot.relations.length;
+    final framesLength = analysis.frames.length;
+    final okNative = native == true && relationMode == 'chan_parent_child' && fallback != true;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(48, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: okNative ? const Color(0x332E7D32) : const Color(0x33424242),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: okNative ? const Color(0xFF66BB6A) : Colors.white24),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        children: [
+          _diagChip('manual P0', okNative ? 'native once ok' : 'needs check', okNative),
+          _diagChip('native_cchan_lv_list', '$native', native == true),
+          _diagChip('level_relation_mode', '$relationMode', relationMode == 'chan_parent_child'),
+          _diagChip('fallback_to_bridge', '${fallback ?? false}', fallback != true),
+          _diagChip('relations.length', '$relationsLength', relationsLength > 0),
+          _diagChip('frames.length', '$framesLength', _mode != 'step' || framesLength > 0),
+          if (nativeFailure != null) _diagChip('native_failure', '$nativeFailure', false),
+        ],
+      ),
+    );
+  }
+
+  Widget _diagChip(String label, String value, bool ok) {
+    final color = ok ? const Color(0xFF66BB6A) : const Color(0xFFFFB74D);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.45)),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+
   Widget _modeChip(String value, String label) {
     final selected = _mode == value;
     return ChoiceChip(
@@ -297,13 +348,18 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     if (next != current) setState(() => _viewEndIndex = next);
   }
 
-  String _buildStatus(MultiLevelChanSnapshot snapshot) {
+  String _buildStatus(PythonMultiLevelChanAnalysis analysis) {
+    final snapshot = analysis.snapshot;
+    final meta = analysis.meta;
+    final native = meta['native_cchan_lv_list'];
+    final fallback = meta['fallback_to_bridge'];
+    final relationMode = meta['level_relation_mode'];
     final parts = <String>[];
     for (final level in snapshot.levels) {
       final s = snapshot.of(level);
       if (s != null) parts.add('$level K:${s.rawBars.length} BI:${s.bis.length}');
     }
-    return 'analyze_multi ${_mode.toUpperCase()} ${parts.join(' | ')}';
+    return 'analyze_multi ${_mode.toUpperCase()} native:$native relation:$relationMode fallback:${fallback ?? false} relations:${snapshot.relations.length} frames:${analysis.frames.length} ${parts.join(' | ')}';
   }
 
   void _showMessage(String message) {
