@@ -4,6 +4,7 @@ from datetime import date, datetime, time
 from typing import Any
 
 from .a_indicator_export import build_display_indicators, indicator_source_meta
+from .a_multilevel_native_engine import analyze_multi_native
 from .chanpy_engine import analyze_once
 from .easy_tdx_provider import infer_market, normalize_symbol
 
@@ -267,12 +268,14 @@ def _build_step_frames(
                 'clock_level': clock_level,
                 'levels': level_order,
                 'cursor': cursor,
+                'native_cchan_lv_list': False,
+                'level_relation_mode': 'time_date_bridge',
             },
         })
     return frames
 
 
-def analyze_multi(
+def _analyze_multi_bridge(
     *,
     symbol: str,
     market: str | None,
@@ -314,12 +317,11 @@ def analyze_multi(
             warnings.append(f'{level}: {result.get("error") or "analysis failed"}')
         level_results[level] = _level_result_without_outer_meta(result, config)
 
-    relations = _build_all_relations(level_order, level_results)
-    response = {
+    return {
         'ok': not warnings,
         'main_level': main,
         'levels': level_results,
-        'relations': relations,
+        'relations': _build_all_relations(level_order, level_results),
         'frames': _build_step_frames(
             level_order=level_order,
             levels=level_results,
@@ -328,7 +330,7 @@ def analyze_multi(
         ) if mode_name == 'step' else [],
         'meta': {
             'engine': 'chan.py',
-            'source': 'origin_vespa_tdx.backend.a_multilevel_engine',
+            'source': 'origin_vespa_tdx.backend.a_multilevel_engine.bridge',
             'mode': mode_name,
             'symbol': f'{code}.{market_name}',
             'name': code,
@@ -339,7 +341,61 @@ def analyze_multi(
             'native_cchan_lv_list': False,
             'level_relation_mode': 'time_date_bridge',
             'chan_py_polluted': False,
+            'bridge_prototype': True,
             'warnings': warnings,
         },
     }
-    return response
+
+
+def analyze_multi(
+    *,
+    symbol: str,
+    market: str | None,
+    levels: list[str] | str | None,
+    adjust: str = 'QFQ',
+    mode: str = 'once',
+    main_level: str | None = None,
+    clock_level: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    count: int = 50000,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    try:
+        return analyze_multi_native(
+            symbol=symbol,
+            market=market,
+            levels=levels,
+            adjust=adjust,
+            mode=mode,
+            main_level=main_level,
+            clock_level=clock_level,
+            start=start,
+            end=end,
+            count=count,
+            config=config,
+        )
+    except Exception as exc:
+        bridge = _analyze_multi_bridge(
+            symbol=symbol,
+            market=market,
+            levels=levels,
+            adjust=adjust,
+            mode=mode,
+            main_level=main_level,
+            clock_level=clock_level,
+            start=start,
+            end=end,
+            count=count,
+            config=config,
+        )
+        meta = dict(bridge.get('meta')) if isinstance(bridge.get('meta'), dict) else {}
+        warnings = list(meta.get('warnings')) if isinstance(meta.get('warnings'), list) else []
+        warnings.insert(0, f'native CChan(lv_list) failed, fallback to bridge: {exc}')
+        meta.update({
+            'fallback_to_bridge': True,
+            'native_failure': str(exc),
+            'warnings': warnings,
+        })
+        bridge['meta'] = meta
+        return bridge
