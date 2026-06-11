@@ -10,7 +10,7 @@ Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
 Latest task-party code commit: c1a7211a837d5d49aba2014edd6f4a6fe22b5066
-Latest task-party UI commit: 9b76ca7e6d6cb9bdb58cd171046f6982726e95b4
+Latest task-party UI commit: 55fabb72756e072a6d7ffe2b2858a05560f33b5a
 Latest observed head during supervisor verification: fa634d67689bf2212c14fefe71327c0af6df4c2e
 Latest manual update commit: pending
 
@@ -44,6 +44,7 @@ Strict step replay hard rules for both single-level and multi-level pages:
 - `_sliceSnapshot` may only be used for non-strict preview/debug UI if it is clearly labelled as not strict step.
 - These rules apply to both `OriginReplayPageV2` single-level replay and `MultiLevelReplayPage` multi-level replay.
 - Verification must include an in-app copy diagnostic proving frames.length > 0, current frame metadata, and current-frame level counts.
+- Copy Step diagnostics must remain visible after Load in step mode even when frames.length is zero, so failures can be copied without command-line work.
 
 ## Current accepted work
 
@@ -61,8 +62,9 @@ Strict step replay hard rules for both single-level and multi-level pages:
 - Native once analyze_multi is verified with sane DAILY/MIN30/MIN5 counts.
 - Copy P0 now includes status_summary and level_summary.
 - Native multi-level step frames are implemented through original chan.py CChan(lv_list).step_load outputs.
-- MultiLevelReplayPage can render the selected native step frame.
+- MultiLevelReplayPage can render the selected native step frame when frames are returned.
 - MultiLevelReplayPage has a one-click step diagnostic copy button named `Copy Step`.
+- MultiLevelReplayPage now shows `Copy Step` in step mode after Load even if frames are empty.
 
 ## Current blockers
 
@@ -143,6 +145,7 @@ Strict step replay hard rules for both single-level and multi-level pages:
 14. Does multi-level Copy Step include current-frame level_summary and frame cursor/current_time?
 15. Does single-level strict step still call `_sliceSnapshot(fullSnapshot, cursor)` when frames are empty?
 16. Does single-level Copy Step prove frames.length > 0 and source is chan.py step output?
+17. Is Copy Step visible in multi-level step mode even when frames.length is zero?
 
 ## Task party reply template
 
@@ -202,10 +205,13 @@ Backend commits:
   - File: backend/app/a_multilevel_native_engine.py
   - Change: fixed missing config argument in the once branch after step-frame refactor.
 
-Frontend commit:
+Frontend commits:
 - Commit: 9b76ca7e6d6cb9bdb58cd171046f6982726e95b4
   - File: lib/ui/pages/multi_level_replay_page.dart
   - Change: step mode now renders selected native frame; added frame slider, previous/next controls, current frame label, current-frame layer panel, and `Copy Step` diagnostics button.
+- Commit: 55fabb72756e072a6d7ffe2b2858a05560f33b5a
+  - File: lib/ui/pages/multi_level_replay_page.dart
+  - Change: fixed Copy Step visibility so it also appears in the P0 diagnostics bar when mode=step, even if frames are empty.
 
 Decision:
 - Multi-level native step frames are implemented in code but not accepted until user verification.
