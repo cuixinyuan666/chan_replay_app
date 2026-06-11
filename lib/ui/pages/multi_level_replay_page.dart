@@ -7,6 +7,7 @@ import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/models/multi_level_view_state.dart';
 import '../../core/models/replay_clock_mode.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
+import '../widgets/multi_level_interval_signal_panel.dart';
 import '../widgets/multi_level_layer_status_panel.dart';
 import '../widgets/multi_level_relation_panel.dart';
 import '../widgets/multi_level_switcher.dart';
@@ -182,6 +183,14 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                     frameCount: _mode == 'step' ? _analysis?.frames.length : null,
                     symbol: _symbolController.text.trim(),
                     onLocate: _locateRelationTarget,
+                  ),
+                if (current != null)
+                  MultiLevelIntervalSignalPanel(
+                    snapshot: current,
+                    mode: _mode,
+                    frameIndex: _mode == 'step' && _analysis?.frames.isNotEmpty == true ? _frameIndex : null,
+                    frameCount: _mode == 'step' ? _analysis?.frames.length : null,
+                    symbol: _symbolController.text.trim(),
                   ),
                 Expanded(
                   child: _stepFramesEmpty
