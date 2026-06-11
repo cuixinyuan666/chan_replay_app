@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'ashare_bsp_scanner_page.dart';
 import 'multi_level_replay_page.dart';
-import 'origin_replay_page_v2.dart';
+import 'origin_replay_strict_page.dart';
 import 'research_backtest_page.dart';
 
 class RootPage extends StatefulWidget {
@@ -38,7 +38,7 @@ class _RootPageState extends State<RootPage> {
             index: _index,
             visited: _visited,
             builders: const [
-              _RouteBuilder(child: OriginReplayPageV2()),
+              _RouteBuilder(child: OriginReplayStrictPage()),
               _RouteBuilder(child: MultiLevelReplayPage()),
               _RouteBuilder(child: AshareBspScannerPage()),
               _RouteBuilder(child: ResearchBacktestPage()),
