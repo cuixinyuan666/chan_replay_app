@@ -12,6 +12,7 @@ from .a_bsp_feature_engine import extract_bsp_features
 from .a_bsp_scanner import scan_bsp, scan_bsp_events
 from .a_indicator_export import build_display_indicators, indicator_source_meta
 from .a_ml_bridge import score_bsp_features
+from .a_multilevel_engine import analyze_multi
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
@@ -150,6 +151,7 @@ def root() -> dict[str, object]:
             '/api/tdx/kline',
             '/api/chan/analyze',
             '/api/chan/analyze_bars',
+            '/api/chan/analyze_multi',
             '/api/research/bsp/features',
             '/api/research/ml/score',
             '/api/research/backtest',
@@ -198,6 +200,25 @@ def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
         config=config,
     )
     return _with_display_indicators(result, config)
+
+
+@app.post('/api/chan/analyze_multi')
+def chan_analyze_multi(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
+    config = payload.get('config') if isinstance(payload.get('config'), dict) else {}
+    levels = payload.get('lv_list') or payload.get('levels') or payload.get('level_order')
+    return analyze_multi(
+        symbol=str(payload.get('symbol') or '000001'),
+        market=payload.get('market'),
+        levels=levels,
+        adjust=str(payload.get('adjust') or 'QFQ'),
+        mode=str(payload.get('mode') or 'once'),
+        main_level=payload.get('main_level') or payload.get('mainLevel'),
+        clock_level=payload.get('clock_level') or payload.get('clockLevel'),
+        start=payload.get('start'),
+        end=payload.get('end'),
+        count=_payload_int(payload, 'count', 50000, minimum=10, maximum=200000),
+        config=config,
+    )
 
 
 @app.post('/api/research/bsp/features')
@@ -260,57 +281,36 @@ def research_pipeline(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
 
 
 @app.post('/api/scanner/bsp/scan')
-def scanner_bsp_scan(payload: dict[str, Any] | None = Body(None)) -> dict[str, object]:
+def scanner_bsp_scan(payload: dict[str, Any] | None = Body(default=None)) -> dict[str, object]:
     return scan_bsp(**_scanner_args(payload))
 
 
 @app.post('/api/scanner/bsp/scan_stream')
-def scanner_bsp_scan_stream(payload: dict[str, Any] | None = Body(None)) -> StreamingResponse:
+def scanner_bsp_scan_stream(payload: dict[str, Any] | None = Body(default=None)) -> StreamingResponse:
     args = _scanner_args(payload)
 
-    def body_iter():
+    def events():
         for event in scan_bsp_events(**args):
-            yield json.dumps(event, ensure_ascii=False, allow_nan=False) + '\n'
+            yield f'data: {json.dumps(event, ensure_ascii=False)}\n\n'
 
-    return StreamingResponse(body_iter(), media_type='application/x-ndjson; charset=utf-8')
+    return StreamingResponse(events(), media_type='text/event-stream')
 
 
 @app.get('/api/tdx/kline')
-def kline(
-    symbol: str = Query('000001', description='股票代码，支持 000001 或 000001.SZ'),
-    market: str | None = Query(None, description='SZ / SH；留空时按代码自动推断'),
-    freq: str = Query('DAILY', description='MIN1/MIN5/MIN15/MIN30/MIN60/DAILY/WEEKLY/MONTHLY'),
-    adjust: str = Query('QFQ', description='QFQ/HFQ/NONE'),
+def tdx_kline(
+    symbol: str = Query('000001'),
+    market: str | None = Query(None),
+    period: str = Query('DAILY'),
+    adjust: str = Query('QFQ'),
     count: int = Query(50000, ge=10),
-    start: str | None = Query(None, description='yyyy-MM-dd，可选'),
-    end: str | None = Query(None, description='yyyy-MM-dd，可选'),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
 ) -> dict[str, object]:
     code = normalize_symbol(symbol)
     market_name = (market or infer_market(code)).upper()
-    freq_name = freq.upper()
-    adjust_name = adjust.upper()
-    bars = load_easy_tdx_bars(
-        symbol=code,
-        market=market_name,
-        period=freq_name,
-        adjust=adjust_name,
-        count=count,
-        start=start,
-        end=end,
-    )
+    bars = load_easy_tdx_bars(symbol=code, market=market_name, period=period, adjust=adjust, count=count, start=start, end=end)
     return {
         'ok': True,
-        'engine': 'chan.py',
-        'source': {
-            'name': 'easy-tdx',
-            'symbol': f'{code}.{market_name}',
-            'freq': freq_name,
-            'adjust': adjust_name,
-            'count': len(bars),
-            'start': start,
-            'end': end,
-            'indicator_sources': indicator_source_meta(),
-        },
+        'symbol': f'{code}.{market_name}',
         'bars': bars,
-        'indicators': build_display_indicators(bars, None),
     }
