@@ -464,8 +464,6 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
             'frame ${safeIndex + 1}/${frames.length} cursor:$cursor $currentTime',
             style: const TextStyle(color: Colors.white70, fontSize: 11),
           ),
-          const SizedBox(width: 8),
-          _copyStepButton(analysis),
         ],
       ),
     );
