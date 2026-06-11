@@ -6,7 +6,7 @@ This file is the project manual for the multi-level and interval-nest work.
 
 ## Current review baseline
 
-Latest observed head before this supervisor update: e608ccfd0ef0efc641ef21e228d1ec8f0557f60b
+Latest observed head before this supervisor update: 38f38174ab456a8412eb6a22dac639bac2214461
 Latest multi-level strict-step UI commit: 763d6219e7aaa5732f7d62aca1474c5a0c4b9303
 Latest multi-level compile-fix commit: 62767e6d7134e2512901ef876514a61f39a8f1af
 Latest single-level strict replay page commit: bb5f9faeeea18bffdd12afd4f5d4b3d0d3790d70
@@ -51,12 +51,13 @@ The file named `task checklist and contact.md` is the project manual. Future tas
 - MultiLevelReplayPage has `Copy P0`, `Copy Step`, and now `Copy Relation` diagnostics.
 - MultiLevelReplayPage fails loudly when step frames are empty.
 - `OriginReplayStrictPage` uses backend returned frames only in step mode and has one-click `Copy Step` diagnostics.
+- Batch B relation targeting implementation has been supervisor-verified in code, but not runtime-accepted.
 
 ## Current blockers
 
 - Multi-level lightweight step is verified, but full-history non-truncated or paged step replay is not accepted yet.
 - Legacy `OriginReplayPageV2` still exists and still contains `_sliceSnapshot`; it is not the active Replay route now, but should be deleted, renamed legacy, or refactored later if direct use is needed.
-- Batch B relation targeting is implemented in code but not runtime-verified by Copy Relation yet.
+- Batch B relation targeting is implemented and supervisor-verified in code, but not runtime-verified by Copy Relation yet.
 - Interval-nest rule engine is not implemented yet.
 
 ## Batch A: Strict step replay closure
@@ -83,6 +84,13 @@ Implementation commits:
 - `6f8fd5d9f07003c69215609c46d41ef87c59309a`: exposed `RelationLocateRequest` for page wiring.
 - `a6f7d34463aeff1b753457ca6b4dff6577d888bf`: wired relation panel into `MultiLevelReplayPage`.
 
+Supervisor code verification:
+- Verified `MultiLevelRelationPanel` exists and displays pair selection, structure selection, native relation source, target count, parent range, child range, Locate Parent, Locate Child, and `Copy Relation`.
+- Verified target construction uses `widget.snapshot.relationsForParentRange(...)`, which filters existing `LevelRelation` data by parentLevel, childLevel, and parent raw-index range.
+- Verified `MultiLevelReplayPage` imports and renders `MultiLevelRelationPanel` only when the current snapshot exists and current snapshot relations are non-empty.
+- Verified `MultiLevelReplayPage` passes `snapshot: current`, so relation targeting is frame-aware in step mode when frames are present.
+- Verified `Copy Relation` includes relation_source, level_relation_mode, native_cchan_lv_list, pair, parent_structure, available_targets, parent_raw_range, child_raw_range, relation_count_for_target, snapshot.relations.length, and status.
+
 Runtime verification required:
 - User must open Multi-level page after default step load.
 - Use Relation targeting panel.
@@ -105,6 +113,7 @@ Expected Copy Relation fields:
 
 Acceptance:
 - Batch B is not accepted until Copy Relation diagnostics are pasted and show native relation source, valid parent range, valid child range, and non-zero relation count.
+- Batch C remains blocked until Batch B runtime verification is accepted.
 
 ## Batch C: Interval-nest signal engine MVP
 
