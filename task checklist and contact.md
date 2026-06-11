@@ -10,7 +10,7 @@ Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
 Latest task-party code commit: 0a3b7e2482b05cc23721d69e6847954afcaa8e2f
-Latest observed head during supervisor verification: c83a84da4e614a3cdf3a8a1d71d22d28dfa1f38a
+Latest observed head during supervisor verification: 2ef9e055687b9e7ef009821d8e387ad0d2f34bd3
 Latest manual update commit: pending
 
 ## User objective
@@ -177,3 +177,19 @@ Fix/enhancement applied after this report:
 Required next task:
 - Implement native step frames.
 - Add one-click copy button for step-frame diagnostics before asking for next verification.
+
+2026-06-10 supervisor verification after native once success:
+
+Checked head: 2ef9e055687b9e7ef009821d8e387ad0d2f34bd3
+Actual checks:
+- Verified commit 0a3b7e2482b05cc23721d69e6847954afcaa8e2f exists.
+- Verified it only changes MultiLevelReplayPage Copy P0 diagnostics.
+- Verified it adds status_summary to Copy P0.
+- Verified it adds level_summary to Copy P0, including K/BI/FX/SEG/ZS/BSP counts per level.
+- Verified no backend behavior and no chan.py files were changed in that commit.
+Decision:
+- The manual's native once P0 acceptance is consistent with the user's Copy P0 data.
+- The Copy P0 enhancement claim is true.
+- Strict native step frames remain the next blocker and must still be implemented using original chan.py behavior or original chan.py outputs only.
+Next user operation after task party implements step:
+- Open Multi-level replay, switch to step mode, click Load, then click the future Copy Step diagnostics button and paste the copied result.
