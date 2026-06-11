@@ -50,13 +50,14 @@ Verified problem:
 - Current multi-level source now posts only to the backend URL typed in the UI.
 - On connection failure it tells the user to start a backend service manually.
 - That is not accepted under the new hard rule: normal app workflow must use App-bundled Python / App-managed backend, not an external manually started interpreter.
+- Copy Signal scan-mode wording still says current-frame policy in the output; this is a diagnostic wording bug, not a Chan calculation issue.
 
 ## Current blockers
 
 - App-bundled Python backend is now a P0 blocker: accepted workflow must not require manually starting an external backend.
 - Full-history/paged strict step replay is not accepted yet.
 - Legacy `OriginReplayPageV2` still exists and still contains `_sliceSnapshot`; it is no longer the active route.
-- Batch C interval candidate MVP is implemented but not accepted until `Copy Signal` returns an actual candidate result or enough diagnostics prove the selected window has no matching high-level BSP inputs.
+- Batch C interval scan candidate discovery has one positive candidate, but formal acceptance is blocked until P0 App-bundled Python runtime closure and strict-step verification.
 
 ## P0: App-bundled Python runtime closure
 
@@ -93,6 +94,38 @@ Solution implemented:
 - `Scan Signal` uses `analyze_multi` with `mode=once`, so it does not return hundreds of step frames.
 - The chart can keep displaying the lightweight replay while the interval panel scans the larger once snapshot.
 
+Positive candidate found through temporary/development backend:
+
+- mode: `signal_scan_once`
+- symbol: `600340`
+- available_signals: `1`
+- direction: `buy`
+- state: `confirmed`
+- high_level: `DAILY`
+- high_pattern: `2-buy`
+- high_bsp_index: `4`
+- high_bsp_type: `B2s`
+- high_raw_index: `239`
+- high_time: `2025-10-13 23:59:00.000`
+- low_level: `MIN30`
+- low_trigger: `1-buy`
+- low_bsp_index: `16`
+- low_bsp_type: `B1`
+- low_raw_index: `1912`
+- low_time: `2025-10-13 10:00:00.000`
+- parent_relation_range: `239-239`
+- child_relation_range: `1912-1919`
+- child_union_range: `1912-1919`
+- relation_count_for_parent: `1`
+- status: `ok`
+
+Interpretation:
+
+- Candidate discovery works over a once-mode scan snapshot.
+- Source BSP fields and native relation range are present.
+- The candidate is not yet a formal strict-step acceptance because `visibleAt.frame` and `confirmedAt.frame` are blank in scan mode.
+- Formal Batch C acceptance still requires P0 bundled backend closure and strict-step verification or a dedicated scan-to-step verification workflow.
+
 Batch C acceptance rule:
 
 - Batch C runtime acceptance is blocked until P0 App-bundled Python runtime closure is accepted, unless the user explicitly allows a temporary developer-backend test.
@@ -107,4 +140,4 @@ Batch C acceptance rule:
 4. Run `flutter analyze`.
 5. Start the app fresh without manually starting Python.
 6. Use in-app diagnostics to prove the backend is App-bundled and `/api/chan/analyze_multi` works.
-7. Then continue Batch C `Scan Signal` / `Copy Signal` verification.
+7. Then continue Batch C strict-step verification for the discovered candidate.
