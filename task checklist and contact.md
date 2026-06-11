@@ -48,7 +48,8 @@ Hard rules added by user:
 
 ## Current blockers
 
-- Native runtime result is not verified after parent-time fix.
+- Native runtime still fails after parent-time fix.
+- Current native failure is duplicate kline time: `kline time err, cur=2026/04/21 23:59, last=2026/04/21 23:59`.
 - Native step frames are not implemented yet.
 - Interval-nest rule engine is not implemented yet.
 - Bridge fallback still exists in code and must not be counted as successful core Chan calculation.
@@ -111,6 +112,8 @@ Hard rules added by user:
 5. Does step mode return frames?
 6. Which in-app button should the user click to copy P0 diagnostics?
 7. Which in-app button should the user click to copy step-frame diagnostics?
+8. Does the native parent-level CSV contain duplicate datetime rows after time normalization?
+9. If duplicate rows exist, which level and original rows produce `2026/04/21 23:59` twice?
 
 ## Task party reply template
 
@@ -238,3 +241,35 @@ Next user operation:
 Next task-party operation:
 - If copied diagnostics show fallback_to_bridge=true, fix native_failure immediately.
 - If copied diagnostics show native_cchan_lv_list=true and level_relation_mode=chan_parent_child, implement native step frames next.
+
+2026-06-10 third P0 result from Copy P0:
+
+Copied diagnostics:
+- mode: once
+- symbol: 600340
+- market: SH
+- levels: DAILY,MIN30,MIN5
+- native_cchan_lv_list: false
+- level_relation_mode: time_date_bridge
+- fallback_to_bridge: true
+- native_failure: kline time err, cur=2026/04/21 23:59, last=2026/04/21 23:59, or refer to quick_guide.md, try set auto=False in the CTime returned by your data source class
+- relations.length: 235
+- frames.length: 0
+- source: origin_vespa_tdx.backend.a_multilevel_engine.bridge
+- native_data_window: empty
+- native_csv_time_policy: empty
+
+Decision:
+- P0 failed again.
+- Native did not run successfully.
+- The result is from bridge source, so it is not accepted as core Chan multi-level success.
+- The new native failure is a duplicate kline timestamp after parent CSV time normalization, specifically duplicated `2026/04/21 23:59`.
+- The task party must not proceed to native step frames, interval-nest signals, statistics, scanner, or training until this native failure is fixed.
+
+Required next task:
+- Fix native CSV datetime generation so chan.py receives strictly increasing K-line times for every level.
+- Do not bypass chan.py time checks.
+- Do not disable validation.
+- Do not count bridge fallback as pass.
+- Add or expand an in-app copy diagnostic that reports duplicate native CSV datetimes per level, including at least level name, duplicated datetime, original source rows, and first/last few native CSV times.
+- After the fix, the user must open Multi-level replay, click Load, click `Copy P0`, and paste the copied result.
