@@ -29,7 +29,6 @@ class PythonMultiLevelChanAnalysis {
 class PythonMultiLevelChanAnalysisSource {
   final String baseUrl;
   final http.Client _client;
-  _LocalPythonMultiLevelChanProcess? _localProcess;
 
   PythonMultiLevelChanAnalysisSource({
     required this.baseUrl,
@@ -73,36 +72,15 @@ class PythonMultiLevelChanAnalysisSource {
     }
 
     try {
-      final sourceBase = await _readyBaseUrl(baseUrl);
-      return await _postAnalyzeMulti(sourceBase, payload);
-    } on _PythonMultiLevelBackendMismatch catch (_) {
-      return _loadViaAutoLocalBackend(payload);
-    } on SocketException catch (_) {
-      return _loadViaAutoLocalBackend(payload);
+      return await _postAnalyzeMulti(baseUrl, payload);
+    } on SocketException catch (e) {
+      throw Exception('无法连接 chan.py 后端：$baseUrl。请先启动后端服务，并确认 /api/chan/analyze_multi 可访问。原始错误：$e');
     } on http.ClientException catch (e) {
-      if (!_looksLikeConnectionFailure(e)) rethrow;
-      return _loadViaAutoLocalBackend(payload);
+      if (_looksLikeConnectionFailure(e)) {
+        throw Exception('无法连接 chan.py 后端：$baseUrl。请先启动后端服务，并确认 backend 地址正确。原始错误：$e');
+      }
+      rethrow;
     }
-  }
-
-  Future<String> _readyBaseUrl(String sourceBaseUrl) async {
-    try {
-      await _assertCompatibleBackend(sourceBaseUrl);
-      return sourceBaseUrl;
-    } catch (_) {
-      if (!Platform.isWindows) rethrow;
-      _localProcess = await _LocalPythonMultiLevelChanProcess.start();
-      return _localProcess!.baseUrl;
-    }
-  }
-
-  Future<PythonMultiLevelChanAnalysis> _loadViaAutoLocalBackend(
-      Map<String, dynamic> payload) async {
-    if (!Platform.isWindows) {
-      throw UnsupportedError('自动后台启动 Python chan.py 本地服务目前只支持 Windows');
-    }
-    _localProcess = await _LocalPythonMultiLevelChanProcess.start();
-    return _postAnalyzeMulti(_localProcess!.baseUrl, payload);
   }
 
   Future<PythonMultiLevelChanAnalysis> _postAnalyzeMulti(
@@ -137,15 +115,14 @@ class PythonMultiLevelChanAnalysisSource {
     return const Duration(seconds: 90);
   }
 
-  PythonMultiLevelChanAnalysis _decodeResponse(http.Response response,
-      {String? sourceBaseUrl}) {
+  PythonMultiLevelChanAnalysis _decodeResponse(
+    http.Response response, {
+    String? sourceBaseUrl,
+  }) {
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      if (sourceBaseUrl != null &&
-          response.statusCode == 404 &&
-          _canAutoFallback(sourceBaseUrl)) {
-        throw _PythonMultiLevelBackendMismatch(
-            'localhost 服务没有 /api/chan/analyze_multi: $body');
+      if (response.statusCode == 404) {
+        throw Exception('chan.py 后端缺少 /api/chan/analyze_multi：${sourceBaseUrl ?? baseUrl}。请确认启动的是 origin_vespa_tdx 后端服务。返回：$body');
       }
       throw Exception('chan.py 多级别引擎返回 ${response.statusCode}: $body');
     }
@@ -157,25 +134,6 @@ class PythonMultiLevelChanAnalysisSource {
       throw Exception(decoded['error'] ?? 'chan.py 多级别引擎计算失败');
     }
     return parse(decoded);
-  }
-
-  Future<void> _assertCompatibleBackend(String sourceBaseUrl) async {
-    if (!_canAutoFallback(sourceBaseUrl)) return;
-    final uri = Uri.parse('${_trimTrailingSlash(sourceBaseUrl)}/health');
-    final response = await _client.get(uri).timeout(const Duration(seconds: 3));
-    final body = utf8.decode(response.bodyBytes);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw _PythonMultiLevelBackendMismatch(
-          'localhost /health 返回 ${response.statusCode}: $body');
-    }
-    final decoded = jsonDecode(body);
-    if (decoded is! Map<String, dynamic>) {
-      throw const _PythonMultiLevelBackendMismatch('localhost /health 不是 JSON 对象');
-    }
-    if (decoded['backend'] != 'origin_vespa_tdx' || decoded['engine'] != 'chan.py') {
-      throw _PythonMultiLevelBackendMismatch(
-          'localhost 服务不是 origin_vespa_tdx chan.py 后端: $body');
-    }
   }
 
   static PythonMultiLevelChanAnalysis parse(Map<String, dynamic> data) {
@@ -223,14 +181,6 @@ class PythonMultiLevelChanAnalysisSource {
   String _trimTrailingSlash(String raw) =>
       raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
 
-  bool _canAutoFallback(String sourceBaseUrl) {
-    if (!Platform.isWindows) return false;
-    final uri = Uri.tryParse(sourceBaseUrl);
-    return uri != null &&
-        uri.scheme == 'http' &&
-        (uri.host == '127.0.0.1' || uri.host == 'localhost' || uri.host == '::1');
-  }
-
   bool _looksLikeConnectionFailure(http.ClientException e) {
     final msg = e.toString().toLowerCase();
     return msg.contains('connection refused') ||
@@ -247,50 +197,5 @@ class PythonMultiLevelChanAnalysisSource {
 
   void close() {
     _client.close();
-    _localProcess?.dispose();
-    _localProcess = null;
-  }
-}
-
-class _PythonMultiLevelBackendMismatch implements Exception {
-  final String message;
-
-  const _PythonMultiLevelBackendMismatch(this.message);
-
-  @override
-  String toString() => message;
-}
-
-class _LocalPythonMultiLevelChanProcess {
-  final Process process;
-  final String baseUrl;
-  final StringBuffer _stderr = StringBuffer();
-
-  _LocalPythonMultiLevelChanProcess._(this.process, this.baseUrl) {
-    process.stderr.transform(utf8.decoder).listen(_stderr.write);
-    process.stdout.transform(utf8.decoder).listen((_) {});
-  }
-
-  static Future<_LocalPythonMultiLevelChanProcess> start() async {
-    final script = File('python/a_server.py');
-    if (!await script.exists()) {
-      throw StateError('找不到 python/a_server.py，无法启动本地 chan.py 后端');
-    }
-    final port = 3714;
-    final process = await Process.start(
-      'python',
-      [script.path, '--host', '127.0.0.1', '--port', '$port'],
-      runInShell: true,
-    );
-    final instance = _LocalPythonMultiLevelChanProcess._(
-      process,
-      'http://127.0.0.1:$port',
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 850));
-    return instance;
-  }
-
-  void dispose() {
-    process.kill();
   }
 }
