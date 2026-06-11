@@ -27,6 +27,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   bool _loading = false;
   String _mode = 'once';
   int _count = 800;
+  int _frameIndex = 0;
   int _windowSize = 90;
   double _priceScale = 1.0;
   int? _viewEndIndex;
@@ -43,6 +44,16 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   }
 
   MultiLevelChanSnapshot? get _full => _analysis?.snapshot;
+
+  MultiLevelChanSnapshot? get _current {
+    final analysis = _analysis;
+    if (analysis == null) return null;
+    if (_mode == 'step' && analysis.frames.isNotEmpty) {
+      final idx = _frameIndex.clamp(0, analysis.frames.length - 1).toInt();
+      return analysis.frames[idx];
+    }
+    return analysis.snapshot;
+  }
 
   String get _activeLevel {
     final full = _full;
@@ -80,11 +91,17 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         mainLevel: levels.first,
         clockLevel: levels.first,
         count: _count,
-        config: const {'bi_algo': 'normal', 'seg_algo': 'chan', 'zs_algo': 'normal'},
+        config: const {
+          'bi_algo': 'normal',
+          'seg_algo': 'chan',
+          'zs_algo': 'normal',
+          'max_step_frames': 120,
+        },
       );
       if (!mounted) return;
       setState(() {
         _analysis = analysis;
+        _frameIndex = 0;
         _viewState = MultiLevelViewState.fromSnapshot(
           analysis.snapshot,
           clockMode: _mode == 'step' ? ReplayClockMode.strictMainLevel : ReplayClockMode.once,
@@ -92,7 +109,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         _viewEndIndex = null;
         _crosshairIndex = null;
         _priceScale = 1.0;
-        _status = _buildStatus(analysis);
+        _status = _buildStatus(analysis, snapshot: _mode == 'step' && analysis.frames.isNotEmpty ? analysis.frames.first : analysis.snapshot);
       });
       _showMessage(_status);
     } catch (e) {
@@ -108,8 +125,9 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   @override
   Widget build(BuildContext context) {
     final full = _full;
+    final current = _current;
     final activeLevel = _activeLevel;
-    final snapshot = full?.of(activeLevel);
+    final snapshot = current?.of(activeLevel);
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
       body: SafeArea(
@@ -119,6 +137,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
               children: [
                 _header(),
                 if (_analysis != null) _manualP0Panel(_analysis!),
+                if (_analysis != null && _analysis!.frames.isNotEmpty) _stepControls(_analysis!),
                 if (full != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(48, 8, 12, 8),
@@ -172,12 +191,14 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
             if (full != null)
               Positioned(
                 right: 12,
-                top: _analysis == null ? 118 : 170,
+                top: _analysis == null
+                    ? 118
+                    : (_analysis!.frames.isNotEmpty ? 230 : 170),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 360),
                   child: MultiLevelLayerStatusPanel(
                     fullSnapshot: full,
-                    currentSnapshot: full,
+                    currentSnapshot: current ?? full,
                     activeLevel: activeLevel,
                     clockMode: _viewState.clockMode,
                     compact: true,
@@ -287,6 +308,57 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     );
   }
 
+  Widget _stepControls(PythonMultiLevelChanAnalysis analysis) {
+    final frames = analysis.frames;
+    if (frames.isEmpty) return const SizedBox.shrink();
+    final safeIndex = _frameIndex.clamp(0, frames.length - 1).toInt();
+    final frame = frames[safeIndex];
+    final meta = frame.meta;
+    final cursor = meta['cursor'] ?? meta['frame_index'] ?? safeIndex;
+    final currentTime = meta['current_time'] ?? '';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(48, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0x222A5CAA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x668AB4FF)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: '上一帧',
+            onPressed: safeIndex <= 0 ? null : () => _setFrameIndex(safeIndex - 1),
+            icon: const Icon(Icons.skip_previous, color: Colors.white70),
+          ),
+          Expanded(
+            child: Slider(
+              value: safeIndex.toDouble(),
+              min: 0,
+              max: (frames.length - 1).toDouble(),
+              divisions: frames.length > 1 ? frames.length - 1 : 1,
+              label: '${safeIndex + 1}/${frames.length}',
+              onChanged: (v) => _setFrameIndex(v.round()),
+            ),
+          ),
+          IconButton(
+            tooltip: '下一帧',
+            onPressed: safeIndex >= frames.length - 1 ? null : () => _setFrameIndex(safeIndex + 1),
+            icon: const Icon(Icons.skip_next, color: Colors.white70),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'frame ${safeIndex + 1}/${frames.length} cursor:$cursor $currentTime',
+            style: const TextStyle(color: Colors.white70, fontSize: 11),
+          ),
+          const SizedBox(width: 8),
+          _copyStepButton(analysis),
+        ],
+      ),
+    );
+  }
+
   Widget _copyP0Button(PythonMultiLevelChanAnalysis analysis) {
     return OutlinedButton.icon(
       onPressed: () async {
@@ -295,12 +367,28 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       },
       icon: const Icon(Icons.copy, size: 14),
       label: const Text('Copy P0'),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xFF8AB4FF),
-        side: const BorderSide(color: Color(0x668AB4FF)),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-      ),
+      style: _copyButtonStyle(),
+    );
+  }
+
+  Widget _copyStepButton(PythonMultiLevelChanAnalysis analysis) {
+    return OutlinedButton.icon(
+      onPressed: () async {
+        await Clipboard.setData(ClipboardData(text: _buildStepDiagnosticText(analysis)));
+        _showMessage('Step diagnostics copied');
+      },
+      icon: const Icon(Icons.copy, size: 14),
+      label: const Text('Copy Step'),
+      style: _copyButtonStyle(),
+    );
+  }
+
+  ButtonStyle _copyButtonStyle() {
+    return OutlinedButton.styleFrom(
+      foregroundColor: const Color(0xFF8AB4FF),
+      side: const BorderSide(color: Color(0x668AB4FF)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
     );
   }
 
@@ -325,7 +413,10 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     return ChoiceChip(
       label: Text(label),
       selected: selected,
-      onSelected: _loading ? null : (_) => setState(() => _mode = value),
+      onSelected: _loading ? null : (_) => setState(() {
+        _mode = value;
+        _frameIndex = 0;
+      }),
       selectedColor: const Color(0xFFFFD54F),
       backgroundColor: const Color(0xFF20242E),
       labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
@@ -359,8 +450,20 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     );
   }
 
+  void _setFrameIndex(int next) {
+    final analysis = _analysis;
+    if (analysis == null || analysis.frames.isEmpty) return;
+    final safe = next.clamp(0, analysis.frames.length - 1).toInt();
+    setState(() {
+      _frameIndex = safe;
+      _viewEndIndex = null;
+      _crosshairIndex = null;
+      _status = _buildStatus(analysis, snapshot: analysis.frames[safe]);
+    });
+  }
+
   void _panChartByBars(int bars) {
-    final snapshot = _full?.of(_activeLevel);
+    final snapshot = _current?.of(_activeLevel);
     if (bars == 0 || snapshot == null || snapshot.rawBars.isEmpty) return;
     final maxEnd = snapshot.rawBars.length - 1;
     final current = _viewEndIndex ?? maxEnd;
@@ -368,24 +471,28 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     if (next != current) setState(() => _viewEndIndex = next);
   }
 
-  String _buildStatus(PythonMultiLevelChanAnalysis analysis) {
-    final snapshot = analysis.snapshot;
+  String _buildStatus(PythonMultiLevelChanAnalysis analysis, {MultiLevelChanSnapshot? snapshot}) {
+    final snap = snapshot ?? analysis.snapshot;
     final meta = analysis.meta;
     final native = meta['native_cchan_lv_list'];
     final fallback = meta['fallback_to_bridge'];
     final relationMode = meta['level_relation_mode'];
+    return 'analyze_multi ${_mode.toUpperCase()} native:$native relation:$relationMode fallback:${fallback ?? false} relations:${snap.relations.length} frames:${analysis.frames.length} ${_buildCompactLevelSummary(snap)}';
+  }
+
+  String _buildCompactLevelSummary(MultiLevelChanSnapshot snapshot) {
     final parts = <String>[];
     for (final level in snapshot.levels) {
       final s = snapshot.of(level);
       if (s != null) parts.add('$level K:${s.rawBars.length} BI:${s.bis.length}');
     }
-    return 'analyze_multi ${_mode.toUpperCase()} native:$native relation:$relationMode fallback:${fallback ?? false} relations:${snapshot.relations.length} frames:${analysis.frames.length} ${parts.join(' | ')}';
+    return parts.join(' | ');
   }
 
-  String _buildLevelSummary(PythonMultiLevelChanAnalysis analysis) {
+  String _buildLevelSummary(MultiLevelChanSnapshot snapshot) {
     final parts = <String>[];
-    for (final level in analysis.snapshot.levels) {
-      final s = analysis.snapshot.of(level);
+    for (final level in snapshot.levels) {
+      final s = snapshot.of(level);
       if (s == null) continue;
       parts.add('$level K:${s.rawBars.length} BI:${s.bis.length} FX:${s.fxs.length} SEG:${s.segs.length} ZS:${s.zss.length} BSP:${s.bsps.length}');
     }
@@ -398,7 +505,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     return [
       'manual P0 diagnostics',
       'status_summary: ${_buildStatus(analysis)}',
-      'level_summary: ${_buildLevelSummary(analysis)}',
+      'level_summary: ${_buildLevelSummary(snapshot)}',
       'mode: $_mode',
       'symbol: ${_symbolController.text.trim()}',
       'market: ${_marketController.text.trim().toUpperCase()}',
@@ -410,8 +517,47 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'relations.length: ${snapshot.relations.length}',
       'frames.length: ${analysis.frames.length}',
       'source: ${meta['source'] ?? ''}',
+      'native_step_frames: ${meta['native_step_frames'] ?? false}',
+      'native_step_frames_total: ${meta['native_step_frames_total'] ?? ''}',
+      'native_step_frames_returned: ${meta['native_step_frames_returned'] ?? ''}',
+      'native_step_frames_limit: ${meta['native_step_frames_limit'] ?? ''}',
+      'native_step_frames_truncated: ${meta['native_step_frames_truncated'] ?? ''}',
       'native_data_window: ${meta['native_data_window'] ?? ''}',
       'native_csv_time_policy: ${meta['native_csv_time_policy'] ?? ''}',
+    ].join('\n');
+  }
+
+  String _buildStepDiagnosticText(PythonMultiLevelChanAnalysis analysis) {
+    final meta = analysis.meta;
+    final frames = analysis.frames;
+    final safeIndex = frames.isEmpty ? 0 : _frameIndex.clamp(0, frames.length - 1).toInt();
+    final frame = frames.isEmpty ? analysis.snapshot : frames[safeIndex];
+    final frameMeta = frame.meta;
+    return [
+      'manual step diagnostics',
+      'button: Copy Step',
+      'mode: $_mode',
+      'symbol: ${_symbolController.text.trim()}',
+      'market: ${_marketController.text.trim().toUpperCase()}',
+      'levels: ${analysis.snapshot.levels.join(',')}',
+      'frame.index.local: $safeIndex',
+      'frame.number.local: ${frames.isEmpty ? 0 : safeIndex + 1}/${frames.length}',
+      'frame.cursor.native: ${frameMeta['cursor'] ?? frameMeta['frame_index'] ?? ''}',
+      'frame.current_time: ${frameMeta['current_time'] ?? ''}',
+      'native_cchan_lv_list: ${meta['native_cchan_lv_list']}',
+      'level_relation_mode: ${meta['level_relation_mode']}',
+      'fallback_to_bridge: ${meta['fallback_to_bridge'] ?? false}',
+      'native_step_frames: ${meta['native_step_frames'] ?? false}',
+      'native_step_frames_total: ${meta['native_step_frames_total'] ?? ''}',
+      'native_step_frames_returned: ${meta['native_step_frames_returned'] ?? ''}',
+      'native_step_frames_limit: ${meta['native_step_frames_limit'] ?? ''}',
+      'native_step_frames_truncated: ${meta['native_step_frames_truncated'] ?? ''}',
+      'frames.length: ${frames.length}',
+      'frame.relations.length: ${frame.relations.length}',
+      'status_summary.current_frame: ${_buildStatus(analysis, snapshot: frame)}',
+      'level_summary.current_frame: ${_buildLevelSummary(frame)}',
+      'level_summary.final: ${_buildLevelSummary(analysis.snapshot)}',
+      'native_data_window: ${meta['native_data_window'] ?? ''}',
     ].join('\n');
   }
 
