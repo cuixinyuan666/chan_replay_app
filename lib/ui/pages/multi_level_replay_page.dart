@@ -303,6 +303,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
           _diagChip('frames.length', '$framesLength', _mode != 'step' || framesLength > 0),
           if (nativeFailure != null) _diagChip('native_failure', '$nativeFailure', false),
           _copyP0Button(analysis),
+          if (_mode == 'step') _copyStepButton(analysis),
         ],
       ),
     );
@@ -536,6 +537,8 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     return [
       'manual step diagnostics',
       'button: Copy Step',
+      'copy_step_visible: true',
+      'step_controls_visible: ${frames.isNotEmpty}',
       'mode: $_mode',
       'symbol: ${_symbolController.text.trim()}',
       'market: ${_marketController.text.trim().toUpperCase()}',
@@ -547,6 +550,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'native_cchan_lv_list: ${meta['native_cchan_lv_list']}',
       'level_relation_mode: ${meta['level_relation_mode']}',
       'fallback_to_bridge: ${meta['fallback_to_bridge'] ?? false}',
+      'native_failure: ${meta['native_failure'] ?? ''}',
       'native_step_frames: ${meta['native_step_frames'] ?? false}',
       'native_step_frames_total: ${meta['native_step_frames_total'] ?? ''}',
       'native_step_frames_returned: ${meta['native_step_frames_returned'] ?? ''}',
