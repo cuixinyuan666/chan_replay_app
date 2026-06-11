@@ -10,7 +10,7 @@ Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
 Latest task-party code commit: 1cc0b53211d5a3fa895d8259b3f54f1edf5fb0af
-Latest observed head during 2026-06-10 review: 166a46bdfe37276158f05f76bf2602de7c690467
+Latest observed head during supervisor verification: 3bf4cb4775057cc1d8d1af21bd68adfa52551373
 Latest manual update commit: pending
 
 ## User objective
@@ -51,7 +51,7 @@ Hard rules added by user:
 - Native runtime result is not verified after parent-time fix.
 - Native step frames are not implemented yet.
 - Interval-nest rule engine is not implemented yet.
-- Bridge fallback must be removed or treated only as an explicit failure/debug path for core Chan calculation.
+- Bridge fallback still exists in code and must not be counted as successful core Chan calculation.
 
 ## 16 requested items
 
@@ -213,3 +213,28 @@ Required next local check:
 - Click Load in once mode.
 - Click `Copy P0`.
 - Paste the copied diagnostics.
+
+2026-06-10 supervisor verification of latest push:
+
+Checked head: 3bf4cb4775057cc1d8d1af21bd68adfa52551373
+Manual progress check:
+- The manual claims `Copy P0` exists. Verified in actual code: MultiLevelReplayPage imports Clipboard, renders `Copy P0`, and copies `_buildP0DiagnosticText`.
+- The manual claims parent-time fix exists. Verified in actual code: non-intraday parent bars are written to native CSV at 23:59 while UI/output bars keep original times.
+- The manual keeps native runtime unchecked. This is correct because the latest head is manual-only and no post-fix P0 copy result from the user is present.
+Actual code check:
+- `Copy P0` button exists and copies native_cchan_lv_list, level_relation_mode, fallback_to_bridge, native_failure, relations.length, frames.length, source, native_data_window, and native_csv_time_policy.
+- Native CChan(lv_list) still returns `frames: []` and `native_step_frames: False`; strict step is not complete.
+- Bridge fallback still exists in `a_multilevel_engine.analyze_multi`; it records fallback_to_bridge and native_failure. This is useful for debugging but not acceptable as a passing core Chan path.
+Result: partially passed.
+Accepted in this check:
+- P0 copy button is real and may stay checked.
+- Parent-time CSV fix is real.
+Rejected / still open:
+- Native runtime after parent-time fix is still unverified.
+- Strict step native frames remain unimplemented.
+- Bridge fallback still exists and must not be considered success.
+Next user operation:
+- In the app, open `Multi-level replay`, click `Load`, then click `Copy P0`, and paste the copied diagnostics.
+Next task-party operation:
+- If copied diagnostics show fallback_to_bridge=true, fix native_failure immediately.
+- If copied diagnostics show native_cchan_lv_list=true and level_relation_mode=chan_parent_child, implement native step frames next.
