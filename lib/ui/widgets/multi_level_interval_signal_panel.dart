@@ -82,9 +82,17 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     );
   }
 
+  String get _highLevel => widget.snapshot.levels.contains('DAILY')
+      ? 'DAILY'
+      : (widget.snapshot.levels.isNotEmpty ? widget.snapshot.levels.first : '');
+
+  String get _lowLevel => widget.snapshot.levels.contains('MIN30')
+      ? 'MIN30'
+      : (widget.snapshot.levels.length > 1 ? widget.snapshot.levels[1] : '');
+
   List<_SignalMatch> _buildSignals() {
-    final highLevel = widget.snapshot.levels.contains('DAILY') ? 'DAILY' : (widget.snapshot.levels.isNotEmpty ? widget.snapshot.levels.first : '');
-    final lowLevel = widget.snapshot.levels.contains('MIN30') ? 'MIN30' : (widget.snapshot.levels.length > 1 ? widget.snapshot.levels[1] : '');
+    final highLevel = _highLevel;
+    final lowLevel = _lowLevel;
     final high = widget.snapshot.of(highLevel);
     final low = widget.snapshot.of(lowLevel);
     if (high == null || low == null || high.bsps.isEmpty || low.bsps.isEmpty) return const [];
@@ -189,6 +197,19 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
 
   String _copySignalText(List<_SignalMatch> signals, _SignalMatch? selected) {
     if (selected == null) {
+      final highLevel = _highLevel;
+      final lowLevel = _lowLevel;
+      final high = widget.snapshot.of(highLevel);
+      final low = widget.snapshot.of(lowLevel);
+      final highBsps = high?.bsps ?? const <BspPoint>[];
+      final lowBsps = low?.bsps ?? const <BspPoint>[];
+      final highType2Buy = highBsps.where((b) => b.isBuy && _isType2(b)).length;
+      final highType3Buy = highBsps.where((b) => b.isBuy && _isType3(b)).length;
+      final lowType1Buy = lowBsps.where((b) => b.isBuy && _isType1(b)).length;
+      final lowType2Buy = lowBsps.where((b) => b.isBuy && _isType2(b)).length;
+      final relationCount = widget.snapshot.relations
+          .where((r) => r.parentLevel == highLevel && r.childLevel == lowLevel)
+          .length;
       return [
         'manual interval signal diagnostics',
         'button: Copy Signal',
@@ -197,7 +218,19 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         'frame.index.local: ${widget.frameIndex ?? ''}',
         'frame.count.local: ${widget.frameCount ?? ''}',
         'signal_source: original chan.py BSP + native LevelRelation',
+        'signal_scope: DAILY/MIN30 MVP',
         'available_signals: 0',
+        'high_level: $highLevel',
+        'low_level: $lowLevel',
+        'high_bsp_count: ${highBsps.length}',
+        'high_buy_type2_count: $highType2Buy',
+        'high_buy_type3_count: $highType3Buy',
+        'low_bsp_count: ${lowBsps.length}',
+        'low_buy_type1_count: $lowType1Buy',
+        'low_buy_type2_count: $lowType2Buy',
+        'native_relation_count: $relationCount',
+        'future_function_policy: current frame only; no final snapshot signal confirmation',
+        'diagnosis: no signal matched current DAILY/MIN30 MVP rules in this frame',
         'status: no signal for DAILY/MIN30 MVP scope',
       ].join('\n');
     }
