@@ -34,7 +34,8 @@ Branch: origin_vespa_tdx
 - `45355548d52e2860dc5f0b8e9d84a8e8eca20064`: added Flutter parser compatibility for compact_v1 frames.
 - `5279e912dbaee634072f20e3b5efc74fd1fe91b4`: passed top-level levels into compact parser and added `frontend.response_bytes` to Time Log stages.
 - `7992b7a6d950999ff3a2b41008480228969d1395`: fixed copied Time Log/Result Validation diagnostics so `response_bytes` is printed as bytes and not sorted as milliseconds; added compact meta fields to copied Time Log and Result Validation.
-- Current update: recorded the first compact_v1 runtime diagnostic findings and the copied-log fix; F1a remains pending re-test.
+- `6ada07e1bb464ce1bf8a0710137e399d35cf7721`: propagated compact frame total fields into every compact_v1 frame meta.
+- Current update: recorded the compact frame total propagation fix; F1a remains pending one more re-test.
 
 ## Current accepted work
 
@@ -139,6 +140,11 @@ First implementation batch completed:
   - `include_indicators_in_frames`
   - `compact_transport_only: true`
   - `chan_py_core_unchanged: true`
+- Each compact_v1 frame meta now also carries:
+  - `frames_total`
+  - `frames_returned`
+  - `frames_truncated`
+  - `max_return_frames`
 - `lib/data/multi_level_chan_analysis_parser.dart` now supports compact_v1 frames:
   - If a frame level omits `bars` and includes `visible_count`, parser reconstructs visible bars from top-level level bars.
   - If a frame level omits `indicators`, parser clips top-level indicators up to `visible_count`.
@@ -151,9 +157,10 @@ First compact_v1 runtime diagnostic findings from user:
 - App still loaded step mode successfully after compact_v1 implementation.
 - Copy P0 still reported native CChan/lv_list true, chan parent-child relations, fallback false, frames present, and final structures available.
 - Copy Step still rendered frame `0/29` with visible frame structures and no final-snapshot-as-step fallback.
-- Time Log reported `response_bytes=4051090`, but before fix it was incorrectly included in `slowest_stages` as `frontend.response_bytes: 4051090ms`.
-- Copy P0 and Copy Step did not yet print compact meta fields.
-- Copy Time Log and Copy Result Validation needed compact meta fields; this was fixed by `7992b7a6d950999ff3a2b41008480228969d1395`.
+- Time Log after `7992b7a6...` correctly printed `response_bytes=4051090` as bytes and no longer put `frontend.response_bytes` inside `slowest_stages`.
+- Time Log / Result Validation showed `step_frame_format=compact_v1`, `frame_policy=full`, `frame_stride=1`, `include_bars_in_frames=false`, and `include_indicators_in_frames=false`.
+- `frames_total`, `frames_returned`, and `frames_truncated` were still blank in interval panel logs because those fields were not present on the current frame snapshot meta. This was fixed by `6ada07e1bb464ce1bf8a0710137e399d35cf7721`.
+- Copy P0 and Copy Step still do not print compact meta fields.
 
 F1a implementation status:
 
@@ -161,8 +168,9 @@ F1a implementation status:
 - Flutter compact_v1 parser compatibility: implemented.
 - Response bytes timing: implemented.
 - Copied Time Log / Result Validation compact meta: implemented.
+- Compact frame total propagation: implemented.
 - Runtime analyze after compact_v1: partially proved by user logs.
-- Runtime copied diagnostics after `7992b7a6d950999ff3a2b41008480228969d1395`: pending.
+- Runtime copied diagnostics after `6ada07e1bb464ce1bf8a0710137e399d35cf7721`: pending.
 - Copy P0 / Copy Step compact meta fields: still pending.
 - Compact-v1 result equivalence is not accepted yet.
 - `极速` mode remains not accepted and not exposed.
@@ -180,9 +188,9 @@ Forbidden for F1a remains:
 
 ## Current blockers / pending verification
 
-- Re-run `flutter analyze` after compact_v1 commits, especially `7992b7a6d950999ff3a2b41008480228969d1395`.
-- Runtime compact_v1 Copy Time Log and Copy Result Validation outputs must be pasted again after the response-bytes fix.
-- Copy diagnostics must show `step_frame_format: compact_v1`, `include_bars_in_frames: false`, and `include_indicators_in_frames: false` when available.
+- Re-run `flutter analyze` after compact_v1 commits, especially `6ada07e1bb464ce1bf8a0710137e399d35cf7721`.
+- Runtime compact_v1 Copy Time Log and Copy Result Validation outputs must be pasted again after the frame-total propagation fix.
+- Copy diagnostics must show `step_frame_format: compact_v1`, `include_bars_in_frames: false`, `include_indicators_in_frames: false`, `frames_total`, `frames_returned`, and `frames_truncated`.
 - Copy P0 / Copy Step compact meta fields remain pending.
 - Result Validation for compact-v1 equivalence remains pending.
 - Strategy mode acceptance remains paused while F1a remains current priority.
@@ -207,7 +215,7 @@ Forbidden for F1a remains:
    - `step_frame_format: compact_v1`.
    - `include_bars_in_frames: false`.
    - `include_indicators_in_frames: false`.
-   - `frames_total`.
-   - `frames_returned`.
-   - `frames_truncated`.
+   - `frames_total: 29` or another non-empty value.
+   - `frames_returned: 29` or another non-empty value.
+   - `frames_truncated: false` or another explicit value.
 7. If this passes, next code task is adding compact meta fields to Copy P0 / Copy Step and then implementing compact-v1 result equivalence comparison.
