@@ -205,7 +205,7 @@ class PythonMultiLevelChanAnalysisSource {
     }
     totalSw.stop();
     stages['frontend.total'] = totalSw.elapsedMilliseconds;
-    meta['time_log'] = _buildTimeLog(
+    final timeLog = _buildTimeLog(
       traceId: traceId,
       meta: meta,
       stages: stages,
@@ -213,10 +213,33 @@ class PythonMultiLevelChanAnalysisSource {
       sourceBaseUrl: sourceBaseUrl,
       backendDiagnostics: backendDiagnostics,
     );
+    meta['time_log'] = timeLog;
+    final enrichedSnapshot = _snapshotWithMeta(analysis.snapshot, {'time_log': timeLog});
+    final enrichedFrames = [
+      for (var i = 0; i < analysis.frames.length; i++)
+        _snapshotWithMeta(analysis.frames[i], {
+          'time_log': timeLog,
+          'time_log_frame_index': i,
+        }),
+    ];
     return PythonMultiLevelChanAnalysis(
-      snapshot: analysis.snapshot,
-      frames: analysis.frames,
+      snapshot: enrichedSnapshot,
+      frames: enrichedFrames,
       intervalNestSignals: analysis.intervalNestSignals,
+      meta: meta,
+    );
+  }
+
+  MultiLevelChanSnapshot _snapshotWithMeta(
+    MultiLevelChanSnapshot snapshot,
+    Map<String, dynamic> extraMeta,
+  ) {
+    final meta = Map<String, dynamic>.from(snapshot.meta)..addAll(extraMeta);
+    return MultiLevelChanSnapshot(
+      mainLevel: snapshot.mainLevel,
+      levels: snapshot.levels,
+      snapshots: snapshot.snapshots,
+      relations: snapshot.relations,
       meta: meta,
     );
   }
