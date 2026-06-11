@@ -10,7 +10,7 @@ Latest observed head before this manual: 82a376ee13d0832139bad396224296f0bfc3d86
 Manual placeholder commit: a173ae2cd0f75fdf1b2dcfa5f2c67638546b1574
 Manual core commit: e978be56c8f9e173970283cdcf3d7fe3560349ad
 Latest task-party code commit: 63a8d2e6ee8e835791da4c8e8b9420525dee6785
-Latest observed head during supervisor verification: 3bf4cb4775057cc1d8d1af21bd68adfa52551373
+Latest observed head during supervisor verification: c83a84da4e614a3cdf3a8a1d71d22d28dfa1f38a
 Latest manual update commit: pending
 
 ## User objective
@@ -54,6 +54,7 @@ Hard rules added by user:
 - Native runtime result after MIN level detection fix is not verified yet.
 - Native step frames are not implemented yet.
 - Interval-nest rule engine is not implemented yet.
+- MIN30/MIN5 aligned_counts must be verified from Copy P0 after the level detection fix.
 
 ## 16 requested items
 
@@ -81,6 +82,8 @@ Hard rules added by user:
 - [ ] Verify level_relation_mode is chan_parent_child.
 - [ ] Verify fallback_to_bridge is not true.
 - [ ] Verify relations can map high level to low level.
+- [ ] Verify MIN30/MIN5 aligned_counts are larger than DAILY when source data exists.
+- [ ] Verify native_data_window.bars_per_day has DAILY=1, MIN30=8, MIN5=48.
 - [ ] Implement native step frames.
 - [ ] Verify step mode frames are not empty.
 - [ ] Remove or disable bridge fallback as accepted behavior for core Chan calculation.
@@ -264,12 +267,22 @@ Fix applied:
   - Change: explicit aliases and numeric minute parsing now classify MIN30 as 8 bars/day and MIN5 as 48 bars/day.
   - Expected verification: native_data_window.bars_per_day should show `{DAILY: 1, MIN30: 8, MIN5: 48}` and MIN30/MIN5 aligned_counts should be larger than DAILY if source data is available.
 
-Required next local check:
-- Stop old Python backend processes.
-- Pull latest origin_vespa_tdx.
-- Run flutter analyze.
-- Run flutter run.
-- Open Multi-level replay.
-- Click Load in once mode.
-- Click `Copy P0`.
-- Paste the copied diagnostics.
+2026-06-10 supervisor verification of latest push after MIN fix:
+
+Checked head: c83a84da4e614a3cdf3a8a1d71d22d28dfa1f38a
+Manual progress check:
+- The manual claims the MIN30/MIN5 detection fix exists. Verified in actual code commit 63a8d2e6ee8e835791da4c8e8b9420525dee6785.
+- The code now maps MIN30 to 8 bars/day and MIN5 to 48 bars/day.
+- The code now writes bars_per_day into native_data_window for Copy P0 verification.
+Result: partially passed.
+Accepted in this check:
+- MIN30/MIN5 level detection code fix is real.
+- native_data_window.bars_per_day diagnostic is real.
+Not accepted:
+- No post-fix Copy P0 result is available yet, so native runtime after this fix is still unverified.
+- P0 remains unchecked until Copy P0 confirms native_cchan_lv_list=true, level_relation_mode=chan_parent_child, fallback_to_bridge=false, bars_per_day DAILY=1/MIN30=8/MIN5=48, and MIN30/MIN5 aligned_counts are larger than DAILY when source data exists.
+- Native step frames remain unimplemented.
+Next user operation:
+- Stop old backend processes if needed, open the app, go to Multi-level replay, click Load, click Copy P0, and paste diagnostics.
+Next task-party operation:
+- If Copy P0 still shows bad aligned_counts or fallback, fix native first. Do not implement step frames or interval-nest until P0 is trustworthy.
