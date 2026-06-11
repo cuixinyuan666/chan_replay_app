@@ -21,11 +21,22 @@ class MultiLevelReplayPage extends StatefulWidget {
 }
 
 class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
-  final _backendUrlController =
-      TextEditingController(text: 'http://127.0.0.1:8000');
+  static const List<String> _levelOptions = [
+    'DAILY',
+    'MIN60',
+    'MIN30',
+    'MIN15',
+    'MIN5',
+    'MIN1',
+  ];
+  static const List<int> _countOptions = [40, 80, 120, 220, 600];
+  static const List<int> _maxStepFrameOptions = [24, 40, 60, 120];
+
+  final _backendUrlController = TextEditingController(text: 'app-managed bundled Python');
   final _symbolController = TextEditingController(text: '600340');
   final _marketController = TextEditingController(text: 'SH');
-  final _levelsController = TextEditingController(text: 'DAILY,MIN30,MIN5');
+  final _startController = TextEditingController(text: '2025-09-01');
+  final _endController = TextEditingController(text: '2025-10-20');
 
   PythonMultiLevelChanAnalysis? _analysis;
   PythonMultiLevelChanAnalysis? _signalScanAnalysis;
@@ -36,15 +47,17 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   bool _relationPanelExpanded = false;
   bool _signalPanelExpanded = false;
   String _mode = 'step';
-  int _count = 40;
+  int _count = 220;
+  int _maxStepFrames = 60;
   int _frameIndex = 0;
   int _windowSize = 90;
   double _priceScale = 1.0;
   int? _viewEndIndex;
   int? _crosshairIndex;
-  String _status = 'multi-level step replay not loaded';
+  String _status = 'multi-level candidate-date step replay not loaded';
   String _signalScanStatus = 'signal scan not run';
   Timer? _initialLoadTimer;
+  final List<String> _selectedLevels = ['DAILY', 'MIN30', 'MIN5'];
 
   @override
   void initState() {
@@ -62,14 +75,19 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     _backendUrlController.dispose();
     _symbolController.dispose();
     _marketController.dispose();
-    _levelsController.dispose();
+    _startController.dispose();
+    _endController.dispose();
     super.dispose();
   }
 
   MultiLevelChanSnapshot? get _full => _analysis?.snapshot;
 
-  bool get _stepFramesEmpty =>
-      _mode == 'step' && _analysis != null && _analysis!.frames.isEmpty;
+  bool get _stepFramesEmpty => _mode == 'step' && _analysis != null && _analysis!.frames.isEmpty;
+
+  List<String> get _levels => [
+        for (final level in _levelOptions)
+          if (_selectedLevels.contains(level)) level,
+      ];
 
   MultiLevelChanSnapshot? get _current {
     final analysis = _analysis;
@@ -82,8 +100,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     return analysis.snapshot;
   }
 
-  MultiLevelChanSnapshot? get _signalSnapshot =>
-      _signalScanAnalysis?.snapshot ?? _current;
+  MultiLevelChanSnapshot? get _signalSnapshot => _signalScanAnalysis?.snapshot ?? _current;
 
   String get _activeLevel {
     final full = _full;
@@ -92,26 +109,49 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     return full.snapshots.containsKey(active) ? active : full.safeActiveLevel;
   }
 
-  List<String> get _levels => [
-        for (final part
-            in _levelsController.text.replaceAll('，', ',').split(','))
-          if (part.trim().isNotEmpty) part.trim().toUpperCase(),
-      ];
+  DateTime? _dateOrNull(TextEditingController controller, String label) {
+    final text = controller.text.trim();
+    if (text.isEmpty) return null;
+    final normalized = text.replaceAll('/', '-');
+    final parsed = DateTime.tryParse(normalized);
+    if (parsed == null) {
+      throw FormatException('$label must be yyyy-MM-dd, current=$text');
+    }
+    return parsed;
+  }
+
+  Map<String, dynamic> _requestConfig({required bool step}) {
+    return {
+      'bi_algo': 'normal',
+      'seg_algo': 'chan',
+      'zs_algo': 'normal',
+      if (step) 'max_step_frames': _maxStepFrames,
+    };
+  }
 
   Future<void> _load() async {
     if (_loading || _signalScanLoading) return;
     final levels = _levels;
     if (levels.isEmpty) {
-      _showMessage('lv_list is empty');
+      _showMessage('请选择至少一个级别');
       return;
     }
-    if (_mode == 'step' && _count > 120) {
-      final msg =
-          'step replay count=$_count 太大，容易触发 step_load 超时；请保持 step count<=120，用 Scan Signal 扫描大 count 信号。';
+    if (_mode == 'step' && _count > 600) {
+      final msg = 'step replay count=$_count 太大；请用候选窗口/日期范围缩小 step 验证范围。';
       setState(() => _status = msg);
       _showMessage(msg);
       return;
     }
+    late final DateTime? startDate;
+    late final DateTime? endDate;
+    try {
+      startDate = _dateOrNull(_startController, 'start');
+      endDate = _dateOrNull(_endController, 'end');
+    } catch (e) {
+      _showMessage('$e');
+      return;
+    }
+
     setState(() {
       _loading = true;
       _layerPanelExpanded = false;
@@ -119,8 +159,9 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       _signalPanelExpanded = false;
       _signalScanAnalysis = null;
       _signalScanStatus = 'signal scan not run';
-      _status = 'loading analyze_multi...';
+      _status = 'loading analyze_multi ${_mode.toUpperCase()} window:${_startController.text}~${_endController.text}...';
     });
+
     final source = PythonMultiLevelChanAnalysisSource(
       baseUrl: _backendUrlController.text.trim(),
     );
@@ -134,12 +175,9 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         mainLevel: levels.first,
         clockLevel: levels.first,
         count: _count,
-        config: const {
-          'bi_algo': 'normal',
-          'seg_algo': 'chan',
-          'zs_algo': 'normal',
-          'max_step_frames': 24,
-        },
+        startDate: startDate,
+        endDate: endDate,
+        config: _requestConfig(step: _mode == 'step'),
       );
       if (!mounted) return;
       setState(() {
@@ -147,9 +185,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         _frameIndex = 0;
         _viewState = MultiLevelViewState.fromSnapshot(
           analysis.snapshot,
-          clockMode: _mode == 'step'
-              ? ReplayClockMode.strictMainLevel
-              : ReplayClockMode.once,
+          clockMode: _mode == 'step' ? ReplayClockMode.strictMainLevel : ReplayClockMode.once,
         );
         _viewEndIndex = null;
         _crosshairIndex = null;
@@ -158,9 +194,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
             ? _blockedStatus(analysis)
             : _buildStatus(
                 analysis,
-                snapshot: _mode == 'step' && analysis.frames.isNotEmpty
-                    ? analysis.frames.first
-                    : analysis.snapshot,
+                snapshot: _mode == 'step' && analysis.frames.isNotEmpty ? analysis.frames.first : analysis.snapshot,
               );
       });
       _showMessage(_status);
@@ -178,14 +212,23 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     if (_loading || _signalScanLoading) return;
     final levels = _levels;
     if (levels.isEmpty) {
-      _showMessage('lv_list is empty');
+      _showMessage('请选择至少一个级别');
       return;
     }
+    late final DateTime? startDate;
+    late final DateTime? endDate;
+    try {
+      startDate = _dateOrNull(_startController, 'start');
+      endDate = _dateOrNull(_endController, 'end');
+    } catch (e) {
+      _showMessage('$e');
+      return;
+    }
+
     setState(() {
       _signalScanLoading = true;
       _signalPanelExpanded = true;
-      _signalScanStatus =
-          'scanning signal candidates with once count=$_count...';
+      _signalScanStatus = 'scanning once count=$_count window:${_startController.text}~${_endController.text}...';
     });
     final source = PythonMultiLevelChanAnalysisSource(
       baseUrl: _backendUrlController.text.trim(),
@@ -200,18 +243,15 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         mainLevel: levels.first,
         clockLevel: levels.first,
         count: _count,
-        config: const {
-          'bi_algo': 'normal',
-          'seg_algo': 'chan',
-          'zs_algo': 'normal',
-        },
+        startDate: startDate,
+        endDate: endDate,
+        config: _requestConfig(step: false),
       );
       if (!mounted) return;
       setState(() {
         _signalScanAnalysis = scan;
         _signalPanelExpanded = true;
-        _signalScanStatus =
-            'signal scan done: once count=$_count ${_buildCompactLevelSummary(scan.snapshot)}';
+        _signalScanStatus = 'signal scan done: once count=$_count ${_buildCompactLevelSummary(scan.snapshot)}';
       });
       _showMessage(_signalScanStatus);
     } catch (e) {
@@ -222,6 +262,21 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       source.close();
       if (mounted) setState(() => _signalScanLoading = false);
     }
+  }
+
+  Future<void> _loadCandidateWindow() async {
+    setState(() {
+      _mode = 'step';
+      _count = 220;
+      _maxStepFrames = 60;
+      _startController.text = '2025-09-01';
+      _endController.text = '2025-10-20';
+      _selectedLevels
+        ..clear()
+        ..addAll(['DAILY', 'MIN30', 'MIN5']);
+      _status = 'candidate window set for 2025-10-13, loading step frames...';
+    });
+    await _load();
   }
 
   @override
@@ -240,8 +295,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
               children: [
                 _header(),
                 if (_analysis != null) _manualP0Panel(_analysis!),
-                if (_analysis != null && _analysis!.frames.isNotEmpty)
-                  _stepControls(_analysis!),
+                if (_analysis != null && _analysis!.frames.isNotEmpty) _stepControls(_analysis!),
                 if (full != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(48, 8, 12, 8),
@@ -255,37 +309,22 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                       }),
                     ),
                   ),
-                if (current != null)
-                  _analysisToolStrip(current, signalSnapshot),
-                if (current != null &&
-                    _relationPanelExpanded &&
-                    current.relations.isNotEmpty)
+                if (current != null) _analysisToolStrip(current, signalSnapshot),
+                if (current != null && _relationPanelExpanded && current.relations.isNotEmpty)
                   MultiLevelRelationPanel(
                     snapshot: current,
                     mode: _mode,
-                    frameIndex:
-                        _mode == 'step' && _analysis?.frames.isNotEmpty == true
-                            ? _frameIndex
-                            : null,
-                    frameCount:
-                        _mode == 'step' ? _analysis?.frames.length : null,
+                    frameIndex: _mode == 'step' && _analysis?.frames.isNotEmpty == true ? _frameIndex : null,
+                    frameCount: _mode == 'step' ? _analysis?.frames.length : null,
                     symbol: _symbolController.text.trim(),
                     onLocate: _locateRelationTarget,
                   ),
                 if (signalSnapshot != null && _signalPanelExpanded)
                   MultiLevelIntervalSignalPanel(
                     snapshot: signalSnapshot,
-                    mode: _signalScanAnalysis == null
-                        ? _mode
-                        : 'signal_scan_once',
-                    frameIndex: _signalScanAnalysis == null &&
-                            _mode == 'step' &&
-                            _analysis?.frames.isNotEmpty == true
-                        ? _frameIndex
-                        : null,
-                    frameCount: _signalScanAnalysis == null && _mode == 'step'
-                        ? _analysis?.frames.length
-                        : null,
+                    mode: _signalScanAnalysis == null ? _mode : 'signal_scan_once',
+                    frameIndex: _signalScanAnalysis == null && _mode == 'step' && _analysis?.frames.isNotEmpty == true ? _frameIndex : null,
+                    frameCount: _signalScanAnalysis == null && _mode == 'step' ? _analysis?.frames.length : null,
                     symbol: _symbolController.text.trim(),
                   ),
                 Expanded(
@@ -313,27 +352,21 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                               showMergedBars: false,
                               showEasyTdxIndicators: true,
                               easyTdxSubPanelCount: 2,
-                              drawingStorageKey:
-                                  'multi_${_symbolController.text}_$activeLevel',
-                              symbolLabel:
-                                  '${_symbolController.text} $activeLevel',
+                              drawingStorageKey: 'multi_${_symbolController.text}_$activeLevel',
+                              symbolLabel: '${_symbolController.text} $activeLevel',
                               windowSize: _windowSize,
                               priceScale: _priceScale,
                               viewEndIndex: _viewEndIndex,
                               crosshairIndex: _crosshairIndex,
-                              onCrosshairChanged: (v) =>
-                                  setState(() => _crosshairIndex = v),
+                              onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
                               onPanBars: _panChartByBars,
-                              onWindowSizeChanged: (v) =>
-                                  setState(() => _windowSize = v),
-                              onPriceScaleChanged: (v) =>
-                                  setState(() => _priceScale = v),
+                              onWindowSizeChanged: (v) => setState(() => _windowSize = v),
+                              onPriceScaleChanged: (v) => setState(() => _priceScale = v),
                             ),
                 ),
               ],
             ),
-            if (full != null && current != null)
-              _layerStatusOverlay(full, current, activeLevel),
+            if (full != null && current != null) _layerStatusOverlay(full, current, activeLevel),
             if (_loading || _signalScanLoading)
               const Positioned.fill(
                 child: ColoredBox(
@@ -341,157 +374,6 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                   child: Center(child: CircularProgressIndicator()),
                 ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _analysisToolStrip(
-      MultiLevelChanSnapshot current, MultiLevelChanSnapshot? signalSnapshot) {
-    final relationCount = current.relations.length;
-    final usingScan = _signalScanAnalysis != null;
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(48, 4, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0x1A8AB4FF),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0x448AB4FF)),
-      ),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          const Text(
-            '工具面板',
-            style: TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-                fontWeight: FontWeight.w700),
-          ),
-          _diagChip('relations', '$relationCount', relationCount > 0),
-          _diagChip(
-              'signal_source', usingScan ? 'scan once' : 'current frame', true),
-          OutlinedButton.icon(
-            onPressed: relationCount == 0
-                ? null
-                : () => setState(
-                    () => _relationPanelExpanded = !_relationPanelExpanded),
-            icon: Icon(
-                _relationPanelExpanded ? Icons.expand_less : Icons.account_tree,
-                size: 14),
-            label: Text(_relationPanelExpanded ? '收起关系' : '关系定位'),
-            style: _copyButtonStyle(),
-          ),
-          OutlinedButton.icon(
-            onPressed: signalSnapshot == null
-                ? null
-                : () => setState(
-                    () => _signalPanelExpanded = !_signalPanelExpanded),
-            icon: Icon(_signalPanelExpanded ? Icons.expand_less : Icons.radar,
-                size: 14),
-            label: Text(_signalPanelExpanded ? '收起信号' : '区间信号'),
-            style: _copyButtonStyle(),
-          ),
-          OutlinedButton.icon(
-            onPressed: _signalScanLoading ? null : _scanSignals,
-            icon: const Icon(Icons.search, size: 14),
-            label: Text(_signalScanLoading ? '扫描中' : 'Scan Signal($_count)'),
-            style: _copyButtonStyle(),
-          ),
-          _diagChip(
-              'chart_space',
-              (_relationPanelExpanded || _signalPanelExpanded)
-                  ? 'expanded tools'
-                  : 'preserved',
-              true),
-          _diagChip('scan', _signalScanStatus, usingScan),
-        ],
-      ),
-    );
-  }
-
-  Widget _layerStatusOverlay(
-    MultiLevelChanSnapshot full,
-    MultiLevelChanSnapshot current,
-    String activeLevel,
-  ) {
-    if (!_layerPanelExpanded) {
-      return Positioned(
-        right: 12,
-        bottom: 18,
-        child: Tooltip(
-          message: '恢复多级别图层状态窗口',
-          child: Material(
-            color: Colors.transparent,
-            child: OutlinedButton.icon(
-              onPressed: () => setState(() => _layerPanelExpanded = true),
-              icon: const Icon(Icons.layers, size: 16),
-              label: const Text('图层状态'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF8AB4FF),
-                backgroundColor: const Color(0xDD11141B),
-                side: const BorderSide(color: Color(0x668AB4FF)),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                textStyle:
-                    const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Positioned(
-      right: 12,
-      top: _analysis == null ? 118 : (_analysis!.frames.isNotEmpty ? 230 : 170),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
-        child: MultiLevelLayerStatusPanel(
-          fullSnapshot: full,
-          currentSnapshot: current,
-          activeLevel: activeLevel,
-          clockMode: _viewState.clockMode,
-          compact: true,
-          onMinimize: () => setState(() => _layerPanelExpanded = false),
-        ),
-      ),
-    );
-  }
-
-  Widget _strictStepBlockedPanel() {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.all(28),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: const Color(0x332C1D1D),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFFFB74D)),
-        ),
-        child: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.warning_amber_rounded,
-                color: Color(0xFFFFB74D), size: 32),
-            SizedBox(height: 10),
-            Text(
-              'Strict step blocked: frames.length = 0',
-              style: TextStyle(
-                  color: Color(0xFFFFB74D),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700),
-            ),
-            SizedBox(height: 8),
-            Text(
-              '当前是 step 模式，但后端未返回原生 step frames。页面不会用最终完整快照伪装逐K结果。请点击 Copy Step 复制诊断。',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
           ],
         ),
       ),
@@ -510,50 +392,96 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         children: [
           Row(
             children: [
-              const Icon(Icons.account_tree,
-                  color: Color(0xFFFFD54F), size: 18),
+              const Icon(Icons.account_tree, color: Color(0xFFFFD54F), size: 18),
               const SizedBox(width: 8),
-              const Text('Multi-level replay',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w700)),
+              const Text('Multi-level replay', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
               const Spacer(),
               _modeChip('once', 'once'),
               const SizedBox(width: 6),
               _modeChip('step', 'step'),
               const SizedBox(width: 10),
-              ElevatedButton(
-                  onPressed: _loading ? null : _load,
-                  child: const Text('Load')),
+              ElevatedButton(onPressed: _loading ? null : _load, child: const Text('Load')),
             ],
           ),
           const SizedBox(height: 8),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _input(_backendUrlController, 'backend', 190),
-              const SizedBox(width: 8),
+              _input(_backendUrlController, 'backend', 190, enabled: false),
               _input(_symbolController, 'symbol', 96),
-              const SizedBox(width: 8),
               _input(_marketController, 'market', 70),
-              const SizedBox(width: 8),
-              _input(_levelsController, 'lv_list', 190),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 90,
-                child: TextFormField(
-                  initialValue: '$_count',
-                  enabled: !_loading,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                  keyboardType: TextInputType.number,
-                  decoration: _decoration('count'),
-                  onChanged: (v) => _count = int.tryParse(v.trim()) ?? _count,
-                ),
+              _input(_startController, 'start', 112),
+              _input(_endController, 'end', 112),
+              _dropdownInt('count', _count, _countOptions, (v) => setState(() => _count = v)),
+              _dropdownInt('step frames', _maxStepFrames, _maxStepFrameOptions, (v) => setState(() => _maxStepFrames = v)),
+              OutlinedButton.icon(
+                onPressed: (_loading || _signalScanLoading) ? null : _loadCandidateWindow,
+                icon: const Icon(Icons.event_available, size: 14),
+                label: const Text('候选窗口 2025-10-13'),
+                style: _copyButtonStyle(),
               ),
             ],
           ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              const Text('lv_list:', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
+              for (final level in _levelOptions) _levelChip(level),
+              _diagChip('selected', _levels.join(','), _levels.isNotEmpty),
+            ],
+          ),
           const SizedBox(height: 5),
-          Text(_status,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-              overflow: TextOverflow.ellipsis),
+          Text(_status, style: const TextStyle(color: Colors.white70, fontSize: 12), overflow: TextOverflow.ellipsis),
+        ],
+      ),
+    );
+  }
+
+  Widget _analysisToolStrip(MultiLevelChanSnapshot current, MultiLevelChanSnapshot? signalSnapshot) {
+    final relationCount = current.relations.length;
+    final usingScan = _signalScanAnalysis != null;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(48, 4, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0x1A8AB4FF),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x448AB4FF)),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text('工具面板', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
+          _diagChip('relations', '$relationCount', relationCount > 0),
+          _diagChip('signal_source', usingScan ? 'scan once' : 'current frame', true),
+          OutlinedButton.icon(
+            onPressed: relationCount == 0 ? null : () => setState(() => _relationPanelExpanded = !_relationPanelExpanded),
+            icon: Icon(_relationPanelExpanded ? Icons.expand_less : Icons.account_tree, size: 14),
+            label: Text(_relationPanelExpanded ? '收起关系' : '关系定位'),
+            style: _copyButtonStyle(),
+          ),
+          OutlinedButton.icon(
+            onPressed: signalSnapshot == null ? null : () => setState(() => _signalPanelExpanded = !_signalPanelExpanded),
+            icon: Icon(_signalPanelExpanded ? Icons.expand_less : Icons.radar, size: 14),
+            label: Text(_signalPanelExpanded ? '收起信号' : '区间信号'),
+            style: _copyButtonStyle(),
+          ),
+          OutlinedButton.icon(
+            onPressed: _signalScanLoading ? null : _scanSignals,
+            icon: const Icon(Icons.search, size: 14),
+            label: Text(_signalScanLoading ? '扫描中' : 'Scan Signal($_count)'),
+            style: _copyButtonStyle(),
+          ),
+          _diagChip('window', '${_startController.text}~${_endController.text}', true),
+          _diagChip('scan', _signalScanStatus, usingScan),
         ],
       ),
     );
@@ -565,11 +493,13 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final relationMode = meta['level_relation_mode'];
     final fallback = meta['fallback_to_bridge'];
     final nativeFailure = meta['native_failure'];
+    final runtime = meta['python_runtime'];
     final relationsLength = analysis.snapshot.relations.length;
     final framesLength = analysis.frames.length;
     final okNative = native == true &&
         relationMode == 'chan_parent_child' &&
         fallback != true &&
+        runtime == 'app_bundled' &&
         (_mode != 'step' || framesLength > 0);
     return Container(
       width: double.infinity,
@@ -578,28 +508,22 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       decoration: BoxDecoration(
         color: okNative ? const Color(0x332E7D32) : const Color(0x33424242),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-            color: okNative ? const Color(0xFF66BB6A) : Colors.white24),
+        border: Border.all(color: okNative ? const Color(0xFF66BB6A) : Colors.white24),
       ),
       child: Wrap(
         spacing: 8,
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          _diagChip('manual P0', okNative ? 'native step ok' : 'needs check',
-              okNative),
+          _diagChip('manual P0', okNative ? 'app bundled native step ok' : 'needs check', okNative),
+          _diagChip('python_runtime', '$runtime', runtime == 'app_bundled'),
           _diagChip('native_cchan_lv_list', '$native', native == true),
-          _diagChip('level_relation_mode', '$relationMode',
-              relationMode == 'chan_parent_child'),
-          _diagChip(
-              'fallback_to_bridge', '${fallback ?? false}', fallback != true),
-          _diagChip(
-              'relations.length', '$relationsLength', relationsLength > 0),
-          _diagChip('frames.length', '$framesLength',
-              _mode != 'step' || framesLength > 0),
+          _diagChip('level_relation_mode', '$relationMode', relationMode == 'chan_parent_child'),
+          _diagChip('fallback_to_bridge', '${fallback ?? false}', fallback != true),
+          _diagChip('relations.length', '$relationsLength', relationsLength > 0),
+          _diagChip('frames.length', '$framesLength', _mode != 'step' || framesLength > 0),
           if (_stepFramesEmpty) _diagChip('strict_step_blocked', 'true', false),
-          if (nativeFailure != null)
-            _diagChip('native_failure', '$nativeFailure', false),
+          if (nativeFailure != null) _diagChip('native_failure', '$nativeFailure', false),
           _copyP0Button(analysis),
           if (_mode == 'step') _copyStepButton(analysis),
         ],
@@ -628,8 +552,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         children: [
           IconButton(
             tooltip: '上一帧',
-            onPressed:
-                safeIndex <= 0 ? null : () => _setFrameIndex(safeIndex - 1),
+            onPressed: safeIndex <= 0 ? null : () => _setFrameIndex(safeIndex - 1),
             icon: const Icon(Icons.skip_previous, color: Colors.white70),
           ),
           Expanded(
@@ -644,17 +567,78 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
           ),
           IconButton(
             tooltip: '下一帧',
-            onPressed: safeIndex >= frames.length - 1
-                ? null
-                : () => _setFrameIndex(safeIndex + 1),
+            onPressed: safeIndex >= frames.length - 1 ? null : () => _setFrameIndex(safeIndex + 1),
             icon: const Icon(Icons.skip_next, color: Colors.white70),
           ),
           const SizedBox(width: 8),
-          Text(
-            'frame ${safeIndex + 1}/${frames.length} cursor:$cursor $currentTime',
-            style: const TextStyle(color: Colors.white70, fontSize: 11),
-          ),
+          Text('frame ${safeIndex + 1}/${frames.length} cursor:$cursor $currentTime', style: const TextStyle(color: Colors.white70, fontSize: 11)),
         ],
+      ),
+    );
+  }
+
+  Widget _layerStatusOverlay(MultiLevelChanSnapshot full, MultiLevelChanSnapshot current, String activeLevel) {
+    if (!_layerPanelExpanded) {
+      return Positioned(
+        right: 12,
+        bottom: 18,
+        child: Tooltip(
+          message: '恢复多级别图层状态窗口',
+          child: Material(
+            color: Colors.transparent,
+            child: OutlinedButton.icon(
+              onPressed: () => setState(() => _layerPanelExpanded = true),
+              icon: const Icon(Icons.layers, size: 16),
+              label: const Text('图层状态'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF8AB4FF),
+                backgroundColor: const Color(0xDD11141B),
+                side: const BorderSide(color: Color(0x668AB4FF)),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return Positioned(
+      right: 12,
+      top: _analysis == null ? 118 : (_analysis!.frames.isNotEmpty ? 270 : 190),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: MultiLevelLayerStatusPanel(
+          fullSnapshot: full,
+          currentSnapshot: current,
+          activeLevel: activeLevel,
+          clockMode: _viewState.clockMode,
+          compact: true,
+          onMinimize: () => setState(() => _layerPanelExpanded = false),
+        ),
+      ),
+    );
+  }
+
+  Widget _strictStepBlockedPanel() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(28),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0x332C1D1D),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFFFB74D)),
+        ),
+        child: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFFFB74D), size: 32),
+            SizedBox(height: 10),
+            Text('Strict step blocked: frames.length = 0', style: TextStyle(color: Color(0xFFFFB74D), fontSize: 15, fontWeight: FontWeight.w700)),
+            SizedBox(height: 8),
+            Text('当前是 step 模式，但后端未返回原生 step frames。页面不会用最终完整快照伪装逐K结果。请点击 Copy Step 复制诊断。', textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 12)),
+          ],
+        ),
       ),
     );
   }
@@ -662,8 +646,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   Widget _copyP0Button(PythonMultiLevelChanAnalysis analysis) {
     return OutlinedButton.icon(
       onPressed: () async {
-        await Clipboard.setData(
-            ClipboardData(text: _buildP0DiagnosticText(analysis)));
+        await Clipboard.setData(ClipboardData(text: _buildP0DiagnosticText(analysis)));
         _showMessage('P0 diagnostics copied');
       },
       icon: const Icon(Icons.copy, size: 14),
@@ -675,13 +658,90 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   Widget _copyStepButton(PythonMultiLevelChanAnalysis analysis) {
     return OutlinedButton.icon(
       onPressed: () async {
-        await Clipboard.setData(
-            ClipboardData(text: _buildStepDiagnosticText(analysis)));
+        await Clipboard.setData(ClipboardData(text: _buildStepDiagnosticText(analysis)));
         _showMessage('Step diagnostics copied');
       },
       icon: const Icon(Icons.copy, size: 14),
       label: const Text('Copy Step'),
       style: _copyButtonStyle(),
+    );
+  }
+
+  Widget _modeChip(String value, String label) {
+    final selected = _mode == value;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: _loading ? null : (_) => setState(() {
+        _mode = value;
+        _frameIndex = 0;
+      }),
+      selectedColor: const Color(0xFFFFD54F),
+      backgroundColor: const Color(0xFF20242E),
+      labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
+    );
+  }
+
+  Widget _levelChip(String level) {
+    final selected = _selectedLevels.contains(level);
+    return FilterChip(
+      label: Text(level),
+      selected: selected,
+      onSelected: _loading || _signalScanLoading
+          ? null
+          : (v) => setState(() {
+                if (v) {
+                  if (!_selectedLevels.contains(level)) _selectedLevels.add(level);
+                } else if (_selectedLevels.length > 1) {
+                  _selectedLevels.remove(level);
+                }
+              }),
+      selectedColor: const Color(0xFFFFD54F),
+      backgroundColor: const Color(0xFF20242E),
+      labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
+    );
+  }
+
+  Widget _dropdownInt(String label, int value, List<int> options, ValueChanged<int> onChanged) {
+    return SizedBox(
+      width: label == 'step frames' ? 130 : 96,
+      child: DropdownButtonFormField<int>(
+        value: value,
+        dropdownColor: const Color(0xFF20242E),
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        decoration: _decoration(label),
+        items: [
+          for (final option in options) DropdownMenuItem<int>(value: option, child: Text('$option')),
+        ],
+        onChanged: (_loading || _signalScanLoading) ? null : (v) {
+          if (v != null) onChanged(v);
+        },
+      ),
+    );
+  }
+
+  Widget _input(TextEditingController controller, String label, double width, {bool enabled = true}) {
+    return SizedBox(
+      width: width,
+      child: TextField(
+        controller: controller,
+        enabled: enabled && !_loading && !_signalScanLoading,
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        decoration: _decoration(label),
+      ),
+    );
+  }
+
+  InputDecoration _decoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white54, fontSize: 11),
+      isDense: true,
+      filled: true,
+      fillColor: const Color(0xFF1C2330),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white24)),
+      disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white12)),
     );
   }
 
@@ -703,56 +763,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: color.withValues(alpha: 0.45)),
       ),
-      child: Text(
-        '$label: $value',
-        style:
-            TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
-      ),
-    );
-  }
-
-  Widget _modeChip(String value, String label) {
-    final selected = _mode == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: _loading
-          ? null
-          : (_) => setState(() {
-                _mode = value;
-                _frameIndex = 0;
-              }),
-      selectedColor: const Color(0xFFFFD54F),
-      backgroundColor: const Color(0xFF20242E),
-      labelStyle: TextStyle(
-          color: selected ? Colors.black : Colors.white70, fontSize: 12),
-    );
-  }
-
-  Widget _input(TextEditingController controller, String label, double width) {
-    return SizedBox(
-      width: width,
-      child: TextField(
-        controller: controller,
-        enabled: !_loading,
-        style: const TextStyle(color: Colors.white, fontSize: 12),
-        decoration: _decoration(label),
-      ),
-    );
-  }
-
-  InputDecoration _decoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Colors.white54, fontSize: 11),
-      isDense: true,
-      filled: true,
-      fillColor: const Color(0xFF1C2330),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Colors.white24),
-      ),
+      child: Text('$label: $value', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
 
@@ -770,23 +781,17 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
 
   void _locateRelationTarget(RelationLocateRequest request) {
     final current = _current;
-    final levelSnapshot =
-        current?.of(request.level) ?? _full?.of(request.level);
+    final levelSnapshot = current?.of(request.level) ?? _full?.of(request.level);
     if (levelSnapshot == null || levelSnapshot.rawBars.isEmpty) return;
-    final endIndex =
-        _barListIndexForRawIndex(levelSnapshot, request.endRawIndex);
-    final startIndex =
-        _barListIndexForRawIndex(levelSnapshot, request.startRawIndex);
+    final endIndex = _barListIndexForRawIndex(levelSnapshot, request.endRawIndex);
+    final startIndex = _barListIndexForRawIndex(levelSnapshot, request.startRawIndex);
     final rangeWidth = (endIndex - startIndex).abs() + 18;
     setState(() {
       _viewState = _viewState.withActiveLevel(request.level);
-      _viewEndIndex =
-          endIndex.clamp(0, levelSnapshot.rawBars.length - 1).toInt();
-      if (rangeWidth > _windowSize)
-        _windowSize = rangeWidth.clamp(30, 260).toInt();
+      _viewEndIndex = endIndex.clamp(0, levelSnapshot.rawBars.length - 1).toInt();
+      if (rangeWidth > _windowSize) _windowSize = rangeWidth.clamp(30, 260).toInt();
       _crosshairIndex = _viewEndIndex;
-      _status =
-          'relation locate ${request.level} raw:${request.startRawIndex}-${request.endRawIndex}';
+      _status = 'relation locate ${request.level} raw:${request.startRawIndex}-${request.endRawIndex}';
     });
   }
 
@@ -813,22 +818,20 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     return 'analyze_multi STEP strict_step_blocked:true native:${meta['native_cchan_lv_list']} relation:${meta['level_relation_mode']} fallback:${meta['fallback_to_bridge'] ?? false} frames:0';
   }
 
-  String _buildStatus(PythonMultiLevelChanAnalysis analysis,
-      {MultiLevelChanSnapshot? snapshot}) {
+  String _buildStatus(PythonMultiLevelChanAnalysis analysis, {MultiLevelChanSnapshot? snapshot}) {
     final snap = snapshot ?? analysis.snapshot;
     final meta = analysis.meta;
     final native = meta['native_cchan_lv_list'];
     final fallback = meta['fallback_to_bridge'];
     final relationMode = meta['level_relation_mode'];
-    return 'analyze_multi ${_mode.toUpperCase()} native:$native relation:$relationMode fallback:${fallback ?? false} relations:${snap.relations.length} frames:${analysis.frames.length} ${_buildCompactLevelSummary(snap)}';
+    return 'analyze_multi ${_mode.toUpperCase()} native:$native relation:$relationMode fallback:${fallback ?? false} relations:${snap.relations.length} frames:${analysis.frames.length} window:${_startController.text}~${_endController.text} ${_buildCompactLevelSummary(snap)}';
   }
 
   String _buildCompactLevelSummary(MultiLevelChanSnapshot snapshot) {
     final parts = <String>[];
     for (final level in snapshot.levels) {
       final s = snapshot.of(level);
-      if (s != null)
-        parts.add('$level K:${s.rawBars.length} BI:${s.bis.length}');
+      if (s != null) parts.add('$level K:${s.rawBars.length} BI:${s.bis.length}');
     }
     return parts.join(' | ');
   }
@@ -838,8 +841,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     for (final level in snapshot.levels) {
       final s = snapshot.of(level);
       if (s == null) continue;
-      parts.add(
-          '$level K:${s.rawBars.length} BI:${s.bis.length} FX:${s.fxs.length} SEG:${s.segs.length} ZS:${s.zss.length} BSP:${s.bsps.length}');
+      parts.add('$level K:${s.rawBars.length} BI:${s.bis.length} FX:${s.fxs.length} SEG:${s.segs.length} ZS:${s.zss.length} BSP:${s.bsps.length}');
     }
     return parts.join(' | ');
   }
@@ -855,6 +857,11 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'symbol: ${_symbolController.text.trim()}',
       'market: ${_marketController.text.trim().toUpperCase()}',
       'levels: ${snapshot.levels.join(',')}',
+      'selected_lv_list: ${_levels.join(',')}',
+      'count: $_count',
+      'max_step_frames: $_maxStepFrames',
+      'start: ${_startController.text.trim()}',
+      'end: ${_endController.text.trim()}',
       'strict_step_blocked: $_stepFramesEmpty',
       'native_cchan_lv_list: ${meta['native_cchan_lv_list']}',
       'level_relation_mode: ${meta['level_relation_mode']}',
@@ -880,16 +887,11 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final meta = analysis.meta;
     final frames = analysis.frames;
     final hasFrame = frames.isNotEmpty;
-    final safeIndex =
-        hasFrame ? _frameIndex.clamp(0, frames.length - 1).toInt() : 0;
+    final safeIndex = hasFrame ? _frameIndex.clamp(0, frames.length - 1).toInt() : 0;
     final frame = hasFrame ? frames[safeIndex] : null;
     final frameMeta = frame?.meta ?? const <String, dynamic>{};
-    final currentFrameStatus = hasFrame && frame != null
-        ? _buildStatus(analysis, snapshot: frame)
-        : '<none; strict step blocked>';
-    final currentFrameSummary = hasFrame && frame != null
-        ? _buildLevelSummary(frame)
-        : '<none; strict step blocked>';
+    final currentFrameStatus = hasFrame && frame != null ? _buildStatus(analysis, snapshot: frame) : '<none; strict step blocked>';
+    final currentFrameSummary = hasFrame && frame != null ? _buildLevelSummary(frame) : '<none; strict step blocked>';
     return [
       'manual step diagnostics',
       'button: Copy Step',
@@ -902,6 +904,11 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'symbol: ${_symbolController.text.trim()}',
       'market: ${_marketController.text.trim().toUpperCase()}',
       'levels: ${analysis.snapshot.levels.join(',')}',
+      'selected_lv_list: ${_levels.join(',')}',
+      'count: $_count',
+      'max_step_frames: $_maxStepFrames',
+      'start: ${_startController.text.trim()}',
+      'end: ${_endController.text.trim()}',
       'frame.index.local: ${hasFrame ? '$safeIndex' : ''}',
       'frame.number.local: ${hasFrame ? '${safeIndex + 1}/${frames.length}' : '0/${frames.length}'}',
       'frame.cursor.native: ${frameMeta['cursor'] ?? frameMeta['frame_index'] ?? ''}',
@@ -909,10 +916,9 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'native_cchan_lv_list: ${meta['native_cchan_lv_list']}',
       'level_relation_mode: ${meta['level_relation_mode']}',
       'fallback_to_bridge: ${meta['fallback_to_bridge'] ?? false}',
-      'native_failure: ${meta['native_failure'] ?? ''}',
-      'backend_url: ${meta['backend_url'] ?? ''}',
       'python_runtime: ${meta['python_runtime'] ?? ''}',
       'backend_runtime: ${meta['backend_runtime'] ?? ''}',
+      'native_failure: ${meta['native_failure'] ?? ''}',
       'native_step_frames: ${meta['native_step_frames'] ?? false}',
       'native_step_frames_total: ${meta['native_step_frames_total'] ?? ''}',
       'native_step_frames_returned: ${meta['native_step_frames_returned'] ?? ''}',
