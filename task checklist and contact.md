@@ -6,7 +6,7 @@ This file is the project manual for the multi-level and interval-nest work.
 
 ## Current review baseline
 
-Latest observed head before this supervisor update: 29e2d190166d93bec3291ab79a05a9a2aaad263f
+Latest observed head before this supervisor update: ad67d5e6f2cb8154839b81755354a1413cd4ced0
 Latest multi-level strict-step UI commit: 763d6219e7aaa5732f7d62aca1474c5a0c4b9303
 Latest multi-level compile-fix commit: 62767e6d7134e2512901ef876514a61f39a8f1af
 Latest single-level strict replay page commit: bb5f9faeeea18bffdd12afd4f5d4b3d0d3790d70
@@ -23,6 +23,7 @@ Latest layer status default-minimized wiring commit: 2cba9fc38e3ed7842036965665e
 Latest analyzer cleanup commit: b9d0994286f4f070f771f34af11dd7ef593e1444
 Latest no-signal diagnostic enhancement commit: 1653fd995e3ffe9c8a2d0e6f067463e29713a025
 Latest duplicate Copy Step cleanup commit: 6ebe90c626d673122dab45f3db41a833eca45f8e
+Latest collapsed tool panels commit: 0bceb90f210dec4e62faf4b7ed7952a46f12fd34
 Latest manual update commit: pending
 
 ## User objective
@@ -58,6 +59,7 @@ The file named `task checklist and contact.md` is the project manual. Future tas
 - MultiLevelReplayPage has `Copy P0`, `Copy Step`, `Copy Relation`, and `Copy Signal` diagnostics.
 - MultiLevelReplayPage fails loudly when step frames are empty.
 - Multi-level layer status no longer covers action buttons on initial load; it is minimized by default and restored by the bottom-right `图层状态` button.
+- Relation targeting and Interval signal panels no longer consume chart height by default; they are collapsed behind the `工具面板` strip and can be expanded only when needed.
 - The duplicate Copy Step button in the step-control bar was removed; Copy Step remains in the diagnostics/P0 bar.
 - `OriginReplayStrictPage` uses backend returned frames only in step mode and has one-click `Copy Step` diagnostics.
 - Batch B relation targeting implementation has been supervisor-verified in code and runtime-accepted by Copy Relation diagnostics.
@@ -66,7 +68,7 @@ The file named `task checklist and contact.md` is the project manual. Future tas
 
 - Multi-level lightweight step is verified, but full-history non-truncated or paged step replay is not accepted yet.
 - Legacy `OriginReplayPageV2` still exists and still contains `_sliceSnapshot`; it is not the active Replay route now, but should be deleted, renamed legacy, or refactored later if direct use is needed.
-- Batch C signal MVP is implemented in code but not runtime-accepted yet because the copied current frame had no signal.
+- Batch C signal MVP is implemented in code but not runtime-accepted yet because copied current frames have no DAILY/MIN30 MVP signal.
 
 ## Batch A: Strict step replay closure
 
@@ -89,11 +91,11 @@ Implementation status:
 
 ## Batch C: Interval-nest signal engine MVP
 
-Status: implemented in code; runtime Copy Signal verification pending.
+Status: implemented in code; runtime Copy Signal acceptance pending.
 
 Implemented scope:
 - Added `MultiLevelIntervalSignalPanel`.
-- Wired `MultiLevelIntervalSignalPanel` into `MultiLevelReplayPage` after Relation targeting.
+- Wired `MultiLevelIntervalSignalPanel` into `MultiLevelReplayPage`.
 - The panel receives current-frame `MultiLevelChanSnapshot` in step mode, not the final snapshot.
 - The MVP scans current-frame DAILY->MIN30 only.
 - Signal sources are original chan.py BSP points from the high and low levels plus native `LevelRelation` ranges.
@@ -117,25 +119,36 @@ UI obstruction and duplication fixes:
 - `2cba9fc38e3ed7842036965665ef83e6ce8026f4`: changed `MultiLevelReplayPage` so layer status is minimized by default and restored by the bottom-right `图层状态` button.
 - `b9d0994286f4f070f771f34af11dd7ef593e1444`: cleared strict replay final-field analyzer hints.
 - `6ebe90c626d673122dab45f3db41a833eca45f8e`: removed duplicate Copy Step button from the step-control bar.
+- `0bceb90f210dec4e62faf4b7ed7952a46f12fd34`: collapsed Relation targeting and Interval signal panels by default so the K-line chart retains vertical space.
 
-User Copy Signal result:
-- mode: step
-- symbol: 600340
-- frame.index.local: 0
-- frame.count.local: 24
-- signal_source: original chan.py BSP + native LevelRelation
-- available_signals: 0
-- status: no signal for DAILY/MIN30 MVP scope
+User Copy Signal results:
+- First copied frame showed `available_signals: 0` for symbol 600340 at frame 0/24.
+- Second copied frame showed symbol 000001 at frame 23/24:
+  - signal_source: original chan.py BSP + native LevelRelation
+  - signal_scope: DAILY/MIN30 MVP
+  - available_signals: 0
+  - high_level: DAILY
+  - low_level: MIN30
+  - high_bsp_count: 0
+  - high_buy_type2_count: 0
+  - high_buy_type3_count: 0
+  - low_bsp_count: 15
+  - low_buy_type1_count: 2
+  - low_buy_type2_count: 3
+  - native_relation_count: 100
+  - future_function_policy: current frame only; no final snapshot signal confirmation
+  - status: no signal for DAILY/MIN30 MVP scope
 
 Interpretation:
-- The current copied frame does not contain a DAILY/MIN30 MVP interval-nest signal.
-- This does not prove the signal engine is invalid; it means Batch C is not accepted yet because no actual signal instance was available in the copied frame.
-- The next Copy Signal output should use the enhanced diagnostics to decide whether the frame truly lacks matching BSPs or whether BSP type matching needs adjustment.
+- For the second copied frame, MIN30 has BSP and native relations, but DAILY has no BSP in the current frame.
+- Therefore the current frame cannot produce DAILY/MIN30 MVP interval-nest signals under the defined rules.
+- This supports the conclusion that the copied frame has no matching high-level BSP input; it is not evidence of a synthetic signal failure.
+- Batch C is still not accepted because no actual signal instance has been copied yet.
 
-Copy Signal expected fields:
+Copy Signal expected fields for an accepted signal:
 - `signal_source: original chan.py BSP + native LevelRelation`
 - `signal_scope: DAILY/MIN30 MVP`
-- `available_signals`
+- `available_signals: >0`
 - `direction`
 - `state`
 - `high_level`, `high_pattern`, `high_bsp_index`, `high_bsp_type`, `high_raw_index`, `high_time`
@@ -145,10 +158,10 @@ Copy Signal expected fields:
 - `visibleAt.frame`
 - `confirmedAt.frame`
 - `future_function_policy`
-- `status`
+- `status: ok`
 
 Batch C acceptance rule:
-- Batch C is not accepted until the user pastes Copy Signal diagnostics with at least one actual signal or provides enhanced no-signal diagnostics proving the current sample window has no matching BSP inputs.
+- Batch C is not accepted until the user pastes Copy Signal diagnostics with at least one actual signal.
 - Copy Signal for an actual signal must show source BSP ids/indices, parent relation range, child relation range, visibleAt/confirmedAt, and candidate/confirmed/invalidated state.
 - No synthetic Chan structures are allowed.
 
@@ -156,6 +169,7 @@ Batch C acceptance rule:
 
 - Pull latest.
 - Run `flutter analyze` and `flutter run`.
-- Confirm duplicate Copy Step no longer appears in the step-control bar.
-- Confirm Copy Step still appears in the diagnostics/P0 bar.
-- Click `Copy Signal` again and paste the enhanced no-signal diagnostics, or move the step slider to later frames and paste a Copy Signal output with available_signals > 0.
+- Confirm K-line chart is visible by default after load.
+- Confirm Relation targeting and Interval signal are collapsed behind the `工具面板` strip.
+- Click `区间信号` only when you need to run `Copy Signal`.
+- To find a signal instance, increase count or move through later frames, then paste a Copy Signal output with `available_signals > 0`.
