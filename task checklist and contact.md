@@ -20,18 +20,21 @@ Branch: origin_vespa_tdx
 - Multi-level page has `Copy P0`, `Copy Step`, `Copy Relation`, and `Copy Signal` diagnostics.
 - Layer status, relation panel, and interval panel no longer cover chart/action buttons by default.
 - Duplicate `Copy Step` button was removed from the step control bar.
+- Missing `python/a_server.py` auto-start fallback was removed. The app now uses only the backend URL entered in the UI.
 
 ## Current latest commits
 
 - `dd1f52b9e55ee45f6066bd41ef448972c5625c0b`: added `Scan Signal` workflow and guarded large step counts.
 - `63e54230189d97b2c247d185d95c105d935ec462`: extended once-mode timeout for larger count scans.
 - `8a1ddfa2c56741738752d14d6e631552eb912e91`: restored `_PythonMultiLevelBackendMismatch` and fixed analyzer/build errors.
+- `93aaa753b1e391132439e88167677ddd7cc6fd65`: removed the nonexistent `python/a_server.py` auto-start fallback.
 
 ## Current blockers
 
 - Full-history/paged strict step replay is not accepted yet.
 - Legacy `OriginReplayPageV2` still exists and still contains `_sliceSnapshot`; it is no longer the active route.
 - Batch C interval candidate MVP is implemented but not accepted until `Copy Signal` returns an actual candidate result or enough diagnostics prove the selected window has no matching high-level BSP inputs.
+- The user must run a real chan.py backend exposing `/api/chan/analyze_multi` at the backend URL shown in the UI.
 
 ## Batch C current workflow
 
@@ -47,6 +50,12 @@ Solution implemented:
 - `Scan Signal` uses `analyze_multi` with `mode=once`, so it does not return hundreds of step frames.
 - The chart can keep displaying the lightweight replay while the interval panel scans the larger once snapshot.
 
+Backend requirement:
+
+- The app no longer attempts to start `python/a_server.py` because that file is not in this repository.
+- Start the correct backend yourself and set the UI backend field to its URL, usually `http://127.0.0.1:8000`.
+- The backend must expose `/api/chan/analyze_multi`.
+
 Acceptance rule:
 
 - `Copy Signal` must show source BSP indices, parent/child relation range, visible/confirmed timing fields, and `status: ok` for an actual candidate.
@@ -56,8 +65,9 @@ Acceptance rule:
 
 1. `git pull`
 2. `flutter analyze`
-3. `flutter run`
-4. Keep `mode=step`, set `count` around 40, and click `Load` for chart replay.
-5. To search larger history, set `count=600` and click `Scan Signal`, not `Load`.
-6. After scanning, click `区间信号`, then click `Copy Signal`.
-7. Paste the copied diagnostics.
+3. Start the correct chan.py backend exposing `/api/chan/analyze_multi`.
+4. `flutter run`
+5. Keep `mode=step`, set `count` around 40, and click `Load` for chart replay.
+6. To search larger history, set `count=600` and click `Scan Signal`, not `Load`.
+7. After scanning, click `区间信号`, then click `Copy Signal`.
+8. Paste the copied diagnostics.
