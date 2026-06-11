@@ -10,6 +10,7 @@ class MultiLevelLayerStatusPanel extends StatelessWidget {
   final String activeLevel;
   final ReplayClockMode clockMode;
   final bool compact;
+  final VoidCallback? onMinimize;
 
   const MultiLevelLayerStatusPanel({
     super.key,
@@ -18,6 +19,7 @@ class MultiLevelLayerStatusPanel extends StatelessWidget {
     required this.activeLevel,
     this.clockMode = ReplayClockMode.once,
     this.compact = false,
+    this.onMinimize,
   });
 
   @override
@@ -56,6 +58,20 @@ class MultiLevelLayerStatusPanel extends StatelessWidget {
               _chip(clockMode.label, clockMode.isStepMode
                   ? const Color(0xFFFFD54F)
                   : const Color(0xFF8AB4FF)),
+              if (onMinimize != null) ...[
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: '最小化图层状态',
+                  child: InkWell(
+                    onTap: onMinimize,
+                    borderRadius: BorderRadius.circular(999),
+                    child: const Padding(
+                      padding: EdgeInsets.all(3),
+                      child: Icon(Icons.remove, size: 15, color: Colors.white70),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 8),
