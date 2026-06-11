@@ -48,6 +48,7 @@ Branch: origin_vespa_tdx
 - App-bundled Python implementation exists in latest code.
 - App-bundled Python runtime is runtime-accepted by user Copy P0 diagnostics.
 - Fresh multi-level `Load` works through App-managed bundled Python backend at an app-assigned localhost port.
+- Arbitrary BSP pair strict-step validation is runtime-accepted using real easy-tdx/original chan.py data.
 
 ## Runtime verification accepted: App-bundled Python / Copy P0
 
@@ -122,14 +123,61 @@ Copy Signal now exports:
 - `strict_step_verified` and `visibleAt.frame` / `confirmedAt.frame` when mode is step
 - scan-mode candidates are explicitly marked as candidate-only and not strict-step accepted
 
+## Runtime verification accepted: arbitrary BSP strict-step validation
+
+User reported Copy Signal:
+
+- mode: `step`
+- symbol: `600340`
+- frame.index.local: `59`
+- frame.count.local: `60`
+- signal_rule_mode: `validation_any_bsp_pair`
+- signal_scope: `arbitrary adjacent native relation pair`
+- scan_candidate_only: `false`
+- strict_step_frame_mode: `true`
+- available_pairs: `DAILY->MIN30,MIN30->MIN5`
+- selected_pair: `MIN30->MIN5`
+- parent_level: `MIN30`
+- child_level: `MIN5`
+- direction_filter: `same`
+- high_type_filter: `ANY`
+- low_type_filter: `ANY`
+- available_signals: `1`
+- direction: `buy`
+- state: `confirmed`
+- strict_step_verified: `true`
+- high_level: `MIN30`
+- high_bsp_type: `B1`
+- high_raw_index: `544`
+- high_time: `2025-10-13 10:00:00.000`
+- high_confirmed: `true`
+- low_level: `MIN5`
+- low_bsp_type: `B1`
+- low_raw_index: `3264`
+- low_time: `2025-10-13 09:35:00.000`
+- low_confirmed: `true`
+- parent_relation_range: `544-544`
+- child_relation_range: `3264-3269`
+- child_union_range: `3264-3269`
+- low_in_child_range: `true`
+- relation_count_for_parent: `1`
+- native_relation_count_for_pair: `768`
+- visibleAt.frame: `59`
+- confirmedAt.frame: `59`
+- future_function_policy: `current strict step frame only; no final snapshot signal confirmation`
+- status: `ok`
+
+Decision:
+
+- Arbitrary BSP pair validation is runtime-accepted.
+- The accepted sample uses real easy-tdx/original backend data, not a fixture.
+- The proof chain is complete: original chan.py high BSP + original chan.py low BSP + native LevelRelation + low-in-child-range + strict step current frame visibility.
+- Temporary fixture is no longer required for this validation target.
+- This remains an engineering validation mode, not a trading plan or strategy recommendation.
+
 ## Temporary fixture attempt
 
 User requested a temporary deterministic fixture to verify the interval validation chain.
-
-Attempted approach:
-
-- Add an explicit temporary fixture dataset that guarantees one parent BSP and one child BSP inside a relation range.
-- Mark it as `validation_fixture:true` and delete it after validation.
 
 Result:
 
@@ -137,28 +185,19 @@ Result:
 - A smaller frontend fixture stub was created, but its compile fix was blocked by the platform safety check.
 - The unfinished fixture stub was removed in `0f628cd9c846c4483e7d65bf1635e27924ce1880`.
 - Current branch retains no fixture code and continues to use easy-tdx/original backend data flow plus arbitrary BSP validation mode.
-
-Next safe fixture plan:
-
-- Reattempt only as a tiny debug-only UI injection with no backend changes, or wait for local developer patching.
-- Any fixture must be disabled by default, clearly labelled, and removed after validation.
-- Do not merge fixture output into strategy or real-market acceptance.
+- Because real-data strict-step validation has now passed, a fixture is no longer required for the current validation target.
 
 ## Current blockers / pending verification
 
-- Run `flutter analyze` on latest branch after arbitrary BSP validation changes.
-- Runtime-verify arbitrary BSP validation mode with Copy Signal output.
-- Batch C strict-step verification is still pending until Copy Signal in step mode returns enough evidence for a candidate.
+- Run `flutter analyze` on latest branch after arbitrary BSP validation changes if not already done.
 - Full-history/paged strict step replay is not accepted yet.
 - Legacy `OriginReplayPageV2` still exists and still contains `_sliceSnapshot`; it is no longer the active route.
+- Strategy-grade interval signal rules are not finalized; current accepted result is validation mode only.
 
 ## Next task-party operation
 
 1. Run `git pull`.
 2. Run `flutter analyze`.
-3. Run the app fresh without manually starting external Python.
-4. Load a candidate-date step window or any step window with available BSPs.
-5. Open `区间信号`.
-6. Select a native relation pair, direction filter, and BSP type filters.
-7. Click `Copy Signal`.
-8. Paste Copy Signal diagnostics to determine whether strict-step validation can be accepted.
+3. Continue only if analyze is clean.
+4. Keep arbitrary BSP validation mode for diagnostics.
+5. If turning this into a strategy feature later, add separate strategy rules instead of using validation mode as a trading signal.
