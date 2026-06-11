@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
@@ -25,6 +26,84 @@ class PythonMultiLevelChanAnalysis {
 
   bool get hasFrames => frames.isNotEmpty;
   bool get hasSignals => intervalNestSignals.isNotEmpty;
+}
+
+class _LazyMultiLevelFrameList extends ListBase<MultiLevelChanSnapshot> {
+  final List<dynamic> rawFrames;
+  final Object? baseLevels;
+  final Map<String, dynamic> timeLog;
+  final Map<int, MultiLevelChanSnapshot> _cache = <int, MultiLevelChanSnapshot>{};
+
+  _LazyMultiLevelFrameList({
+    required this.rawFrames,
+    required this.baseLevels,
+    required this.timeLog,
+  });
+
+  @override
+  int get length => rawFrames.length;
+
+  @override
+  set length(int newLength) => throw UnsupportedError('Lazy frame list length is fixed.');
+
+  @override
+  MultiLevelChanSnapshot operator [](int index) {
+    final cached = _cache[index];
+    if (cached != null) {
+      timeLog['lazy_frame_cache_hits'] = _toInt(timeLog['lazy_frame_cache_hits']) + 1;
+      return cached;
+    }
+    if (index < 0 || index >= rawFrames.length) {
+      throw RangeError.index(index, this, 'index', null, rawFrames.length);
+    }
+    final sw = Stopwatch()..start();
+    final parsed = MultiLevelChanAnalysisParser.parseFrame(
+      rawFrames[index],
+      baseLevels: baseLevels,
+      parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
+    );
+    sw.stop();
+    if (parsed == null) {
+      throw StateError('Failed to parse compact frame at index $index');
+    }
+    final enriched = _withMeta(parsed, {
+      'time_log': timeLog,
+      'time_log_frame_index': index,
+      'lazy_frame_cache_hit': false,
+    });
+    _cache[index] = enriched;
+    timeLog['lazy_frame_cache_misses'] = _toInt(timeLog['lazy_frame_cache_misses']) + 1;
+    timeLog['parsed_frame_count'] = _cache.length;
+    timeLog['lazy_frame_parse_ms'] = _toInt(timeLog['lazy_frame_parse_ms']) + sw.elapsedMilliseconds;
+    timeLog['lazy_frame_last_index'] = index;
+    timeLog['lazy_frame_last_parse_ms'] = sw.elapsedMilliseconds;
+    return enriched;
+  }
+
+  @override
+  void operator []=(int index, MultiLevelChanSnapshot value) {
+    throw UnsupportedError('Lazy frame list is read-only.');
+  }
+
+  static int _toInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('$value') ?? 0;
+  }
+
+  static MultiLevelChanSnapshot _withMeta(
+    MultiLevelChanSnapshot snapshot,
+    Map<String, dynamic> extraMeta,
+  ) {
+    final meta = Map<String, dynamic>.from(snapshot.meta)..addAll(extraMeta);
+    return MultiLevelChanSnapshot(
+      mainLevel: snapshot.mainLevel,
+      levels: snapshot.levels,
+      snapshots: snapshot.snapshots,
+      relations: snapshot.relations,
+      meta: meta,
+    );
+  }
 }
 
 class PythonMultiLevelChanAnalysisSource {
@@ -207,14 +286,29 @@ class PythonMultiLevelChanAnalysisSource {
       throw const FormatException('chan.py multi-level response missing levels structure');
     }
 
+    final decodedMeta = decoded['meta'] is Map
+        ? Map<String, dynamic>.from(decoded['meta'] as Map)
+        : const <String, dynamic>{};
     final rawFrames = decoded['frames'];
     final rawFrameCount = rawFrames is List ? rawFrames.length : 0;
+    final useLazyFrames = rawFrameCount > 0 &&
+        '${decodedMeta['step_frame_format'] ?? ''}'.trim() == 'compact_v1';
+
+    late final List<MultiLevelChanSnapshot> frames;
     final framesParseSw = Stopwatch()..start();
-    final frames = MultiLevelChanAnalysisParser.parseFrames(
-      rawFrames,
-      baseLevels: decoded['levels'],
-      parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
-    );
+    if (useLazyFrames) {
+      frames = _LazyMultiLevelFrameList(
+        rawFrames: List<dynamic>.from(rawFrames as List),
+        baseLevels: decoded['levels'],
+        timeLog: <String, dynamic>{},
+      );
+    } else {
+      frames = MultiLevelChanAnalysisParser.parseFrames(
+        rawFrames,
+        baseLevels: decoded['levels'],
+        parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
+      );
+    }
     stages['frontend.parse.frames'] = framesParseSw.elapsedMilliseconds;
 
     final signalsParseSw = Stopwatch()..start();
@@ -224,21 +318,14 @@ class PythonMultiLevelChanAnalysisSource {
     stages['frontend.parse.interval_signals'] = signalsParseSw.elapsedMilliseconds;
     stages['frontend.parse.snapshot_frames_relations_bsp'] = parseSw.elapsedMilliseconds;
 
-    final decodedMeta = decoded['meta'] is Map
-        ? Map<String, dynamic>.from(decoded['meta'] as Map)
-        : const <String, dynamic>{};
-    final analysis = PythonMultiLevelChanAnalysis(
-      snapshot: snapshot,
-      frames: frames,
-      intervalNestSignals: intervalSignals,
-      meta: decodedMeta,
-    );
-
-    final meta = Map<String, dynamic>.from(analysis.meta);
+    final meta = Map<String, dynamic>.from(decodedMeta);
     meta['raw_frame_count'] = rawFrameCount;
-    meta['parsed_frame_count'] = frames.length;
+    meta['parsed_frame_count'] = useLazyFrames ? 0 : frames.length;
     meta['parsed_level_count'] = snapshot.levels.length;
-    meta['lazy_frame_parsing'] = false;
+    meta['lazy_frame_parsing'] = useLazyFrames;
+    meta['lazy_frame_cache_hits'] = 0;
+    meta['lazy_frame_cache_misses'] = 0;
+    meta['lazy_frame_parse_ms'] = 0;
     if (backendDiagnostics != null) {
       meta['backend_runtime'] = backendDiagnostics;
       meta['backend_url'] = backendDiagnostics['backend_url'];
@@ -256,18 +343,25 @@ class PythonMultiLevelChanAnalysisSource {
       responseBytes: responseBytes,
     );
     meta['time_log'] = timeLog;
-    final enrichedSnapshot = _snapshotWithMeta(analysis.snapshot, {'time_log': timeLog});
-    final enrichedFrames = [
-      for (var i = 0; i < analysis.frames.length; i++)
-        _snapshotWithMeta(analysis.frames[i], {
-          'time_log': timeLog,
-          'time_log_frame_index': i,
-        }),
-    ];
+    final enrichedSnapshot = _snapshotWithMeta(snapshot, {'time_log': timeLog});
+    final List<MultiLevelChanSnapshot> enrichedFrames;
+    if (frames is _LazyMultiLevelFrameList) {
+      final lazyFrames = frames as _LazyMultiLevelFrameList;
+      lazyFrames.timeLog.addAll(timeLog);
+      enrichedFrames = lazyFrames;
+    } else {
+      enrichedFrames = [
+        for (var i = 0; i < frames.length; i++)
+          _snapshotWithMeta(frames[i], {
+            'time_log': timeLog,
+            'time_log_frame_index': i,
+          }),
+      ];
+    }
     return PythonMultiLevelChanAnalysis(
       snapshot: enrichedSnapshot,
       frames: enrichedFrames,
-      intervalNestSignals: analysis.intervalNestSignals,
+      intervalNestSignals: intervalSignals,
       meta: meta,
     );
   }
@@ -319,6 +413,9 @@ class PythonMultiLevelChanAnalysisSource {
       'parsed_frame_count': meta['parsed_frame_count'],
       'parsed_level_count': meta['parsed_level_count'],
       'lazy_frame_parsing': meta['lazy_frame_parsing'],
+      'lazy_frame_cache_hits': meta['lazy_frame_cache_hits'],
+      'lazy_frame_cache_misses': meta['lazy_frame_cache_misses'],
+      'lazy_frame_parse_ms': meta['lazy_frame_parse_ms'],
       'stages': Map<String, int>.from(stages),
       'used_app_bundled_python': (meta['python_runtime'] ?? runtime['python_runtime']) == 'app_bundled',
       'native_cchan_lv_list': meta['native_cchan_lv_list'],
