@@ -22,6 +22,7 @@ Branch: origin_vespa_tdx
 - `c30e8fba5aaf7cf54931d13e03b3bac3bbba461d`: recorded the first positive Scan Signal candidate.
 - `c79e30337a302e38e4e5825d8e0ffbe77ee85549`: removed an obsolete diagnostic stub that checked old backend paths.
 - `2a85cd1064e2a3505e01794ec0c86deaef5e8507`: added candidate-date step window controls and lv_list selectors.
+- `9ddec3bb67811a178fb15ff640280a9cc84edf26`: added arbitrary level/BSP validation mode in Copy Signal.
 
 ## Current verified code status
 
@@ -94,26 +95,42 @@ Implemented in `MultiLevelReplayPage`:
 - `count` is selectable through a dropdown: `40`, `80`, `120`, `220`, `600`.
 - `max_step_frames` is selectable through a dropdown: `24`, `40`, `60`, `120`.
 - `start` and `end` date fields are shown in the header and are passed to `analyze_multi` for both `Load` and `Scan Signal`.
-- The `候选窗口 2025-10-13` button sets:
-  - mode: `step`
-  - lv_list: `DAILY,MIN30,MIN5`
-  - count: `220`
-  - max_step_frames: `60`
-  - start: `2025-09-01`
-  - end: `2025-10-20`
+- The `候选窗口 2025-10-13` button sets mode/levels/count/window for candidate verification.
 - `Copy P0` and `Copy Step` include selected lv_list, count, max_step_frames, start, and end.
 
-Purpose:
+## Arbitrary BSP validation mode
 
-- The found candidate occurred on `2025-10-13`.
-- The default latest-data window around 2026 cannot strict-step verify that candidate.
-- The new date window controls let step replay load a window that includes the candidate date.
+Implemented in `MultiLevelIntervalSignalPanel`:
+
+- The old fixed DAILY/MIN30 MVP-only scan is replaced by a validation-oriented arbitrary BSP pair scanner.
+- The panel derives selectable level pairs from native `LevelRelation` pairs in the current snapshot.
+- User can choose parent-child pair such as `DAILY->MIN30` or `MIN30->MIN5` when such relation exists.
+- Direction filter is selectable: `all`, `same`, `buy`, `sell`, `mixed`.
+- High BSP type filter is selectable from actual high-level BSP types in the current snapshot.
+- Low BSP type filter is selectable from actual low-level BSP types in the current snapshot.
+- Default rule mode is `validation_any_bsp_pair`.
+- Candidate rule is: parent-level BSP from original chan.py + child-level BSP from original chan.py, with low BSP raw index inside the native LevelRelation child range for the selected parent BSP.
+- This validation mode is for proving the engineering chain, not for defining a final trading strategy.
+
+Copy Signal now exports:
+
+- `signal_rule_mode`
+- `selected_pair`
+- `available_pairs`
+- `direction_filter`
+- `high_type_filter`
+- `low_type_filter`
+- high/low BSP counts and type counts when no signal matches
+- high/low BSP index, type, raw index, time, price, confirmed flag, BI/SEG/ZS index when matched
+- parent relation range, child relation range, child union range, and low-in-child-range proof
+- `strict_step_verified` and `visibleAt.frame` / `confirmedAt.frame` when mode is step
+- scan-mode candidates are explicitly marked as candidate-only and not strict-step accepted
 
 ## Current blockers / pending verification
 
-- Run `flutter analyze` on latest branch after candidate-date UI changes.
-- Runtime-verify that `候选窗口 2025-10-13` loads step frames covering the candidate date.
-- Batch C strict-step verification is still pending for the discovered scan candidate.
+- Run `flutter analyze` on latest branch after arbitrary BSP validation changes.
+- Runtime-verify arbitrary BSP validation mode with Copy Signal output.
+- Batch C strict-step verification is still pending until Copy Signal in step mode returns enough evidence for a candidate.
 - Full-history/paged strict step replay is not accepted yet.
 - Legacy `OriginReplayPageV2` still exists and still contains `_sliceSnapshot`; it is no longer the active route.
 
@@ -121,59 +138,41 @@ Purpose:
 
 Problem observed:
 
-- Increasing `step` replay count to 600 caused `step_load` timeout.
-- Root cause: step replay returns many frame snapshots and is not suitable for large-range candidate search.
+- Fixed buy-point combinations were too narrow for engineering verification.
+- A step frame can have low-level BSP and native relations, but no high-level BSP; fixed combo rules cannot produce candidates in that frame.
+- Engineering verification should not be blocked by one strategy combo.
 
 Implemented solution:
 
-- Keep replay in `step` mode with a bounded date window and selected `max_step_frames`.
-- To search a larger range, enter a larger count such as 600 and click `Scan Signal`.
-- `Scan Signal` uses `analyze_multi` with `mode=once`, so it does not return hundreds of step frames.
-- The chart can keep displaying the lightweight replay while the interval panel scans the larger once snapshot.
+- Keep strategy-style MVP combinations as a future policy layer.
+- Use arbitrary BSP validation mode to prove original chan.py BSP + native LevelRelation + strict step visibility.
+- The found scan candidate remains useful, but the validation panel can also prove other level/BSP combinations.
 
-Positive candidate found through Copy Signal:
+Previously positive scan candidate:
 
 - mode: `signal_scan_once`
 - symbol: `600340`
 - available_signals: `1`
 - direction: `buy`
 - state: `confirmed`
-- score: `1.0`
 - high_level: `DAILY`
 - high_pattern: `2-buy`
-- high_bsp_index: `4`
 - high_bsp_type: `B2s`
-- high_raw_index: `239`
 - high_time: `2025-10-13 23:59:00.000`
 - low_level: `MIN30`
 - low_trigger: `1-buy`
-- low_bsp_index: `16`
 - low_bsp_type: `B1`
-- low_raw_index: `1912`
 - low_time: `2025-10-13 10:00:00.000`
-- parent_relation_range: `239-239`
-- child_relation_range: `1912-1919`
-- child_union_range: `1912-1919`
 - relation_count_for_parent: `1`
-- signal_source: `original chan.py BSP + native LevelRelation`
-- future_function_policy: `current frame only; no final snapshot signal confirmation`
 - status: `ok`
-
-Interpretation:
-
-- Batch C scan-mode candidate discovery works over a once-mode scan snapshot.
-- Source BSP fields and native relation range are present.
-- The discovered candidate is accepted as a scan-mode interval-nest MVP candidate.
-- It is not yet strict-step accepted because `visibleAt.frame`, `confirmedAt.frame`, and `invalidatedAt.frame` are blank in scan mode.
-- The warning says `Accepted on current lightweight step frame only`, but the mode is `signal_scan_once`; this wording should be corrected to avoid confusing scan-mode acceptance with strict-step acceptance.
 
 ## Next task-party operation
 
 1. Run `git pull`.
 2. Run `flutter analyze`.
 3. Run the app fresh without manually starting external Python.
-4. In multi-level page, click `候选窗口 2025-10-13`.
-5. Click `Copy P0` and `Copy Step`.
-6. Confirm the step window includes `2025-10-13` frames.
-7. Continue Batch C by mapping the scan candidate back to a strict-step frame, or add dedicated scan-to-step verification output.
-8. Fix Copy Signal wording so scan-mode candidates say scan-mode/once snapshot, not current lightweight step frame.
+4. Load a candidate-date step window or any step window with available BSPs.
+5. Open `区间信号`.
+6. Select a native relation pair, direction filter, and BSP type filters.
+7. Click `Copy Signal`.
+8. Paste Copy Signal diagnostics to determine whether strict-step validation can be accepted.
