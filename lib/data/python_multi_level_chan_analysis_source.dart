@@ -322,11 +322,17 @@ class PythonMultiLevelChanAnalysisSource {
 
     final parseSw = Stopwatch()..start();
     final topParseSw = Stopwatch()..start();
+    final topSnapshotStages = <String, int>{};
     final snapshot = MultiLevelChanAnalysisParser.parseSnapshot(
       decoded,
-      parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
+      timing: topSnapshotStages,
+      parseSingleLevelSnapshot: (levelData) => ChanSnapshotJsonParser.parse(
+        levelData,
+        timing: topSnapshotStages,
+      ),
     );
     stages['frontend.parse.top_snapshot'] = topParseSw.elapsedMilliseconds;
+    stages.addAll(topSnapshotStages);
     if (snapshot == null) {
       throw const FormatException('chan.py multi-level response missing levels structure');
     }
