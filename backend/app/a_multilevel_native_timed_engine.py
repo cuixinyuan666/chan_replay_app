@@ -4,7 +4,6 @@ from time import perf_counter
 from typing import Any
 
 from .a_multilevel_native_engine import (
-    _diagnostic_failure_response,
     _load_aligned_bars_by_level,
     _native_once_response,
     _native_step_response,
@@ -24,6 +23,54 @@ def _merge_timing(result: dict[str, Any], timing: dict[str, int]) -> dict[str, A
     meta.update(timing)
     patched['meta'] = meta
     return patched
+
+
+def _timed_native_failure_response(
+    *,
+    symbol: str,
+    market: str | None,
+    levels: list[str] | str | None,
+    adjust: str,
+    mode: str,
+    main_level: str | None,
+    clock_level: str | None,
+    exc: Exception,
+) -> dict[str, Any]:
+    code = normalize_symbol(symbol)
+    market_name = (market or infer_market(code)).upper()
+    level_order = _normalize_levels(levels)
+    main = (main_level or level_order[0]).upper()
+    if main not in level_order:
+        main = level_order[0]
+    clock = (clock_level or main).upper()
+    if clock not in level_order:
+        clock = main
+    return {
+        'ok': False,
+        'main_level': main,
+        'levels': {},
+        'relations': [],
+        'frames': [],
+        'meta': {
+            'engine': 'chan.py',
+            'source': 'origin_vespa_tdx.backend.a_multilevel_native_timed_engine',
+            'mode': (mode or 'once').lower(),
+            'symbol': f'{code}.{market_name}',
+            'name': code,
+            'levels': level_order,
+            'main_level': main,
+            'clock_level': clock,
+            'adjust': adjust.upper(),
+            'native_cchan_lv_list': False,
+            'level_relation_mode': 'native_unavailable',
+            'fallback_to_bridge': False,
+            'native_failure': str(exc),
+            'chan_py_polluted': False,
+            'warnings': [
+                'native CChan(lv_list) failed; bridge fallback is intentionally blocked',
+            ],
+        },
+    }
 
 
 def analyze_multi_native_timed(
@@ -123,7 +170,7 @@ def analyze_multi_native_timed(
         return _merge_timing(result, timing)
     except Exception as exc:
         timing['backend_native_total_ms'] = _elapsed_ms(total_start)
-        failure = _diagnostic_failure_response(
+        failure = _timed_native_failure_response(
             symbol=symbol,
             market=market,
             levels=levels,
