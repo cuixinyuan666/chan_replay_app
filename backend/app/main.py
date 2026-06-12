@@ -491,4 +491,4 @@ def scanner_bsp_scan_stream(
         for event in scan_bsp_events(limit=limit, days=days, recent_days=recent_days, bi_strict=bi_strict):
             yield json.dumps(event, ensure_ascii=False) + '\n'
 
-    return StreamingResponse(_iter, media_type='application/x-ndjson')
+    return StreamingResponse(_iter(), media_type='application/x-ndjson')
