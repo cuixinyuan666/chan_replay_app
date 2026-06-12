@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'app_bundled_python_backend.dart';
 import '../core/models/interval_nest_signal.dart';
 import '../core/models/multi_level_chan_snapshot.dart';
+import '../core/runtime/runtime_path.dart';
 import 'chan_snapshot_json_parser.dart';
 import 'multi_level_chan_analysis_parser.dart';
 
@@ -130,10 +131,13 @@ class PythonMultiLevelChanAnalysisSource {
     int? count,
     DateTime? startDate,
     DateTime? endDate,
+    RuntimePath? runtimePath,
   }) async {
     final traceId = 'ml-${DateTime.now().microsecondsSinceEpoch}';
     final totalSw = Stopwatch()..start();
     final stages = <String, int>{};
+    final selectedRuntimePath = runtimePath ?? RuntimePathController.current;
+    final runtimeDiagnostics = RuntimePathController.diagnostics(selectedRuntimePath);
 
     final requestBuildSw = Stopwatch()..start();
     final normalizedLevels = [
@@ -147,6 +151,7 @@ class PythonMultiLevelChanAnalysisSource {
       'lv_list': normalizedLevels,
       'adjust': adjust.trim().toUpperCase(),
       'config': config,
+      'runtime_path': selectedRuntimePath.wireName,
       if (mainLevel != null && mainLevel.trim().isNotEmpty)
         'main_level': mainLevel.trim().toUpperCase(),
       if (clockLevel != null && clockLevel.trim().isNotEmpty)
@@ -184,6 +189,7 @@ class PythonMultiLevelChanAnalysisSource {
         'max_step_frames': config['max_step_frames'],
         'start': startDate == null ? null : _fmtDate(startDate),
         'end': endDate == null ? null : _fmtDate(endDate),
+        ...runtimeDiagnostics,
       },
     );
   }
@@ -369,7 +375,8 @@ class PythonMultiLevelChanAnalysisSource {
     stages['frontend.parse.interval_signals'] = signalsParseSw.elapsedMilliseconds;
     stages['frontend.parse.snapshot_frames_relations_bsp'] = parseSw.elapsedMilliseconds;
 
-    final meta = Map<String, dynamic>.from(decodedMeta);
+    final meta = Map<String, dynamic>.from(decodedMeta)
+      ..addAll(_runtimePathDiagnosticsFromRequest(requestContext));
     meta['raw_frame_count'] = rawFrameCount;
     meta['parsed_frame_count'] = useLazyFrames ? 0 : frames.length;
     meta['parsed_level_count'] = snapshot.levels.length;
@@ -444,6 +451,7 @@ class PythonMultiLevelChanAnalysisSource {
     final backendElapsed = _numToInt(meta['backend_elapsed_ms']) ?? stages['frontend.http_round_trip'] ?? 0;
     final runtime = backendDiagnostics ?? const <String, dynamic>{};
     final backendStages = _backendTimingStages(meta);
+    final runtimeDiagnostics = _runtimePathDiagnosticsFromRequest(requestContext);
     return {
       'trace_id': traceId,
       'mode': requestContext['mode'],
@@ -454,6 +462,7 @@ class PythonMultiLevelChanAnalysisSource {
       'max_step_frames': requestContext['max_step_frames'],
       'start': requestContext['start'],
       'end': requestContext['end'],
+      ...runtimeDiagnostics,
       'backend_url': meta['backend_url'] ?? runtime['backend_url'] ?? sourceBaseUrl ?? '',
       'python_runtime': meta['python_runtime'] ?? runtime['python_runtime'] ?? '',
       'process_source': runtime['process_source'] ?? '',
@@ -548,6 +557,19 @@ class PythonMultiLevelChanAnalysisSource {
     add('backend.structure_export.zs', 'backend_structure_export_zs_ms');
     add('backend.structure_export.bsp', 'backend_structure_export_bsp_ms');
     return result;
+  }
+
+  Map<String, dynamic> _runtimePathDiagnosticsFromRequest(Map<String, dynamic> requestContext) {
+    final rawPath = '${requestContext['runtime_path'] ?? 'high_speed'}'.trim();
+    final path = rawPath.isEmpty ? 'high_speed' : rawPath;
+    final high = path != 'slow_path';
+    return {
+      'runtime_path': high ? 'high_speed' : 'slow_path',
+      'high_speed_enabled': high,
+      'slow_path_enabled': !high,
+      'runtime_path_default': 'high_speed',
+      'runtime_path_policy': 'high_speed_default_slow_path_debug_only',
+    };
   }
 
   int? _numToInt(Object? value) {
