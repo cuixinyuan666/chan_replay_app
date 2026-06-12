@@ -11,7 +11,14 @@ import '../core/models/zs.dart';
 class ChanSnapshotJsonParser {
   const ChanSnapshotJsonParser._();
 
-  static ChanSnapshot parse(Map<String, dynamic> data) {
+  static ChanSnapshot parse(
+    Map<String, dynamic> data, {
+    Map<String, int>? timing,
+    String timingPrefix = 'frontend.parse.top_snapshot.single_level',
+  }) {
+    final totalSw = Stopwatch()..start();
+
+    final barsSw = Stopwatch()..start();
     final bars = <RawBar>[];
     final rawRows = data['bars'];
     if (rawRows is List) {
@@ -22,7 +29,9 @@ class ChanSnapshotJsonParser {
         }
       }
     }
+    _addTiming(timing, '$timingPrefix.bars', barsSw.elapsedMilliseconds);
 
+    final mergedSw = Stopwatch()..start();
     final backendMergedBars = <MergedBar>[];
     final mergedRows = data['merged_bars'] ?? data['mergedBars'];
     if (mergedRows is List) {
@@ -33,11 +42,12 @@ class ChanSnapshotJsonParser {
         }
       }
     }
-
     final structuralMergedBars = backendMergedBars.isNotEmpty
         ? backendMergedBars
         : [for (final bar in bars) _dummyMergedBar(bar)];
+    _addTiming(timing, '$timingPrefix.merged', mergedSw.elapsedMilliseconds);
 
+    final fxSw = Stopwatch()..start();
     final fxs = <FX>[];
     final fxRows = data['fx'];
     if (fxRows is List) {
@@ -48,7 +58,9 @@ class ChanSnapshotJsonParser {
         }
       }
     }
+    _addTiming(timing, '$timingPrefix.fx', fxSw.elapsedMilliseconds);
 
+    final biSw = Stopwatch()..start();
     final bis = <BI>[];
     final biRows = data['bi'];
     if (biRows is List) {
@@ -68,7 +80,9 @@ class ChanSnapshotJsonParser {
           clearNextIndex: i + 1 >= bis.length,
         ),
     ];
+    _addTiming(timing, '$timingPrefix.bi', biSw.elapsedMilliseconds);
 
+    final segSw = Stopwatch()..start();
     final segs = <SEG>[];
     final segRows = data['seg'];
     if (segRows is List) {
@@ -79,7 +93,9 @@ class ChanSnapshotJsonParser {
         }
       }
     }
+    _addTiming(timing, '$timingPrefix.seg', segSw.elapsedMilliseconds);
 
+    final zsSw = Stopwatch()..start();
     final zss = <ZS>[];
     final zsRows = data['zs'];
     if (zsRows is List) {
@@ -90,7 +106,9 @@ class ChanSnapshotJsonParser {
         }
       }
     }
+    _addTiming(timing, '$timingPrefix.zs', zsSw.elapsedMilliseconds);
 
+    final bspSw = Stopwatch()..start();
     final bsps = <BspPoint>[];
     final bspRows = data['bsp'] ?? data['bsps'];
     if (bspRows is List) {
@@ -101,7 +119,13 @@ class ChanSnapshotJsonParser {
         }
       }
     }
+    _addTiming(timing, '$timingPrefix.bsp', bspSw.elapsedMilliseconds);
 
+    final indicatorSw = Stopwatch()..start();
+    final indicators = EasyTdxIndicators.fromJson(data['indicators']);
+    _addTiming(timing, '$timingPrefix.indicators', indicatorSw.elapsedMilliseconds);
+
+    _addTiming(timing, '$timingPrefix.total', totalSw.elapsedMilliseconds);
     return ChanSnapshot(
       rawBars: bars,
       mergedBars: backendMergedBars,
@@ -110,8 +134,13 @@ class ChanSnapshotJsonParser {
       segs: segs,
       zss: zss,
       bsps: bsps,
-      indicators: EasyTdxIndicators.fromJson(data['indicators']),
+      indicators: indicators,
     );
+  }
+
+  static void _addTiming(Map<String, int>? timing, String key, int elapsedMs) {
+    if (timing == null) return;
+    timing[key] = (timing[key] ?? 0) + elapsedMs;
   }
 
   static RawBar? _parseRawBar(Map row, int index) {
