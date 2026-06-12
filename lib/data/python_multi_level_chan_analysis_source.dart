@@ -535,6 +535,12 @@ class PythonMultiLevelChanAnalysisSource {
     add('backend.step_export.total_frames', 'backend_step_export_total_frames');
     add('backend.step_export.returned_frames', 'backend_step_export_returned_frames');
     add('backend.step_export.bsp_count', 'backend_step_export_bsp_count');
+    add('backend.structure_export.merged', 'backend_structure_export_merged_ms');
+    add('backend.structure_export.fx', 'backend_structure_export_fx_ms');
+    add('backend.structure_export.bi', 'backend_structure_export_bi_ms');
+    add('backend.structure_export.seg', 'backend_structure_export_seg_ms');
+    add('backend.structure_export.zs', 'backend_structure_export_zs_ms');
+    add('backend.structure_export.bsp', 'backend_structure_export_bsp_ms');
     return result;
   }
 
