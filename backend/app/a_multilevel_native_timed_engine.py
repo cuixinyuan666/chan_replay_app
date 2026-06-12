@@ -5,17 +5,16 @@ from time import perf_counter
 from typing import Any
 
 from .a_multilevel_native_engine import (
-    _frame_current_time,
-    _level_payload,
     _load_aligned_bars_by_level,
     _max_step_frames,
     _native_once_response,
     _native_relations,
     _normalize_levels,
     _prepare_native_chan,
-    _visible_bars_for_level,
+    _raw_klu_iter,
+    _snapshot_from_chan,
 )
-from .chanpy_engine import _export_level
+from .chanpy_engine import _export_level, _idx
 from .easy_tdx_provider import (
     get_easy_tdx_cache_stats,
     infer_market,
@@ -101,14 +100,55 @@ def _cache_timing_meta() -> dict[str, Any]:
     }
 
 
-def _timed_snapshot_from_chan(
+def _visible_count_for_level(level_obj: Any, bars: list[dict[str, Any]]) -> int:
+    indices = [idx for idx in (_idx(klu) for klu in _raw_klu_iter(level_obj)) if idx is not None]
+    if not indices:
+        return 0
+    return min(max(indices) + 1, len(bars))
+
+
+def _compact_level_payload(*, visible_count: int, structures: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'visible_count': visible_count,
+        'merged_bars': structures.get('merged_bars', []),
+        'fx': structures.get('fx', []),
+        'bi': structures.get('bi', []),
+        'seg': structures.get('seg', []),
+        'zs': structures.get('zs', []),
+        'bsp': structures.get('bsp', []),
+        'meta': {
+            'compact_frame_level': True,
+            'frame_bars_omitted': True,
+            'frame_indicators_omitted': True,
+        },
+    }
+
+
+def _compact_frame_current_time(frame: dict[str, Any], main: str, bars_by_level: dict[str, list[dict[str, Any]]]) -> str | None:
+    level = frame.get('levels', {}).get(main) if isinstance(frame.get('levels'), dict) else None
+    if not isinstance(level, dict):
+        return None
+    try:
+        visible_count = int(level.get('visible_count') or 0)
+    except (TypeError, ValueError):
+        visible_count = 0
+    bars = bars_by_level.get(main) or []
+    if visible_count <= 0 or visible_count > len(bars):
+        return None
+    last = bars[visible_count - 1]
+    if not isinstance(last, dict):
+        return None
+    value = last.get('dt') or last.get('time') or last.get('date')
+    return None if value is None else str(value)
+
+
+def _timed_compact_snapshot_from_chan(
     *,
     exporter: Any,
     chan: Any,
     kl_types: list[Any],
     level_order: list[str],
     bars_by_level: dict[str, list[dict[str, Any]]],
-    config: dict[str, Any] | None,
     main: str,
     clock: str,
     mode_name: str,
@@ -130,14 +170,13 @@ def _timed_snapshot_from_chan(
         _add_elapsed_ms(timing, 'backend_step_export_bsp_ms', bsp_start)
 
         visible_start = perf_counter()
-        visible_bars = _visible_bars_for_level(level_obj, bars_by_level[level])
+        visible_count = _visible_count_for_level(level_obj, bars_by_level[level])
         _add_elapsed_ms(timing, 'backend_step_export_visible_bars_ms', visible_start)
 
         payload_start = perf_counter()
-        level_results[level] = _level_payload(
-            bars=visible_bars,
+        level_results[level] = _compact_level_payload(
+            visible_count=visible_count,
             structures=structures,
-            config=config,
         )
         _add_elapsed_ms(timing, 'backend_step_export_level_payload_ms', payload_start)
         _add_elapsed_ms(timing, 'backend_step_export_level_snapshot_ms', level_start)
@@ -162,6 +201,8 @@ def _timed_snapshot_from_chan(
         'native_cchan_lv_list': True,
         'level_relation_mode': 'chan_parent_child',
         'chan_py_polluted': False,
+        'step_frame_format': 'compact_v1',
+        'compact_first_step_frame_export': True,
     }
     if cursor is not None:
         meta['cursor'] = cursor
@@ -196,6 +237,7 @@ def _timed_native_step_response(
     max_frames = _max_step_frames(config)
     frame_buffer: deque[dict[str, Any]] = deque(maxlen=max_frames)
     total_frames = 0
+    last_chan: Any | None = None
     iterator = iter(step_iter())
     cursor = 0
     while True:
@@ -206,15 +248,15 @@ def _timed_native_step_response(
             _add_elapsed_ms(timing, 'backend_step_export_iter_ms', iter_start)
             break
         _add_elapsed_ms(timing, 'backend_step_export_iter_ms', iter_start)
+        last_chan = cur_chan
 
         frame_start = perf_counter()
-        frame = _timed_snapshot_from_chan(
+        frame = _timed_compact_snapshot_from_chan(
             exporter=exporter,
             chan=cur_chan,
             kl_types=kl_types,
             level_order=level_order,
             bars_by_level=bars_by_level,
-            config=config,
             main=main,
             clock=clock,
             mode_name='step',
@@ -222,7 +264,7 @@ def _timed_native_step_response(
             cursor=cursor,
         )
         current_time_start = perf_counter()
-        frame['meta']['current_time'] = _frame_current_time(frame, main)
+        frame['meta']['current_time'] = _compact_frame_current_time(frame, main, bars_by_level)
         _add_elapsed_ms(timing, 'backend_step_export_current_time_ms', current_time_start)
         frame['meta']['frame_index'] = cursor
         frame_buffer.append(frame)
@@ -231,9 +273,24 @@ def _timed_native_step_response(
         _add_elapsed_ms(timing, 'backend_step_export_frame_build_ms', frame_start)
 
     frames = list(frame_buffer)
-    if not frames:
+    if not frames or last_chan is None:
         raise RuntimeError('native CChan(lv_list) step_load returned no frames')
-    final = frames[-1]
+
+    final_start = perf_counter()
+    final = _snapshot_from_chan(
+        exporter=exporter,
+        chan=last_chan,
+        kl_types=kl_types,
+        level_order=level_order,
+        bars_by_level=bars_by_level,
+        config=config,
+        main=main,
+        clock=clock,
+        mode_name='step',
+        cursor=total_frames - 1,
+    )
+    _add_elapsed_ms(timing, 'backend_step_export_final_snapshot_ms', final_start)
+
     meta = dict(final['meta'])
     meta.update({
         'symbol': f'{code}.{market_name}',
@@ -250,6 +307,8 @@ def _timed_native_step_response(
         'warnings': ['native CChan(lv_list).step_load() path is active'],
         'backend_step_export_total_frames': total_frames,
         'backend_step_export_returned_frames': len(frames),
+        'step_frame_format': 'compact_v1',
+        'compact_first_step_frame_export': True,
     })
     return {
         'ok': True,
