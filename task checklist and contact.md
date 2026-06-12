@@ -16,6 +16,7 @@ Branch: origin_vespa_tdx
 - No `fast` / `turbo` / `极速` mode may be accepted without same-request result validation proving no meaningful deviation from original chan.py output.
 - Step-frame compact export may change App adapter transport/export shape only; it must not change chan.py core output semantics.
 - No Chan result cache is accepted. F1f accepted only a raw K-line cache.
+- F1j is the final planned diagnostic pass of the current performance chain. After F1j, stop performance work by default and return to the business task chain unless the explicit exception rule below is met.
 
 ## Latest important commits
 
@@ -34,7 +35,8 @@ Branch: origin_vespa_tdx
 - `31af043bd41298e9a643d036b6716d53180b7ee3`: accept F1h compact-first step export.
 - `8018efeee26b57f3a657e647ae9ed7bb30f63d8f`: split backend structure export timings.
 - `89afef251c8de84d1fc5acf0d01acb262ce7f782`: surface structure export substage timings.
-- Current update: accept F1i backend residual decomposition and select F1j frontend top snapshot parse decomposition.
+- `82f0dc610ed41012b5c8d7142917e4c77cd5f47f`: surface frontend top snapshot parse timings for F1j diagnostics. This is implementation progress only; F1j runtime acceptance is still pending.
+- Current update: add a performance-chain stop rule after F1j and require returning to the business task chain unless a strict exception is proven.
 
 ## Current accepted work
 
@@ -53,6 +55,7 @@ Branch: origin_vespa_tdx
 - F1g step export sub-stage timing decomposition: accepted.
 - F1h compact-first step frame export: accepted.
 - F1i backend residual structure-export decomposition: accepted.
+- F1j frontend top snapshot parse timing visibility: implementation progress only, not accepted until runtime Copy Time Log and validation output are pasted.
 
 ## Accepted runtime baseline
 
@@ -261,7 +264,7 @@ F1i conclusion:
 
 - Backend structure export is no longer a large opaque block.
 - Largest structure sub-cost is merged K-line export at about `206ms`.
-- Remaining largest cost is `step_load()` iteration around `1054ms`.
+- Remaining largest backend cost is `step_load()` iteration around `1054ms`.
 - Frontend top snapshot parse remains visible at about `823ms`.
 - Next best diagnostic target is frontend top snapshot parse decomposition and possible parse reduction.
 
@@ -275,12 +278,19 @@ Forbidden after F1i remains:
 
 ## Phase F1j: frontend top snapshot parse decomposition / chart payload parse reduction
 
-Selected next task.
+Selected next task and implementation progress started.
 
 Goal:
 
 - Split and reduce `frontend.parse.top_snapshot`, currently around `823ms` on the accepted warm-run baseline.
 - Preserve final chart rendering, strict backend step frames, compact validation, and result validation.
+
+Implemented progress:
+
+- Commit `82f0dc610ed41012b5c8d7142917e4c77cd5f47f` passes timing hooks into frontend top snapshot parsers.
+- It surfaces top snapshot bars/merged/fx/bi/seg/zs/bsp/indicators/levels/relations timings in Copy Time Log stages.
+- It keeps backend residual timing, cache diagnostics, and strict step replay unchanged.
+- Runtime F1j acceptance is still pending.
 
 Allowed F1j implementation directions:
 
@@ -310,19 +320,49 @@ F1j acceptance criteria:
 - `fallback_to_bridge: false` and `native_cchan_lv_list: true` remain true.
 - Copy Step remains `native_step_frame`, not final snapshot slicing.
 
+## Performance optimization stop rule after F1j
+
+F1j is the final planned diagnostic pass for the current performance chain.
+
+Default rule after F1j:
+
+- Stop the performance optimization chain.
+- Do not continue with F1k/F1l/F1m merely to chase small millisecond-level improvements.
+- Return to the business task chain unless the exception rule below is satisfied.
+
+Exception rule for opening F1k or later:
+
+A new performance phase may be opened only if all of the following are true:
+
+1. Copy Time Log proves a single remaining stage is consistently above `800ms-1000ms` on the accepted warm-run test window.
+2. The proposed optimization is low-risk and does not change `python/chan.py` core logic.
+3. The proposed optimization does not introduce Chan result cache, Flutter-side Chan calculation, or final-snapshot fake step replay.
+4. Same-request Result Validation remains `validation_status: match` and `compact_validation_status: match`.
+5. The manual is updated before implementation with the target stage, baseline time, proposed change, forbidden scope, and acceptance criteria.
+
+If the exception rule is not satisfied, performance work must stop and the next task must return to one of the business-chain items:
+
+- Strategy mode runtime acceptance.
+- Interval-nest buy rule acceptance.
+- Full-history / paged strict step replay.
+- Signal/rule validation usability.
+- Other explicitly selected manual task-chain items.
+
 ## Current blockers / pending verification
 
 - No speed/fast/turbo/极速 mode is accepted yet.
-- Strategy mode acceptance remains paused until F1j decision or implementation is complete, unless the manual explicitly resumes strategy first.
+- Strategy mode acceptance remains paused until F1j is accepted or explicitly deferred by the supervisor.
 - Full-history/paged strict step replay remains deferred.
 - Algorithmic fast mode is prohibited until a stricter validation plan is written and accepted.
 - Chan result cache remains prohibited.
 - F1j frontend top snapshot parse decomposition is now the selected next task.
+- F1j is the planned stop point for the current performance chain unless the explicit exception rule above is proven.
 
 ## Next task-party operation
 
-1. Implement F1j frontend top snapshot parse timing decomposition.
+1. Complete F1j frontend top snapshot parse timing decomposition.
 2. Keep F1f raw data cache diagnostics, F1g/F1h/F1i backend timings visible.
 3. Re-run the accepted test window twice in the same App session.
 4. Paste Copy Time Log, Copy Step, and Copy Result Validation from the warm second run.
 5. Accept F1j only if finer frontend parse timing is visible and validation remains match.
+6. After F1j, do not start another performance phase unless the stop-rule exception is explicitly proven and recorded in this manual.
