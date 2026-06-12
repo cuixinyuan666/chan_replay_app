@@ -478,6 +478,13 @@ class PythonMultiLevelChanAnalysisSource {
       'backend_route_json_serialize_probe_ms': meta['backend_route_json_serialize_probe_ms'],
       'backend_route_response_bytes_probe': meta['backend_route_response_bytes_probe'],
       'backend_route_total_before_response_ms': meta['backend_route_total_before_response_ms'],
+      'backend_data_cache_enabled': meta['backend_data_cache_enabled'],
+      'backend_data_cache_hits': meta['backend_data_cache_hits'],
+      'backend_data_cache_misses': meta['backend_data_cache_misses'],
+      'backend_data_cache_hit_levels': meta['backend_data_cache_hit_levels'],
+      'backend_data_cache_miss_levels': meta['backend_data_cache_miss_levels'],
+      'backend_data_cache_key_count': meta['backend_data_cache_key_count'],
+      'backend_data_cache_policy': meta['backend_data_cache_policy'],
       'stages': <String, int>{...Map<String, int>.from(stages), ...backendStages},
       'used_app_bundled_python': (meta['python_runtime'] ?? runtime['python_runtime']) == 'app_bundled',
       'native_cchan_lv_list': meta['native_cchan_lv_list'],
@@ -511,6 +518,9 @@ class PythonMultiLevelChanAnalysisSource {
     add('backend.native.step_export', 'backend_native_step_export_ms');
     add('backend.native.once_export', 'backend_native_once_export_ms');
     add('backend.native.total', 'backend_native_total_ms');
+    add('backend.data_cache.hits', 'backend_data_cache_hits');
+    add('backend.data_cache.misses', 'backend_data_cache_misses');
+    add('backend.data_cache.key_count', 'backend_data_cache_key_count');
     return result;
   }
 
