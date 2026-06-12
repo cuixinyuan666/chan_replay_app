@@ -14,7 +14,7 @@ from .a_multilevel_native_engine import (
     _raw_klu_iter,
     _snapshot_from_chan,
 )
-from .chanpy_engine import _export_level, _idx
+from .chanpy_engine import _export_bsp, _export_merged_bars, _idx
 from .easy_tdx_provider import (
     get_easy_tdx_cache_stats,
     infer_market,
@@ -100,6 +100,44 @@ def _cache_timing_meta() -> dict[str, Any]:
     }
 
 
+def _timed_export_level(exporter: Any, level_obj: Any, timing: dict[str, Any]) -> dict[str, Any]:
+    total_start = perf_counter()
+
+    merged_start = perf_counter()
+    merged_bars = _export_merged_bars(level_obj)
+    _add_elapsed_ms(timing, 'backend_structure_export_merged_ms', merged_start)
+
+    fx_start = perf_counter()
+    fx = exporter.export_fx(level_obj)
+    _add_elapsed_ms(timing, 'backend_structure_export_fx_ms', fx_start)
+
+    bi_start = perf_counter()
+    bi = exporter.export_bi(level_obj)
+    _add_elapsed_ms(timing, 'backend_structure_export_bi_ms', bi_start)
+
+    seg_start = perf_counter()
+    seg = exporter.export_seg(level_obj)
+    _add_elapsed_ms(timing, 'backend_structure_export_seg_ms', seg_start)
+
+    zs_start = perf_counter()
+    zs = exporter.export_zs(level_obj)
+    _add_elapsed_ms(timing, 'backend_structure_export_zs_ms', zs_start)
+
+    bsp_start = perf_counter()
+    bsp = _export_bsp(level_obj)
+    _add_elapsed_ms(timing, 'backend_structure_export_bsp_ms', bsp_start)
+
+    _add_elapsed_ms(timing, 'backend_step_export_structure_ms', total_start)
+    return {
+        'merged_bars': merged_bars,
+        'fx': fx,
+        'bi': bi,
+        'seg': seg,
+        'zs': zs,
+        'bsp': bsp,
+    }
+
+
 def _visible_count_for_level(level_obj: Any, bars: list[dict[str, Any]]) -> int:
     indices = [idx for idx in (_idx(klu) for klu in _raw_klu_iter(level_obj)) if idx is not None]
     if not indices:
@@ -161,13 +199,8 @@ def _timed_compact_snapshot_from_chan(
         level_start = perf_counter()
         level_obj = exporter.get_level(chan, kl_type)
 
-        structure_start = perf_counter()
-        structures = _export_level(exporter, level_obj)
-        _add_elapsed_ms(timing, 'backend_step_export_structure_ms', structure_start)
-
-        bsp_start = perf_counter()
+        structures = _timed_export_level(exporter, level_obj, timing)
         total_bsp_count += len(structures.get('bsp', []) if isinstance(structures, dict) else [])
-        _add_elapsed_ms(timing, 'backend_step_export_bsp_ms', bsp_start)
 
         visible_start = perf_counter()
         visible_count = _visible_count_for_level(level_obj, bars_by_level[level])
