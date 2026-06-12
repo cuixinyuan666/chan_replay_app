@@ -43,7 +43,8 @@ Branch: origin_vespa_tdx
 - `3c3ead9e8724d29091b10323b9e60f2c8c01fce3`: add visible global runtime path dropdown.
 - `982ab7dc66e57a3ea3cd7a97d257e2fa00d2541b`: attach selected runtime path to analyze_multi Time Log and meta.
 - `b85aef4fafd3b5d644fc3f533e1fb483f009da72`: wire selected runtime path into Copy P0 and Copy Step.
-- Current update: record B1a runtime path Copy wiring implementation. B1a is not accepted until pasted app output proves dropdown/default/copy diagnostics.
+- `3085d9390d0dc70e8c59e2abd7da975326d57287`: move runtime path dropdown away from header to avoid overlap with Load/request controls.
+- Current update: record runtime dropdown position fix. B1a is not accepted until pasted app output proves dropdown/default/copy diagnostics.
 
 ## Current accepted work
 
@@ -65,7 +66,7 @@ Branch: origin_vespa_tdx
 - F1j frontend top snapshot parse decomposition: accepted.
 - F1k lazy Easy TDX indicator parsing: accepted.
 - Performance chain F1a-F1k: stopped by rule; return to business/runtime task chain.
-- B1a runtime path model, visible dropdown, Time Log wiring, Copy P0 wiring, and Copy Step wiring: implementation complete, pending user-pasted runtime validation, not accepted.
+- B1a runtime path model, visible non-overlapping dropdown, Time Log wiring, Copy P0 wiring, and Copy Step wiring: implementation complete, pending user-pasted runtime validation, not accepted.
 
 ## Accepted runtime baseline
 
@@ -163,9 +164,10 @@ B1a implementation status:
 
 - Commit `45aaeaa64138a7f907a84f662de2ac62ac2cbc8f` adds runtime path diagnostics to interval signal Copy Signal / Copy Time Log / Copy Result Validation.
 - Commit `7ee8d60148756c175c0c095c28da9400dce2be2a` adds a shared runtime path model/controller.
-- Commit `3c3ead9e8724d29091b10323b9e60f2c8c01fce3` adds a visible global runtime path dropdown.
+- Commit `3c3ead9e8724d29091b10323b9e60f2c8c01fce3` adds the first visible global runtime path dropdown.
 - Commit `982ab7dc66e57a3ea3cd7a97d257e2fa00d2541b` injects the selected runtime path into analyze_multi request context, response meta, and Copy Time Log.
 - Commit `b85aef4fafd3b5d644fc3f533e1fb483f009da72` injects the selected runtime path into Copy P0 and Copy Step.
+- Commit `3085d9390d0dc70e8c59e2abd7da975326d57287` moves the runtime dropdown from the top-right header area to the bottom-left area beside the route toolbar to avoid overlapping `Load`, mode chips, and request fields.
 - Default dropdown value is `高速路（默认）` via `RuntimePath.highSpeed`.
 - Slow path is manually selectable and labelled `慢速路（原始校验/调试）`.
 - B1a is implementation-complete but not accepted until runtime validation output is pasted from the App.
