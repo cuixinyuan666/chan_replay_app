@@ -57,6 +57,25 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
 
   bool get _hasTimeLog => _timeLog != null;
 
+  String _runtimePath(Map<String, dynamic>? log) =>
+      '${log?['runtime_path'] ?? widget.snapshot.meta['runtime_path'] ?? 'high_speed'}'.trim().isEmpty
+          ? 'high_speed'
+          : '${log?['runtime_path'] ?? widget.snapshot.meta['runtime_path'] ?? 'high_speed'}'.trim();
+
+  bool _isHighSpeedPath(Map<String, dynamic>? log) => _runtimePath(log) != 'slow_path';
+
+  List<String> _runtimePathLines(Map<String, dynamic>? log) {
+    final path = _runtimePath(log);
+    final high = _isHighSpeedPath(log);
+    return [
+      'runtime_path: $path',
+      'high_speed_enabled: $high',
+      'slow_path_enabled: ${!high}',
+      'runtime_path_default: high_speed',
+      'runtime_path_policy: high_speed_default_slow_path_debug_only',
+    ];
+  }
+
   Object? _compactMeta(String key, [Map<String, dynamic>? log]) {
     final fromLog = log == null ? null : log[key];
     return fromLog ?? widget.snapshot.meta[key] ?? '';
@@ -124,6 +143,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
           ),
           _chip('rule', _ruleChipLabel, true),
+          _chip('runtime_path', _runtimePath(_timeLog), _isHighSpeedPath(_timeLog)),
           _chip('source', 'chan.py BSP + native relation', true),
           if (_hasTimeLog) _chip('time_log', 'ready', true),
           if (_isStrategyMode) _chip('strategy', 'candidate only', false),
@@ -477,6 +497,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         'button: Copy Signal',
         'mode: ${widget.mode}',
         'symbol: ${widget.symbol}',
+        ..._runtimePathLines(_timeLog),
         'signal_rule_mode: $_signalRuleMode',
         'rule_mode_ui: $_ruleMode',
         'available_pairs: $availablePairs',
@@ -576,6 +597,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         'time_log_context: interval_signal_panel',
         'rule_mode_ui: $_ruleMode',
         'signal_rule_mode: $_signalRuleMode',
+        ..._runtimePathLines(null),
         'status: missing time_log in snapshot.meta',
       ].join('\n');
     }
@@ -591,6 +613,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'strategy_rule_name: ${_isStrategyMode ? _strategyRuleName : ''}',
       'strategy_high_type: ${_isStrategyMode ? _highStrategyType : ''}',
       'strategy_low_trigger_type: ${_isStrategyMode ? _lowTriggerType : ''}',
+      ..._runtimePathLines(log),
       'selected_pair: ${pair?.label ?? ''}',
       'frame.index.local: ${widget.frameIndex ?? ''}',
       'frame.count.local: ${widget.frameCount ?? ''}',
@@ -681,6 +704,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'blocked_reason: ${hasCompactValidation ? '' : 'no fast candidate mode/cache/compact payload configured'}',
       'mismatch_count: ${hasCompactValidation ? compactMismatchCount : ''}',
       'first_mismatch: ${hasCompactValidation ? compactFirstMismatch : ''}',
+      ..._runtimePathLines(log),
       'request.mode: $requestMode',
       'request.symbol: ${log['symbol'] ?? widget.symbol}',
       'request.market: ${log['market'] ?? ''}',
@@ -783,6 +807,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'button: Copy Signal',
       'mode: ${widget.mode}',
       'symbol: ${widget.symbol}',
+      ..._runtimePathLines(_timeLog),
       'frame.index.local: ${widget.frameIndex ?? ''}',
       'frame.count.local: ${widget.frameCount ?? ''}',
       'signal_source: original chan.py BSP + native LevelRelation',
