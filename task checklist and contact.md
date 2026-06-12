@@ -31,7 +31,7 @@ Branch: origin_vespa_tdx
 - `25a7bbce2d0f2d78ba625d5e591b30d8881578e3`: reuse app-managed Python backend across source/page rebuilds.
 - `fbd0a979eb48c181a06b36da5e9c2a926ce6420f`: accept F1d warm backend reuse.
 - `773f428864e42766c4368bb839c9e5bb70d92d3d`: accept F1e native timing decomposition.
-- `5e2a6f5e525908b04bdcbacd6062555e0ce55e6a`: accept F1f raw data cache reuse.
+- `5e2a6f5e525908b04bdcbacd6062555e6a`: accept F1f raw data cache reuse.
 - `4860e0ee5aa54b22da19978eb4ef2e93388f6690`: accept F1g step export decomposition.
 - `31af043bd41298e9a643d036b6716d53180b7ee3`: accept F1h compact-first step export.
 - `829b5c4a0e060a18cb91919678034b298518eb51`: accept F1i backend residual decomposition.
@@ -39,7 +39,9 @@ Branch: origin_vespa_tdx
 - `06db968caa093ecb10914ab0420582571beb0478`: lazily parse Easy TDX indicator payloads.
 - `b07ffd859f24db2ff7c6430baa2bd6d44a540f4e`: accept F1j and F1k, then stop the performance optimization chain.
 - `45aaeaa64138a7f907a84f662de2ac62ac2cbc8f`: expose runtime path diagnostics in interval signal copy gates.
-- Current update: record B1a Copy Gate diagnostics progress. B1a is not accepted until the runtime path dropdown and Copy P0 diagnostics are completed.
+- `7ee8d60148756c175c0c095c28da9400dce2be2a`: add shared runtime path policy model/controller.
+- `3c3ead9e8724d29091b10323b9e60f2c8c01fce3`: add visible global runtime path dropdown.
+- Current update: record B1a runtime dropdown progress. B1a is not accepted until Copy P0 and Copy Time Log are wired to the selected dropdown value and runtime validation output is pasted.
 
 ## Current accepted work
 
@@ -61,6 +63,7 @@ Branch: origin_vespa_tdx
 - F1j frontend top snapshot parse decomposition: accepted.
 - F1k lazy Easy TDX indicator parsing: accepted.
 - Performance chain F1a-F1k: stopped by rule; return to business/runtime task chain.
+- B1a runtime path model and visible dropdown: implementation progress only, not accepted.
 - B1a runtime path Copy Gate diagnostics: implementation progress only, not accepted.
 
 ## Accepted runtime baseline
@@ -158,8 +161,12 @@ Required diagnostics in Copy Time Log and Copy P0:
 B1a progress so far:
 
 - Commit `45aaeaa64138a7f907a84f662de2ac62ac2cbc8f` adds runtime path diagnostics to interval signal Copy Signal / Copy Time Log / Copy Result Validation.
-- Current diagnostics default to `runtime_path: high_speed`, `high_speed_enabled: true`, `slow_path_enabled: false`, `runtime_path_default: high_speed`, `runtime_path_policy: high_speed_default_slow_path_debug_only`.
-- B1a is not accepted yet because the main runtime path dropdown and Copy P0 diagnostics are still pending.
+- Commit `7ee8d60148756c175c0c095c28da9400dce2be2a` adds a shared runtime path model/controller.
+- Commit `3c3ead9e8724d29091b10323b9e60f2c8c01fce3` adds a visible global runtime path dropdown.
+- Default dropdown value is `高速路（默认）` via `RuntimePath.highSpeed`.
+- Slow path is manually selectable and labelled `慢速路（原始校验/调试）`.
+- Current Copy Gate diagnostics still default to `runtime_path: high_speed`, `high_speed_enabled: true`, `slow_path_enabled: false`, `runtime_path_default: high_speed`, `runtime_path_policy: high_speed_default_slow_path_debug_only`.
+- B1a is not accepted yet because Copy P0 and Copy Time Log still need to read the selected dropdown value, and runtime validation output has not been pasted.
 
 High-speed path must use:
 
@@ -245,6 +252,7 @@ Forbidden in B1:
 - Full-history/paged strict step replay remains deferred.
 - Performance chain F1a-F1k is stopped by rule.
 - Runtime path switch and Dart Chan cleanup B1 is now the selected next task.
-- B1a runtime path dropdown is still pending.
+- B1a runtime path dropdown is visible but not accepted.
+- B1a Copy P0 and selected-path Copy Time Log wiring are still pending.
 - B1b Dart-side Chan cleanup/search evidence is still pending.
 - Strategy mode runtime acceptance should resume after B1 unless this manual explicitly selects another business-chain item.
