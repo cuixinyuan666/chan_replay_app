@@ -10,14 +10,19 @@ from .a_multilevel_native_engine import (
     _normalize_levels,
     _prepare_native_chan,
 )
-from .easy_tdx_provider import infer_market, normalize_symbol
+from .easy_tdx_provider import (
+    get_easy_tdx_cache_stats,
+    infer_market,
+    normalize_symbol,
+    reset_easy_tdx_cache_stats,
+)
 
 
 def _elapsed_ms(start: float) -> int:
     return int((perf_counter() - start) * 1000)
 
 
-def _merge_timing(result: dict[str, Any], timing: dict[str, int]) -> dict[str, Any]:
+def _merge_timing(result: dict[str, Any], timing: dict[str, Any]) -> dict[str, Any]:
     patched = dict(result)
     meta = dict(patched.get('meta')) if isinstance(patched.get('meta'), dict) else {}
     meta.update(timing)
@@ -73,6 +78,19 @@ def _timed_native_failure_response(
     }
 
 
+def _cache_timing_meta() -> dict[str, Any]:
+    stats = get_easy_tdx_cache_stats()
+    return {
+        'backend_data_cache_enabled': stats.get('enabled'),
+        'backend_data_cache_hits': stats.get('hits'),
+        'backend_data_cache_misses': stats.get('misses'),
+        'backend_data_cache_hit_levels': stats.get('hit_levels'),
+        'backend_data_cache_miss_levels': stats.get('miss_levels'),
+        'backend_data_cache_key_count': stats.get('key_count'),
+        'backend_data_cache_policy': stats.get('policy'),
+    }
+
+
 def analyze_multi_native_timed(
     *,
     symbol: str,
@@ -93,7 +111,8 @@ def analyze_multi_native_timed(
     adds metadata timings. It must not change chan.py calculation semantics.
     """
     total_start = perf_counter()
-    timing: dict[str, int] = {}
+    timing: dict[str, Any] = {}
+    reset_easy_tdx_cache_stats()
     try:
         code = normalize_symbol(symbol)
         market_name = (market or infer_market(code)).upper()
@@ -117,6 +136,7 @@ def analyze_multi_native_timed(
             end=end,
         )
         timing['backend_native_data_load_ms'] = _elapsed_ms(data_start)
+        timing.update(_cache_timing_meta())
 
         prepare_start = perf_counter()
         exporter, chan, kl_types, prepared_code = _prepare_native_chan(
@@ -169,6 +189,7 @@ def analyze_multi_native_timed(
         timing['backend_native_total_ms'] = _elapsed_ms(total_start)
         return _merge_timing(result, timing)
     except Exception as exc:
+        timing.update(_cache_timing_meta())
         timing['backend_native_total_ms'] = _elapsed_ms(total_start)
         failure = _timed_native_failure_response(
             symbol=symbol,
