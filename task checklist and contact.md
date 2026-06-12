@@ -28,7 +28,10 @@ Branch: origin_vespa_tdx
 - `5e2a6f5e525908b04bdcbacd6062555e0ce55e6a`: accept F1f raw data cache reuse.
 - `ca9c2e100de03b835f3e9f3a1c2105e91d7f8169`: decompose native step export timing.
 - `c961f7f2aaf0aca7990420e89e879cdacca6e68d`: surface step export substage timings in Time Log.
-- Current update: accept F1g step export decomposition and select F1h compact-first step frame export.
+- `4860e0ee5aa54b22da19978eb4ef2e93388f6690`: accept F1g step export decomposition.
+- `707ceb8ca439d8eddc05bd17f072e7e4a5c1fcab`: export compact step frames directly.
+- `2680cb1e60b9a8182bf521a07d4457b7155c595a`: expose compact-first step export flags and final snapshot timing.
+- Current update: accept F1h compact-first step frame export and select F1i residual decomposition.
 
 ## Current accepted work
 
@@ -45,6 +48,7 @@ Branch: origin_vespa_tdx
 - F1e backend route and native-internal timing decomposition: accepted.
 - F1f process-local raw K-line data-load cache reuse: accepted.
 - F1g step export sub-stage timing decomposition: accepted.
+- F1h compact-first step frame export: accepted.
 
 ## Accepted runtime baseline
 
@@ -167,57 +171,25 @@ Implemented timing fields:
 - `backend.step_export.returned_frames`
 - `backend.step_export.bsp_count`
 
-Runtime accepted F1g output, second warm same-session run:
+Accepted F1g warm-run baseline:
 
-- `backend_process_pid: 18088`
-- `backend_process_start_count: 1`
-- `backend_request_count: 2`
-- `backend_last_request_reused: true`
-- `backend.data_cache.hits: 3`
-- `backend.data_cache.misses: 0`
-- `backend.native.data_load: 192ms`
-- `backend.native.prepare_chan: 202ms`
-- `backend.native.step_export: 3056ms`
-- `backend.step_export.iter: 1034ms`
-- `backend.step_export.frame_build: 1996ms`
-- `backend.step_export.level_snapshot: 1836ms`
-- `backend.step_export.structure: 332ms`
-- `backend.step_export.visible_bars: 64ms`
-- `backend.step_export.level_payload: 1374ms`
-- `backend.step_export.relation: 115ms`
-- `backend.step_export.bsp: 0ms`
-- `backend.step_export.current_time: 0ms`
-- `backend.step_export.total_frames: 29`
-- `backend.step_export.returned_frames: 29`
-- `backend.step_export.bsp_count: 8`
-- `frontend.total: 5148ms`
-- `frontend.http_round_trip: 3899ms`
-- `validation_status: match`
-- `compact_validation_status: match`
-- `fallback_to_bridge: false`
-- `native_cchan_lv_list: true`
+- `backend.native.step_export: 3056ms`.
+- `backend.step_export.iter: 1034ms`.
+- `backend.step_export.frame_build: 1996ms`.
+- `backend.step_export.level_snapshot: 1836ms`.
+- `backend.step_export.level_payload: 1374ms`.
+- `backend.step_export.structure: 332ms`.
+- Validation remained `match`.
 
 F1g conclusion:
 
 - After F1f, data load is no longer the bottleneck.
-- Step export is now the primary backend bottleneck.
-- The largest step export sub-costs are:
-  - frame build / level snapshot conversion.
-  - level payload construction.
-  - step iterator itself.
-- `level_payload` is wasteful because compact_v1 later removes frame-level bars and indicators. This suggests compact-first frame export.
-
-Forbidden after F1g remains:
-
-- No algorithmic fast/极速 mode.
-- No Chan result cache.
-- No Flutter-side Chan calculation.
-- No final snapshot slicing fake replay.
-- No `python/chan.py` core algorithm change.
+- Step export is the primary backend bottleneck.
+- `level_payload` is wasteful because compact_v1 later removes frame-level bars and indicators.
 
 ## Phase F1h: compact-first step frame export / skip redundant frame payload
 
-Selected next task.
+Accepted.
 
 Goal:
 
@@ -226,45 +198,125 @@ Goal:
 - Preserve top-level final snapshot with bars and indicators for chart rendering.
 - Preserve compact validation and result validation.
 
-Allowed F1h implementation directions:
+Implemented:
 
-1. In step frame export, for frame-level levels build compact payload directly:
-   - keep `visible_count`.
-   - keep Chan structures: `merged_bars`, `fx`, `bi`, `seg`, `zs`, `bsp`.
-   - omit frame-level `bars` and `indicators` without first constructing them.
-2. Final top-level snapshot must still include bars and indicators once.
-3. Keep `step_frame_format: compact_v1` and compact validation fields.
-4. Keep F1f raw data cache diagnostics and F1g step export sub-stage timing visible.
+- Step frame export builds compact frame-level levels directly.
+- Frame-level payload keeps `visible_count` and Chan structures.
+- Frame-level payload omits `bars` and `indicators` without first constructing them.
+- Full final top-level snapshot is built once after step iteration.
+- Copy Time Log exposes `backend.step_export.final_snapshot`.
 
-Forbidden in F1h:
+Accepted F1h output, second warm same-session run:
 
-- Do not use final snapshot slicing as step replay.
-- Do not use Chan result cache.
+- `backend_process_pid: 8668`.
+- `backend_process_start_count: 1`.
+- `backend_request_count: 2`.
+- `backend_last_request_reused: true`.
+- `backend.data_cache.hits: 3`.
+- `backend.data_cache.misses: 0`.
+- `backend.native.data_load: 219ms`.
+- `backend.native.prepare_chan: 215ms`.
+- `backend.native.step_export: 2699ms`.
+- `backend.step_export.iter: 1481ms`.
+- `backend.step_export.frame_build: 1063ms`.
+- `backend.step_export.level_snapshot: 782ms`.
+- `backend.step_export.structure: 684ms`.
+- `backend.step_export.visible_bars: 67ms`.
+- `backend.step_export.level_payload: 1ms`.
+- `backend.step_export.relation: 236ms`.
+- `backend.step_export.final_snapshot: 127ms`.
+- `backend.step_export.total_frames: 29`.
+- `backend.step_export.returned_frames: 29`.
+- `frontend.total: 4692ms`.
+- `frontend.http_round_trip: 3487ms`.
+- Copy Step remained strict backend step frame:
+  - `frame_source: native_step_frame`.
+  - `final_snapshot_rendered_as_step: false`.
+  - `frame.number.local: 1/29`.
+  - `frame.cursor.native: 0`.
+- Result Validation remained accepted:
+  - `validation_status: match`.
+  - `compact_validation_status: match`.
+  - `compact_validation_mismatch_count: 0`.
+  - `fallback_to_bridge: false`.
+  - `native_cchan_lv_list: true`.
+
+F1h effect:
+
+- `backend.step_export.level_payload` dropped from the F1g warm baseline `1374ms` to `1ms`.
+- `backend.step_export.frame_build` dropped from `1996ms` to `1063ms`.
+- `backend.native.step_export` dropped from `3056ms` to `2699ms`.
+- `response_bytes` dropped from about `4,060,423` to about `4,043,824`.
+- Warm total dropped from F1g `5148ms` to F1h `4692ms`.
+- Remaining backend costs are mainly `step_load()` iteration and structure export.
+
+Forbidden after F1h remains:
+
+- No algorithmic fast/极速 mode.
+- No Chan result cache.
+- No Flutter-side Chan calculation.
+- No final snapshot slicing fake replay.
+- No `python/chan.py` core algorithm change.
+
+## Phase F1i: residual step iteration / structure export and frontend parse decomposition
+
+Selected next task.
+
+Goal:
+
+- Continue decomposing and reducing the remaining warm-run cost after F1h.
+- Current remaining major costs:
+  - `backend.step_export.iter` around `1481ms`.
+  - `backend.step_export.structure` around `684ms`.
+  - `frontend.parse.top_snapshot` around `964ms`.
+- Preserve strict backend step frames and result validation.
+
+Allowed F1i implementation directions:
+
+1. Further split `_export_level` structure export cost:
+   - merged K-line export cost.
+   - FX export cost.
+   - BI export cost.
+   - SEG export cost.
+   - ZS export cost.
+   - BSP export cost.
+2. Further split frontend top snapshot parse cost:
+   - bars parse.
+   - indicators parse.
+   - structures parse.
+   - relations parse.
+3. Investigate whether structure export can avoid repeated unchanged conversion per frame without becoming a Chan result cache.
+4. Keep all validation gates visible and passing.
+
+Forbidden in F1i:
+
 - Do not implement algorithmic fast/极速 mode.
-- Do not move Chan calculations to Flutter.
+- Do not use Chan result cache.
+- Do not fake step replay from final snapshot.
 - Do not change `python/chan.py` core algorithm.
+- Do not move Chan calculations to Flutter.
 
-F1h acceptance criteria:
+F1i acceptance criteria:
 
-- Copy Time Log shows `backend.step_export.level_payload` materially reduced.
-- `backend.native.step_export` should drop versus F1g accepted warm-run baseline (`3056ms`).
+- Copy Time Log shows finer residual timing fields.
+- Warm backend reuse and raw data cache hit diagnostics remain visible.
 - `validation_status: match` and `compact_validation_status: match` remain true.
 - `fallback_to_bridge: false` and `native_cchan_lv_list: true` remain true.
-- Copy Step remains strict backend step frame, not final snapshot slicing.
+- Copy Step remains `native_step_frame`, not final snapshot slicing.
 
 ## Current blockers / pending verification
 
 - No speed/fast/turbo/极速 mode is accepted yet.
-- Strategy mode acceptance remains paused until F1h decision or implementation is complete, unless the manual explicitly resumes strategy first.
+- Strategy mode acceptance remains paused until F1i decision or implementation is complete, unless the manual explicitly resumes strategy first.
 - Full-history/paged strict step replay remains deferred.
 - Algorithmic fast mode is prohibited until a stricter validation plan is written and accepted.
 - Chan result cache remains prohibited.
-- F1h compact-first step frame export is now the selected next task.
+- F1i residual decomposition is now the selected next task.
 
 ## Next task-party operation
 
-1. Implement F1h compact-first step frame export in the App adapter/export layer.
-2. Keep F1f raw data cache diagnostics and F1g step export timings visible.
+1. Implement F1i residual backend/export and frontend parse decomposition.
+2. Keep F1f raw data cache diagnostics, F1g/F1h step export timings visible.
 3. Re-run the accepted test window twice in the same App session.
 4. Paste Copy Time Log, Copy Step, and Copy Result Validation from the warm second run.
-5. Accept F1h only if compact validation remains match and step export cost drops without fake step replay.
+5. Accept F1i only if finer residual timing is visible and validation remains match.
