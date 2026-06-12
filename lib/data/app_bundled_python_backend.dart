@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 class AppBundledPythonBackend {
+  static int _startCount = 0;
+
   static Future<AppBundledPythonBackendProcess> start({
     bool requireAnalyzeMulti = false,
   }) async {
@@ -11,6 +13,9 @@ class AppBundledPythonBackend {
         'App-managed bundled Python backend startup is only supported on Windows.',
       );
     }
+    final startupSw = Stopwatch()..start();
+    final startSequence = ++_startCount;
+    final startedAt = DateTime.now();
     final appEngine = await _findAppEngine();
     final python = _findBundledPython(appEngine);
     final port = await _pickFreePort();
@@ -29,9 +34,13 @@ class AppBundledPythonBackend {
       pythonPath: python.path,
       appEnginePath: appEngine.path,
       requireAnalyzeMulti: requireAnalyzeMulti,
+      startSequence: startSequence,
+      startedAt: startedAt,
     );
     try {
       await runner.waitUntilReady();
+      startupSw.stop();
+      runner.markStartupReady(startupSw.elapsedMilliseconds);
       return runner;
     } catch (_) {
       runner.dispose();
@@ -95,8 +104,17 @@ class AppBundledPythonBackendProcess {
   final String pythonPath;
   final String appEnginePath;
   final bool requireAnalyzeMulti;
+  final int startSequence;
+  final DateTime startedAt;
   final StringBuffer _stderr = StringBuffer();
   Map<String, dynamic> _health = const {};
+  DateTime? _readyAt;
+  int _startupElapsedMs = 0;
+  int _lastHealthCheckElapsedMs = 0;
+  int _healthCheckCount = 0;
+  int _requestCount = 0;
+  int _lastBackendReadyElapsedMs = 0;
+  bool _lastRequestReused = false;
 
   AppBundledPythonBackendProcess._({
     required this.process,
@@ -104,6 +122,8 @@ class AppBundledPythonBackendProcess {
     required this.pythonPath,
     required this.appEnginePath,
     required this.requireAnalyzeMulti,
+    required this.startSequence,
+    required this.startedAt,
   }) {
     process.stderr.transform(utf8.decoder).listen(_stderr.write);
     process.stdout.transform(utf8.decoder).listen((_) {});
@@ -118,7 +138,32 @@ class AppBundledPythonBackendProcess {
         'backend_health': _health,
         'is_app_bundled': true,
         'requires_analyze_multi': requireAnalyzeMulti,
+        'backend_process_pid': process.pid,
+        'backend_process_start_count': startSequence,
+        'backend_process_started_at': startedAt.toIso8601String(),
+        'backend_process_ready_at': _readyAt?.toIso8601String() ?? '',
+        'backend_process_uptime_ms': DateTime.now().difference(startedAt).inMilliseconds,
+        'backend_startup_elapsed_ms': _startupElapsedMs,
+        'backend_last_health_check_elapsed_ms': _lastHealthCheckElapsedMs,
+        'backend_health_check_count': _healthCheckCount,
+        'backend_request_count': _requestCount,
+        'backend_last_request_reused': _lastRequestReused,
+        'backend_last_ready_elapsed_ms': _lastBackendReadyElapsedMs,
       };
+
+  void markStartupReady(int elapsedMs) {
+    _startupElapsedMs = elapsedMs;
+    _readyAt = DateTime.now();
+  }
+
+  void markRequest({
+    required bool reused,
+    required int backendReadyElapsedMs,
+  }) {
+    _requestCount += 1;
+    _lastRequestReused = reused;
+    _lastBackendReadyElapsedMs = backendReadyElapsedMs;
+  }
 
   Future<void> waitUntilReady() async {
     final deadline = DateTime.now().add(const Duration(seconds: 25));
@@ -134,10 +179,9 @@ class AppBundledPythonBackendProcess {
         );
       }
       try {
-        final health = await _getJson('/health');
+        final health = await refreshHealth();
         if (health['backend'] == 'origin_vespa_tdx' &&
             health['engine'] == 'chan.py') {
-          _health = Map<String, dynamic>.from(health);
           if (requireAnalyzeMulti) {
             await _assertAnalyzeMultiEndpoint();
           }
@@ -152,6 +196,16 @@ class AppBundledPythonBackendProcess {
     throw Exception(
       'Blocked: App-bundled Python backend startup timed out: $lastError, stderr=${_stderr.toString()}',
     );
+  }
+
+  Future<Map<String, dynamic>> refreshHealth() async {
+    final sw = Stopwatch()..start();
+    final health = await _getJson('/health');
+    sw.stop();
+    _health = Map<String, dynamic>.from(health);
+    _lastHealthCheckElapsedMs = sw.elapsedMilliseconds;
+    _healthCheckCount += 1;
+    return _health;
   }
 
   Future<Map<String, dynamic>> _getJson(String path) async {
