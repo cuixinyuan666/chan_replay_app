@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from time import perf_counter
 from typing import Any
 
 from fastapi import Body, FastAPI, Query, Request
@@ -30,6 +31,18 @@ _CONTROL_QUERY_KEYS = {'mode', 'symbol', 'market', 'freq', 'period', 'adjust', '
 _BOOL_TRUE = {'1', 'true', 'yes', 'y', 'on'}
 _BOOL_FALSE = {'0', 'false', 'no', 'n', 'off'}
 _COMPACT_STRUCTURE_KEYS = ('merged_bars', 'fx', 'bi', 'seg', 'zs', 'bsp')
+
+
+def _elapsed_ms(start: float) -> int:
+    return int((perf_counter() - start) * 1000)
+
+
+def _merge_meta(result: dict[str, object], extra: dict[str, Any]) -> dict[str, object]:
+    patched = dict(result)
+    meta = dict(patched.get('meta')) if isinstance(patched.get('meta'), dict) else {}
+    meta.update(extra)
+    patched['meta'] = meta
+    return patched
 
 
 def _boolish(value: Any) -> Any:
@@ -363,8 +376,11 @@ def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
 
 @app.post('/api/chan/analyze_multi')
 def chan_analyze_multi(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
+    route_start = perf_counter()
     config = payload.get('config') if isinstance(payload.get('config'), dict) else {}
     levels = payload.get('lv_list') or payload.get('levels') or payload.get('level_order')
+
+    analyze_start = perf_counter()
     result = analyze_multi(
         symbol=str(payload.get('symbol') or '000001'),
         market=payload.get('market'),
@@ -378,7 +394,24 @@ def chan_analyze_multi(payload: dict[str, Any] = Body(...)) -> dict[str, object]
         count=_payload_int(payload, 'count', 50000, minimum=10, maximum=200000),
         config=config,
     )
-    return _compact_multilevel_step_result(result, payload, config)
+    analyze_ms = _elapsed_ms(analyze_start)
+
+    compact_start = perf_counter()
+    result = _compact_multilevel_step_result(result, payload, config)
+    compact_ms = _elapsed_ms(compact_start)
+
+    json_probe_start = perf_counter()
+    response_probe = json.dumps(result, ensure_ascii=False, separators=(',', ':'))
+    json_probe_ms = _elapsed_ms(json_probe_start)
+
+    result = _merge_meta(result, {
+        'backend_route_analyze_multi_ms': analyze_ms,
+        'backend_route_compact_transform_ms': compact_ms,
+        'backend_route_json_serialize_probe_ms': json_probe_ms,
+        'backend_route_response_bytes_probe': len(response_probe.encode('utf-8')),
+        'backend_route_total_before_response_ms': _elapsed_ms(route_start),
+    })
+    return result
 
 
 @app.post('/api/research/bsp/features')
@@ -399,7 +432,7 @@ def research_ml_score(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
         raw_features = extract_bsp_features(
             analysis,
             label_horizon=_payload_int(payload, 'label_horizon', 5, minimum=1, maximum=250),
-            include_labels=_payload_bool(payload, 'include_labels', True),
+            include_labels=True,
         )
     model_name = str(payload.get('model') or 'logistic_v1')
     return score_bsp_features(raw_features, model_name=model_name)
