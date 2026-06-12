@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+from collections import deque
 from time import perf_counter
 from typing import Any
 
 from .a_multilevel_native_engine import (
+    _frame_current_time,
+    _level_payload,
     _load_aligned_bars_by_level,
+    _max_step_frames,
     _native_once_response,
-    _native_step_response,
+    _native_relations,
     _normalize_levels,
     _prepare_native_chan,
+    _visible_bars_for_level,
 )
+from .chanpy_engine import _export_level
 from .easy_tdx_provider import (
     get_easy_tdx_cache_stats,
     infer_market,
@@ -20,6 +26,10 @@ from .easy_tdx_provider import (
 
 def _elapsed_ms(start: float) -> int:
     return int((perf_counter() - start) * 1000)
+
+
+def _add_elapsed_ms(timing: dict[str, Any], key: str, start: float) -> None:
+    timing[key] = int(timing.get(key) or 0) + _elapsed_ms(start)
 
 
 def _merge_timing(result: dict[str, Any], timing: dict[str, Any]) -> dict[str, Any]:
@@ -91,6 +101,166 @@ def _cache_timing_meta() -> dict[str, Any]:
     }
 
 
+def _timed_snapshot_from_chan(
+    *,
+    exporter: Any,
+    chan: Any,
+    kl_types: list[Any],
+    level_order: list[str],
+    bars_by_level: dict[str, list[dict[str, Any]]],
+    config: dict[str, Any] | None,
+    main: str,
+    clock: str,
+    mode_name: str,
+    timing: dict[str, Any],
+    cursor: int | None = None,
+) -> dict[str, Any]:
+    level_results: dict[str, dict[str, Any]] = {}
+    total_bsp_count = 0
+    for level, kl_type in zip(level_order, kl_types):
+        level_start = perf_counter()
+        level_obj = exporter.get_level(chan, kl_type)
+
+        structure_start = perf_counter()
+        structures = _export_level(exporter, level_obj)
+        _add_elapsed_ms(timing, 'backend_step_export_structure_ms', structure_start)
+
+        bsp_start = perf_counter()
+        total_bsp_count += len(structures.get('bsp', []) if isinstance(structures, dict) else [])
+        _add_elapsed_ms(timing, 'backend_step_export_bsp_ms', bsp_start)
+
+        visible_start = perf_counter()
+        visible_bars = _visible_bars_for_level(level_obj, bars_by_level[level])
+        _add_elapsed_ms(timing, 'backend_step_export_visible_bars_ms', visible_start)
+
+        payload_start = perf_counter()
+        level_results[level] = _level_payload(
+            bars=visible_bars,
+            structures=structures,
+            config=config,
+        )
+        _add_elapsed_ms(timing, 'backend_step_export_level_payload_ms', payload_start)
+        _add_elapsed_ms(timing, 'backend_step_export_level_snapshot_ms', level_start)
+
+    relation_start = perf_counter()
+    relations = _native_relations(
+        level_order=level_order,
+        kl_types=kl_types,
+        chan=chan,
+        exporter=exporter,
+    )
+    _add_elapsed_ms(timing, 'backend_step_export_relation_ms', relation_start)
+    timing['backend_step_export_bsp_count'] = int(timing.get('backend_step_export_bsp_count') or 0) + total_bsp_count
+
+    meta = {
+        'engine': 'chan.py',
+        'source': 'origin_vespa_tdx.backend.a_multilevel_native_timed_engine',
+        'mode': mode_name,
+        'levels': level_order,
+        'main_level': main,
+        'clock_level': clock,
+        'native_cchan_lv_list': True,
+        'level_relation_mode': 'chan_parent_child',
+        'chan_py_polluted': False,
+    }
+    if cursor is not None:
+        meta['cursor'] = cursor
+    return {
+        'main_level': main,
+        'levels': level_results,
+        'relations': relations,
+        'meta': meta,
+    }
+
+
+def _timed_native_step_response(
+    *,
+    exporter: Any,
+    chan: Any,
+    kl_types: list[Any],
+    level_order: list[str],
+    bars_by_level: dict[str, list[dict[str, Any]]],
+    data_meta: dict[str, Any],
+    prepared_code: str,
+    code: str,
+    market_name: str,
+    adjust: str,
+    main: str,
+    clock: str,
+    config: dict[str, Any] | None,
+    timing: dict[str, Any],
+) -> dict[str, Any]:
+    step_iter = getattr(chan, 'step_load', None)
+    if not callable(step_iter):
+        raise RuntimeError('native CChan(lv_list) does not expose step_load')
+    max_frames = _max_step_frames(config)
+    frame_buffer: deque[dict[str, Any]] = deque(maxlen=max_frames)
+    total_frames = 0
+    iterator = iter(step_iter())
+    cursor = 0
+    while True:
+        iter_start = perf_counter()
+        try:
+            cur_chan = next(iterator)
+        except StopIteration:
+            _add_elapsed_ms(timing, 'backend_step_export_iter_ms', iter_start)
+            break
+        _add_elapsed_ms(timing, 'backend_step_export_iter_ms', iter_start)
+
+        frame_start = perf_counter()
+        frame = _timed_snapshot_from_chan(
+            exporter=exporter,
+            chan=cur_chan,
+            kl_types=kl_types,
+            level_order=level_order,
+            bars_by_level=bars_by_level,
+            config=config,
+            main=main,
+            clock=clock,
+            mode_name='step',
+            timing=timing,
+            cursor=cursor,
+        )
+        current_time_start = perf_counter()
+        frame['meta']['current_time'] = _frame_current_time(frame, main)
+        _add_elapsed_ms(timing, 'backend_step_export_current_time_ms', current_time_start)
+        frame['meta']['frame_index'] = cursor
+        frame_buffer.append(frame)
+        total_frames += 1
+        cursor += 1
+        _add_elapsed_ms(timing, 'backend_step_export_frame_build_ms', frame_start)
+
+    frames = list(frame_buffer)
+    if not frames:
+        raise RuntimeError('native CChan(lv_list) step_load returned no frames')
+    final = frames[-1]
+    meta = dict(final['meta'])
+    meta.update({
+        'symbol': f'{code}.{market_name}',
+        'name': code,
+        'adjust': adjust.upper(),
+        'prepared_code': prepared_code,
+        'native_step_frames': True,
+        'native_step_frames_total': total_frames,
+        'native_step_frames_returned': len(frames),
+        'native_step_frames_limit': max_frames,
+        'native_step_frames_truncated': total_frames > len(frames),
+        'native_data_window': data_meta,
+        'native_csv_time_policy': 'effective-time sort/dedupe; non-intraday parent levels are written to CSV at 23:59 while UI bars keep original times',
+        'warnings': ['native CChan(lv_list).step_load() path is active'],
+        'backend_step_export_total_frames': total_frames,
+        'backend_step_export_returned_frames': len(frames),
+    })
+    return {
+        'ok': True,
+        'main_level': main,
+        'levels': final['levels'],
+        'relations': final['relations'],
+        'frames': frames,
+        'meta': meta,
+    }
+
+
 def analyze_multi_native_timed(
     *,
     symbol: str,
@@ -151,7 +321,7 @@ def analyze_multi_native_timed(
 
         if mode_name == 'step':
             step_start = perf_counter()
-            result = _native_step_response(
+            result = _timed_native_step_response(
                 exporter=exporter,
                 chan=chan,
                 kl_types=kl_types,
@@ -165,6 +335,7 @@ def analyze_multi_native_timed(
                 main=main,
                 clock=clock,
                 config=config,
+                timing=timing,
             )
             timing['backend_native_step_export_ms'] = _elapsed_ms(step_start)
         else:
