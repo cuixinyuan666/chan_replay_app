@@ -162,8 +162,9 @@ class PythonMultiLevelChanAnalysisSource {
     }
 
     final readySw = Stopwatch()..start();
-    final sourceBase =
-        Platform.isWindows ? await _readyAppManagedBaseUrl() : baseUrl;
+    final sourceBase = Platform.isWindows
+        ? await _readyAppManagedBaseUrl(stages)
+        : baseUrl;
     stages['frontend.backend_ready'] = readySw.elapsedMilliseconds;
 
     return _postAnalyzeMulti(
@@ -185,9 +186,29 @@ class PythonMultiLevelChanAnalysisSource {
     );
   }
 
-  Future<String> _readyAppManagedBaseUrl() async {
-    _localProcess ??= await AppBundledPythonBackend.start(
-      requireAnalyzeMulti: true,
+  Future<String> _readyAppManagedBaseUrl(Map<String, int> stages) async {
+    final readySw = Stopwatch()..start();
+    final reused = _localProcess != null;
+    final startOrReuseSw = Stopwatch()..start();
+    if (!reused) {
+      _localProcess = await AppBundledPythonBackend.start(
+        requireAnalyzeMulti: true,
+      );
+    }
+    startOrReuseSw.stop();
+    stages['frontend.backend_ready.start_or_reuse'] = startOrReuseSw.elapsedMilliseconds;
+
+    final healthSw = Stopwatch()..start();
+    if (reused) {
+      await _localProcess!.refreshHealth();
+    }
+    healthSw.stop();
+    stages['frontend.backend_ready.health_check'] = healthSw.elapsedMilliseconds;
+
+    readySw.stop();
+    _localProcess!.markRequest(
+      reused: reused,
+      backendReadyElapsedMs: readySw.elapsedMilliseconds,
     );
     return _localProcess!.baseUrl;
   }
@@ -416,6 +437,17 @@ class PythonMultiLevelChanAnalysisSource {
       'lazy_frame_cache_hits': meta['lazy_frame_cache_hits'],
       'lazy_frame_cache_misses': meta['lazy_frame_cache_misses'],
       'lazy_frame_parse_ms': meta['lazy_frame_parse_ms'],
+      'backend_process_pid': runtime['backend_process_pid'],
+      'backend_process_start_count': runtime['backend_process_start_count'],
+      'backend_process_started_at': runtime['backend_process_started_at'],
+      'backend_process_ready_at': runtime['backend_process_ready_at'],
+      'backend_process_uptime_ms': runtime['backend_process_uptime_ms'],
+      'backend_startup_elapsed_ms': runtime['backend_startup_elapsed_ms'],
+      'backend_last_health_check_elapsed_ms': runtime['backend_last_health_check_elapsed_ms'],
+      'backend_health_check_count': runtime['backend_health_check_count'],
+      'backend_request_count': runtime['backend_request_count'],
+      'backend_last_request_reused': runtime['backend_last_request_reused'],
+      'backend_last_ready_elapsed_ms': runtime['backend_last_ready_elapsed_ms'],
       'stages': Map<String, int>.from(stages),
       'used_app_bundled_python': (meta['python_runtime'] ?? runtime['python_runtime']) == 'app_bundled',
       'native_cchan_lv_list': meta['native_cchan_lv_list'],
