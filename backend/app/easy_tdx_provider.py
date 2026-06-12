@@ -1,11 +1,45 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import date, datetime
 from typing import Any
 
 
 class EasyTdxUnavailable(RuntimeError):
     pass
+
+
+_EASY_TDX_BAR_CACHE: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+_EASY_TDX_CACHE_STATS: dict[str, Any] = {
+    'hits': 0,
+    'misses': 0,
+    'hit_levels': [],
+    'miss_levels': [],
+}
+
+
+def reset_easy_tdx_cache_stats() -> None:
+    _EASY_TDX_CACHE_STATS['hits'] = 0
+    _EASY_TDX_CACHE_STATS['misses'] = 0
+    _EASY_TDX_CACHE_STATS['hit_levels'] = []
+    _EASY_TDX_CACHE_STATS['miss_levels'] = []
+
+
+def get_easy_tdx_cache_stats() -> dict[str, Any]:
+    return {
+        'enabled': True,
+        'hits': int(_EASY_TDX_CACHE_STATS.get('hits') or 0),
+        'misses': int(_EASY_TDX_CACHE_STATS.get('misses') or 0),
+        'hit_levels': list(_EASY_TDX_CACHE_STATS.get('hit_levels') or []),
+        'miss_levels': list(_EASY_TDX_CACHE_STATS.get('miss_levels') or []),
+        'key_count': len(_EASY_TDX_BAR_CACHE),
+        'policy': 'process-local raw K-line cache; key=symbol,market,period,adjust,count,start,end; no Chan result cache',
+    }
+
+
+def clear_easy_tdx_bar_cache() -> None:
+    _EASY_TDX_BAR_CACHE.clear()
+    reset_easy_tdx_cache_stats()
 
 
 def infer_market(symbol: str) -> str:
@@ -134,6 +168,41 @@ def _get_stock_kline(MacClient: Any, *args: Any, **kwargs: Any) -> Any:
         _close_client(client)
 
 
+def _cache_key(
+    *,
+    code: str,
+    market_name: str,
+    period_name: str,
+    adjust_name: str,
+    count: int,
+    start: str | None,
+    end: str | None,
+) -> tuple[Any, ...]:
+    return (
+        code,
+        market_name,
+        period_name,
+        adjust_name,
+        int(count),
+        str(start or ''),
+        str(end or ''),
+    )
+
+
+def _record_cache_hit(period_name: str) -> None:
+    _EASY_TDX_CACHE_STATS['hits'] = int(_EASY_TDX_CACHE_STATS.get('hits') or 0) + 1
+    _EASY_TDX_CACHE_STATS.setdefault('hit_levels', []).append(period_name)
+
+
+def _record_cache_miss(period_name: str) -> None:
+    _EASY_TDX_CACHE_STATS['misses'] = int(_EASY_TDX_CACHE_STATS.get('misses') or 0) + 1
+    _EASY_TDX_CACHE_STATS.setdefault('miss_levels', []).append(period_name)
+
+
+def _copy_bars(bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return deepcopy(bars)
+
+
 def load_easy_tdx_bars(
     *,
     symbol: str,
@@ -144,6 +213,26 @@ def load_easy_tdx_bars(
     start: str | None = None,
     end: str | None = None,
 ) -> list[dict[str, Any]]:
+    code = normalize_symbol(symbol)
+    market_name = (market or infer_market(code)).upper()
+    period_name = period.upper()
+    adjust_name = adjust.upper()
+    safe_count = max(1, int(count))
+    key = _cache_key(
+        code=code,
+        market_name=market_name,
+        period_name=period_name,
+        adjust_name=adjust_name,
+        count=safe_count,
+        start=start,
+        end=end,
+    )
+    cached = _EASY_TDX_BAR_CACHE.get(key)
+    if cached is not None:
+        _record_cache_hit(period_name)
+        return _copy_bars(cached)
+    _record_cache_miss(period_name)
+
     try:
         from easy_tdx import Adjust, MacClient, Market, Period
     except Exception as exc:  # pragma: no cover - environment dependent
@@ -151,14 +240,9 @@ def load_easy_tdx_bars(
             '未安装 easy-tdx，或当前 Python 环境无法导入 easy_tdx / easy-tdx'
         ) from exc
 
-    code = normalize_symbol(symbol)
-    market_name = (market or infer_market(code)).upper()
-    period_name = period.upper()
-    adjust_name = adjust.upper()
     market_enum = _market_value(market_name, Market)
     period_enum = _period_value(period_name, Period)
     adjust_enum = _adjust_value(adjust_name, Adjust)
-    safe_count = max(1, int(count))
 
     try:
         df = _get_stock_kline(
@@ -217,4 +301,5 @@ def load_easy_tdx_bars(
                 'adjust': adjust_name,
             }
         )
+    _EASY_TDX_BAR_CACHE[key] = _copy_bars(bars)
     return bars
