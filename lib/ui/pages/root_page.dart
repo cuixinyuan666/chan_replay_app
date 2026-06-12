@@ -50,8 +50,8 @@ class _RootPageState extends State<RootPage> {
             onOpen: _open,
           ),
           const Positioned(
-            right: 12,
-            top: 8,
+            left: 52,
+            bottom: 18,
             child: _RuntimePathDropdown(),
           ),
         ],
