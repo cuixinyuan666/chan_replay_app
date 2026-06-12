@@ -41,7 +41,12 @@ Branch: origin_vespa_tdx
 - `0f94fb9012930bef8f75911d3cd1a1e9fb872128`: added `compact_validation_*` fields to Copy P0 and Copy Step diagnostics.
 - `958920a489bfb33edc7ba390476a8c38270b10e8`: wired Copy Result Validation to report F1a compact match/mismatch when compact validation meta is present.
 - `f635f70b38848857ef28c7a24efa32b3abbe07ad`: accepted runtime Copy Result Validation F1a compact transport match and marked F1a compact-v1 transport equivalence accepted.
-- Current update: accepted F1b post-compact measurements and selected F1c compact payload refinement / frame paging / lazy frame parsing as the next task.
+- `f2e3cacc341361afaaa6e221b6bf8c324e5e9f36`: accepted F1b post-compact measurements and selected F1c compact payload refinement / frame paging / lazy frame parsing as the next task.
+- `e0a2f1c0a251b0985c4d804ea2f359bb4d3f96fa`: split multi-level frontend parse timing into top snapshot, frames, and interval signal stages.
+- `6b12a5123cd24a86330b7823428542f9819e23c7`: exposed single compact frame parser for lazy loading.
+- `68cf4e42aa22608fce78f9497a1d6207e5880449`: implemented lazy parsing for compact_v1 multi-level step frames.
+- `ca3cce4699e12240788f9d9abfbf59150b263c95`: printed lazy frame counters in Copy Time Log.
+- Current update: accepted F1c lazy frame parsing runtime verification and selected F1d backend lifecycle / round-trip diagnostics as the next phase.
 
 ## Current accepted work
 
@@ -63,6 +68,7 @@ Branch: origin_vespa_tdx
 - F1a Copy Result Validation compact transport equivalence: runtime accepted with `validation_phase: F1a`, `validation_status: match`, `mismatch_count: 0`, and `status: ok`.
 - F1a compact-v1 transport equivalence: accepted.
 - F1b post-compact performance measurement: accepted and classified.
+- F1c lazy frame parsing: runtime accepted.
 
 ## P0 Time Log instrumentation
 
@@ -172,13 +178,13 @@ F1b decision:
 
 - Select **F1c compact payload refinement / frame paging / lazy frame parsing**.
 - Do not select raw-data cache yet, because frontend parse remains as large as backend/http round-trip.
-- Do not select backend lifecycle as the primary next task, because backend_ready is smaller than parse and http round-trip.
+- Do not select backend lifecycle as the primary next task, because backend_ready was smaller than parse and http round-trip at that stage.
 - Do not select strategy/signal fast reuse yet, because the measured slow path is initial step load and frame parse.
 - Do not start algorithmic fast/极速 mode.
 
 ## Phase F1c: compact payload refinement / frame paging / lazy frame parsing
 
-Selected next task.
+Accepted.
 
 Goal:
 
@@ -187,27 +193,71 @@ Goal:
 - Keep compact validation gate visible and passing.
 - Avoid loading/parsing all heavy frame snapshots eagerly when only the first/current frame is needed.
 
-Allowed F1c implementation directions:
+Implemented:
 
-1. Add lazy frame parsing in Flutter:
-   - Parse top-level snapshot eagerly.
-   - Keep raw frame JSON list or compact frame descriptors in memory.
-   - Parse only the current frame when selected.
-   - Cache parsed frames after first use.
-   - Keep slider frame count and current cursor available from raw frame meta.
-2. Add frame page/window policy:
-   - Use `frame_policy=window` or a new explicit page request for visible frame windows.
-   - Must not pretend a paged/strided subset is full strict replay.
-   - Diagnostics must show policy and returned range.
-3. Further compact frame payload:
-   - Remove or delta-encode repeated `merged_bars` from frame levels if validation proves reconstruction is equivalent.
-   - Preserve FX/BI/SEG/ZS/BSP semantics from backend output.
-4. Add better timing fields:
-   - split top-level parse vs frame parse.
-   - record parsed frame count.
-   - record lazy cache hit/miss.
+- Split frontend parse timing into:
+  - `frontend.parse.top_snapshot`
+  - `frontend.parse.frames`
+  - `frontend.parse.interval_signals`
+  - `frontend.parse.snapshot_frames_relations_bsp`
+- Added `MultiLevelChanAnalysisParser.parseFrame(...)` for single-frame compact parsing.
+- Added lazy frame list for compact_v1 step responses.
+- Initial response parse now parses top-level snapshot and interval signals eagerly, while compact frames are parsed on first access and cached.
+- Copy Time Log explicitly prints lazy counters:
+  - `raw_frame_count`
+  - `parsed_frame_count`
+  - `parsed_level_count`
+  - `lazy_frame_parsing`
+  - `lazy_frame_cache_hits`
+  - `lazy_frame_cache_misses`
+  - `lazy_frame_parse_ms`
+  - `lazy_frame_last_index`
+  - `lazy_frame_last_parse_ms`
 
-Forbidden in F1c:
+Runtime accepted F1c output:
+
+- `lazy_frame_parsing: true`.
+- `raw_frame_count: 29`.
+- `parsed_frame_count: 1`.
+- `parsed_level_count: 3`.
+- `lazy_frame_cache_hits: 7`.
+- `lazy_frame_cache_misses: 1`.
+- `lazy_frame_parse_ms: 44`.
+- `lazy_frame_last_index: 0`.
+- `lazy_frame_last_parse_ms: 44`.
+- `frontend.parse.frames: 0ms`.
+- `frontend.parse.snapshot_frames_relations_bsp: 1285ms`.
+- `frontend.parse.top_snapshot: 1284ms`.
+- `Copy P0` remained native and compact:
+  - `strict_step_blocked: false`
+  - `native_cchan_lv_list: true`
+  - `fallback_to_bridge: false`
+  - `frames.length: 29`
+  - `step_frame_format: compact_v1`
+  - `compact_validation_status: match`
+- `Copy Step` remained strict step:
+  - `frame_source: native_step_frame`
+  - `final_snapshot_rendered_as_step: false`
+  - `native_cchan_lv_list: true`
+  - `fallback_to_bridge: false`
+  - `frame.number.local: 1/29`
+  - `status_summary.current_frame` remains different from final snapshot.
+
+F1c effect:
+
+- Before lazy frame parsing, `frontend.parse.frames` was `13396ms` and `frontend.parse.snapshot_frames_relations_bsp` was `14763ms`.
+- After lazy frame parsing, `frontend.parse.frames` is `0ms` and `frontend.parse.snapshot_frames_relations_bsp` is about `1196ms-1285ms`.
+- Compact transport validation remains accepted.
+- No `python/chan.py` core logic changed.
+
+Remaining bottleneck after F1c:
+
+- Backend/http round trip remains high, around `9s-13s`.
+- Backend ready/startup can be high, observed at `3.5s-9.1s`.
+- Response bytes remain about `4.06MB`.
+- Frontend frame parsing is no longer the primary bottleneck.
+
+Forbidden after F1c remains:
 
 - Do not modify `python/chan.py` core algorithm.
 - Do not calculate FX/BI/SEG/ZS/BSP in Flutter.
@@ -215,30 +265,61 @@ Forbidden in F1c:
 - Do not drop relation/BSP diagnostics.
 - Do not hide that paging/stride is not full strict replay.
 
-F1c acceptance criteria:
+## Phase F1d: backend lifecycle / round-trip diagnostics and warm backend reuse
 
-- `Copy Result Validation` must remain `validation_status: match`.
-- `compact_validation_status: match` and `compact_validation_mismatch_count: 0` must remain visible.
-- `Copy Time Log` must include parse split fields and show a reduced initial parse time or explain why not.
-- `Copy P0` and `Copy Step` must still show native CChan/lv_list, no fallback, compact frame format, and strict step source.
-- If lazy parse is used, diagnostics must show parsed frame count and current frame parse state.
+Selected next task.
+
+Goal:
+
+- Determine whether the remaining `frontend.backend_ready` and `frontend.http_round_trip` cost comes from backend startup, backend compute, data fetch, serialization, HTTP transfer, or frontend request lifecycle.
+- Reduce avoidable backend startup/restart overhead in normal Windows App-managed bundled Python workflow.
+- Preserve original `chan.py` calculation semantics.
+
+Allowed F1d implementation directions:
+
+1. Add backend lifecycle diagnostics:
+   - backend process pid.
+   - backend process start count.
+   - backend reused vs newly started.
+   - backend uptime before request.
+   - health-check elapsed ms.
+2. Split backend/http timing further:
+   - frontend backend_ready start/reuse/health ms.
+   - backend compute ms from server meta if available.
+   - serialization / compact adapter ms if available.
+3. Keep backend warm across repeated requests where safe:
+   - Do not spawn a new backend process for each request.
+   - Reuse existing app-managed backend when healthy.
+4. Preserve validation:
+   - Copy Result Validation must remain match.
+   - Copy P0 and Copy Step must remain native and strict-step based.
+
+Forbidden in F1d:
+
+- Do not implement algorithmic fast/极速 mode.
+- Do not add result cache unless a separate validation plan is written.
+- Do not bypass original `chan.py`.
+- Do not hide backend fallback.
+
+F1d acceptance criteria:
+
+- Copy Time Log must show backend lifecycle fields and split backend_ready/reuse health timing.
+- Repeated same-window load should show whether backend process is reused.
+- Copy Result Validation must remain `validation_status: match`.
+- Copy P0 / Copy Step must remain native, compact, and strict-step based.
 
 ## Current blockers / pending verification
 
 - No speed/fast/turbo/极速 mode is accepted yet.
-- Strategy mode acceptance remains paused until F1c decision or implementation is complete, unless the manual explicitly resumes strategy first.
-- Full-history/paged strict step replay remains deferred except as an F1c frame paging implementation detail.
+- Strategy mode acceptance remains paused until F1d decision or implementation is complete, unless the manual explicitly resumes strategy first.
+- Full-history/paged strict step replay remains deferred.
 - Algorithmic fast mode is prohibited until a stricter validation plan is written and accepted.
-- F1c implementation is now the selected next task.
+- F1d backend lifecycle / round-trip diagnostics is now the selected next task.
 
 ## Next task-party operation
 
-1. Implement F1c lazy frame parsing / compact payload refinement without changing `chan.py`.
-2. Add diagnostics for:
-   - top-level parse ms.
-   - frame parse ms.
-   - parsed frame count.
-   - lazy frame cache hit/miss if used.
-3. Re-run the accepted test window.
-4. Paste Copy Time Log, Copy P0, Copy Step, and Copy Result Validation.
-5. Accept F1c only if validation remains match and parse/payload diagnostics improve or clearly explain the remaining bottleneck.
+1. Implement F1d backend lifecycle diagnostics without changing `chan.py`.
+2. Add Time Log fields for backend process reuse/start/health timing.
+3. Re-run the accepted test window twice in the same App session.
+4. Paste Copy Time Log, Copy P0, Copy Step, and Copy Result Validation from both runs if possible.
+5. Accept F1d only if backend lifecycle state is visible and validation remains match.
