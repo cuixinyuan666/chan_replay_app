@@ -44,7 +44,7 @@ Branch: origin_vespa_tdx
 - `982ab7dc66e57a3ea3cd7a97d257e2fa00d2541b`: attach selected runtime path to analyze_multi Time Log and meta.
 - `b85aef4fafd3b5d644fc3f533e1fb483f009da72`: wire selected runtime path into Copy P0 and Copy Step.
 - `3085d9390d0dc70e8c59e2abd7da975326d57287`: move runtime path dropdown away from header to avoid overlap with Load/request controls.
-- Current update: record runtime dropdown position fix. B1a is not accepted until pasted app output proves dropdown/default/copy diagnostics.
+- Current update: accept B1a runtime path dropdown / copy diagnostics and select B1b Dart-side Chan cleanup next.
 
 ## Current accepted work
 
@@ -66,7 +66,8 @@ Branch: origin_vespa_tdx
 - F1j frontend top snapshot parse decomposition: accepted.
 - F1k lazy Easy TDX indicator parsing: accepted.
 - Performance chain F1a-F1k: stopped by rule; return to business/runtime task chain.
-- B1a runtime path model, visible non-overlapping dropdown, Time Log wiring, Copy P0 wiring, and Copy Step wiring: implementation complete, pending user-pasted runtime validation, not accepted.
+- B1a runtime path dropdown and copy diagnostics: accepted.
+- B1b Dart-side Chan cleanup/search evidence: selected next task, not accepted.
 
 ## Accepted runtime baseline
 
@@ -124,7 +125,7 @@ After F1k:
 
 ## Phase B1: runtime path switch and legacy Dart Chan cleanup
 
-Selected next task.
+Selected task chain.
 
 Goal:
 
@@ -135,105 +136,110 @@ Goal:
 
 ### B1a: runtime path dropdown
 
-Required UI behavior:
+Accepted.
 
-- Add a runtime path dropdown with exactly these user-facing choices:
-  - `高速路（默认）`
-  - `慢速路（原始校验/调试）`
-- Default value must be `高速路（默认）`.
-- Strategy mode, validation mode, and normal replay must use the high-speed path by default.
-- Slow path must be manually selectable only for debugging, baseline comparison, or validation investigation.
-- Slow path must not silently become the default after restart, page rebuild, exception, or fallback.
+Implemented:
 
-Required diagnostics in Copy Time Log and Copy P0:
+- Runtime path dropdown with exactly these user-facing choices:
+  - `高速路（默认）`.
+  - `慢速路（原始校验/调试）`.
+- Default value is `高速路（默认）`.
+- Dropdown was moved away from the top-right header area and placed in the bottom-left area beside the route toolbar to avoid overlap with `Load`, mode chips, and request controls.
+- Runtime path diagnostics are attached to:
+  - Copy Time Log.
+  - Copy P0.
+  - Copy Step.
+  - Copy Result Validation via interval-signal panel.
+- The selected runtime path is attached to frontend request context, response meta, and time_log.
+- Runtime path is a routing/diagnostic policy only; it does not implement Dart Chan calculation.
 
-- `runtime_path: high_speed | slow_path`.
-- `high_speed_enabled: true | false`.
-- `slow_path_enabled: true | false`.
-- `runtime_path_default: high_speed`.
-- `runtime_path_policy: high_speed_default_slow_path_debug_only`.
-- Existing diagnostics must remain visible:
-  - `validation_status`.
-  - `compact_validation_status`.
-  - `fallback_to_bridge`.
-  - `native_cchan_lv_list`.
-  - raw data cache diagnostics.
-  - F1g/F1h/F1i/F1j/F1k timing fields for regression checks.
+Accepted high-speed validation output:
 
-B1a implementation status:
-
-- Commit `45aaeaa64138a7f907a84f662de2ac62ac2cbc8f` adds runtime path diagnostics to interval signal Copy Signal / Copy Time Log / Copy Result Validation.
-- Commit `7ee8d60148756c175c0c095c28da9400dce2be2a` adds a shared runtime path model/controller.
-- Commit `3c3ead9e8724d29091b10323b9e60f2c8c01fce3` adds the first visible global runtime path dropdown.
-- Commit `982ab7dc66e57a3ea3cd7a97d257e2fa00d2541b` injects the selected runtime path into analyze_multi request context, response meta, and Copy Time Log.
-- Commit `b85aef4fafd3b5d644fc3f533e1fb483f009da72` injects the selected runtime path into Copy P0 and Copy Step.
-- Commit `3085d9390d0dc70e8c59e2abd7da975326d57287` moves the runtime dropdown from the top-right header area to the bottom-left area beside the route toolbar to avoid overlapping `Load`, mode chips, and request fields.
-- Default dropdown value is `高速路（默认）` via `RuntimePath.highSpeed`.
-- Slow path is manually selectable and labelled `慢速路（原始校验/调试）`.
-- B1a is implementation-complete but not accepted until runtime validation output is pasted from the App.
-
-Required B1a validation output:
-
-1. With dropdown on `高速路（默认）`, run the accepted baseline request and paste:
-   - Copy Time Log.
-   - Copy P0.
-   - Copy Step.
-   - Copy Result Validation.
-2. Then manually switch dropdown to `慢速路（原始校验/调试）`, click Load, and paste:
-   - Copy Time Log.
-   - Copy P0.
-3. High-speed validation must include:
-   - `runtime_path: high_speed`.
-   - `high_speed_enabled: true`.
-   - `slow_path_enabled: false`.
-   - `runtime_path_default: high_speed`.
-   - `runtime_path_policy: high_speed_default_slow_path_debug_only`.
-   - `validation_status: match`.
-   - `compact_validation_status: match`.
-   - `fallback_to_bridge: false`.
-   - `native_cchan_lv_list: true`.
-   - `frame_source: native_step_frame`.
-   - `final_snapshot_rendered_as_step: false`.
-4. Slow-path debug validation must show:
-   - `runtime_path: slow_path`.
-   - `high_speed_enabled: false`.
-   - `slow_path_enabled: true`.
-   - It must not silently become the default.
-
-High-speed path must use:
-
-- App-managed bundled Python backend.
-- Original `python/chan.py` / `CChan(lv_list=[...])`.
-- F1f raw K-line cache.
-- compact-first step frame export.
-- `compact_v1` transport.
-- lazy frame parsing.
-- lazy Easy TDX indicator parsing.
-- Copy Time Log / Copy Step / Copy P0 / Copy Result Validation gates.
-
-Slow path rules:
-
-- Slow path is retained temporarily as a baseline/debug/validation reference.
-- Slow path must still use original `python/chan.py` for Chan calculation.
-- Slow path must not contain or call Dart-side Chan calculation.
-- Slow path must not be used to hide backend fallback or validation failure.
-- Slow path retirement may be considered only after high-speed path passes multiple business-chain acceptances and the manual explicitly records `slow path retired`.
-
-B1a acceptance criteria:
-
-- Dropdown is visible in the relevant runtime panel.
-- Default selection is `高速路（默认）`.
-- Copy Time Log and Copy P0 show the selected runtime path and default policy.
-- High-speed path remains accepted with:
-  - `validation_status: match`.
-  - `compact_validation_status: match`.
-  - `fallback_to_bridge: false`.
+- Copy Time Log included:
+  - `runtime_path: high_speed`.
+  - `high_speed_enabled: true`.
+  - `slow_path_enabled: false`.
+  - `runtime_path_default: high_speed`.
+  - `runtime_path_policy: high_speed_default_slow_path_debug_only`.
   - `native_cchan_lv_list: true`.
-  - `frame_source: native_step_frame` for Copy Step.
+  - `fallback_to_bridge: false`.
+  - `step_frame_format: compact_v1`.
+  - `frames_total: 29`.
+  - `frames_returned: 29`.
+  - `include_bars_in_frames: false`.
+  - `include_indicators_in_frames: false`.
+  - `lazy_frame_parsing: true`.
+  - `status: ok`.
+- Copy P0 included:
+  - `runtime_path: high_speed`.
+  - `high_speed_enabled: true`.
+  - `slow_path_enabled: false`.
+  - `runtime_path_default: high_speed`.
+  - `runtime_path_policy: high_speed_default_slow_path_debug_only`.
+  - `strict_step_blocked: false`.
+  - `native_cchan_lv_list: true`.
+  - `level_relation_mode: chan_parent_child`.
+  - `fallback_to_bridge: false`.
+  - `compact_validation_status: match`.
+  - `compact_validation_mismatch_count: 0`.
+- Copy Step included:
+  - `runtime_path: high_speed`.
+  - `high_speed_enabled: true`.
+  - `slow_path_enabled: false`.
+  - `frame_source: native_step_frame`.
   - `final_snapshot_rendered_as_step: false`.
-- Slow path can be selected manually for debug/baseline only.
+  - `native_cchan_lv_list: true`.
+  - `fallback_to_bridge: false`.
+  - `compact_validation_status: match`.
+  - `compact_validation_mismatch_count: 0`.
+- Copy Result Validation included:
+  - `validation_status: match`.
+  - `mismatch_count: 0`.
+  - `runtime_path: high_speed`.
+  - `high_speed_enabled: true`.
+  - `slow_path_enabled: false`.
+  - `compact_validation_status: match`.
+  - `compact_validation_mismatch_count: 0`.
+  - `status: ok`.
+
+Accepted slow-path debug validation output:
+
+- Manual switch to `慢速路（原始校验/调试）` was reflected in Copy Time Log and Copy P0.
+- Copy Time Log included:
+  - `runtime_path: slow_path`.
+  - `high_speed_enabled: false`.
+  - `slow_path_enabled: true`.
+  - `runtime_path_default: high_speed`.
+  - `runtime_path_policy: high_speed_default_slow_path_debug_only`.
+  - `backend_last_request_reused: true`.
+  - `native_cchan_lv_list: true`.
+  - `fallback_to_bridge: false`.
+  - `compact_validation_status: match`.
+  - `compact_validation_mismatch_count: 0`.
+  - `status: ok`.
+- Copy P0 included:
+  - `runtime_path: slow_path`.
+  - `high_speed_enabled: false`.
+  - `slow_path_enabled: true`.
+  - `runtime_path_default: high_speed`.
+  - `runtime_path_policy: high_speed_default_slow_path_debug_only`.
+  - `strict_step_blocked: false`.
+  - `native_cchan_lv_list: true`.
+  - `fallback_to_bridge: false`.
+  - `compact_validation_status: match`.
+  - `compact_validation_mismatch_count: 0`.
+
+B1a conclusion:
+
+- Dropdown visibility and default behavior are accepted.
+- Runtime path diagnostics are accepted in Copy Time Log, Copy P0, Copy Step, and Copy Result Validation.
+- High-speed path remains the default.
+- Slow path is manually selectable only and retains `runtime_path_default: high_speed`.
+- B1a is accepted.
 
 ### B1b: delete or neutralize legacy Dart-side Chan calculation
+
+Selected next task.
 
 Required cleanup:
 
@@ -283,7 +289,7 @@ Forbidden in B1:
 - Chan result cache remains prohibited.
 - Full-history/paged strict step replay remains deferred.
 - Performance chain F1a-F1k is stopped by rule.
-- Runtime path switch and Dart Chan cleanup B1 is now the selected next task.
-- B1a implementation is complete but pending runtime validation output.
-- B1b Dart-side Chan cleanup/search evidence is still pending.
+- Runtime path switch and Dart Chan cleanup B1 is now the selected task chain.
+- B1a runtime path dropdown/copy diagnostics is accepted.
+- B1b Dart-side Chan cleanup/search evidence is selected next and still pending.
 - Strategy mode runtime acceptance should resume after B1 unless this manual explicitly selects another business-chain item.
