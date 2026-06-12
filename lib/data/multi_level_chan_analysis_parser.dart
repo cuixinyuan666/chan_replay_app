@@ -10,10 +10,14 @@ class MultiLevelChanAnalysisParser {
   static MultiLevelChanSnapshot? parseSnapshot(
     Map<String, dynamic> data, {
     required ChanSnapshotParser parseSingleLevelSnapshot,
+    Map<String, int>? timing,
+    String timingPrefix = 'frontend.parse.top_snapshot',
   }) {
+    final totalSw = Stopwatch()..start();
     final rawLevels = data['levels'];
     if (rawLevels is! Map) return null;
 
+    final levelsSw = Stopwatch()..start();
     final snapshots = <String, ChanSnapshot>{};
     for (final entry in rawLevels.entries) {
       final level = '${entry.key}'.trim().toUpperCase();
@@ -23,19 +27,27 @@ class MultiLevelChanAnalysisParser {
         Map<String, dynamic>.from(value),
       );
     }
+    _addTiming(timing, '$timingPrefix.levels', levelsSw.elapsedMilliseconds);
     if (snapshots.isEmpty) return null;
 
+    final metaSw = Stopwatch()..start();
     final meta = data['meta'] is Map
         ? Map<String, dynamic>.from(data['meta'] as Map)
         : const <String, dynamic>{};
     final levels = _parseLevelOrder(data, meta, snapshots);
     final mainLevel = _parseMainLevel(data, meta, levels, snapshots);
+    _addTiming(timing, '$timingPrefix.meta_order', metaSw.elapsedMilliseconds);
 
+    final relationsSw = Stopwatch()..start();
+    final relations = parseRelations(data['relations']);
+    _addTiming(timing, '$timingPrefix.relations', relationsSw.elapsedMilliseconds);
+
+    _addTiming(timing, '$timingPrefix.total_inner', totalSw.elapsedMilliseconds);
     return MultiLevelChanSnapshot(
       mainLevel: mainLevel,
       levels: levels,
       snapshots: snapshots,
-      relations: parseRelations(data['relations']),
+      relations: relations,
       meta: meta,
     );
   }
@@ -77,6 +89,11 @@ class MultiLevelChanAnalysisParser {
       if (parsed != null) frames.add(parsed);
     }
     return frames;
+  }
+
+  static void _addTiming(Map<String, int>? timing, String key, int elapsedMs) {
+    if (timing == null) return;
+    timing[key] = (timing[key] ?? 0) + elapsedMs;
   }
 
   static Map<String, dynamic> _inflateCompactFrame(
