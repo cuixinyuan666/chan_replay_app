@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/models/multi_level_view_state.dart';
 import '../../core/models/replay_clock_mode.dart';
+import '../../core/runtime/runtime_path.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
 import '../widgets/multi_level_interval_signal_panel.dart';
 import '../widgets/multi_level_layer_status_panel.dart';
@@ -177,6 +178,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         count: _count,
         startDate: startDate,
         endDate: endDate,
+        runtimePath: RuntimePathController.current,
         config: _requestConfig(step: _mode == 'step'),
       );
       if (!mounted) return;
@@ -245,6 +247,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         count: _count,
         startDate: startDate,
         endDate: endDate,
+        runtimePath: RuntimePathController.current,
         config: _requestConfig(step: false),
       );
       if (!mounted) return;
@@ -494,6 +497,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final fallback = meta['fallback_to_bridge'];
     final nativeFailure = meta['native_failure'];
     final runtime = meta['python_runtime'];
+    final runtimePath = _runtimePathText(analysis);
     final relationsLength = analysis.snapshot.relations.length;
     final framesLength = analysis.frames.length;
     final okNative = native == true &&
@@ -516,6 +520,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           _diagChip('manual P0', okNative ? 'app bundled native step ok' : 'needs check', okNative),
+          _diagChip('runtime_path', runtimePath, runtimePath == 'high_speed'),
           _diagChip('python_runtime', '$runtime', runtime == 'app_bundled'),
           _diagChip('native_cchan_lv_list', '$native', native == true),
           _diagChip('level_relation_mode', '$relationMode', relationMode == 'chan_parent_child'),
@@ -824,7 +829,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final native = meta['native_cchan_lv_list'];
     final fallback = meta['fallback_to_bridge'];
     final relationMode = meta['level_relation_mode'];
-    return 'analyze_multi ${_mode.toUpperCase()} native:$native relation:$relationMode fallback:${fallback ?? false} relations:${snap.relations.length} frames:${analysis.frames.length} window:${_startController.text}~${_endController.text} ${_buildCompactLevelSummary(snap)}';
+    return 'analyze_multi ${_mode.toUpperCase()} native:$native relation:$relationMode fallback:${fallback ?? false} runtime_path:${_runtimePathText(analysis)} relations:${snap.relations.length} frames:${analysis.frames.length} window:${_startController.text}~${_endController.text} ${_buildCompactLevelSummary(snap)}';
   }
 
   String _buildCompactLevelSummary(MultiLevelChanSnapshot snapshot) {
@@ -848,6 +853,23 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
 
   Object? _compactMeta(PythonMultiLevelChanAnalysis analysis, String key, [Map<String, dynamic>? frameMeta]) {
     return frameMeta?[key] ?? analysis.meta[key] ?? analysis.snapshot.meta[key] ?? '';
+  }
+
+  String _runtimePathText(PythonMultiLevelChanAnalysis analysis, [Map<String, dynamic>? frameMeta]) {
+    final raw = '${frameMeta?['runtime_path'] ?? analysis.meta['runtime_path'] ?? analysis.snapshot.meta['runtime_path'] ?? RuntimePathController.current.wireName}'.trim();
+    return raw == 'slow_path' ? 'slow_path' : 'high_speed';
+  }
+
+  List<String> _runtimePathLines(PythonMultiLevelChanAnalysis analysis, [Map<String, dynamic>? frameMeta]) {
+    final path = _runtimePathText(analysis, frameMeta);
+    final high = path != 'slow_path';
+    return [
+      'runtime_path: $path',
+      'high_speed_enabled: $high',
+      'slow_path_enabled: ${!high}',
+      'runtime_path_default: high_speed',
+      'runtime_path_policy: high_speed_default_slow_path_debug_only',
+    ];
   }
 
   List<String> _compactMetaLines(PythonMultiLevelChanAnalysis analysis, [Map<String, dynamic>? frameMeta]) {
@@ -886,6 +908,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'max_step_frames: $_maxStepFrames',
       'start: ${_startController.text.trim()}',
       'end: ${_endController.text.trim()}',
+      ..._runtimePathLines(analysis),
       'strict_step_blocked: $_stepFramesEmpty',
       'native_cchan_lv_list: ${meta['native_cchan_lv_list']}',
       'level_relation_mode: ${meta['level_relation_mode']}',
@@ -934,6 +957,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       'max_step_frames: $_maxStepFrames',
       'start: ${_startController.text.trim()}',
       'end: ${_endController.text.trim()}',
+      ..._runtimePathLines(analysis, frameMeta),
       'frame.index.local: ${hasFrame ? '$safeIndex' : ''}',
       'frame.number.local: ${hasFrame ? '${safeIndex + 1}/${frames.length}' : '0/${frames.length}'}',
       'frame.cursor.native: ${frameMeta['cursor'] ?? frameMeta['frame_index'] ?? ''}',
