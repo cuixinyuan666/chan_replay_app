@@ -107,9 +107,11 @@ class _LazyMultiLevelFrameList extends ListBase<MultiLevelChanSnapshot> {
 }
 
 class PythonMultiLevelChanAnalysisSource {
+  static AppBundledPythonBackendProcess? _sharedLocalProcess;
+  static Future<AppBundledPythonBackendProcess>? _sharedStartup;
+
   final String baseUrl;
   final http.Client _client;
-  AppBundledPythonBackendProcess? _localProcess;
 
   PythonMultiLevelChanAnalysisSource({
     required this.baseUrl,
@@ -188,29 +190,51 @@ class PythonMultiLevelChanAnalysisSource {
 
   Future<String> _readyAppManagedBaseUrl(Map<String, int> stages) async {
     final readySw = Stopwatch()..start();
-    final reused = _localProcess != null;
+    var reused = _sharedLocalProcess != null;
     final startOrReuseSw = Stopwatch()..start();
     if (!reused) {
-      _localProcess = await AppBundledPythonBackend.start(
+      _sharedStartup ??= AppBundledPythonBackend.start(
         requireAnalyzeMulti: true,
       );
+      try {
+        _sharedLocalProcess = await _sharedStartup;
+      } catch (_) {
+        _sharedLocalProcess = null;
+        rethrow;
+      } finally {
+        _sharedStartup = null;
+      }
     }
     startOrReuseSw.stop();
     stages['frontend.backend_ready.start_or_reuse'] = startOrReuseSw.elapsedMilliseconds;
 
     final healthSw = Stopwatch()..start();
     if (reused) {
-      await _localProcess!.refreshHealth();
+      try {
+        await _sharedLocalProcess!.refreshHealth();
+      } catch (_) {
+        _sharedLocalProcess?.dispose();
+        _sharedLocalProcess = null;
+        reused = false;
+        _sharedStartup = AppBundledPythonBackend.start(
+          requireAnalyzeMulti: true,
+        );
+        try {
+          _sharedLocalProcess = await _sharedStartup;
+        } finally {
+          _sharedStartup = null;
+        }
+      }
     }
     healthSw.stop();
     stages['frontend.backend_ready.health_check'] = healthSw.elapsedMilliseconds;
 
     readySw.stop();
-    _localProcess!.markRequest(
+    _sharedLocalProcess!.markRequest(
       reused: reused,
       backendReadyElapsedMs: readySw.elapsedMilliseconds,
     );
-    return _localProcess!.baseUrl;
+    return _sharedLocalProcess!.baseUrl;
   }
 
   Future<PythonMultiLevelChanAnalysis> _postAnalyzeMulti(
@@ -243,7 +267,7 @@ class PythonMultiLevelChanAnalysisSource {
     return _decodeResponse(
       response,
       sourceBaseUrl: sourceBase,
-      backendDiagnostics: _localProcess?.diagnostics,
+      backendDiagnostics: _sharedLocalProcess?.diagnostics,
       traceId: traceId,
       totalSw: totalSw,
       stages: stages,
@@ -522,7 +546,7 @@ class PythonMultiLevelChanAnalysisSource {
 
   void close() {
     _client.close();
-    _localProcess?.dispose();
-    _localProcess = null;
+    // The app-managed Python backend is intentionally shared across source/page
+    // rebuilds during the app session so F1d warm backend reuse can work.
   }
 }
