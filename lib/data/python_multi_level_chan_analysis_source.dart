@@ -485,6 +485,7 @@ class PythonMultiLevelChanAnalysisSource {
       'backend_data_cache_miss_levels': meta['backend_data_cache_miss_levels'],
       'backend_data_cache_key_count': meta['backend_data_cache_key_count'],
       'backend_data_cache_policy': meta['backend_data_cache_policy'],
+      'compact_first_step_frame_export': meta['compact_first_step_frame_export'],
       'stages': <String, int>{...Map<String, int>.from(stages), ...backendStages},
       'used_app_bundled_python': (meta['python_runtime'] ?? runtime['python_runtime']) == 'app_bundled',
       'native_cchan_lv_list': meta['native_cchan_lv_list'],
@@ -530,6 +531,7 @@ class PythonMultiLevelChanAnalysisSource {
     add('backend.step_export.relation', 'backend_step_export_relation_ms');
     add('backend.step_export.bsp', 'backend_step_export_bsp_ms');
     add('backend.step_export.current_time', 'backend_step_export_current_time_ms');
+    add('backend.step_export.final_snapshot', 'backend_step_export_final_snapshot_ms');
     add('backend.step_export.total_frames', 'backend_step_export_total_frames');
     add('backend.step_export.returned_frames', 'backend_step_export_returned_frames');
     add('backend.step_export.bsp_count', 'backend_step_export_bsp_count');
