@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/runtime/runtime_path.dart';
 import 'ashare_bsp_scanner_page.dart';
 import 'multi_level_replay_page.dart';
 import 'origin_replay_strict_page.dart';
@@ -48,6 +49,11 @@ class _RootPageState extends State<RootPage> {
             currentIndex: _index,
             onOpen: _open,
           ),
+          const Positioned(
+            right: 12,
+            top: 8,
+            child: _RuntimePathDropdown(),
+          ),
         ],
       ),
     );
@@ -89,6 +95,55 @@ class _LazyRouteStack extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _RuntimePathDropdown extends StatelessWidget {
+  const _RuntimePathDropdown();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: ValueListenableBuilder<RuntimePath>(
+        valueListenable: RuntimePathController.selected,
+        builder: (context, path, _) => SizedBox(
+          width: 220,
+          child: DropdownButtonFormField<RuntimePath>(
+            value: path,
+            dropdownColor: const Color(0xFF20242E),
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+            decoration: InputDecoration(
+              labelText: 'runtime path',
+              labelStyle: const TextStyle(color: Colors.white54, fontSize: 10),
+              isDense: true,
+              filled: true,
+              fillColor: const Color(0xEE131722),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(
+                  color: path.isHighSpeed ? const Color(0xFF66BB6A) : const Color(0xFFFFB74D),
+                ),
+              ),
+            ),
+            items: const [
+              DropdownMenuItem(
+                value: RuntimePath.highSpeed,
+                child: Text('高速路（默认）'),
+              ),
+              DropdownMenuItem(
+                value: RuntimePath.slowPath,
+                child: Text('慢速路（原始校验/调试）'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value != null) RuntimePathController.set(value);
+            },
+          ),
+        ),
+      ),
     );
   }
 }
