@@ -13,7 +13,7 @@ from .a_bsp_feature_engine import extract_bsp_features
 from .a_bsp_scanner import scan_bsp, scan_bsp_events
 from .a_indicator_export import build_display_indicators, indicator_source_meta
 from .a_ml_bridge import score_bsp_features
-from .a_multilevel_engine import analyze_multi
+from .a_multilevel_engine_timed import analyze_multi
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
@@ -491,4 +491,4 @@ def scanner_bsp_scan_stream(
         for event in scan_bsp_events(limit=limit, days=days, recent_days=recent_days, bi_strict=bi_strict):
             yield json.dumps(event, ensure_ascii=False) + '\n'
 
-    return StreamingResponse(_iter(), media_type='application/x-ndjson')
+    return StreamingResponse(_iter, media_type='application/x-ndjson')
