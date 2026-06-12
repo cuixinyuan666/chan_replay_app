@@ -117,53 +117,71 @@ class EasyTdxIndicators {
     'macd'
   };
 
-  final List<EasyIndicatorPoint> vol;
-  final List<EasyIndicatorPoint> amount;
-  final List<EasyIndicatorPoint> turnover;
-  final Map<int, List<EasyIndicatorPoint>> ma;
-  final List<EasyBollPoint> boll;
-  final List<EasyMacdPoint> macd;
-  final Map<String, List<EasyNamedIndicatorPoint>> namedSeries;
+  final List<EasyIndicatorPoint> _vol;
+  final List<EasyIndicatorPoint> _amount;
+  final List<EasyIndicatorPoint> _turnover;
+  final Map<int, List<EasyIndicatorPoint>> _ma;
+  final List<EasyBollPoint> _boll;
+  final List<EasyMacdPoint> _macd;
+  final Map<String, List<EasyNamedIndicatorPoint>> _namedSeries;
+  final _EasyTdxIndicatorLazyStore? _lazy;
 
   const EasyTdxIndicators({
-    this.vol = const [],
-    this.amount = const [],
-    this.turnover = const [],
-    this.ma = const {},
-    this.boll = const [],
-    this.macd = const [],
-    this.namedSeries = const {},
-  });
+    List<EasyIndicatorPoint> vol = const [],
+    List<EasyIndicatorPoint> amount = const [],
+    List<EasyIndicatorPoint> turnover = const [],
+    Map<int, List<EasyIndicatorPoint>> ma = const {},
+    List<EasyBollPoint> boll = const [],
+    List<EasyMacdPoint> macd = const [],
+    Map<String, List<EasyNamedIndicatorPoint>> namedSeries = const {},
+  })  : _vol = vol,
+        _amount = amount,
+        _turnover = turnover,
+        _ma = ma,
+        _boll = boll,
+        _macd = macd,
+        _namedSeries = namedSeries,
+        _lazy = null;
 
-  bool get isEmpty =>
-      vol.isEmpty &&
-      amount.isEmpty &&
-      turnover.isEmpty &&
-      ma.isEmpty &&
-      boll.isEmpty &&
-      macd.isEmpty &&
-      namedSeries.values.every((rows) => rows.isEmpty);
+  EasyTdxIndicators._lazy(Map<dynamic, dynamic> raw)
+      : _vol = const [],
+        _amount = const [],
+        _turnover = const [],
+        _ma = const {},
+        _boll = const [],
+        _macd = const [],
+        _namedSeries = const {},
+        _lazy = _EasyTdxIndicatorLazyStore(raw);
+
+  List<EasyIndicatorPoint> get vol => _lazy?.vol ?? _vol;
+  List<EasyIndicatorPoint> get amount => _lazy?.amount ?? _amount;
+  List<EasyIndicatorPoint> get turnover => _lazy?.turnover ?? _turnover;
+  Map<int, List<EasyIndicatorPoint>> get ma => _lazy?.ma ?? _ma;
+  List<EasyBollPoint> get boll => _lazy?.boll ?? _boll;
+  List<EasyMacdPoint> get macd => _lazy?.macd ?? _macd;
+  Map<String, List<EasyNamedIndicatorPoint>> get namedSeries =>
+      _lazy?.namedSeries ?? _namedSeries;
+
+  bool get isEmpty {
+    final lazy = _lazy;
+    if (lazy != null) return lazy.isEmpty;
+    return vol.isEmpty &&
+        amount.isEmpty &&
+        turnover.isEmpty &&
+        ma.isEmpty &&
+        boll.isEmpty &&
+        macd.isEmpty &&
+        namedSeries.values.every((rows) => rows.isEmpty);
+  }
 
   factory EasyTdxIndicators.empty() => const EasyTdxIndicators();
 
   factory EasyTdxIndicators.fromJson(Object? value) {
     if (value is! Map) return const EasyTdxIndicators();
-    final named = <String, List<EasyNamedIndicatorPoint>>{};
-    for (final entry in value.entries) {
-      final key = '${entry.key}';
-      final lower = key.toLowerCase();
-      if (_knownKeys.contains(lower) || entry.value is! List) continue;
-      named[_displayName(lower)] = _parseNamedList(entry.value);
-    }
-    return EasyTdxIndicators(
-      vol: _parsePointList(value['vol']),
-      amount: _parsePointList(value['amount']),
-      turnover: _parsePointList(value['turnover']),
-      ma: _parseMa(value['ma']),
-      boll: _parseBollList(value['boll']),
-      macd: _parseMacdList(value['macd']),
-      namedSeries: named,
-    );
+    // F1k: keep the raw payload and parse each indicator series only when a
+    // chart or panel actually asks for it. This avoids paying the full
+    // indicator parse cost during top snapshot parsing.
+    return EasyTdxIndicators._lazy(Map<dynamic, dynamic>.from(value));
   }
 
   Map<int, List<EasyIndicatorPoint>> visibleMa(int start, int end) {
@@ -267,6 +285,65 @@ class EasyTdxIndicators {
       if (row is Map) result.add(EasyMacdPoint.fromJson(row, i));
     }
     return result;
+  }
+}
+
+class _EasyTdxIndicatorLazyStore {
+  final Map<dynamic, dynamic> raw;
+  List<EasyIndicatorPoint>? _vol;
+  List<EasyIndicatorPoint>? _amount;
+  List<EasyIndicatorPoint>? _turnover;
+  Map<int, List<EasyIndicatorPoint>>? _ma;
+  List<EasyBollPoint>? _boll;
+  List<EasyMacdPoint>? _macd;
+  Map<String, List<EasyNamedIndicatorPoint>>? _namedSeries;
+
+  _EasyTdxIndicatorLazyStore(this.raw);
+
+  List<EasyIndicatorPoint> get vol =>
+      _vol ??= EasyTdxIndicators._parsePointList(raw['vol']);
+  List<EasyIndicatorPoint> get amount =>
+      _amount ??= EasyTdxIndicators._parsePointList(raw['amount']);
+  List<EasyIndicatorPoint> get turnover =>
+      _turnover ??= EasyTdxIndicators._parsePointList(raw['turnover']);
+  Map<int, List<EasyIndicatorPoint>> get ma =>
+      _ma ??= EasyTdxIndicators._parseMa(raw['ma']);
+  List<EasyBollPoint> get boll =>
+      _boll ??= EasyTdxIndicators._parseBollList(raw['boll']);
+  List<EasyMacdPoint> get macd =>
+      _macd ??= EasyTdxIndicators._parseMacdList(raw['macd']);
+
+  Map<String, List<EasyNamedIndicatorPoint>> get namedSeries {
+    final cached = _namedSeries;
+    if (cached != null) return cached;
+    final named = <String, List<EasyNamedIndicatorPoint>>{};
+    for (final entry in raw.entries) {
+      final key = '${entry.key}';
+      final lower = key.toLowerCase();
+      if (EasyTdxIndicators._knownKeys.contains(lower) || entry.value is! List) {
+        continue;
+      }
+      named[EasyTdxIndicators._displayName(lower)] =
+          EasyTdxIndicators._parseNamedList(entry.value);
+    }
+    _namedSeries = named;
+    return named;
+  }
+
+  bool get isEmpty {
+    if (raw.isEmpty) return true;
+    for (final key in EasyTdxIndicators._knownKeys) {
+      final value = raw[key];
+      if (value is List && value.isNotEmpty) return false;
+      if (value is Map && value.isNotEmpty) return false;
+    }
+    for (final entry in raw.entries) {
+      final lower = '${entry.key}'.toLowerCase();
+      if (EasyTdxIndicators._knownKeys.contains(lower)) continue;
+      final value = entry.value;
+      if (value is List && value.isNotEmpty) return false;
+    }
+    return true;
   }
 }
 
