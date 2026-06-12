@@ -521,6 +521,18 @@ class PythonMultiLevelChanAnalysisSource {
     add('backend.data_cache.hits', 'backend_data_cache_hits');
     add('backend.data_cache.misses', 'backend_data_cache_misses');
     add('backend.data_cache.key_count', 'backend_data_cache_key_count');
+    add('backend.step_export.iter', 'backend_step_export_iter_ms');
+    add('backend.step_export.frame_build', 'backend_step_export_frame_build_ms');
+    add('backend.step_export.level_snapshot', 'backend_step_export_level_snapshot_ms');
+    add('backend.step_export.structure', 'backend_step_export_structure_ms');
+    add('backend.step_export.visible_bars', 'backend_step_export_visible_bars_ms');
+    add('backend.step_export.level_payload', 'backend_step_export_level_payload_ms');
+    add('backend.step_export.relation', 'backend_step_export_relation_ms');
+    add('backend.step_export.bsp', 'backend_step_export_bsp_ms');
+    add('backend.step_export.current_time', 'backend_step_export_current_time_ms');
+    add('backend.step_export.total_frames', 'backend_step_export_total_frames');
+    add('backend.step_export.returned_frames', 'backend_step_export_returned_frames');
+    add('backend.step_export.bsp_count', 'backend_step_export_bsp_count');
     return result;
   }
 
