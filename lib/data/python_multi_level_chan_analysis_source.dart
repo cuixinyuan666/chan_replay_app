@@ -437,6 +437,7 @@ class PythonMultiLevelChanAnalysisSource {
     final frontendTotal = stages['frontend.total'] ?? 0;
     final backendElapsed = _numToInt(meta['backend_elapsed_ms']) ?? stages['frontend.http_round_trip'] ?? 0;
     final runtime = backendDiagnostics ?? const <String, dynamic>{};
+    final backendStages = _backendTimingStages(meta);
     return {
       'trace_id': traceId,
       'mode': requestContext['mode'],
@@ -472,7 +473,12 @@ class PythonMultiLevelChanAnalysisSource {
       'backend_request_count': runtime['backend_request_count'],
       'backend_last_request_reused': runtime['backend_last_request_reused'],
       'backend_last_ready_elapsed_ms': runtime['backend_last_ready_elapsed_ms'],
-      'stages': Map<String, int>.from(stages),
+      'backend_route_analyze_multi_ms': meta['backend_route_analyze_multi_ms'],
+      'backend_route_compact_transform_ms': meta['backend_route_compact_transform_ms'],
+      'backend_route_json_serialize_probe_ms': meta['backend_route_json_serialize_probe_ms'],
+      'backend_route_response_bytes_probe': meta['backend_route_response_bytes_probe'],
+      'backend_route_total_before_response_ms': meta['backend_route_total_before_response_ms'],
+      'stages': <String, int>{...Map<String, int>.from(stages), ...backendStages},
       'used_app_bundled_python': (meta['python_runtime'] ?? runtime['python_runtime']) == 'app_bundled',
       'native_cchan_lv_list': meta['native_cchan_lv_list'],
       'fallback_to_bridge': meta['fallback_to_bridge'] ?? false,
@@ -488,6 +494,24 @@ class PythonMultiLevelChanAnalysisSource {
       'compact_validation_mismatch_count': meta['compact_validation_mismatch_count'],
       'status': 'ok',
     };
+  }
+
+  Map<String, int> _backendTimingStages(Map<String, dynamic> meta) {
+    final result = <String, int>{};
+    void add(String stageName, String metaKey) {
+      final value = _numToInt(meta[metaKey]);
+      if (value != null) result[stageName] = value;
+    }
+    add('backend.route.analyze_multi', 'backend_route_analyze_multi_ms');
+    add('backend.route.compact_transform', 'backend_route_compact_transform_ms');
+    add('backend.route.json_serialize_probe', 'backend_route_json_serialize_probe_ms');
+    add('backend.route.total_before_response', 'backend_route_total_before_response_ms');
+    add('backend.native.data_load', 'backend_native_data_load_ms');
+    add('backend.native.prepare_chan', 'backend_native_prepare_chan_ms');
+    add('backend.native.step_export', 'backend_native_step_export_ms');
+    add('backend.native.once_export', 'backend_native_once_export_ms');
+    add('backend.native.total', 'backend_native_total_ms');
+    return result;
   }
 
   int? _numToInt(Object? value) {
