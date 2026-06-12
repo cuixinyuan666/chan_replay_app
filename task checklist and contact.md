@@ -46,7 +46,12 @@ Branch: origin_vespa_tdx
 - `6b12a5123cd24a86330b7823428542f9819e23c7`: exposed single compact frame parser for lazy loading.
 - `68cf4e42aa22608fce78f9497a1d6207e5880449`: implemented lazy parsing for compact_v1 multi-level step frames.
 - `ca3cce4699e12240788f9d9abfbf59150b263c95`: printed lazy frame counters in Copy Time Log.
-- Current update: accepted F1c lazy frame parsing runtime verification and selected F1d backend lifecycle / round-trip diagnostics as the next phase.
+- `94f1ef2ac820f197905a2abd2a53174fffb29874`: accepted F1c lazy frame parsing runtime verification and selected F1d backend lifecycle / round-trip diagnostics.
+- `fddda9c97c449fa9b3fd0b08eadf82776844b1b5`: exposed app-managed backend lifecycle diagnostics.
+- `7caa0c0e24f8b8286303d50035c087518be1a9a4`: included backend lifecycle diagnostics in Time Log.
+- `4b08bc5c2906b513872c1d0fd9a4861e59c6167c`: printed backend lifecycle fields in Copy Time Log.
+- `25a7bbce2d0f2d78ba625d5e591b30d8881578e3`: reused the app-managed Python backend process across source/page rebuilds.
+- Current update: accepted F1d warm backend reuse and selected F1e backend compute/export/http decomposition as the next phase.
 
 ## Current accepted work
 
@@ -69,6 +74,7 @@ Branch: origin_vespa_tdx
 - F1a compact-v1 transport equivalence: accepted.
 - F1b post-compact performance measurement: accepted and classified.
 - F1c lazy frame parsing: runtime accepted.
+- F1d backend lifecycle diagnostics and warm backend reuse: runtime accepted.
 
 ## P0 Time Log instrumentation
 
@@ -267,7 +273,7 @@ Forbidden after F1c remains:
 
 ## Phase F1d: backend lifecycle / round-trip diagnostics and warm backend reuse
 
-Selected next task.
+Accepted.
 
 Goal:
 
@@ -275,51 +281,124 @@ Goal:
 - Reduce avoidable backend startup/restart overhead in normal Windows App-managed bundled Python workflow.
 - Preserve original `chan.py` calculation semantics.
 
-Allowed F1d implementation directions:
+Implemented:
 
-1. Add backend lifecycle diagnostics:
-   - backend process pid.
-   - backend process start count.
-   - backend reused vs newly started.
-   - backend uptime before request.
-   - health-check elapsed ms.
-2. Split backend/http timing further:
-   - frontend backend_ready start/reuse/health ms.
-   - backend compute ms from server meta if available.
-   - serialization / compact adapter ms if available.
-3. Keep backend warm across repeated requests where safe:
-   - Do not spawn a new backend process for each request.
-   - Reuse existing app-managed backend when healthy.
-4. Preserve validation:
-   - Copy Result Validation must remain match.
-   - Copy P0 and Copy Step must remain native and strict-step based.
+- App-managed backend lifecycle diagnostics:
+  - `backend_process_pid`
+  - `backend_process_start_count`
+  - `backend_process_started_at`
+  - `backend_process_ready_at`
+  - `backend_process_uptime_ms`
+  - `backend_startup_elapsed_ms`
+  - `backend_last_health_check_elapsed_ms`
+  - `backend_health_check_count`
+  - `backend_request_count`
+  - `backend_last_request_reused`
+  - `backend_last_ready_elapsed_ms`
+- Frontend backend-ready split timing:
+  - `frontend.backend_ready.start_or_reuse`
+  - `frontend.backend_ready.health_check`
+  - `frontend.backend_ready`
+- App-managed backend warm reuse across source/page rebuilds:
+  - backend process is held in static shared state.
+  - repeated same-session requests reuse the same backend process when healthy.
+  - source close does not kill the shared app-managed backend.
 
-Forbidden in F1d:
+Runtime accepted F1d output:
+
+- First same-session run:
+  - `backend_process_pid: 9608`
+  - `backend_process_start_count: 1`
+  - `backend_request_count: 1`
+  - `backend_last_request_reused: false`
+  - `frontend.backend_ready.start_or_reuse: 3077ms`
+  - `frontend.backend_ready: 3080ms`
+  - `validation_status: match`
+- Second same-session run:
+  - `backend_process_pid: 9608`
+  - `backend_process_start_count: 1`
+  - `backend_request_count: 2`
+  - `backend_last_request_reused: true`
+  - `frontend.backend_ready.start_or_reuse: 0ms`
+  - `frontend.backend_ready.health_check: 162ms`
+  - `frontend.backend_ready: 162ms`
+  - `validation_status: match`
+  - `compact_validation_status: match`
+  - `status: ok`
+
+F1d effect:
+
+- App-managed backend startup cost is removed from the second same-session load.
+- `frontend.backend_ready` dropped from about `3080ms` to `162ms` in the accepted same-session test.
+- The backend process pid and start count remain stable across repeated load.
+- Validation remains `match`.
+- No `python/chan.py` core logic changed.
+
+Remaining bottleneck after F1d:
+
+- `frontend.http_round_trip` remains high, observed at about `8559ms` on the warm second run.
+- Backend compute/data fetch/serialization/HTTP transfer are not yet separately visible.
+- Response bytes remain about `4.06MB`.
+
+Forbidden after F1d remains:
 
 - Do not implement algorithmic fast/极速 mode.
 - Do not add result cache unless a separate validation plan is written.
 - Do not bypass original `chan.py`.
 - Do not hide backend fallback.
 
-F1d acceptance criteria:
+## Phase F1e: backend compute / export / HTTP decomposition
 
-- Copy Time Log must show backend lifecycle fields and split backend_ready/reuse health timing.
-- Repeated same-window load should show whether backend process is reused.
+Selected next task.
+
+Goal:
+
+- Split the remaining warm-run `frontend.http_round_trip` into backend-internal stages.
+- Identify whether the remaining 8s-10s is caused by data fetch, chan.py calculation, step-frame export, compact validation, JSON serialization, or HTTP transport.
+- Preserve all original chan.py semantics and current compact validation.
+
+Allowed F1e implementation directions:
+
+1. Add backend server-side timing metadata at the App adapter layer, not in chan.py core:
+   - data fetch/load ms.
+   - original chan.py calculation ms.
+   - step frame build/export ms.
+   - compact_v1 transform ms.
+   - compact validation ms.
+   - JSON serialization ms.
+2. Surface backend timing fields in Copy Time Log.
+3. Keep warm backend reuse diagnostics visible.
+4. Preserve validation:
+   - Copy Result Validation must remain match.
+   - Copy P0 and Copy Step must remain native and strict-step based.
+
+Forbidden in F1e:
+
+- Do not implement algorithmic fast/极速 mode.
+- Do not add result cache yet.
+- Do not change `python/chan.py` core algorithm.
+- Do not remove compact validation fields.
+
+F1e acceptance criteria:
+
+- Copy Time Log must show backend-internal timing fields.
+- Warm backend reuse must remain true on repeated same-session loads.
 - Copy Result Validation must remain `validation_status: match`.
 - Copy P0 / Copy Step must remain native, compact, and strict-step based.
 
 ## Current blockers / pending verification
 
 - No speed/fast/turbo/极速 mode is accepted yet.
-- Strategy mode acceptance remains paused until F1d decision or implementation is complete, unless the manual explicitly resumes strategy first.
+- Strategy mode acceptance remains paused until F1e decision or implementation is complete, unless the manual explicitly resumes strategy first.
 - Full-history/paged strict step replay remains deferred.
 - Algorithmic fast mode is prohibited until a stricter validation plan is written and accepted.
-- F1d backend lifecycle / round-trip diagnostics is now the selected next task.
+- Result/raw-data cache remains deferred until backend-internal timing proves it is the correct next target.
+- F1e backend compute / export / HTTP decomposition is now the selected next task.
 
 ## Next task-party operation
 
-1. Implement F1d backend lifecycle diagnostics without changing `chan.py`.
-2. Add Time Log fields for backend process reuse/start/health timing.
+1. Implement F1e backend-internal timing metadata in the App adapter/export layer without changing `chan.py` core.
+2. Add Copy Time Log fields for backend data fetch, chan.py calculation, export/build, compact transform/validation, and JSON serialization timing.
 3. Re-run the accepted test window twice in the same App session.
-4. Paste Copy Time Log, Copy P0, Copy Step, and Copy Result Validation from both runs if possible.
-5. Accept F1d only if backend lifecycle state is visible and validation remains match.
+4. Paste Copy Time Log, Copy P0, Copy Step, and Copy Result Validation from the warm second run.
+5. Accept F1e only if backend-internal timing is visible and validation remains match.
