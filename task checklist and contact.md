@@ -59,7 +59,11 @@ Branch: origin_vespa_tdx
 - `8302b6cfe618ff15fa46bc56d452c50ebf66b088`: routed FastAPI analyze_multi through the timed entrypoint.
 - `db5b94a93e86e02b30282fe247359e686bff1cc8`: preserved scanner stream iterator invocation after the timed-entrypoint patch.
 - `e9c5dcf84b29962df1eb7304b103cb50d9940090`: removed invalid timed-wrapper diagnostic import and fixed backend startup crash.
-- Current update: accepted F1e native timing decomposition and selected F1f validated data-load reuse/cache instrumentation.
+- `773f428864e42766c4368bb839c9e5bb70d92d3d`: accepted F1e native timing decomposition and selected F1f validated data-load reuse/cache instrumentation.
+- `a533a8b9d076e9f3b254b4e5d5568ecc2145be26`: added process-local raw easy-tdx K-line cache diagnostics.
+- `8aae12d62a6d7517872274c282e952a06d0cc403`: attached raw data cache stats to native timing meta.
+- `59fabc39a5e48f843584fb4b9d10410fd145be5f`: exposed raw data cache diagnostics in Time Log meta and stages.
+- Current update: accepted F1f raw data cache reuse and selected F1g step export decomposition/refinement.
 
 ## Current accepted work
 
@@ -71,7 +75,7 @@ Branch: origin_vespa_tdx
 - P0 Time Log normal step Load path: runtime accepted.
 - P0 Time Log Scan Signal / once path: runtime accepted.
 - P0 Time Log interval-panel step timing path: runtime accepted.
-- P0 Time Log strategy context with explicit fields: runtime accepted by user-provided log.
+- P0 Time Log strategy context with explicit rule fields: runtime accepted by user-provided log.
 - F0 Copy Result Validation blocked gate: runtime accepted.
 - F1a Copy Time Log compact meta: runtime accepted.
 - F1a Copy Result Validation compact meta: runtime accepted.
@@ -84,6 +88,7 @@ Branch: origin_vespa_tdx
 - F1c lazy frame parsing: runtime accepted.
 - F1d backend lifecycle diagnostics and warm backend reuse: runtime accepted.
 - F1e backend route and native-internal timing decomposition: runtime accepted.
+- F1f process-local raw K-line data-load cache reuse: runtime accepted.
 
 ## P0 Time Log instrumentation
 
@@ -96,14 +101,6 @@ Implemented and accepted:
 - Runtime strategy context Time Log with explicit rule fields accepted.
 - P0 Time Log fully accepted.
 
-Accepted timing before compact_v1 showed repeated bottlenecks:
-
-- Step end-to-end around `26s-33s` for the accepted `600340 / SH / DAILY,MIN30,MIN5 / 2025-09-01 to 2025-10-20 / count=220 / max_step_frames=60` window.
-- Backend HTTP/compute around `10s-12s`.
-- Frontend parse around `10s-14s`.
-- Backend ready around `4s-5s`.
-- Step was much heavier than once because step returned many frame structures.
-
 ## F0 Result Validation foundation
 
 Implemented in `lib/ui/widgets/multi_level_interval_signal_panel.dart`:
@@ -115,14 +112,7 @@ Implemented in `lib/ui/widgets/multi_level_interval_signal_panel.dart`:
 
 ## Phase F1a: step frames compact_v1 export and indicator de-duplication
 
-Goal:
-
-- Optimize App backend step / multi-level step export format without modifying original `chan.py` FX/BI/SEG/ZS/BSP calculation logic.
-- Continue using original step semantics, especially `CChanConfig(trigger_step=True)` and `CChan.step_load()` or equivalent original chan.py step output.
-- Reduce repeated JSON, repeated K-line arrays, repeated indicator arrays, and unnecessary frontend parsing.
-- Preserve final chart and diagnostic equivalence with the pre-optimization baseline.
-
-Accepted as compact transport equivalence:
+Accepted.
 
 - Backend `compact_v1` adapter is implemented at App adapter/export layer.
 - Frame-level `bars` and `indicators` are omitted by default.
@@ -134,253 +124,49 @@ Accepted as compact transport equivalence:
   - `compact_validation_status: match`
   - `compact_validation_mismatch_count: 0`
   - `compact_validation_first_mismatch:` blank.
-- Copy Result Validation F1a accepted:
-  - `validation_phase: F1a`
-  - `validation_scope: backend_precompact_vs_compact_transport`
-  - `compact_candidate_enabled: true`
-  - `compact_candidate_source: compact_v1 transport adapter`
-  - `validation_status: match`
-  - `mismatch_count: 0`
-  - `first_mismatch:` blank.
-  - `status: ok`.
-
-Important limitation:
-
 - This accepts only compact transport equivalence. It does not accept algorithmic `极速` mode.
-- `极速` mode remains not implemented, not exposed, and not accepted.
-- Any later algorithmic fast path still requires validation_status=match for the same request and must respect original chan.py as calculation authority.
 
 ## Phase F1b: compact performance re-measurement and cache-readiness analysis
 
-Accepted F1b post-compact measurement window:
+Accepted.
 
-- symbol `600340`, market `SH`.
-- levels `DAILY,MIN30,MIN5`.
-- count `220`.
-- max_step_frames `60`.
-- start/end `2025-09-01` to `2025-10-20`.
-- mode `step`.
+Accepted F1b measurement output showed:
 
-Accepted F1b measurement output:
-
-- `step_frame_format: compact_v1`.
-- `frames_total: 29`.
-- `frames_returned: 29`.
-- `frames_truncated: false`.
-- `include_bars_in_frames: false`.
-- `include_indicators_in_frames: false`.
 - `response_bytes: 4059073`.
-- `total_elapsed_ms: 26885`.
-- `backend_elapsed_ms: 10879`.
-- `frontend_elapsed_ms: 26885`.
 - `frontend.http_round_trip: 10879ms`.
-- `frontend.body_decode: 17ms`.
-- `frontend.json_decode: 114ms`.
 - `frontend.parse.snapshot_frames_relations_bsp: 11142ms`.
 - `frontend.backend_ready: 4726ms`.
-- Result Validation remained `validation_status: match`, `mismatch_count: 0`, and `status: ok`.
 
-F1b bottleneck classification:
-
-- Frontend parse remained the largest explicit stage after total time: `11142ms`.
-- HTTP/backend round-trip remained very high: `10879ms`.
-- Response bytes remained large: about `4.06MB` for only 29 frames.
-- JSON decode was not the main bottleneck: `114ms`.
-- Body decode was not the main bottleneck: `17ms`.
-- Backend startup/ready was visible but not the primary bottleneck: `4726ms`.
-
-F1b decision:
-
-- Select **F1c compact payload refinement / frame paging / lazy frame parsing**.
-- Do not select raw-data cache yet, because frontend parse remained as large as backend/http round-trip.
-- Do not select backend lifecycle as the primary next task, because backend_ready was smaller than parse and http round-trip at that stage.
-- Do not select strategy/signal fast reuse yet, because the measured slow path was initial step load and frame parse.
-- Do not start algorithmic fast/极速 mode.
+F1b selected F1c because frontend parse was still as large as backend/http round-trip.
 
 ## Phase F1c: compact payload refinement / frame paging / lazy frame parsing
 
 Accepted.
 
-Goal:
-
-- Reduce frontend parse time and payload/step-frame overhead without changing original `chan.py` calculation logic.
-- Keep strict step replay backed by native backend frames.
-- Keep compact validation gate visible and passing.
-- Avoid loading/parsing all heavy frame snapshots eagerly when only the first/current frame is needed.
-
-Implemented:
-
-- Split frontend parse timing into:
-  - `frontend.parse.top_snapshot`
-  - `frontend.parse.frames`
-  - `frontend.parse.interval_signals`
-  - `frontend.parse.snapshot_frames_relations_bsp`
-- Added `MultiLevelChanAnalysisParser.parseFrame(...)` for single-frame compact parsing.
-- Added lazy frame list for compact_v1 step responses.
-- Initial response parse now parses top-level snapshot and interval signals eagerly, while compact frames are parsed on first access and cached.
-- Copy Time Log explicitly prints lazy counters:
-  - `raw_frame_count`
-  - `parsed_frame_count`
-  - `parsed_level_count`
-  - `lazy_frame_parsing`
-  - `lazy_frame_cache_hits`
-  - `lazy_frame_cache_misses`
-  - `lazy_frame_parse_ms`
-  - `lazy_frame_last_index`
-  - `lazy_frame_last_parse_ms`
-
-Runtime accepted F1c output:
-
 - `lazy_frame_parsing: true`.
 - `raw_frame_count: 29`.
 - `parsed_frame_count: 1`.
-- `parsed_level_count: 3`.
-- `lazy_frame_cache_hits: 7`.
-- `lazy_frame_cache_misses: 1`.
-- `lazy_frame_parse_ms: 44`.
-- `lazy_frame_last_index: 0`.
-- `lazy_frame_last_parse_ms: 44`.
 - `frontend.parse.frames: 0ms`.
-- `frontend.parse.snapshot_frames_relations_bsp: 1285ms`.
-- `frontend.parse.top_snapshot: 1284ms`.
-- `Copy P0` remained native and compact:
-  - `strict_step_blocked: false`
-  - `native_cchan_lv_list: true`
-  - `fallback_to_bridge: false`
-  - `frames.length: 29`
-  - `step_frame_format: compact_v1`
-  - `compact_validation_status: match`
-- `Copy Step` remained strict step:
-  - `frame_source: native_step_frame`
-  - `final_snapshot_rendered_as_step: false`
-  - `native_cchan_lv_list: true`
-  - `fallback_to_bridge: false`
-  - `frame.number.local: 1/29`
-  - `status_summary.current_frame` remains different from final snapshot.
-
-F1c effect:
-
-- Before lazy frame parsing, `frontend.parse.frames` was `13396ms` and `frontend.parse.snapshot_frames_relations_bsp` was `14763ms`.
-- After lazy frame parsing, `frontend.parse.frames` is `0ms` and `frontend.parse.snapshot_frames_relations_bsp` is about `1196ms-1285ms`.
-- Compact transport validation remains accepted.
+- Compact transport validation remained accepted.
 - No `python/chan.py` core logic changed.
-
-Remaining bottleneck after F1c:
-
-- Backend/http round trip remained high, around `9s-13s`.
-- Backend ready/startup could be high, observed at `3.5s-9.1s`.
-- Response bytes remained about `4.06MB`.
-- Frontend frame parsing was no longer the primary bottleneck.
-
-Forbidden after F1c remains:
-
-- Do not modify `python/chan.py` core algorithm.
-- Do not calculate FX/BI/SEG/ZS/BSP in Flutter.
-- Do not expose `极速` as accepted.
-- Do not drop relation/BSP diagnostics.
-- Do not hide that paging/stride is not full strict replay.
 
 ## Phase F1d: backend lifecycle / round-trip diagnostics and warm backend reuse
 
 Accepted.
 
-Goal:
-
-- Determine whether the remaining `frontend.backend_ready` and `frontend.http_round_trip` cost comes from backend startup, backend compute, data fetch, serialization, HTTP transfer, or frontend request lifecycle.
-- Reduce avoidable backend startup/restart overhead in normal Windows App-managed bundled Python workflow.
-- Preserve original `chan.py` calculation semantics.
-
-Implemented:
-
-- App-managed backend lifecycle diagnostics:
-  - `backend_process_pid`
-  - `backend_process_start_count`
-  - `backend_process_started_at`
-  - `backend_process_ready_at`
-  - `backend_process_uptime_ms`
-  - `backend_startup_elapsed_ms`
-  - `backend_last_health_check_elapsed_ms`
-  - `backend_health_check_count`
-  - `backend_request_count`
-  - `backend_last_request_reused`
-  - `backend_last_ready_elapsed_ms`
-- Frontend backend-ready split timing:
-  - `frontend.backend_ready.start_or_reuse`
-  - `frontend.backend_ready.health_check`
-  - `frontend.backend_ready`
-- App-managed backend warm reuse across source/page rebuilds:
-  - backend process is held in static shared state.
-  - repeated same-session requests reuse the same backend process when healthy.
-  - source close does not kill the shared app-managed backend.
-
-Runtime accepted F1d output:
-
-- First same-session run:
-  - `backend_process_pid: 9608`
-  - `backend_process_start_count: 1`
-  - `backend_request_count: 1`
-  - `backend_last_request_reused: false`
-  - `frontend.backend_ready.start_or_reuse: 3077ms`
-  - `frontend.backend_ready: 3080ms`
-  - `validation_status: match`
-- Second same-session run:
-  - `backend_process_pid: 9608`
-  - `backend_process_start_count: 1`
-  - `backend_request_count: 2`
-  - `backend_last_request_reused: true`
-  - `frontend.backend_ready.start_or_reuse: 0ms`
-  - `frontend.backend_ready.health_check: 162ms`
-  - `frontend.backend_ready: 162ms`
-  - `validation_status: match`
-  - `compact_validation_status: match`
-  - `status: ok`
-
-F1d effect:
-
-- App-managed backend startup cost is removed from the second same-session load.
-- `frontend.backend_ready` dropped from about `3080ms` to `162ms` in the accepted same-session test.
-- The backend process pid and start count remain stable across repeated load.
-- Validation remains `match`.
-- No `python/chan.py` core logic changed.
-
-Remaining bottleneck after F1d:
-
-- `frontend.http_round_trip` remained high, observed at about `8559ms` on the warm second run.
-- Backend compute/data fetch/serialization/HTTP transfer were not yet separately visible.
-- Response bytes remained about `4.06MB`.
-
-Forbidden after F1d remains:
-
-- Do not implement algorithmic fast/极速 mode.
-- Do not add result cache unless a separate validation plan is written.
-- Do not bypass original `chan.py`.
-- Do not hide backend fallback.
+- App-managed backend lifecycle diagnostics implemented.
+- Backend process is shared across source/page rebuilds.
+- Second same-session load reused the same backend process.
+- `frontend.backend_ready` dropped to about `162ms` in the accepted warm run.
+- Validation remained `match`.
 
 ## Phase F1e: backend route and native-internal timing decomposition
 
 Accepted.
 
-Goal:
-
-- Split the remaining warm-run `frontend.http_round_trip` into backend-internal stages.
-- Identify whether the remaining 8s-14s is caused by data fetch, chan.py calculation/setup, step-frame export, compact validation, JSON serialization, or HTTP transport.
-- Preserve all original chan.py semantics and current compact validation.
-
-Implemented:
-
-- Backend route timing metadata at FastAPI adapter layer:
-  - `backend_route_analyze_multi_ms`
-  - `backend_route_compact_transform_ms`
-  - `backend_route_json_serialize_probe_ms`
-  - `backend_route_response_bytes_probe`
-  - `backend_route_total_before_response_ms`
-- Backend native timing metadata in the native CChan(lv_list) App wrapper:
-  - `backend_native_data_load_ms`
-  - `backend_native_prepare_chan_ms`
-  - `backend_native_step_export_ms`
-  - `backend_native_once_export_ms`
-  - `backend_native_total_ms`
-- Copy Time Log surfaces backend timings as stages:
+- Backend route timing metadata implemented.
+- Native timing metadata implemented.
+- Copy Time Log surfaces:
   - `backend.route.analyze_multi`
   - `backend.route.compact_transform`
   - `backend.route.json_serialize_probe`
@@ -391,116 +177,143 @@ Implemented:
   - `backend.native.once_export`
   - `backend.native.total`
 
-Runtime accepted F1e output:
-
-- First same-session run:
-  - `backend_process_pid: 20672`
-  - `backend_process_start_count: 1`
-  - `backend_request_count: 1`
-  - `backend_last_request_reused: false`
-  - `backend.route.analyze_multi: 10955ms`
-  - `backend.route.total_before_response: 11431ms`
-  - `backend.native.total: 10955ms`
-  - `backend.native.data_load: 6751ms`
-  - `backend.native.prepare_chan: 287ms`
-  - `backend.native.step_export: 3915ms`
-  - `backend.route.compact_transform: 87ms`
-  - `backend.route.json_serialize_probe: 384ms`
-- Second warm same-session run:
-  - `backend_process_pid: 20672`
-  - `backend_process_start_count: 1`
-  - `backend_request_count: 2`
-  - `backend_last_request_reused: true`
-  - `frontend.backend_ready.start_or_reuse: 0ms`
-  - `frontend.backend_ready.health_check: 159ms`
-  - `backend.route.analyze_multi: 13593ms`
-  - `backend.route.total_before_response: 14145ms`
-  - `backend.native.total: 13592ms`
-  - `backend.native.data_load: 6678ms`
-  - `backend.native.prepare_chan: 1253ms`
-  - `backend.native.step_export: 5660ms`
-  - `backend.route.compact_transform: 130ms`
-  - `backend.route.json_serialize_probe: 418ms`
-  - `frontend.parse.frames: 0ms`
-- Result Validation remained accepted:
-  - `validation_status: match`
-  - `compact_validation_status: match`
-  - `compact_validation_mismatch_count: 0`
-  - `fallback_to_bridge: false`
-  - `status: ok`
-
 F1e conclusion:
 
-- Backend ready/startup is not the warm-run bottleneck after F1d.
-- Compact transform is not the bottleneck: about `87ms-130ms`.
-- JSON serialize probe is visible but secondary: about `384ms-418ms`.
-- Frontend compact frame parsing is not the bottleneck: `frontend.parse.frames: 0ms`.
-- Primary bottleneck is data loading: warm-run `backend.native.data_load: 6678ms`.
-- Secondary bottleneck is step export: warm-run `backend.native.step_export: 5660ms`.
-- Prepare CChan can vary but is lower priority than data load and step export in the accepted run.
+- Primary bottleneck before F1f was data loading.
+- Secondary bottleneck was step export.
+- Compact transform, JSON serialization probe, and frontend frame parsing were not the main bottlenecks.
 
-Forbidden after F1e remains:
+## Phase F1f: validated raw K-line data-load cache instrumentation
 
-- Do not implement algorithmic fast/极速 mode.
-- Do not bypass original chan.py.
-- Do not replace native `CChan(lv_list=[...])` with Flutter logic.
-- Do not add opaque result cache without explicit validation and stale-key diagnostics.
-
-## Phase F1f: validated data-load reuse/cache instrumentation
-
-Selected next task.
+Accepted.
 
 Goal:
 
-- Reduce or at least diagnose repeated same-session `backend.native.data_load` cost while preserving original chan.py calculation semantics.
-- Any data cache must be a raw K-line cache only, not a Chan result cache.
-- Cache key must include symbol, market, period, adjust, count, start, end, and any resolved expanded sub-level count/date window inputs.
-- Cache diagnostics must be visible in Copy Time Log.
-- Validation must remain `match` for the same request.
+- Reduce repeated same-session `backend.native.data_load` cost while preserving original chan.py calculation semantics.
+- Add raw K-line cache only; no Chan result cache.
+- Surface cache hit/miss diagnostics in Copy Time Log.
 
-Allowed F1f implementation directions:
+Implemented:
 
-1. Add a backend raw K-line cache around `load_easy_tdx_bars` at the App adapter/provider boundary.
-2. Expose cache diagnostics:
-   - `backend_data_cache_enabled`
-   - `backend_data_cache_hits`
-   - `backend_data_cache_misses`
-   - `backend_data_cache_hit_levels`
-   - `backend_data_cache_miss_levels`
-   - `backend_data_cache_key_count`
-   - `backend_data_cache_policy`
-3. Keep original `chan.py` calculation and `CChan(lv_list=[...])` unchanged.
-4. Keep backend native timing fields from F1e.
-5. Re-run two same-session loads and verify the second load has cache hits and validation remains match.
+- Process-local raw K-line cache around `load_easy_tdx_bars`.
+- Cache key includes:
+  - symbol
+  - market
+  - period
+  - adjust
+  - count
+  - start
+  - end
+- Per-request cache diagnostics:
+  - `backend_data_cache_enabled`
+  - `backend_data_cache_hits`
+  - `backend_data_cache_misses`
+  - `backend_data_cache_hit_levels`
+  - `backend_data_cache_miss_levels`
+  - `backend_data_cache_key_count`
+  - `backend_data_cache_policy`
+- Time Log stages include:
+  - `backend.data_cache.hits`
+  - `backend.data_cache.misses`
+  - `backend.data_cache.key_count`
 
-Forbidden in F1f:
+Runtime accepted F1f output:
+
+- First same-session run:
+  - `backend.data_cache.hits: 0`
+  - `backend.data_cache.misses: 3`
+  - `backend.data_cache.key_count: 3`
+  - `backend.native.data_load: 19137ms`
+  - `backend.native.step_export: 6199ms`
+  - `validation_status: match`
+- Second warm same-session run:
+  - `backend_process_pid: 7032`
+  - `backend_process_start_count: 1`
+  - `backend_request_count: 2`
+  - `backend_last_request_reused: true`
+  - `backend.data_cache.hits: 3`
+  - `backend.data_cache.misses: 0`
+  - `backend.data_cache.key_count: 3`
+  - `backend.native.data_load: 350ms`
+  - `backend.native.step_export: 3735ms`
+  - `frontend.http_round_trip: 5179ms`
+  - `frontend.total: 6632ms`
+  - `validation_status: match`
+  - `compact_validation_status: match`
+  - `fallback_to_bridge: false`
+  - `native_cchan_lv_list: true`
+
+F1f effect:
+
+- `backend.native.data_load` dropped from `19137ms` to `350ms` in the accepted same-session warm run.
+- Warm-run total dropped to about `6632ms`.
+- The remaining main backend bottleneck became `backend.native.step_export: 3735ms`.
+- Validation remained `match`.
+- This is raw K-line cache only, not Chan result cache.
+
+Forbidden after F1f remains:
 
 - No Chan result cache.
 - No algorithmic fast/极速 mode.
 - No Flutter-side Chan calculation.
 - No stale data reuse without visible key/policy diagnostics.
 
-F1f acceptance criteria:
+## Phase F1g: step export decomposition / refinement
 
-- Second same-session Copy Time Log must show data cache hits.
-- `backend.native.data_load` should drop materially if cache is effective.
+Selected next task.
+
+Goal:
+
+- Split and reduce `backend.native.step_export` without changing chan.py calculation semantics.
+- Preserve strict step replay from backend step frames.
+- Keep compact validation and result validation visible and passing.
+
+Allowed F1g implementation directions:
+
+1. Add internal timing inside step export:
+   - `backend_step_export_iter_ms`
+   - `backend_step_export_frame_build_ms`
+   - `backend_step_export_relation_ms`
+   - `backend_step_export_level_snapshot_ms`
+   - `backend_step_export_bsp_ms`
+   - `backend_step_export_total_frames`
+2. Identify whether cost is from iterating `chan.step_load()`, converting snapshots, relations, BSP extraction, or building full frame dictionaries.
+3. Keep lazy frontend parsing.
+4. Keep compact frame transport validation.
+
+Potential later optimization after decomposition:
+
+- frame-window / latest-frame export for UI startup, with explicit non-full strict-replay labeling.
+- separate on-demand full strict frame load.
+
+Forbidden in F1g:
+
+- Do not implement algorithmic fast/极速 mode.
+- Do not use Chan result cache.
+- Do not fake step replay from final snapshot.
+- Do not change `python/chan.py` core algorithm.
+- Do not drop compact validation or result validation.
+
+F1g acceptance criteria:
+
+- Copy Time Log must show step export sub-stage timing fields.
+- Warm backend reuse and raw data cache hit diagnostics must remain visible.
 - `validation_status: match` and `compact_validation_status: match` must remain true.
 - `fallback_to_bridge: false` and `native_cchan_lv_list: true` must remain true.
 
 ## Current blockers / pending verification
 
 - No speed/fast/turbo/极速 mode is accepted yet.
-- Strategy mode acceptance remains paused until F1f decision or implementation is complete, unless the manual explicitly resumes strategy first.
+- Strategy mode acceptance remains paused until F1g decision or implementation is complete, unless the manual explicitly resumes strategy first.
 - Full-history/paged strict step replay remains deferred.
 - Algorithmic fast mode is prohibited until a stricter validation plan is written and accepted.
 - Chan result cache remains prohibited.
-- F1f validated raw K-line data-load reuse/cache instrumentation is now the selected next task.
+- F1g step export decomposition/refinement is now the selected next task.
 
 ## Next task-party operation
 
-1. Implement F1f raw K-line data-load cache at the backend App adapter/provider boundary.
-2. Add visible cache hit/miss diagnostics into Copy Time Log.
-3. Keep F1e backend native timing fields visible.
-4. Re-run the accepted test window twice in the same App session.
-5. Paste Copy Time Log, Copy P0, Copy Step, and Copy Result Validation from the warm second run.
-6. Accept F1f only if cache diagnostics are visible, warm-run validation remains match, and no forbidden Chan result cache or algorithmic fast path is introduced.
+1. Implement F1g step export sub-stage timing in the App adapter/export layer.
+2. Keep F1f raw data cache diagnostics visible.
+3. Re-run the accepted test window twice in the same App session.
+4. Paste Copy Time Log, Copy P0, Copy Step, and Copy Result Validation from the warm second run.
+5. Accept F1g only if step export sub-stage timing is visible and validation remains match.
