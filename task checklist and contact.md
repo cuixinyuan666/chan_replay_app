@@ -17,6 +17,14 @@ Branch: origin_vespa_tdx
 - Step-frame compact export may change App adapter transport/export shape only; it must not change chan.py core output semantics.
 - No Chan result cache is accepted. F1f accepted only a raw K-line cache.
 - Performance work is now stopped after F1k. Do not continue with F1l/F1m unless a new manual exception is explicitly proven and recorded first.
+- New business/runtime work must default to the accepted high-speed path while retaining the slow path only as a temporary baseline/debug/validation path.
+- Legacy Dart-side Chan calculation logic must be removed or neutralized. Flutter/Dart may keep data models, parsers, rendering adapters, and validation UI only; it must not compute FX/BI/SEG/ZS/BSP.
+
+## Runtime path terminology
+
+- **High-speed path / 高速路**: the accepted App runtime path using App-managed Python, original `python/chan.py` / `CChan(lv_list=[...])`, raw K-line cache, compact-first step export, `compact_v1`, lazy frame parsing, lazy indicator parsing, and the existing validation diagnostics.
+- **Slow path / 慢速路**: the legacy baseline/debug/validation path. It is not the default user path and must not be used as the main development path.
+- High-speed path is not an algorithmic fast Chan implementation. Chan calculation authority remains original `python/chan.py`.
 
 ## Latest important commits
 
@@ -26,14 +34,11 @@ Branch: origin_vespa_tdx
 - `5e2a6f5e525908b04bdcbacd6062555e0ce55e6a`: accept F1f raw data cache reuse.
 - `4860e0ee5aa54b22da19978eb4ef2e93388f6690`: accept F1g step export decomposition.
 - `31af043bd41298e9a643d036b6716d53180b7ee3`: accept F1h compact-first step export.
-- `8018efeee26b57f3a657e647ae9ed7bb30f63d8f`: split backend structure export timings.
-- `89afef251c8de84d1fc5acf0d01acb262ce7f782`: surface structure export substage timings.
 - `829b5c4a0e060a18cb91919678034b298518eb51`: accept F1i backend residual decomposition.
-- `97fb334009d213f206e08a7211afa0321a4ca263`: add single-level frontend parse timing hooks.
-- `be2e68d7006bb0c5a007bcb5f8f7cfdb27291d39`: add multi-level frontend parse timing hooks.
 - `82f0dc610ed41012b5c8d7142917e4c77cd5f47f`: surface frontend top snapshot parse timings.
 - `06db968caa093ecb10914ab0420582571beb0478`: lazily parse Easy TDX indicator payloads.
-- Current update: accept F1j and F1k, then stop the performance optimization chain.
+- `b07ffd859f24db2ff7c6430baa2bd6d44a540f4e`: accept F1j and F1k, then stop the performance optimization chain.
+- Current update: select B1 runtime path switch and legacy Dart Chan calculation cleanup as the next task.
 
 ## Current accepted work
 
@@ -54,7 +59,7 @@ Branch: origin_vespa_tdx
 - F1i backend residual structure-export decomposition: accepted.
 - F1j frontend top snapshot parse decomposition: accepted.
 - F1k lazy Easy TDX indicator parsing: accepted.
-- Performance chain F1a-F1k: stopped by rule; return to business task chain.
+- Performance chain F1a-F1k: stopped by rule; return to business/runtime task chain.
 
 ## Accepted runtime baseline
 
@@ -69,288 +74,12 @@ Accepted test request:
 - selected pair `DAILY->MIN30`.
 - rule mode `validation_any_bsp_pair`.
 
-## Phase F1a: compact_v1 transport equivalence
+Accepted optimized warm-run state after F1k:
 
-Accepted.
-
-- Backend `compact_v1` adapter is implemented at App adapter/export layer.
-- Frame-level `bars` and `indicators` are omitted by default.
-- Frame-level `visible_count` is preserved.
-- Top-level result keeps each level's final bars/indicators once.
-- Flutter parser reconstructs visible bars/indicators for display without recalculating Chan structures.
-- Backend compact transport validation is accepted with `compact_validation_status: match` and `compact_validation_mismatch_count: 0`.
-- This accepts transport equivalence only. It does not accept algorithmic `极速` mode.
-
-## Phase F1b: post-compact measurement
-
-Accepted.
-
-- `response_bytes` remained around `4.06MB`.
-- Frontend parse and backend/http round-trip were both major bottlenecks.
-- Selected F1c lazy frame parsing.
-
-## Phase F1c: lazy frame parsing
-
-Accepted.
-
-- `lazy_frame_parsing: true`.
-- `raw_frame_count: 29`.
-- `parsed_frame_count: 1`.
-- `frontend.parse.frames: 0ms`.
-- Strict step replay still uses backend frames.
-- Validation remains match.
-
-## Phase F1d: backend lifecycle diagnostics and warm reuse
-
-Accepted.
-
-- Backend lifecycle fields are visible in Copy Time Log.
-- Same-session reload reuses the app-managed Python backend process.
-- Warm backend ready drops to health-check time.
-- Validation remains match.
-
-## Phase F1e: backend route and native-internal timing decomposition
-
-Accepted.
-
-Visible timing fields:
-
-- `backend.route.analyze_multi`
-- `backend.route.compact_transform`
-- `backend.route.json_serialize_probe`
-- `backend.route.total_before_response`
-- `backend.native.data_load`
-- `backend.native.prepare_chan`
-- `backend.native.step_export`
-- `backend.native.once_export`
-- `backend.native.total`
-
-F1e conclusion:
-
-- Before F1f, primary bottleneck was data load.
-- Secondary bottleneck was step export.
-- Compact transform, JSON serialization probe, and frontend frame parsing were not primary bottlenecks.
-
-## Phase F1f: validated raw K-line data-load cache instrumentation
-
-Accepted.
-
-- Process-local raw K-line cache around `load_easy_tdx_bars`.
-- Cache key includes symbol, market, period, adjust, count, start, end.
-- Copy Time Log exposes cache diagnostics.
-- First same-session run: cache hits `0`, misses `3`, key_count `3`, `backend.native.data_load: 19137ms`.
-- Second same-session run: cache hits `3`, misses `0`, key_count `3`, `backend.native.data_load: 350ms`.
-- Validation remained `match`.
-- This is raw K-line cache only, not Chan result cache.
-
-## Phase F1g: step export decomposition / refinement
-
-Accepted.
-
-Implemented timing fields:
-
-- `backend.step_export.iter`
-- `backend.step_export.frame_build`
-- `backend.step_export.level_snapshot`
-- `backend.step_export.structure`
-- `backend.step_export.visible_bars`
-- `backend.step_export.level_payload`
-- `backend.step_export.relation`
-- `backend.step_export.bsp`
-- `backend.step_export.current_time`
-- `backend.step_export.total_frames`
-- `backend.step_export.returned_frames`
-- `backend.step_export.bsp_count`
-
-Accepted F1g warm-run baseline:
-
-- `backend.native.step_export: 3056ms`.
-- `backend.step_export.iter: 1034ms`.
-- `backend.step_export.frame_build: 1996ms`.
-- `backend.step_export.level_snapshot: 1836ms`.
-- `backend.step_export.level_payload: 1374ms`.
-- `backend.step_export.structure: 332ms`.
-- Validation remained `match`.
-
-F1g conclusion:
-
-- After F1f, data load is no longer the bottleneck.
-- Step export is the primary backend bottleneck.
-- `level_payload` is wasteful because compact_v1 later removes frame-level bars and indicators.
-
-## Phase F1h: compact-first step frame export / skip redundant frame payload
-
-Accepted.
-
-- Step frame export builds compact frame-level levels directly.
-- Frame-level payload keeps `visible_count` and Chan structures.
-- Frame-level payload omits `bars` and `indicators` without first constructing them.
-- Full final top-level snapshot is built once after step iteration.
-- Copy Time Log exposes `backend.step_export.final_snapshot`.
-
-Accepted F1h output, second warm same-session run:
-
-- `backend.native.step_export: 2699ms`.
-- `backend.step_export.iter: 1481ms`.
-- `backend.step_export.frame_build: 1063ms`.
-- `backend.step_export.level_snapshot: 782ms`.
-- `backend.step_export.structure: 684ms`.
-- `backend.step_export.level_payload: 1ms`.
-- `backend.step_export.final_snapshot: 127ms`.
-- Copy Step remained strict backend step frame.
-- Result Validation remained `match`.
-
-F1h effect:
-
-- `backend.step_export.level_payload` dropped from F1g `1374ms` to `1ms`.
-- `backend.step_export.frame_build` dropped from `1996ms` to `1063ms`.
-- `backend.native.step_export` dropped from `3056ms` to `2699ms`.
-- Remaining backend costs are mainly `step_load()` iteration and structure export.
-
-## Phase F1i: residual backend structure export decomposition
-
-Accepted.
-
-Implemented:
-
-- Backend structure export was split into:
-  - `backend.structure_export.merged`
-  - `backend.structure_export.fx`
-  - `backend.structure_export.bi`
-  - `backend.structure_export.seg`
-  - `backend.structure_export.zs`
-  - `backend.structure_export.bsp`
-
-Accepted F1i output, second warm same-session run:
-
-- `backend_process_pid: 1524`.
-- `backend_process_start_count: 1`.
-- `backend_request_count: 2`.
-- `backend_last_request_reused: true`.
-- `backend.data_cache.hits: 3`.
-- `backend.data_cache.misses: 0`.
-- `backend.native.data_load: 166ms`.
-- `backend.native.prepare_chan: 241ms`.
-- `backend.native.step_export: 1764ms`.
-- `backend.step_export.iter: 1054ms`.
-- `backend.step_export.frame_build: 546ms`.
-- `backend.step_export.level_snapshot: 391ms`.
-- `backend.step_export.structure: 320ms`.
-- `backend.step_export.relation: 112ms`.
-- `backend.step_export.final_snapshot: 139ms`.
-- `backend.structure_export.merged: 206ms`.
-- `backend.structure_export.fx: 52ms`.
-- `backend.structure_export.bi: 4ms`.
-- `backend.structure_export.seg: 0ms`.
-- `backend.structure_export.zs: 0ms`.
-- `backend.structure_export.bsp: 0ms`.
-- `frontend.total: 3597ms`.
-- `frontend.http_round_trip: 2516ms`.
-- `frontend.parse.top_snapshot: 823ms`.
-- Copy Step remained strict backend step frame.
-- Result Validation remained accepted.
-
-F1i conclusion:
-
-- Backend structure export is no longer a large opaque block.
-- Largest structure sub-cost is merged K-line export at about `206ms`.
-- Remaining largest backend cost is `step_load()` iteration around `1054ms`.
-- Frontend top snapshot parse remained visible at about `823ms`.
-
-## Phase F1j: frontend top snapshot parse decomposition / chart payload parse reduction
-
-Accepted.
-
-Implemented:
-
-- Single-level frontend parser timing hooks:
-  - `frontend.parse.top_snapshot.single_level.bars`
-  - `frontend.parse.top_snapshot.single_level.merged`
-  - `frontend.parse.top_snapshot.single_level.fx`
-  - `frontend.parse.top_snapshot.single_level.bi`
-  - `frontend.parse.top_snapshot.single_level.seg`
-  - `frontend.parse.top_snapshot.single_level.zs`
-  - `frontend.parse.top_snapshot.single_level.bsp`
-  - `frontend.parse.top_snapshot.single_level.indicators`
-  - `frontend.parse.top_snapshot.single_level.total`
-- Multi-level frontend parser timing hooks:
-  - `frontend.parse.top_snapshot.levels`
-  - `frontend.parse.top_snapshot.meta_order`
-  - `frontend.parse.top_snapshot.relations`
-  - `frontend.parse.top_snapshot.total_inner`
-
-Accepted F1j output, second warm same-session run:
-
-- `backend_process_pid: 2252`.
-- `backend_process_start_count: 1`.
-- `backend_request_count: 2`.
-- `backend_last_request_reused: true`.
-- `backend.data_cache.hits: 3`.
-- `backend.data_cache.misses: 0`.
-- `frontend.total: 4127ms`.
-- `frontend.http_round_trip: 2845ms`.
-- `frontend.parse.top_snapshot: 976ms`.
-- `frontend.parse.top_snapshot.single_level.bars: 80ms`.
-- `frontend.parse.top_snapshot.single_level.merged: 39ms`.
-- `frontend.parse.top_snapshot.single_level.fx: 10ms`.
-- `frontend.parse.top_snapshot.single_level.bi: 2ms`.
-- `frontend.parse.top_snapshot.single_level.indicators: 837ms`.
-- `frontend.parse.top_snapshot.levels: 976ms`.
-- `frontend.parse.top_snapshot.relations: 0ms`.
-- Copy Step remained strict backend step frame.
-- Result Validation remained accepted.
-
-F1j conclusion:
-
-- Frontend top snapshot parse was dominated by indicator parsing.
-- `frontend.parse.top_snapshot.single_level.indicators` accounted for about `837ms / 976ms`, more than 85 percent.
-- This satisfies the manual exception rule for one more performance phase because a single remaining stage was above 800ms, the proposed optimization is frontend lazy parsing only, and validation remains match.
-
-## Phase F1k: lazy Easy TDX indicator parsing
-
-Accepted.
-
-Exception rule for F1k:
-
-- F1j Copy Time Log proved a single stage above 800ms: `frontend.parse.top_snapshot.single_level.indicators: 837ms`.
-- Proposed change was low-risk frontend parsing only.
-- No `python/chan.py` core logic change.
-- No Chan result cache.
-- No Flutter-side Chan calculation.
-- No final-snapshot fake step replay.
-- Same-request validation remained match.
-
-Implemented:
-
-- `EasyTdxIndicators.fromJson()` now keeps raw indicator JSON and parses individual series on demand.
-- Existing public API remains:
-  - `vol`
-  - `amount`
-  - `turnover`
-  - `ma`
-  - `boll`
-  - `macd`
-  - `namedSeries`
-  - `visibleVol`, `visibleMacd`, `visibleBoll`, `visibleMa`, `visibleNamed`.
-- `const EasyTdxIndicators()` remains valid for `ChanSnapshot` defaults.
-
-Accepted F1k output, second warm same-session run:
-
-- `backend_process_pid: 11680`.
-- `backend_process_start_count: 1`.
-- `backend_request_count: 2`.
-- `backend_last_request_reused: true`.
-- `backend.data_cache.hits: 3`.
-- `backend.data_cache.misses: 0`.
 - `frontend.total: 2461ms`.
 - `frontend.http_round_trip: 2079ms`.
 - `frontend.parse.top_snapshot: 144ms`.
-- `frontend.parse.top_snapshot.single_level.bars: 86ms`.
-- `frontend.parse.top_snapshot.single_level.merged: 42ms`.
-- `frontend.parse.top_snapshot.single_level.fx: 9ms`.
-- `frontend.parse.top_snapshot.single_level.bi: 1ms`.
 - `frontend.parse.top_snapshot.single_level.indicators: 0ms`.
-- `frontend.parse.top_snapshot.levels: 144ms`.
 - `frontend.parse.snapshot_frames_relations_bsp: 144ms`.
 - Copy Step remained strict backend step frame.
 - Result Validation remained accepted:
@@ -360,18 +89,20 @@ Accepted F1k output, second warm same-session run:
   - `fallback_to_bridge: false`.
   - `native_cchan_lv_list: true`.
 
-F1k effect:
+## Performance chain summary F1a-F1k
 
-- `frontend.parse.top_snapshot.single_level.indicators` dropped from F1j `837ms` to `0ms`.
-- `frontend.parse.top_snapshot` dropped from `976ms` to `144ms`.
-- `frontend.parse.snapshot_frames_relations_bsp` dropped from `976ms` to `144ms`.
-- `frontend.total` dropped from `4127ms` to `2461ms`.
-- Current largest warm-run stages after F1k:
-  - `backend.native.step_export: 1376ms`.
-  - `backend.step_export.iter: 728ms`.
-  - `backend.step_export.frame_build: 513ms`.
-  - `backend.step_export.structure: 317ms`.
-- No new frontend single stage remains above the F1j/F1k exception threshold.
+- F1a accepted compact_v1 transport equivalence.
+- F1b measured the post-compact bottlenecks.
+- F1c accepted lazy frame parsing.
+- F1d accepted warm app-managed backend reuse.
+- F1e decomposed backend route/native timings.
+- F1f accepted process-local raw K-line cache only, not Chan result cache.
+- F1g decomposed step export timing.
+- F1h accepted compact-first step frame export.
+- F1i decomposed residual backend structure export.
+- F1j decomposed frontend top snapshot parse.
+- F1k accepted lazy Easy TDX indicator parsing.
+- The performance chain is now stopped by rule.
 
 ## Performance optimization stop rule after F1k
 
@@ -382,7 +113,121 @@ After F1k:
 - The exceptional indicator bottleneck is resolved.
 - No new single frontend stage remains above `800ms-1000ms`.
 - Do not continue performance work by default.
-- Return to business task chain.
+- Return to the business/runtime task chain.
+
+## Phase B1: runtime path switch and legacy Dart Chan cleanup
+
+Selected next task.
+
+Goal:
+
+- Make the accepted high-speed path the default runtime path.
+- Temporarily keep the slow path in a dropdown for baseline/debug/validation only.
+- Remove or neutralize legacy Dart-side Chan calculation logic so Flutter/Dart cannot compute FX/BI/SEG/ZS/BSP.
+- Preserve original `python/chan.py` as the only Chan calculation authority.
+
+### B1a: runtime path dropdown
+
+Required UI behavior:
+
+- Add a runtime path dropdown with exactly these user-facing choices:
+  - `高速路（默认）`
+  - `慢速路（原始校验/调试）`
+- Default value must be `高速路（默认）`.
+- Strategy mode, validation mode, and normal replay must use the high-speed path by default.
+- Slow path must be manually selectable only for debugging, baseline comparison, or validation investigation.
+- Slow path must not silently become the default after restart, page rebuild, exception, or fallback.
+
+Required diagnostics in Copy Time Log and Copy P0:
+
+- `runtime_path: high_speed | slow_path`.
+- `high_speed_enabled: true | false`.
+- `slow_path_enabled: true | false`.
+- `runtime_path_default: high_speed`.
+- `runtime_path_policy: high_speed_default_slow_path_debug_only`.
+- Existing diagnostics must remain visible:
+  - `validation_status`.
+  - `compact_validation_status`.
+  - `fallback_to_bridge`.
+  - `native_cchan_lv_list`.
+  - raw data cache diagnostics.
+  - F1g/F1h/F1i/F1j/F1k timing fields for regression checks.
+
+High-speed path must use:
+
+- App-managed bundled Python backend.
+- Original `python/chan.py` / `CChan(lv_list=[...])`.
+- F1f raw K-line cache.
+- compact-first step frame export.
+- `compact_v1` transport.
+- lazy frame parsing.
+- lazy Easy TDX indicator parsing.
+- Copy Time Log / Copy Step / Copy P0 / Copy Result Validation gates.
+
+Slow path rules:
+
+- Slow path is retained temporarily as a baseline/debug/validation reference.
+- Slow path must still use original `python/chan.py` for Chan calculation.
+- Slow path must not contain or call Dart-side Chan calculation.
+- Slow path must not be used to hide backend fallback or validation failure.
+- Slow path retirement may be considered only after high-speed path passes multiple business-chain acceptances and the manual explicitly records `slow path retired`.
+
+B1a acceptance criteria:
+
+- Dropdown is visible in the relevant runtime panel.
+- Default selection is `高速路（默认）`.
+- Copy Time Log and Copy P0 show the selected runtime path and default policy.
+- High-speed path remains accepted with:
+  - `validation_status: match`.
+  - `compact_validation_status: match`.
+  - `fallback_to_bridge: false`.
+  - `native_cchan_lv_list: true`.
+  - `frame_source: native_step_frame` for Copy Step.
+  - `final_snapshot_rendered_as_step: false`.
+- Slow path can be selected manually for debug/baseline only.
+
+### B1b: delete or neutralize legacy Dart-side Chan calculation
+
+Required cleanup:
+
+- Search the Dart/Flutter codebase for any implementation that calculates Chan structures, including but not limited to:
+  - FX / fractal calculation.
+  - BI / stroke calculation.
+  - SEG / segment calculation.
+  - ZS / center calculation.
+  - BSP / buy-sell point calculation.
+  - include/merge K-line algorithm used as Chan calculation.
+  - step replay generated from final snapshot slicing.
+- Remove those Dart-side calculation implementations, or convert them into passive DTO/model/parser/rendering code only.
+- Keep Dart models/parsers/renderers only if they consume backend output and do not calculate Chan structures.
+- If a Dart file is kept for compatibility, add clear comments that it is a parser/model/rendering adapter and not a Chan calculation engine.
+- Any old Dart Chan service/calculator class must either be deleted or made unreachable from runtime paths.
+
+Required evidence:
+
+- Code search summary must be pasted into the manual or task result.
+- Evidence must show no active Dart-side FX/BI/SEG/ZS/BSP calculation path remains.
+- Build/analysis must pass after cleanup.
+- Copy Step must still show backend strict step frame.
+- Copy Result Validation must remain match on the accepted baseline request.
+
+B1b acceptance criteria:
+
+- No active Dart-side Chan calculator remains in runtime code.
+- Flutter/Dart only parses, renders, validates, and switches runtime path.
+- Original `python/chan.py` remains the only calculation engine.
+- App can still run high-speed path successfully.
+- Slow path, if present, still calls original `python/chan.py`, not Dart Chan logic.
+
+Forbidden in B1:
+
+- Do not reintroduce Flutter/Dart Chan calculation under another name.
+- Do not remove the accepted high-speed path.
+- Do not remove slow path in this task; only make it debug/baseline and non-default.
+- Do not implement algorithmic fast/极速 mode.
+- Do not introduce Chan result cache.
+- Do not fake step replay from final snapshot.
+- Do not modify `python/chan.py` core algorithm.
 
 ## Current blockers / pending verification
 
@@ -391,17 +236,16 @@ After F1k:
 - Chan result cache remains prohibited.
 - Full-history/paged strict step replay remains deferred.
 - Performance chain F1a-F1k is stopped by rule.
-- Next task should return to one of the business-chain items:
-  - Strategy mode runtime acceptance.
-  - Interval-nest buy rule acceptance.
-  - Full-history / paged strict step replay.
-  - Signal/rule validation usability.
-  - Other explicitly selected manual task-chain items.
+- Runtime path switch and Dart Chan cleanup B1 is now the selected next task.
+- Strategy mode runtime acceptance should resume after B1 unless this manual explicitly selects another business-chain item.
 
 ## Next task-party operation
 
-1. Stop performance-chain work unless a new manual exception is explicitly proven and recorded first.
-2. Return to the business task chain.
-3. Recommended next task: Strategy mode runtime acceptance using the existing validation gates.
-4. Keep F1f raw data cache diagnostics, F1g/F1h/F1i/F1j/F1k timing fields available for regression checks.
-5. Continue requiring same-request `validation_status: match`, `compact_validation_status: match`, `fallback_to_bridge: false`, and `native_cchan_lv_list: true` for accepted changes.
+1. Implement B1a runtime path dropdown with high-speed path as default and slow path as debug/baseline only.
+2. Add runtime path diagnostics to Copy Time Log and Copy P0.
+3. Implement B1b cleanup: delete or neutralize legacy Dart-side Chan calculation logic.
+4. Keep Dart models/parsers/rendering adapters only if they do not calculate FX/BI/SEG/ZS/BSP.
+5. Re-run the accepted baseline request on high-speed path.
+6. Paste Copy Time Log, Copy P0, Copy Step, Copy Result Validation, and Dart Chan cleanup/code-search evidence.
+7. Accept B1 only if high-speed path remains valid, slow path is non-default debug-only, no active Dart-side Chan calculation remains, and validation remains match.
+8. After B1, resume business-chain work, recommended next: Strategy mode runtime acceptance using the existing validation gates.
