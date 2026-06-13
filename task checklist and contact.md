@@ -51,6 +51,7 @@ Required completion summary fields:
 - B1a runtime path dropdown and copy diagnostics: accepted.
 - B1b Dart-side Chan cleanup/search evidence: accepted.
 - S1 Strategy mode runtime acceptance: accepted.
+- S2 pinned offline fixture export for accepted S1 baseline: accepted.
 
 ## S1 summary
 
@@ -61,59 +62,55 @@ Required completion summary fields:
 - S1 evidence proved high-speed path, native `CChan(lv_list)`, native step frame, no bridge fallback, no final-snapshot step, result validation match, compact validation match, and clean `flutter analyze`.
 - S1 validation_result: accepted.
 
-## Phase S2: pinned offline fixture export for accepted S1 baseline
-
-In progress.
-
-open_questions: none
+## S2 summary
 
 completed_tasks:
 
-- Selected S2 as the next business-chain task because S1 was accepted with a live-data exception and the manual still recommends a matching offline fixture.
+- Selected S2 as the next business-chain task because S1 was accepted with a live-data exception and the manual recommended creating a matching offline fixture.
 - Added `tools/export_pinned_s1_fixture.py` in commit `0da70c70fdc53621ce727b3ab44aeab1cde4583a`.
-- The exporter defaults to the accepted S1 baseline request:
-  - symbol `600340`, market `SH`;
-  - levels `DAILY,MIN30,MIN5`;
-  - count `220`;
-  - max step frames `60`;
-  - start/end `2025-09-01` to `2025-10-20`;
-  - mode `step`.
-- The exporter calls backend `analyze_multi` with original `python/chan.py` as calculation authority, then applies existing compact_v1 transport compaction.
-- The exporter writes to `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json` by default.
+- Receiver ran `python tools/export_pinned_s1_fixture.py` from the repository root.
+- Exporter generated `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json`.
+- Receiver checked file size: `Length: 7407250` bytes, about 7.06 MB.
+- Receiver committed and pushed the pinned fixture in commit `8bde365` with message `test(fixtures): add pinned S1 multi-level fixture`.
+- Remote fixture blob is present at the pinned fixture path.
 
-Evidence button / receiver flow:
+exporter validation_result:
 
-- CLI evidence/export command:
-  - `python tools/export_pinned_s1_fixture.py`
-- The command prints a JSON summary with output path, frames_total, frames_returned, compact validation status, native lv_list flag, fallback flag, and elapsed time.
+- `ok: true`.
+- `frames_total: 29`.
+- `frames_returned: 29`.
+- `compact_validation_status: match`.
+- `compact_validation_mismatch_count: 0`.
+- `native_cchan_lv_list: true`.
+- `fallback_to_bridge: false`.
+- `elapsed_ms: 7760`.
 
 validation_result:
 
-- pending receiver run.
-- Expected successful summary fields:
-  - `ok: true`;
-  - `compact_validation_status: match`;
-  - `compact_validation_mismatch_count: 0`;
-  - `native_cchan_lv_list: true`;
-  - `fallback_to_bridge: false`.
+- accepted.
+- The pinned fixture now covers the accepted S1 baseline request and can be used for later offline validation.
+- S2 acceptance does not accept any new Chan calculation path, Dart-side Chan calculation, bridge fallback, Chan result cache, final-snapshot fake step, or performance optimization phase.
+
+evidence_button:
+
+- CLI evidence/export command: `python tools/export_pinned_s1_fixture.py`.
+- Generated fixture evidence: committed pinned JSON fixture under `test/fixtures/pinned/`.
 
 remaining_risk:
 
-- The script has been committed but has not yet been run by receiver in the App/Python environment.
-- The exported JSON fixture has not yet been committed under `test/fixtures/pinned/`.
-- The fixture file can be large; commit only after confirming size and validation usefulness.
+- The pinned fixture is about 7.06 MB. It is acceptable as a single baseline fixture, but similar full fixtures should not be added repeatedly without manual justification.
+- If future tests require many fixtures, prefer smaller derived fixtures or fixture metadata indexes.
 
 next_task:
 
-1. Pull commit `0da70c70fdc53621ce727b3ab44aeab1cde4583a`.
-2. Run `python tools/export_pinned_s1_fixture.py` from the repository root using the App-bundled or project Python environment.
-3. Paste the script JSON summary.
-4. If successful and file size is acceptable, commit the generated fixture under `test/fixtures/pinned/`.
-5. Then add a fixture validation step for S2 before accepting it.
+1. Use the pinned S1 fixture for subsequent validation stages when compatible.
+2. Do not continue performance optimization by default.
+3. Preserve high-speed path as default and slow path as debug/baseline only.
+4. Choose the next business-chain task before implementation.
 
 ## Next task-party operation
 
-1. Wait for receiver to run `python tools/export_pinned_s1_fixture.py`.
-2. Validate the generated fixture summary.
-3. Decide whether to commit the generated pinned fixture file or add a smaller derived fixture.
-4. Do not continue performance optimization by default.
+1. Use `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json` as the preferred offline fixture for S1-compatible checks.
+2. Do not add additional large full fixtures unless the manual explicitly requires them.
+3. Do not continue performance optimization by default.
+4. Choose the next business-chain task before implementation.
