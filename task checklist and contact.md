@@ -46,7 +46,8 @@ Branch: origin_vespa_tdx
 - `3085d9390d0dc70e8c59e2abd7da975326d57287`: move runtime path dropdown away from header to avoid overlap with Load/request controls.
 - `077a1d11c8228a45cb14b1d3b360ccdf3214a51c`: remove Dart-side dummy merged-bar synthesis from Chan snapshot parser.
 - `d839c0c6b4963b933cf94e1f9fa7c842caeea343`: route single-level source parsing through passive Chan snapshot parser and remove duplicate Dart-side structure parser.
-- Current update: record B1b single-level source cleanup. B1b is still pending broader Dart-side search evidence, build analysis, and runtime validation.
+- `1bfeb709fa4b65155aa347b908791d848a109245`: remove unnecessary lazy frame cast so `flutter analyze` is clean.
+- Current update: accept B1b Dart-side Chan cleanup. B1 runtime path switch and Dart-side Chan cleanup is accepted.
 
 ## Current accepted work
 
@@ -69,7 +70,7 @@ Branch: origin_vespa_tdx
 - F1k lazy Easy TDX indicator parsing: accepted.
 - Performance chain F1a-F1k: stopped by rule; return to business/runtime task chain.
 - B1a runtime path dropdown and copy diagnostics: accepted.
-- B1b Dart-side Chan cleanup/search evidence: in progress, not accepted.
+- B1b Dart-side Chan cleanup/search evidence: accepted.
 
 ## Accepted runtime baseline
 
@@ -127,7 +128,7 @@ After F1k:
 
 ## Phase B1: runtime path switch and legacy Dart Chan cleanup
 
-Selected task chain.
+Accepted.
 
 Goal:
 
@@ -241,61 +242,66 @@ B1a conclusion:
 
 ### B1b: delete or neutralize legacy Dart-side Chan calculation
 
-In progress.
+Accepted.
 
-Required cleanup:
-
-- Search the Dart/Flutter codebase for any implementation that calculates Chan structures, including but not limited to:
-  - FX / fractal calculation.
-  - BI / stroke calculation.
-  - SEG / segment calculation.
-  - ZS / center calculation.
-  - BSP / buy-sell point calculation.
-  - include/merge K-line algorithm used as Chan calculation.
-  - step replay generated from final snapshot slicing.
-- Remove those Dart-side calculation implementations, or convert them into passive DTO/model/parser/rendering code only.
-- Keep Dart models/parsers/renderers only if they consume backend output and do not calculate Chan structures.
-- If a Dart file is kept for compatibility, add clear comments that it is a parser/model/rendering adapter and not a Chan calculation engine.
-- Any old Dart Chan service/calculator class must either be deleted or made unreachable from runtime paths.
-
-Implementation progress:
+Implementation:
 
 - Commit `077a1d11c8228a45cb14b1d3b360ccdf3214a51c` updates `lib/data/chan_snapshot_json_parser.dart`.
 - `ChanSnapshotJsonParser` is now explicitly documented as a passive backend JSON -> Dart DTO adapter.
 - The parser now states that it must not synthesize or calculate Chan structures and that `python/chan.py` remains the sole Chan calculation authority.
 - Removed the old `_dummyMergedBar` fallback that synthesized one Dart `MergedBar` per raw bar when backend `merged_bars` was absent.
 - `structuralMergedBars` now uses only backend-exported `merged_bars`.
-- This removes the first identified Dart-side Chan structure synthesis path.
 - Commit `d839c0c6b4963b933cf94e1f9fa7c842caeea343` updates `lib/data/python_chan_analysis_source.dart`.
 - `PythonChanAnalysisSource` no longer maintains a duplicate single-level Dart parser for FX/BI/SEG/ZS/BSP DTO construction.
 - Single-level backend JSON parsing now routes through the passive `ChanSnapshotJsonParser.parse()` adapter.
-- This removes the remaining known active single-level `_dummyMergedBar` fallback and reduces parser drift.
+- Commit `1bfeb709fa4b65155aa347b908791d848a109245` removes the final `unnecessary_cast` warning in the multi-level source.
 
-Required evidence:
+Search and code review evidence:
 
-- Code search summary must be pasted into the manual or task result.
-- Evidence must show no active Dart-side FX/BI/SEG/ZS/BSP calculation path remains.
-- Build/analysis must pass after cleanup.
-- Copy Step must still show backend strict step frame.
-- Copy Result Validation must remain match on the accepted baseline request.
+- `_dummyMergedBar` search returned no remaining result after cleanup.
+- `OriginReplayStrictPage` uses backend `analysis.frames` for step mode and does not render final snapshot as step.
+- `PythonChanAnalysisSource` now routes backend JSON snapshot/frame parsing through `ChanSnapshotJsonParser.parse()`.
+- `MultiLevelChanAnalysisParser` is a compact transport / relation parser and does not calculate Chan structures.
+- `OriginKlineChart` renders existing snapshot raw bars / merged bars / FX / BI / SEG / ZS / BSP and does not calculate Chan structures.
+- `ResearchBacktestPage` and `ResearchBackendClient` send current analysis JSON to the Python research backend and require `engine: chan.py`.
+- `MultiLevelIntervalSignalPanel` filters backend BSP + native LevelRelation into business signal candidates; it does not calculate FX/BI/SEG/ZS/BSP.
 
-B1b acceptance criteria:
+Accepted runtime evidence:
 
-- No active Dart-side Chan calculator remains in runtime code.
-- Flutter/Dart only parses, renders, validates, and switches runtime path.
-- Original `python/chan.py` remains the only calculation engine.
-- App can still run high-speed path successfully.
-- Slow path, if present, still calls original `python/chan.py`, not Dart Chan logic.
+- Copy Step included:
+  - `frame_source: native_step_frame`.
+  - `final_snapshot_rendered_as_step: false`.
+  - `runtime_path: high_speed`.
+  - `high_speed_enabled: true`.
+  - `slow_path_enabled: false`.
+  - `native_cchan_lv_list: true`.
+  - `fallback_to_bridge: false`.
+  - `native_step_frames: true`.
+  - `native_step_frames_total: 29`.
+  - `native_step_frames_returned: 29`.
+  - `step_frame_format: compact_v1`.
+  - `compact_validation_status: match`.
+  - `compact_validation_mismatch_count: 0`.
+  - `status_summary.current_frame` reported `runtime_path:high_speed relations:9 frames:29`.
+- Copy Result Validation included:
+  - `validation_status: match`.
+  - `mismatch_count: 0`.
+  - `runtime_path: high_speed`.
+  - `high_speed_enabled: true`.
+  - `slow_path_enabled: false`.
+  - `compact_validation_status: match`.
+  - `compact_validation_mismatch_count: 0`.
+  - `status: ok`.
+- `flutter analyze` output:
+  - `No issues found!`.
 
-Forbidden in B1:
+B1b conclusion:
 
-- Do not reintroduce Flutter/Dart Chan calculation under another name.
-- Do not remove the accepted high-speed path.
-- Do not remove slow path in this task; only make it debug/baseline and non-default.
-- Do not implement algorithmic fast/极速 mode.
-- Do not introduce Chan result cache.
-- Do not fake step replay from final snapshot.
-- Do not modify `python/chan.py` core algorithm.
+- No known active Dart-side Chan calculator remains in the checked runtime paths.
+- Flutter/Dart now parses, renders, validates, switches runtime path, and performs business signal filtering only.
+- Original `python/chan.py` remains the only Chan calculation authority.
+- Strict step replay remains backend-native and is not final-snapshot slicing.
+- B1b is accepted.
 
 ## Current blockers / pending verification
 
@@ -304,7 +310,5 @@ Forbidden in B1:
 - Chan result cache remains prohibited.
 - Full-history/paged strict step replay remains deferred.
 - Performance chain F1a-F1k is stopped by rule.
-- Runtime path switch and Dart Chan cleanup B1 is now the selected task chain.
-- B1a runtime path dropdown/copy diagnostics is accepted.
-- B1b parser cleanup has started; broader Dart-side search evidence, build analysis, and runtime validation are still pending.
+- Runtime path switch and Dart Chan cleanup B1 is accepted.
 - Strategy mode runtime acceptance should resume after B1 unless this manual explicitly selects another business-chain item.
