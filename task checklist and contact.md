@@ -209,12 +209,95 @@ S4 acceptance evidence:
 - `ok: true`;
 - completion summary with completed_tasks, evidence_button or command, validation_result, remaining_risk, and next_task.
 
+## Post-S4 roadmap
+
+Default order after S4 acceptance: S5 -> S6 -> S7 -> S8, unless the supervisor explicitly changes priority.
+
+## S5 planned: CLI strategy rule matrix validation
+
+Goal:
+
+- Expand S4 from a single strategy diagnostic check into a matrix check for all currently supported strategy rules.
+- Keep receiver validation on CLI by default.
+
+Scope:
+
+- Validate at least `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, and `DAILY_3B_MIN30_2B`.
+- Use the pinned S1 fixture first.
+- Do not request live data unless the pinned fixture cannot support the required evidence and supervisor accepts the exception.
+
+S5 acceptance evidence:
+
+- One documented command after `git pull`.
+- Output contains each strategy rule name, source policy, selected relation pair, BSP counts, matched signal count or no-output diagnosis, strict-step frame evidence, compact validation status, no bridge fallback, native lv_list flag, and no forbidden Dart-side Chan calculation markers.
+- Completion summary is written back to this manual.
+
+## S6 planned: strategy signal sample coverage
+
+Goal:
+
+- Ensure strategy diagnostics cover both no-output and matched-output conditions.
+
+Scope:
+
+- Reuse the pinned S1 fixture for no-output validation.
+- If matched-output evidence is missing, create the smallest acceptable derived fixture or fixture metadata sample.
+- Do not add another large full fixture unless the manual explicitly justifies it.
+- Do not fabricate Chan results; any matched-output fixture must remain traceable to accepted backend/fixture data or be clearly marked as a UI-only synthetic diagnostic fixture and approved before use.
+
+S6 acceptance evidence:
+
+- CLI report proving no-output and matched-output diagnostic paths.
+- Traceability fields for matched output: source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name.
+- Completion summary is written back to this manual.
+
+## S7 planned: App strategy signal display loop
+
+Goal:
+
+- After CLI diagnostics are stable, return to App only for UI behavior that CLI cannot verify.
+
+Scope:
+
+- Show strategy signals in the App.
+- Mark matched strategy signals on the chart.
+- Allow selecting a signal and jumping to the corresponding raw index/time.
+- Display source BSP, relation range, strict-step visibility, rule name, and state.
+- Preserve `S1一键复制` or successor one-click evidence for receiver-run UI validation.
+
+S7 acceptance evidence:
+
+- App evidence only for UI-specific behavior.
+- CLI/static validators still cover non-visual requirements where possible.
+- No Dart-side Chan calculation authority is introduced.
+- Completion summary is written back to this manual.
+
+## S8 planned: scanner / batch strategy output
+
+Goal:
+
+- Extend the validated strategy diagnostic/display chain to scanner or batch outputs.
+
+Scope:
+
+- Support multiple symbols and/or multiple strategy rules.
+- Output candidate strategy results with traceability fields.
+- Clicking a candidate should navigate to the corresponding replay position when App evidence is required.
+- Use CLI validation first for static/batch correctness.
+
+S8 acceptance evidence:
+
+- CLI batch validation where possible.
+- App evidence only for navigation/display behavior.
+- Completion summary is written back to this manual.
+
 ## Next task-party operation
 
-1. Receiver pulls commit `fcabcf93f077fe8275656e343039d4cfbfff7938`.
-2. Receiver runs `python tools/validate_s4_cli_strategy_diagnostics.py`.
-3. Accept S4 only if the CLI output passes.
-4. Do not require App evidence unless the task party proves CLI cannot cover the requirement.
-5. Do not add additional large full fixtures unless the manual explicitly requires them.
-6. Do not continue performance optimization by default.
-7. Write the S4 completion summary into this manual after evidence is accepted.
+1. Finish S4 first. Receiver pulls commit `fcabcf93f077fe8275656e343039d4cfbfff7938` and runs `python tools/validate_s4_cli_strategy_diagnostics.py`.
+2. Accept S4 only if the CLI output passes.
+3. After S4 acceptance, start S5 by default.
+4. Preserve the post-S4 order: S5 -> S6 -> S7 -> S8 unless supervisor changes it.
+5. Do not require App evidence unless CLI cannot cover the requirement.
+6. Do not add additional large full fixtures unless the manual explicitly requires them.
+7. Do not continue performance optimization by default.
+8. Write every stage completion summary into this manual after evidence is accepted.
