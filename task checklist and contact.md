@@ -2,6 +2,16 @@
 
 Branch: origin_vespa_tdx
 
+## Manual update protocol
+
+- Highest priority: answer open questions before changing this manual.
+- Use explicit labels: `Question to task party: ...` and `Question to supervising party: ...`.
+- If a question blocks acceptance, keep the task pending.
+- If no question is open, record `open_questions: none`.
+- For large manual updates, prefer a compact form: hard rules, accepted status, current task, sample/offline data rule, blockers, and next operation.
+- If a large write is blocked, reduce scope and update only the smallest useful section.
+- Task party must summarize similar tooling/manual/code problems with: problem, failed approach, reduced-scope approach, final resolution, and future recommendation.
+
 ## Hard rules
 
 - Original `python/chan.py` remains the only Chan calculation engine.
@@ -175,12 +185,14 @@ Forbidden in S1:
 
 ## Next task-party operation
 
-1. Search the repository for sample/offline data relevant to the selected S1 test request.
-2. Record sample/offline data availability, paths, and use status.
-3. If relevant data can be used, run at least one S1 validation using it or compare against it.
-4. If relevant data cannot be used, document the reason and wait for supervisor adjudication before claiming acceptance.
-5. Implement or wire Strategy mode runtime acceptance on the high-speed path only.
-6. Keep runtime path dropdown unchanged: high-speed default, slow path debug/baseline only.
-7. Keep Dart/Flutter as parser/renderer/validator only.
-8. Paste Copy Time Log, Copy P0, Copy Step, Copy Result Validation, and strategy diagnostics.
-9. Accept S1 only if high-speed path, validation, strict backend step, sample/offline rule, and traceability requirements all pass.
+1. Answer all open questions before editing or accepting the task.
+2. Search the repository for sample/offline data relevant to the selected S1 test request.
+3. Record sample/offline data availability, paths, and use status.
+4. If relevant data can be used, run at least one S1 validation using it or compare against it.
+5. If relevant data cannot be used, document the reason and wait for supervisor adjudication before claiming acceptance.
+6. Implement or wire Strategy mode runtime acceptance on the high-speed path only.
+7. Keep runtime path dropdown unchanged: high-speed default, slow path debug/baseline only.
+8. Keep Dart/Flutter as parser/renderer/validator only.
+9. Paste Copy Time Log, Copy P0, Copy Step, Copy Result Validation, and strategy diagnostics.
+10. Add a short experience note if the task encounters complex tooling/manual/code problems.
+11. Accept S1 only if high-speed path, validation, strict backend step, sample/offline rule, and traceability requirements all pass.
