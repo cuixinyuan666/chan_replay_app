@@ -57,10 +57,10 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
 
   bool get _hasTimeLog => _timeLog != null;
 
-  String _runtimePath(Map<String, dynamic>? log) =>
-      '${log?['runtime_path'] ?? widget.snapshot.meta['runtime_path'] ?? 'high_speed'}'.trim().isEmpty
-          ? 'high_speed'
-          : '${log?['runtime_path'] ?? widget.snapshot.meta['runtime_path'] ?? 'high_speed'}'.trim();
+  String _runtimePath(Map<String, dynamic>? log) {
+    final value = '${log?['runtime_path'] ?? widget.snapshot.meta['runtime_path'] ?? 'high_speed'}'.trim();
+    return value.isEmpty ? 'high_speed' : value;
+  }
 
   bool _isHighSpeedPath(Map<String, dynamic>? log) => _runtimePath(log) != 'slow_path';
 
@@ -205,6 +205,19 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
             label: const Text('Copy Result Validation'),
             style: _buttonStyle(),
           ),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: _copyS1EvidenceText(pair, signals, selected)));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('S1 evidence copied'), duration: Duration(seconds: 3)),
+                );
+              }
+            },
+            icon: const Icon(Icons.fact_check, size: 14),
+            label: const Text('Copy S1 Evidence'),
+            style: _buttonStyle(),
+          ),
         ],
       ),
     );
@@ -219,9 +232,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         dropdownColor: const Color(0xFF20242E),
         style: const TextStyle(color: Colors.white, fontSize: 12),
         decoration: _dropdownDecoration('rule mode'),
-        items: [
-          for (final value in values) DropdownMenuItem(value: value, child: Text(value)),
-        ],
+        items: [for (final value in values) DropdownMenuItem(value: value, child: Text(value))],
         onChanged: (v) => setState(() {
           _ruleMode = v ?? 'validation';
           _selectedIndex = 0;
@@ -243,9 +254,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         dropdownColor: const Color(0xFF20242E),
         style: const TextStyle(color: Colors.white, fontSize: 12),
         decoration: _dropdownDecoration('strategy rule'),
-        items: [
-          for (final value in _strategyRules) DropdownMenuItem(value: value, child: Text(value)),
-        ],
+        items: [for (final value in _strategyRules) DropdownMenuItem(value: value, child: Text(value))],
         onChanged: (v) => setState(() {
           _strategyRuleName = v ?? _strategyRules.first;
           _selectedIndex = 0;
@@ -264,9 +273,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         dropdownColor: const Color(0xFF20242E),
         style: const TextStyle(color: Colors.white, fontSize: 12),
         decoration: _dropdownDecoration('level pair'),
-        items: [
-          for (var i = 0; i < pairs.length; i++) DropdownMenuItem(value: i, child: Text(pairs[i].label)),
-        ],
+        items: [for (var i = 0; i < pairs.length; i++) DropdownMenuItem(value: i, child: Text(pairs[i].label))],
         onChanged: (v) => setState(() {
           _pairIndex = v ?? 0;
           _selectedIndex = 0;
@@ -286,9 +293,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         dropdownColor: const Color(0xFF20242E),
         style: const TextStyle(color: Colors.white, fontSize: 12),
         decoration: _dropdownDecoration('direction'),
-        items: [
-          for (final value in values) DropdownMenuItem(value: value, child: Text(value)),
-        ],
+        items: [for (final value in values) DropdownMenuItem(value: value, child: Text(value))],
         onChanged: (v) => setState(() {
           _directionFilter = v ?? 'same';
           _selectedIndex = 0;
@@ -305,9 +310,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         dropdownColor: const Color(0xFF20242E),
         style: const TextStyle(color: Colors.white, fontSize: 12),
         decoration: _dropdownDecoration(label),
-        items: [
-          for (final item in values) DropdownMenuItem(value: item, child: Text(item)),
-        ],
+        items: [for (final item in values) DropdownMenuItem(value: item, child: Text(item))],
         onChanged: (v) {
           if (v != null) {
             onChanged(v);
@@ -352,9 +355,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       final childEnd = relations.map((r) => r.childEndRawIndex).reduce((a, b) => a > b ? a : b);
       for (final lowBsp in low.bsps.where((b) => _matchesLowFilter(b, highBsp, childStart, childEnd))) {
         final relation = _relationContaining(relations, lowBsp.rawIndex) ?? relations.first;
-        final state = highBsp.confirmed && lowBsp.confirmed
-            ? SignalVisibilityState.confirmed
-            : SignalVisibilityState.candidate;
+        final state = highBsp.confirmed && lowBsp.confirmed ? SignalVisibilityState.confirmed : SignalVisibilityState.candidate;
         final direction = _directionOfPair(highBsp, lowBsp);
         final signal = IntervalNestSignal(
           direction: direction,
@@ -370,17 +371,11 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
             'high level BSP is from original chan.py output',
             'low level BSP is from original chan.py output',
             'high-low range is bound by native LevelRelation',
-            _isStrategyMode
-                ? 'strategy_interval_nest_buy matched $_strategyRuleName'
-                : 'validation mode accepts arbitrary BSP type combinations',
+            _isStrategyMode ? 'strategy_interval_nest_buy matched $_strategyRuleName' : 'validation mode accepts arbitrary BSP type combinations',
           ],
           warnings: [
-            _isScanMode
-                ? 'Scan snapshot candidate only; verify in strict step before formal step acceptance'
-                : 'Visible in current strict step frame',
-            _isStrategyMode
-                ? 'Strategy rule is a candidate signal only; not a trading recommendation'
-                : 'Validation mode only; not a trading plan',
+            _isScanMode ? 'Scan snapshot candidate only; verify in strict step before formal step acceptance' : 'Visible in current strict step frame',
+            _isStrategyMode ? 'Strategy rule is a candidate signal only; not a trading recommendation' : 'Validation mode only; not a trading plan',
           ],
           observedAtCursor: _isScanMode ? null : widget.frameIndex,
           confirmedAtCursor: !_isScanMode && state == SignalVisibilityState.confirmed ? widget.frameIndex : null,
@@ -477,9 +472,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
 
   LevelRelation? _relationContaining(List<LevelRelation> relations, int childRawIndex) {
     for (final relation in relations) {
-      if (childRawIndex >= relation.childStartRawIndex && childRawIndex <= relation.childEndRawIndex) {
-        return relation;
-      }
+      if (childRawIndex >= relation.childStartRawIndex && childRawIndex <= relation.childEndRawIndex) return relation;
     }
     return null;
   }
@@ -487,6 +480,92 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
   void _setSelected(int next, int total) {
     if (total <= 0) return;
     setState(() => _selectedIndex = next.clamp(0, total - 1).toInt());
+  }
+
+  String _copyS1EvidenceText(_LevelPair? pair, List<_SignalMatch> signals, _SignalMatch? selected) {
+    final log = _timeLog ?? const <String, dynamic>{};
+    return [
+      'manual S1 evidence diagnostics',
+      'button: Copy S1 Evidence',
+      's1_phase: strategy_mode_runtime_acceptance',
+      'open_questions: none',
+      'sample_data_supervisor_decision: accepted_for_this_S1_request',
+      'sample_data_used: false',
+      'evidence_payload: time_log + p0 + step + result_validation + signal',
+      'rule_mode_ui: $_ruleMode',
+      'signal_rule_mode: $_signalRuleMode',
+      'strategy_rule_name: ${_isStrategyMode ? _strategyRuleName : ''}',
+      ..._runtimePathLines(log),
+      'runtime_acceptance_path: high_speed_only',
+      'fallback_to_bridge: ${log['fallback_to_bridge'] ?? widget.snapshot.meta['fallback_to_bridge'] ?? false}',
+      'native_cchan_lv_list: ${log['native_cchan_lv_list'] ?? widget.snapshot.meta['native_cchan_lv_list'] ?? ''}',
+      'frame_source: ${_isScanMode ? 'scan_snapshot' : 'native_step_frame'}',
+      'final_snapshot_rendered_as_step: false',
+      'strategy_traceability_required: source_bsp_identifiers,source_target_levels,native_relation_range,strict_step_visibility,state,rule_mode_name',
+      'status: pending_runtime_acceptance',
+      '',
+      '--- Copy Time Log ---',
+      _copyTimeLogText(),
+      '',
+      '--- Copy P0 Summary ---',
+      _copyP0SummaryText(pair, signals),
+      '',
+      '--- Copy Step Summary ---',
+      _copyStepSummaryText(pair),
+      '',
+      '--- Copy Result Validation ---',
+      _copyResultValidationText(pair, signals),
+      '',
+      '--- Copy Signal ---',
+      _copySignalText(pair, signals, selected),
+    ].join('\n');
+  }
+
+  String _copyP0SummaryText(_LevelPair? pair, List<_SignalMatch> signals) {
+    final log = _timeLog ?? const <String, dynamic>{};
+    return [
+      'manual P0 diagnostics',
+      'button: Copy S1 Evidence/P0 Summary',
+      'copy_p0_visible: true',
+      ..._runtimePathLines(log),
+      'symbol: ${log['symbol'] ?? widget.symbol}',
+      'market: ${log['market'] ?? ''}',
+      'levels: ${_formatList(log['levels'].toString().isEmpty ? widget.snapshot.levels : log['levels'])}',
+      'selected_pair: ${pair?.label ?? ''}',
+      'native_cchan_lv_list: ${log['native_cchan_lv_list'] ?? widget.snapshot.meta['native_cchan_lv_list'] ?? ''}',
+      'level_relation_mode: ${widget.snapshot.meta['level_relation_mode'] ?? log['level_relation_mode'] ?? 'chan_parent_child'}',
+      'fallback_to_bridge: ${log['fallback_to_bridge'] ?? widget.snapshot.meta['fallback_to_bridge'] ?? false}',
+      'python_runtime: ${log['python_runtime'] ?? ''}',
+      'relations.length: ${widget.snapshot.relations.length}',
+      'signals.length.current_rule: ${signals.length}',
+      'status: ok',
+    ].join('\n');
+  }
+
+  String _copyStepSummaryText(_LevelPair? pair) {
+    final log = _timeLog ?? const <String, dynamic>{};
+    return [
+      'manual step diagnostics',
+      'button: Copy S1 Evidence/Step Summary',
+      'frame_source: ${_isScanMode ? 'scan_snapshot' : 'native_step_frame'}',
+      'final_snapshot_rendered_as_step: false',
+      'mode: ${widget.mode}',
+      'symbol: ${log['symbol'] ?? widget.symbol}',
+      'market: ${log['market'] ?? ''}',
+      'levels: ${_formatList(log['levels'].toString().isEmpty ? widget.snapshot.levels : log['levels'])}',
+      'selected_pair: ${pair?.label ?? ''}',
+      ..._runtimePathLines(log),
+      'frame.index.local: ${widget.frameIndex ?? ''}',
+      'frame.count.local: ${widget.frameCount ?? ''}',
+      'native_cchan_lv_list: ${log['native_cchan_lv_list'] ?? ''}',
+      'fallback_to_bridge: ${log['fallback_to_bridge'] ?? false}',
+      'step_frame_format: ${_compactMeta('step_frame_format', log)}',
+      'frames_total: ${_compactMeta('frames_total', log)}',
+      'frames_returned: ${_compactMeta('frames_returned', log)}',
+      'compact_validation_status: ${_compactMeta('compact_validation_status', log)}',
+      'compact_validation_mismatch_count: ${_compactMeta('compact_validation_mismatch_count', log)}',
+      'status: ok',
+    ].join('\n');
   }
 
   String _copySignalText(_LevelPair? pair, List<_SignalMatch> signals, _SignalMatch? selected) {
@@ -508,14 +587,15 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     final low = widget.snapshot.of(pair.childLevel);
     final highBsps = high?.bsps ?? const <BspPoint>[];
     final lowBsps = low?.bsps ?? const <BspPoint>[];
-    final relationCount = widget.snapshot.relations
-        .where((r) => r.parentLevel == pair.parentLevel && r.childLevel == pair.childLevel)
-        .length;
+    final relationCount = widget.snapshot.relations.where((r) => r.parentLevel == pair.parentLevel && r.childLevel == pair.childLevel).length;
 
     if (selected == null) {
       return [
         ..._copyHeader(pair, availablePairs),
         'available_signals: 0',
+        'source_bsp_identifiers: none',
+        'source_levels: ${pair.parentLevel},${pair.childLevel}',
+        'target_levels: ${pair.parentLevel}->${pair.childLevel}',
         'high_bsp_count: ${highBsps.length}',
         'high_buy_count: ${highBsps.where((b) => b.isBuy).length}',
         'high_sell_count: ${highBsps.where((b) => b.isSell).length}',
@@ -539,6 +619,9 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       ..._copyHeader(pair, availablePairs),
       'available_signals: ${signals.length}',
       'selected_signal.local: ${_selectedIndex + 1}',
+      'source_bsp_identifiers: high=${pair.parentLevel}#${selected.highBsp.index}:raw=${selected.highBsp.rawIndex}:type=${selected.highBsp.type};low=${pair.childLevel}#${selected.lowBsp.index}:raw=${selected.lowBsp.rawIndex}:type=${selected.lowBsp.type}',
+      'source_levels: ${pair.parentLevel},${pair.childLevel}',
+      'target_levels: ${pair.parentLevel}->${pair.childLevel}',
       'direction: ${signal.direction}',
       'signal_state: ${signal.state.wireName}',
       'state: ${signal.state.wireName}',
@@ -679,17 +762,13 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     final levels = widget.snapshot.levels;
     final relationCountForPair = pair == null
         ? 0
-        : widget.snapshot.relations
-            .where((r) => r.parentLevel == pair.parentLevel && r.childLevel == pair.childLevel)
-            .length;
+        : widget.snapshot.relations.where((r) => r.parentLevel == pair.parentLevel && r.childLevel == pair.childLevel).length;
     final compactStatus = _compactMetaText('compact_validation_status', log);
     final hasCompactValidation = compactStatus.isNotEmpty;
     final compactScope = _compactMetaText('compact_validation_scope', log);
     final compactMismatchCount = _compactMetaText('compact_validation_mismatch_count', log);
     final compactFirstMismatch = _compactMetaText('compact_validation_first_mismatch', log);
-    final finalStatus = hasCompactValidation
-        ? (compactStatus == 'match' ? 'ok' : 'mismatch')
-        : 'blocked';
+    final finalStatus = hasCompactValidation ? (compactStatus == 'match' ? 'ok' : 'mismatch') : 'blocked';
     return [
       'result validation diagnostics',
       'button: Copy Result Validation',
@@ -758,23 +837,16 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
   String _sampleBspLine(String level) {
     final s = widget.snapshot.of(level);
     if (s == null || s.bsps.isEmpty) return '$level: none';
-    final sample = s.bsps.take(3).map((b) {
-      return '#${b.index}:${b.type}:raw=${b.rawIndex}:time=${b.time ?? ''}';
-    }).join(' | ');
+    final sample = s.bsps.take(3).map((b) => '#${b.index}:${b.type}:raw=${b.rawIndex}:time=${b.time ?? ''}').join(' | ');
     return '$level: $sample';
   }
 
   String _sampleRelationLine(_LevelPair? pair) {
     final relations = pair == null
         ? widget.snapshot.relations.take(3).toList()
-        : widget.snapshot.relations
-            .where((r) => r.parentLevel == pair.parentLevel && r.childLevel == pair.childLevel)
-            .take(3)
-            .toList();
+        : widget.snapshot.relations.where((r) => r.parentLevel == pair.parentLevel && r.childLevel == pair.childLevel).take(3).toList();
     if (relations.isEmpty) return 'none';
-    return relations.map((r) {
-      return '${r.parentLevel}->${r.childLevel}:parent=${r.parentRawIndex}:child=${r.childStartRawIndex}-${r.childEndRawIndex}';
-    }).join(' | ');
+    return relations.map((r) => '${r.parentLevel}->${r.childLevel}:parent=${r.parentRawIndex}:child=${r.childStartRawIndex}-${r.childEndRawIndex}').join(' | ');
   }
 
   Map<String, int> _stageMap(Object? raw) {
@@ -850,11 +922,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
   }
 
   Widget _smallButton(String label, VoidCallback? onPressed) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: _buttonStyle(),
-      child: Text(label),
-    );
+    return OutlinedButton(onPressed: onPressed, style: _buttonStyle(), child: Text(label));
   }
 
   ButtonStyle _buttonStyle() {
