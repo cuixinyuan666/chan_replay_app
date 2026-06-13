@@ -14,22 +14,13 @@ open_questions: none
 - Strict step replay must use backend step frames, never final-snapshot slicing.
 - Bridge fallback, Chan result cache, and algorithmic fast/turbo/speed mode are not accepted.
 - High-speed path remains default; slow path is debug/baseline only.
-- If repository offline/sample data can reproduce a task, use it for validation. If it cannot be used, document why and wait for supervisor adjudication.
+- Prefer repository offline/sample data for validation when it can reproduce the task.
 
 ## Receiver workload minimization rule
 
-- Merge compatible checks into one stage when safe.
-- Avoid unnecessary task rounds.
 - Prefer command-line validation over App validation when a command can verify the same requirement with less receiver work.
 - If a pinned/offline validator exists for the current stage, the preferred receiver path is: `git pull` then run the documented validator command.
-- For S1-compatible offline checks, highest-priority receiver path is currently `python tools/validate_pinned_s1_fixture.py` after pulling the latest branch.
-- Use App validation only when command-line validation cannot verify the UI-specific requirement or when the manual explicitly requires App evidence.
-- If the receiver must validate in the App, preset all required defaults.
-- For S1-like stages, default to `rule mode = strategy` and `strategy rule = DAILY_2B_MIN30_1B` unless the manual selects another rule.
-- Each receiver-run App stage must provide a stage-specific one-click evidence button, such as `S1一键复制` or `Copy S1 Evidence`.
-- The one-click payload must include all required evidence for that stage.
-- Hide or de-emphasize duplicate copy buttons when one-click evidence covers them.
-- Keep low-level copy buttons only for debugging.
+- Use App validation only when command-line validation cannot verify UI-specific behavior.
 - After each small stage, task party must write a completion summary into this manual.
 
 Required completion summary fields:
@@ -39,13 +30,6 @@ Required completion summary fields:
 - validation_result
 - remaining_risk
 - next_task
-
-## Offline data provision rule
-
-- When matching offline data is missing, task party should first try to export or generate it and upload it to `test/fixtures/pinned/`.
-- If task party cannot create the fixture, it must ask supervisor or receiver for help.
-- If receiver must run the App to produce data, task party must provide a one-click export/copy flow.
-- Receiver should not be asked to perform repeated configuration when defaults can be preset.
 
 ## Accepted work
 
@@ -59,186 +43,63 @@ Required completion summary fields:
 - S3 pinned S1 fixture offline validator: accepted.
 - R1 receiver burden code cleanup: accepted by App evidence.
 - R1b CLI receiver-burden validation: accepted.
+- S4 CLI strategy diagnostics validator: accepted.
+- S5 CLI strategy rule matrix validation: accepted.
 
-## S1 summary
+## S1-S3 summary
 
-- S1 sample-data exception was accepted for this S1 request only.
-- Matching offline fixture remains recommended later but is not blocking S1.
-- Evidence button originally `Copy S1 Evidence`; receiver-facing alias `S1一键复制` is now implemented by R1.
-- Default validation target: `rule mode = strategy`, `strategy rule = DAILY_2B_MIN30_1B`.
-- S1 evidence proved high-speed path, native `CChan(lv_list)`, native step frame, no bridge fallback, no final-snapshot step, result validation match, compact validation match, and clean `flutter analyze`.
-- S1 validation_result: accepted.
-
-## S2 summary
-
-completed_tasks:
-
-- Selected S2 because S1 was accepted with a live-data exception and the manual recommended creating a matching offline fixture.
-- Added `tools/export_pinned_s1_fixture.py` in commit `0da70c70fdc53621ce727b3ab44aeab1cde4583a`.
-- Receiver ran `python tools/export_pinned_s1_fixture.py`.
-- Exporter generated `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json`.
-- Receiver committed and pushed the pinned fixture in commit `8bde365`.
-
-validation_result:
-
-- accepted.
-- The pinned fixture now covers the accepted S1 baseline request and can be used for later compatible offline validation.
+- S1 accepted with `rule mode = strategy` and `strategy rule = DAILY_2B_MIN30_1B`.
+- S2 accepted pinned fixture export: `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json`.
+- S3 accepted pinned fixture CLI validation. Receiver output included `ok: true`, levels `DAILY,MIN30,MIN5`, `frames_total: 29`, `frames_returned: 29`, `compact_validation_status: match`, `compact_validation_mismatch_count: 0`, `native_cchan_lv_list: true`, `fallback_to_bridge: false`, relation pairs `DAILY->MIN30` and `MIN30->MIN5`, and `chan_recalculated: false`.
 
 remaining_risk:
 
-- The pinned fixture is about 7.06 MB. Avoid adding many similar full fixtures without manual justification.
+- The pinned fixture is about 7.06 MB. Prefer this fixture or a smaller derived metadata sample for later checks.
 
-## S3 summary
+## R1/R1b summary
 
-completed_tasks:
+- R1 accepted by App evidence. It made `rule mode = strategy` and `strategy rule = DAILY_2B_MIN30_1B` the S1-like defaults, kept `S1一键复制`, and de-emphasized low-level debug copy buttons.
+- R1b accepted by CLI validation: `python tools/validate_r1_receiver_burden.py`.
+- R1b output included `ok: true`, `rule_mode_default: strategy`, `strategy_rule_default: DAILY_2B_MIN30_1B`, `one_click_label: S1一键复制`, `debug_copy_tools: de_emphasized`, `evidence_status: s1_evidence_exported`, `forbidden_dart_calc_patterns: []`, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
 
-- Selected S3 because S2 accepted a pinned fixture and future S1-compatible checks should prefer offline validation.
-- Added `tools/validate_pinned_s1_fixture.py` in commit `1e50666911c6d4cc15790b056e380440860d971b`.
-- The validator is read-only and checks metadata, compact status, native lv_list flag, no fallback, frame count, levels, relations, and first-frame payloads.
-- Receiver ran `python tools/validate_pinned_s1_fixture.py`.
-
-validation_result:
-
-- accepted.
-- Receiver output included `ok: true`, fixture size `7407250`, levels `DAILY,MIN30,MIN5`, `frames_total: 29`, `frames_returned: 29`, `compact_validation_status: match`, `compact_validation_mismatch_count: 0`, `native_cchan_lv_list: true`, `fallback_to_bridge: false`, relation pairs `DAILY->MIN30` and `MIN30->MIN5`, and `chan_recalculated: false`.
-
-remaining_risk:
-
-- The pinned fixture remains a 7.06 MB baseline file. For repeated checks, prefer this pinned fixture or a smaller derived fixture.
-
-## R1 summary
-
-completed_tasks:
-
-- Started R1 because commit `d482d7d9b5b1efbc54d4c83f981e0ccfabd32ce6` required receiver burden cleanup before larger business-chain work.
-- Updated `lib/ui/widgets/multi_level_interval_signal_panel.dart` in commit `0c52befb4ba9f46af9709c8a9232d9271558f45e`.
-- Changed S1-like default `rule mode` from `validation` to `strategy`.
-- Kept default strategy rule as `DAILY_2B_MIN30_1B`.
-- Preferred receiver-facing one-click button label `S1一键复制`.
-- De-emphasized lower-level copy actions by labeling them `Debug: Copy Signal`, `Debug: Copy Time Log`, and `Debug: Copy Result Validation` with debug styling.
-- Changed S1 evidence payload status from `pending_runtime_acceptance` to `s1_evidence_exported`.
-- Preserved one-click evidence sections: Time Log, P0 Summary, Step Summary, Result Validation, and Signal.
-- No `python/chan.py` changes were made.
-- No Dart-side FX/BI/SEG/ZS/BSP calculation authority was introduced; the panel still consumes backend snapshot BSPs and native LevelRelation only.
-
-validation_result:
-
-- accepted by App evidence.
-- Receiver ran `flutter analyze`: `No issues found! (ran in 12.2s)`.
-- Receiver pressed `S1一键复制` and output included `button: S1一键复制`, `rule_mode_ui: strategy`, `signal_rule_mode: strategy_interval_nest_buy`, `strategy_rule_name: DAILY_2B_MIN30_1B`, `debug_copy_tools: de_emphasized`, and `status: s1_evidence_exported`.
-- One-click evidence output kept all required sections: `Copy Time Log`, `Copy P0 Summary`, `Copy Step Summary`, `Copy Result Validation`, and `Copy Signal`.
-- Lower-level copy sections are marked as debug, including `button: Debug: Copy Time Log`, `button: Debug: Copy Result Validation`, and `button: Debug: Copy Signal`.
-
-evidence_button:
-
-- Main receiver-facing button: `S1一键复制`.
-- Debug-only low-level buttons: `Debug: Copy Signal`, `Debug: Copy Time Log`, `Debug: Copy Result Validation`.
-
-remaining_risk:
-
-- App-based validation is heavier than command-line validation when an equivalent CLI validator is available.
-- R1b adds CLI validation to reduce receiver burden and answer the prior open question.
-
-## R1b summary
-
-Answer to prior open question:
-
-- Yes, a lighter receiver validation method exists than App one-click evidence for static receiver-burden requirements.
-- The lighter path is CLI validation: `git pull`, then `python tools/validate_r1_receiver_burden.py`.
-- App evidence remains useful only when UI runtime behavior must be inspected visually or when the manual explicitly requires App evidence.
-
-completed_tasks:
-
-- Added `tools/validate_r1_receiver_burden.py` in commit `70d87b1bda05da2d8691774a3608949f57f154d2`.
-- The script statically checks `lib/ui/widgets/multi_level_interval_signal_panel.dart` for strategy default, `DAILY_2B_MIN30_1B` default strategy rule, `S1一键复制` label, debug copy de-emphasis, required evidence sections, `s1_evidence_exported`, absence of `pending_runtime_acceptance`, and absence of known Dart-side Chan calculation markers.
-- The script does not run the App, does not request live data, does not import or modify `python/chan.py`, and does not recalculate Chan structures.
-- Receiver pulled the script and ran `python tools/validate_r1_receiver_burden.py`.
-
-validation_result:
-
-- accepted.
-- Receiver output included `ok: true`, `rule_mode_default: strategy`, `strategy_rule_default: DAILY_2B_MIN30_1B`, `one_click_label: S1一键复制`, debug copy buttons, required evidence sections, `debug_copy_tools: de_emphasized`, `evidence_status: s1_evidence_exported`, `missing: []`, `forbidden: []`, `forbidden_dart_calc_patterns: []`, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
-
-next_task:
-
-1. Treat CLI validation as the preferred burden-reduction path for similar static UI-requirement checks.
-2. App evidence is only required when the manual asks for UI runtime behavior or visual confirmation.
-3. R1b no longer blocks larger business-chain work.
-
-## S4 selected: CLI strategy diagnostics validator
-
-Goal:
-
-- Continue business-chain work using the lowest-burden receiver path.
-- Use the pinned S1 fixture as the input.
-- Add or reuse a CLI validator that checks strategy diagnostics against the pinned fixture without launching the App.
-- Prove the strategy diagnostic path can be validated from command line when the requirement is not visual UI behavior.
+## S4 accepted: CLI strategy diagnostics validator
 
 completed_tasks:
 
 - Added `tools/validate_s4_cli_strategy_diagnostics.py` in commit `fcabcf93f077fe8275656e343039d4cfbfff7938`.
-- The validator defaults to `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json`.
-- It checks strategy rule `DAILY_2B_MIN30_1B`, source policy, relation pair availability, high/low BSP availability, no-output diagnosis, strict-step frame evidence, compact validation status, bridge fallback, native lv_list flag, and forbidden Dart-side Chan calculation markers.
-- It does not launch the App, does not request live data, does not import or modify `python/chan.py`, and does not recalculate Chan FX/BI/SEG/ZS/BSP.
+- The validator uses the pinned S1 fixture and checks strategy rule `DAILY_2B_MIN30_1B`, source policy, relation pairs, BSP availability, no-output diagnosis, strict-step frame evidence, compact validation, bridge fallback, native lv_list, and forbidden Dart-side Chan calculation markers.
+- It does not launch the App, request live data, import or modify `python/chan.py`, or recalculate Chan FX/BI/SEG/ZS/BSP.
+
+evidence_button:
+
+- CLI command: `python tools/validate_s4_cli_strategy_diagnostics.py`.
 
 validation_result:
 
-- pending receiver run.
-- Preferred command after `git pull`: `python tools/validate_s4_cli_strategy_diagnostics.py`.
-- Expected fields:
-  - `ok: true`.
-  - `strategy_rule_name: DAILY_2B_MIN30_1B`.
-  - `source_policy: original chan.py BSP + native LevelRelation only`.
-  - relation pairs include `DAILY->MIN30` and `MIN30->MIN5`.
-  - `available_signals: 0` for the pinned first-frame/no-output condition.
-  - `source_bsp_identifiers: none`.
-  - `no_output_diagnosis` explains no candidate matched the current strategy rule.
-  - strict-step frame evidence shows `frame_source: native_step_frame` and `final_snapshot_rendered_as_step: false`.
-  - `compact_validation_status: match`.
-  - `compact_validation_mismatch_count: 0`.
-  - `native_cchan_lv_list: true`.
-  - `fallback_to_bridge: false`.
-  - `forbidden_dart_calc_patterns: []`.
-  - `chan_recalculated: false`.
-  - `dart_chan_calculation_authority: false`.
+- accepted.
+- Receiver output included `ok: true`, `strategy_rule_name: DAILY_2B_MIN30_1B`, `source_policy: original chan.py BSP + native LevelRelation only`, relation pairs `DAILY->MIN30` and `MIN30->MIN5`, `native_relation_count_for_pair: 29`, `available_signals: 0`, `source_bsp_identifiers: none`, no-output diagnosis, strict-step frame evidence with `frame_source: native_step_frame`, `frames_total: 29`, `frames_returned: 29`, `final_snapshot_rendered_as_step: false`, `compact_validation_status: match`, `compact_validation_mismatch_count: 0`, `native_cchan_lv_list: true`, `fallback_to_bridge: false`, `forbidden_dart_calc_patterns: []`, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
 
-S4 acceptance evidence:
+remaining_risk:
 
-- command used;
-- validator output;
-- `ok: true`;
-- completion summary with completed_tasks, evidence_button or command, validation_result, remaining_risk, and next_task.
+- None for S4 CLI acceptance.
+
+next_task:
+
+- S4 accepted. Continue S5 and S6.
 
 ## Post-S4 roadmap
 
 Default order after S4 acceptance: S5 -> S6 -> S7 -> S8, unless the supervisor explicitly changes priority.
 
-## S5 selected: CLI strategy rule matrix validation
-
-Goal:
-
-- Expand S4 from a single strategy diagnostic check into a matrix check for all currently supported strategy rules.
-- Keep receiver validation on CLI by default.
-
-Scope:
-
-- Validate at least `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, and `DAILY_3B_MIN30_2B`.
-- Use the pinned S1 fixture first.
-- Do not request live data unless the pinned fixture cannot support the required evidence and supervisor accepts the exception.
-
-S5 acceptance evidence:
-
-- One documented command after `git pull`.
-- Output contains each strategy rule name, source policy, selected relation pair, BSP counts, matched signal count or no-output diagnosis, strict-step frame evidence, compact validation status, no bridge fallback, native lv_list flag, and no forbidden Dart-side Chan calculation markers.
-- Completion summary is written back to this manual.
+## S5 accepted: CLI strategy rule matrix validation
 
 completed_tasks:
 
 - Added `tools/validate_s5_cli_strategy_rule_matrix.py` in commit `5430ba09004151e90bd4866536928fa2a062fdc1`.
-- The validator reuses S4 fixture parsing and static checks, and defaults to `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json`.
-- It validates the strategy rule matrix for `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, and `DAILY_3B_MIN30_2B`.
-- For each rule, it reports source policy, selected relation pair, high/low BSP counts and type counts, matched signal count or no-output diagnosis, sample source BSP identifiers when present, strict-step frame evidence, compact validation status, native lv_list flag, bridge fallback status, and forbidden Dart-side Chan calculation markers.
-- It does not launch the App, does not request live data, does not import or modify `python/chan.py`, and does not recalculate Chan FX/BI/SEG/ZS/BSP.
+- The validator reuses S4 fixture parsing and static checks, and defaults to the pinned S1 fixture.
+- It validates `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, and `DAILY_3B_MIN30_2B`.
+- For each rule, it reports source policy, selected relation pair, high/low BSP counts and type counts, matched signal count or no-output diagnosis, source BSP identifiers when present, strict-step frame evidence, compact validation status, native lv_list flag, bridge fallback status, and forbidden Dart-side Chan calculation markers.
+- It does not launch the App, request live data, import or modify `python/chan.py`, or recalculate Chan FX/BI/SEG/ZS/BSP.
 
 evidence_button:
 
@@ -246,29 +107,20 @@ evidence_button:
 
 validation_result:
 
-- pending receiver run.
-- Expected fields:
-  - `ok: true`.
-  - `rules_checked` contains `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, and `DAILY_3B_MIN30_2B`.
-  - `matrix` contains one item per strategy rule.
-  - each matrix item contains `strategy_rule_name`, `source_policy`, `selected_relation_pair`, `high_bsp_count`, `low_bsp_count`, `matched_signal_count` or `no_output_diagnosis`, `strict_step_frame_evidence`, `compact_validation_status`, `native_cchan_lv_list`, `fallback_to_bridge`, and `forbidden_dart_calc_patterns`.
-  - `panel_strategy_rules_present: true`.
-  - `chan_recalculated: false`.
-  - `dart_chan_calculation_authority: false`.
+- accepted.
+- Receiver output included `ok: true`, `rules_checked` containing all three required strategy rules, `panel_strategy_rules_present: true`, `source_policy: original chan.py BSP + native LevelRelation only`, selected relation pair `DAILY->MIN30`, relation pairs `DAILY->MIN30` and `MIN30->MIN5`, strict-step frame evidence, `compact_validation_status: match`, `compact_validation_mismatch_count: 0`, `native_cchan_lv_list: true`, `fallback_to_bridge: false`, `forbidden_dart_calc_patterns: []`, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
+- Receiver output matrix contained one item for each required strategy rule. Each item included source policy, selected relation pair, levels, strategy type definitions, BSP counts, native relation count, matched signal count, no-output diagnosis, strict-step frame evidence, compact validation status, native lv_list flag, no bridge fallback, and no forbidden Dart-side Chan calculation markers.
 
 remaining_risk:
 
-- S4 is still recorded as pending receiver run in this manual; if the receiver has not accepted S4 yet, run and accept S4 before treating S5 as accepted.
-- The pinned fixture may produce no-output for all three rules; this is acceptable for S5 matrix validation but S6 must cover matched-output evidence when available or add a minimal traceable sample.
+- The pinned fixture reports `high_bsp_count: 0`, `low_bsp_count: 0`, and no matched output for all three S5 rules. This is acceptable for S5 matrix/no-output validation.
+- S6 must still prove both no-output and matched-output diagnostic paths.
 
 next_task:
 
-1. Receiver pulls the latest `origin_vespa_tdx` and runs `python tools/validate_s4_cli_strategy_diagnostics.py` if S4 has not already been accepted.
-2. Receiver then runs `python tools/validate_s5_cli_strategy_rule_matrix.py`.
-3. Accept S5 only if the S5 CLI output passes and contains the full three-rule matrix evidence.
-4. After S5 acceptance, start S6 strategy signal sample coverage by default.
+- S5 accepted. Start S6 by default.
 
-## S6 planned: strategy signal sample coverage
+## S6 selected: strategy signal sample coverage
 
 Goal:
 
@@ -277,15 +129,46 @@ Goal:
 Scope:
 
 - Reuse the pinned S1 fixture for no-output validation.
-- If matched-output evidence is missing, create the smallest acceptable derived fixture or fixture metadata sample.
-- Do not add another large full fixture unless the manual explicitly justifies it.
-- Do not fabricate Chan results; any matched-output fixture must remain traceable to accepted backend/fixture data or be clearly marked as a UI-only synthetic diagnostic fixture and approved before use.
+- Search the pinned S1 fixture root snapshot and strict-step frames for matched-output evidence before asking for new data.
+- If matched-output evidence is missing, create the smallest acceptable backend-traceable derived fixture or metadata sample.
+- Do not add another large full fixture unless this manual explicitly justifies it.
+- Do not invent Chan results. Any matched-output fixture must remain traceable to accepted backend/fixture data, or be clearly marked as UI-only diagnostic data and approved before use.
 
 S6 acceptance evidence:
 
 - CLI report proving no-output and matched-output diagnostic paths.
 - Traceability fields for matched output: source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name.
 - Completion summary is written back to this manual.
+
+completed_tasks:
+
+- Added `tools/validate_s6_strategy_signal_sample_coverage.py` in commit `8c35555c7cf7d72dae9200788db80b7d628e0b73`.
+- Cleaned the S6 validator in commit `40a3cf44db1e778855755e51fafd83a3fb699fd6`.
+- The validator first reuses S5 matrix validation for the no-output path.
+- The validator then scans the pinned fixture root snapshot and every strict-step frame for matched strategy candidates.
+- The validator only accepts matched-output evidence if it can report source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name from fixture data.
+- If no matched output is found in the pinned fixture, the validator fails with an explicit action requirement instead of inventing Chan results.
+
+evidence_button:
+
+- CLI command: `python tools/validate_s6_strategy_signal_sample_coverage.py`.
+
+validation_result:
+
+- pending receiver run.
+- Accepted output requires `ok: true`, `no_output_path.ok: true`, `matched_output_path.ok: true`, matched-output traceability fields, `compact_validation_status: match`, `native_cchan_lv_list: true`, `fallback_to_bridge: false`, `forbidden_dart_calc_patterns: []`, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
+- If output is `ok: false` only because matched output is absent in the pinned fixture, S6 is not accepted yet. The next step is to create the smallest backend-traceable matched-output metadata sample.
+
+remaining_risk:
+
+- The current pinned fixture may still be no-output only.
+
+next_task:
+
+1. Receiver pulls latest `origin_vespa_tdx`.
+2. Receiver runs `python tools/validate_s6_strategy_signal_sample_coverage.py`.
+3. If output is `ok: true`, accept S6 and proceed to S7.
+4. If output is `ok: false` due to missing matched output, create/export the smallest backend-traceable matched-output metadata sample before accepting S6.
 
 ## S7 planned: App strategy signal display loop
 
@@ -330,11 +213,10 @@ S8 acceptance evidence:
 ## Next task-party operation
 
 1. Pull the latest `origin_vespa_tdx`.
-2. If S4 has not already been accepted, run `python tools/validate_s4_cli_strategy_diagnostics.py` and accept S4 only if the output passes.
-3. Run `python tools/validate_s5_cli_strategy_rule_matrix.py`.
-4. Accept S5 only if the output includes `ok: true`, all three strategy rules, matrix evidence per rule, strict-step evidence, compact validation match, no bridge fallback, native lv_list, and no forbidden Dart-side Chan calculation markers.
-5. After S5 acceptance, start S6 by default.
-6. Do not require App evidence unless CLI cannot cover the requirement.
-7. Do not add additional large full fixtures unless the manual explicitly requires them.
-8. Do not continue performance optimization by default.
-9. Write every stage completion summary into this manual after evidence is accepted.
+2. Run `python tools/validate_s6_strategy_signal_sample_coverage.py`.
+3. Accept S6 only if the output includes `ok: true`, `no_output_path.ok: true`, `matched_output_path.ok: true`, matched-output traceability fields, compact validation match, no bridge fallback, native lv_list, and no forbidden Dart-side Chan calculation markers.
+4. If S6 outputs `ok: false` only because no matched strategy output exists in the pinned fixture, do not accept S6 yet; create or export the smallest backend-traceable matched-output metadata sample.
+5. Do not require App evidence unless CLI cannot cover the requirement.
+6. Do not add additional large full fixtures unless the manual explicitly requires them.
+7. Do not continue performance optimization by default.
+8. Write every stage completion summary into this manual after evidence is accepted.
