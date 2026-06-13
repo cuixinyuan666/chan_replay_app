@@ -53,12 +53,13 @@ Required completion summary fields:
 - S1 Strategy mode runtime acceptance: accepted.
 - S2 pinned offline fixture export for accepted S1 baseline: accepted.
 - S3 pinned S1 fixture offline validator: accepted.
+- R1 receiver burden code cleanup: accepted.
 
 ## S1 summary
 
 - S1 sample-data exception was accepted for this S1 request only.
 - Matching offline fixture remains recommended later but is not blocking S1.
-- Evidence button: `Copy S1 Evidence`; recommended receiver-facing alias `S1一键复制`.
+- Evidence button originally `Copy S1 Evidence`; receiver-facing alias `S1一键复制` is now implemented by R1.
 - Default validation target: `rule mode = strategy`, `strategy rule = DAILY_2B_MIN30_1B`.
 - S1 evidence proved high-speed path, native `CChan(lv_list)`, native step frame, no bridge fallback, no final-snapshot step, result validation match, compact validation match, and clean `flutter analyze`.
 - S1 validation_result: accepted.
@@ -100,16 +101,11 @@ remaining_risk:
 
 - The pinned fixture remains a 7.06 MB baseline file. For repeated checks, prefer this pinned fixture or a smaller derived fixture.
 
-## R1 pending: receiver burden code cleanup
-
-Reason:
-
-- Supervisor found four receiver-burden issues in the current code after S1 acceptance.
-- These issues do not invalidate S1 calculation evidence, but they do not fully satisfy the receiver workload minimization rule.
+## R1 summary
 
 completed_tasks:
 
-- Started R1 because commit `d482d7d9b5b1efbc54d4c83f981e0ccfabd32ce6` requires R1 before larger business-chain work.
+- Started R1 because commit `d482d7d9b5b1efbc54d4c83f981e0ccfabd32ce6` required receiver burden cleanup before larger business-chain work.
 - Updated `lib/ui/widgets/multi_level_interval_signal_panel.dart` in commit `0c52befb4ba9f46af9709c8a9232d9271558f45e`.
 - Changed S1-like default `rule mode` from `validation` to `strategy`.
 - Kept default strategy rule as `DAILY_2B_MIN30_1B`.
@@ -122,18 +118,11 @@ completed_tasks:
 
 validation_result:
 
-- pending receiver `flutter analyze`.
-- pending receiver check of the one-click S1 evidence output.
-
-R1 acceptance criteria:
-
-- Receiver can validate S1-like stage mainly by pressing one stage-specific button.
-- Default UI choices match the current stage requirements.
-- One-click evidence remains complete.
-- Lower-level copy tools remain available only as debugging aids.
-- No Dart-side Chan calculation is introduced.
-- `flutter analyze` passes.
-- Task party writes completion summary with completed_tasks, evidence_button, validation_result, remaining_risk, and next_task.
+- accepted.
+- Receiver ran `flutter analyze`: `No issues found! (ran in 12.2s)`.
+- Receiver pressed `S1一键复制` and output included `button: S1一键复制`, `rule_mode_ui: strategy`, `signal_rule_mode: strategy_interval_nest_buy`, `strategy_rule_name: DAILY_2B_MIN30_1B`, `debug_copy_tools: de_emphasized`, and `status: s1_evidence_exported`.
+- One-click evidence output kept all required sections: `Copy Time Log`, `Copy P0 Summary`, `Copy Step Summary`, `Copy Result Validation`, and `Copy Signal`.
+- Lower-level copy sections are marked as debug, including `button: Debug: Copy Time Log`, `button: Debug: Copy Result Validation`, and `button: Debug: Copy Signal`.
 
 evidence_button:
 
@@ -142,21 +131,20 @@ evidence_button:
 
 remaining_risk:
 
-- The panel was simplified while preserving diagnostic output. Receiver must run `flutter analyze` before R1 acceptance.
-- If UI behavior regresses, revert only the UI simplification while keeping the four R1 requirements.
+- The R1 UI cleanup simplified the interval signal panel while preserving diagnostic output. If future UI behavior regresses, revert only the simplification while keeping the four R1 requirements.
 
 next_task:
 
-1. Receiver pulls commit `0c52befb4ba9f46af9709c8a9232d9271558f45e`.
-2. Receiver runs `flutter analyze`.
-3. Receiver opens an S1-like strategy panel and presses `S1一键复制`.
-4. Receiver verifies output includes `rule_mode_ui: strategy`, `strategy_rule_name: DAILY_2B_MIN30_1B`, `status: s1_evidence_exported`, full evidence sections, and debug copy tools de-emphasized.
-5. If validation passes, accept R1.
+1. R1 no longer blocks larger business-chain work.
+2. Use pinned S1 fixture for compatible offline checks.
+3. Use `python tools/validate_pinned_s1_fixture.py` for fixture sanity checks.
+4. Do not continue performance optimization by default.
+5. Choose the next business-chain task before implementation.
 
 ## Next task-party operation
 
-1. Wait for receiver to run `flutter analyze` after pulling R1 code.
-2. Wait for receiver to paste `S1一键复制` evidence output or at least the key R1 fields.
-3. Accept R1 only after static analysis and one-click evidence output pass.
-4. Do not start a larger business-chain task before R1 is accepted or explicitly deferred by the supervisor.
-5. Do not continue performance optimization by default.
+1. Use `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json` as preferred offline fixture for S1-compatible checks.
+2. Use `python tools/validate_pinned_s1_fixture.py` for fixture sanity checks.
+3. Do not add additional large full fixtures unless the manual explicitly requires them.
+4. Do not continue performance optimization by default.
+5. Choose the next business-chain task before implementation.
