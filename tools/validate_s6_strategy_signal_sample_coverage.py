@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +12,6 @@ import validate_s5_cli_strategy_rule_matrix as s5
 VALIDATOR = 'tools/validate_s6_strategy_signal_sample_coverage.py'
 PARENT_LEVEL = 'DAILY'
 CHILD_LEVEL = 'MIN30'
-SELECTED_PAIR = f'{PARENT_LEVEL}->{CHILD_LEVEL}'
 
 
 def _frame_levels(frame: dict[str, Any]) -> dict[str, Any]:
@@ -33,11 +31,6 @@ def _bsps_from_levels(levels: dict[str, Any], level: str) -> list[dict[str, Any]
     if not isinstance(payload, dict):
         return []
     return s4._bsps(payload)
-
-
-def _sample_no_output(root: dict[str, Any]) -> dict[str, Any]:
-    matrix = s5._validate(s4.DEFAULT_FIXTURE if False else Path('__unused__'))  # never executed
-    return matrix
 
 
 def _root_no_output(path: Path) -> tuple[dict[str, Any], list[str]]:
@@ -79,9 +72,7 @@ def _matched_output_candidates(root: dict[str, Any]) -> list[dict[str, Any]]:
     for idx, frame in enumerate(frames):
         if not isinstance(frame, dict):
             continue
-        frame_levels = _frame_levels(frame)
-        frame_relations = _frame_relations(frame, root_relations)
-        evidence.extend(_scan_scope('strict_step_frame', idx, frame_levels, frame_relations))
+        evidence.extend(_scan_scope('strict_step_frame', idx, _frame_levels(frame), _frame_relations(frame, root_relations)))
     return evidence
 
 
