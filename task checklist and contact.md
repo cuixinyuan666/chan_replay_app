@@ -144,31 +144,34 @@ completed_tasks:
 
 - Added `tools/validate_s6_strategy_signal_sample_coverage.py` in commit `8c35555c7cf7d72dae9200788db80b7d628e0b73`.
 - Cleaned the S6 validator in commit `40a3cf44db1e778855755e51fafd83a3fb699fd6`.
-- The validator first reuses S5 matrix validation for the no-output path.
-- The validator then scans the pinned fixture root snapshot and every strict-step frame for matched strategy candidates.
-- The validator only accepts matched-output evidence if it can report source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name from fixture data.
-- If no matched output is found in the pinned fixture, the validator fails with an explicit action requirement instead of inventing Chan results.
+- Receiver ran the S6 validator against the pinned fixture; no-output path passed, but matched-output path was absent.
+- Added `tools/export_s6_strategy_matched_sample.py` in commit `3f098ff238ee575535cbc9f54a06bbdcbb5c69aa`.
+- Updated the S6 validator in commit `c40dd172f7b86382230be1e385d95c5b8d1599ec` so it can validate the smallest backend-traceable matched-output metadata sample at `test/fixtures/derived/s6_strategy_matched_sample_v1.json`.
+- The exporter uses `backend.app.a_multilevel_engine_timed.analyze_multi` and compact step transport, then writes only S6 matched-output metadata, not a large full fixture.
+- The validator rejects the matched sample unless it has the expected sample kind, source policy, backend entrypoint evidence, compact validation match, native lv_list, no bridge fallback, no Dart calculation, and all required matched-output traceability fields.
 
 evidence_button:
 
-- CLI command: `python tools/validate_s6_strategy_signal_sample_coverage.py`.
+- Export command: `python tools/export_s6_strategy_matched_sample.py`.
+- Validation command: `python tools/validate_s6_strategy_signal_sample_coverage.py`.
 
 validation_result:
 
-- pending receiver run.
-- Accepted output requires `ok: true`, `no_output_path.ok: true`, `matched_output_path.ok: true`, matched-output traceability fields, `compact_validation_status: match`, `native_cchan_lv_list: true`, `fallback_to_bridge: false`, `forbidden_dart_calc_patterns: []`, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
-- If output is `ok: false` only because matched output is absent in the pinned fixture, S6 is not accepted yet. The next step is to create the smallest backend-traceable matched-output metadata sample.
+- pending receiver run after exporter addition.
+- Previous receiver run before exporter addition produced `ok: false`, `no_output_path.ok: true`, `matched_output_path.ok: false`, `matched_sample_count: 0`, compact validation match, native lv_list true, no bridge fallback, no forbidden Dart-side markers, and no Chan recalculation. This correctly blocked S6 acceptance.
+- Accepted output now requires `ok: true`, `no_output_path.ok: true`, `matched_output_path.ok: true`, matched-output traceability fields, `compact_validation_status: match`, `native_cchan_lv_list: true`, `fallback_to_bridge: false`, `forbidden_dart_calc_patterns: []`, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
 
 remaining_risk:
 
-- The current pinned fixture may still be no-output only.
+- The exporter may not find a matched sample in its default symbol/date set. If so, rerun it with a wider `--symbols`, `--start`, `--end`, or `--count`, still using backend-traceable output only.
 
 next_task:
 
 1. Receiver pulls latest `origin_vespa_tdx`.
-2. Receiver runs `python tools/validate_s6_strategy_signal_sample_coverage.py`.
-3. If output is `ok: true`, accept S6 and proceed to S7.
-4. If output is `ok: false` due to missing matched output, create/export the smallest backend-traceable matched-output metadata sample before accepting S6.
+2. Receiver runs `python tools/export_s6_strategy_matched_sample.py`.
+3. Receiver runs `python tools/validate_s6_strategy_signal_sample_coverage.py`.
+4. If validation output is `ok: true`, accept S6 and proceed to S7.
+5. If export output is `ok: false`, widen the exporter search parameters but do not invent Chan results.
 
 ## S7 planned: App strategy signal display loop
 
@@ -213,10 +216,11 @@ S8 acceptance evidence:
 ## Next task-party operation
 
 1. Pull the latest `origin_vespa_tdx`.
-2. Run `python tools/validate_s6_strategy_signal_sample_coverage.py`.
-3. Accept S6 only if the output includes `ok: true`, `no_output_path.ok: true`, `matched_output_path.ok: true`, matched-output traceability fields, compact validation match, no bridge fallback, native lv_list, and no forbidden Dart-side Chan calculation markers.
-4. If S6 outputs `ok: false` only because no matched strategy output exists in the pinned fixture, do not accept S6 yet; create or export the smallest backend-traceable matched-output metadata sample.
-5. Do not require App evidence unless CLI cannot cover the requirement.
-6. Do not add additional large full fixtures unless the manual explicitly requires them.
-7. Do not continue performance optimization by default.
-8. Write every stage completion summary into this manual after evidence is accepted.
+2. Run `python tools/export_s6_strategy_matched_sample.py`.
+3. Run `python tools/validate_s6_strategy_signal_sample_coverage.py`.
+4. Accept S6 only if the validation output includes `ok: true`, `no_output_path.ok: true`, `matched_output_path.ok: true`, matched-output traceability fields, compact validation match, no bridge fallback, native lv_list, and no forbidden Dart-side Chan calculation markers.
+5. If export output is `ok: false`, widen exporter search parameters while keeping backend-traceable output only.
+6. Do not require App evidence unless CLI cannot cover the requirement.
+7. Do not add additional large full fixtures unless the manual explicitly requires them.
+8. Do not continue performance optimization by default.
+9. Write every stage completion summary into this manual after evidence is accepted.
