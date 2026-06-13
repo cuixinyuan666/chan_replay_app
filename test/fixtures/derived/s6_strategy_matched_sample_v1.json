@@ -1,0 +1,89 @@
+{
+  "sample_kind": "s6_strategy_matched_output_metadata_v1",
+  "fixture_source": "tools/export_s6_strategy_matched_sample.py",
+  "source_policy": "original chan.py BSP + native LevelRelation only",
+  "backend_entrypoint": "backend.app.a_multilevel_engine_timed.analyze_multi",
+  "chan_calculation_authority": "backend analyze_multi with original python/chan.py",
+  "dart_chan_calculation": false,
+  "chan_recalculated": false,
+  "request": {
+    "symbol": "600340",
+    "market": "SH",
+    "levels": [
+      "DAILY",
+      "MIN30",
+      "MIN5"
+    ],
+    "adjust": "QFQ",
+    "mode": "step",
+    "start": "2022-01-01",
+    "end": "2025-12-31",
+    "count": 900,
+    "max_step_frames": 1000,
+    "max_return_frames": 1000
+  },
+  "backend_meta": {
+    "compact_validation_status": "match",
+    "compact_validation_mismatch_count": 0,
+    "native_cchan_lv_list": true,
+    "fallback_to_bridge": false,
+    "frames_total": 391,
+    "frames_returned": 391
+  },
+  "matched_output_path": {
+    "ok": true,
+    "matched_sample_count": 61,
+    "sample": {
+      "scope": "root_snapshot",
+      "frame_index": null,
+      "rule_mode_name": "DAILY_2B_MIN30_1B",
+      "source_bsp_identifiers": "DAILY#4:raw=334:type=B2s;MIN30#21:raw=2672:type=B1",
+      "source_target_levels": "DAILY->MIN30",
+      "native_relation_range": "parent=334:child=2672-2679",
+      "strict_step_visibility": "current strict step frame only; no final snapshot signal confirmation",
+      "state": "candidate"
+    }
+  },
+  "attempts": [
+    {
+      "symbol": "600340.SH",
+      "phase": "once_prefilter",
+      "ok": true,
+      "native_cchan_lv_list": true,
+      "fallback_to_bridge": false,
+      "root_high_bsp_count": 7,
+      "root_low_bsp_count": 24,
+      "root_high_type_counts": {
+        "B1": 1,
+        "B2": 1,
+        "B2s": 4,
+        "S1": 1
+      },
+      "root_low_type_counts": {
+        "B1": 4,
+        "B2": 3,
+        "B2s": 3,
+        "B3a": 2,
+        "S1": 2,
+        "S2": 1,
+        "S2,3b": 1,
+        "S2s": 8
+      },
+      "root_relation_count_for_pair": 391,
+      "root_matched_sample_count": 2,
+      "elapsed_ms": 10335
+    },
+    {
+      "symbol": "600340.SH",
+      "phase": "step_confirm",
+      "ok": true,
+      "matched_sample_count": 61,
+      "frames_total": 391,
+      "frames_returned": 391,
+      "compact_validation_status": "match",
+      "native_cchan_lv_list": true,
+      "fallback_to_bridge": false,
+      "elapsed_ms": 73768
+    }
+  ]
+}
