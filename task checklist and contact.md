@@ -64,8 +64,8 @@ The supervisor decides whether a reason for not using repository sample data is 
 
 - P0 App-managed bundled Python backend: accepted.
 - Batch A active-route strict step replay: accepted.
-- Batch B native LevelRelation targeting: accepted for DAILY->MIN30 and MIN30->MIN5.
-- Batch C arbitrary BSP pair strict-step validation: accepted using real easy-tdx/original chan.py data.
+- Batch B native LevelRelation targeting: accepted.
+- Batch C arbitrary BSP pair strict-step validation: accepted.
 - P0 Time Log instrumentation: accepted.
 - F0 Copy Result Validation blocked gate: accepted.
 - F1a-F1k performance chain: accepted and stopped by rule.
@@ -113,9 +113,12 @@ Verified against commit `302ed08a667c0c461b1e225c1712aacee5b4f2cf`.
 
 In progress.
 
-open_questions:
+open_questions: none
+
+Resolved supervisor question:
 
 - Question to supervising party: `test/fixtures/research_pipeline_contract_valid.json` is a relevant offline research pipeline contract fixture, but it cannot reproduce the selected S1 request (`600340`, `SH`, `DAILY,MIN30,MIN5`, `2025-09-01~2025-10-20`) because it uses synthetic `TEST.LOCAL` data from `2024-01-01~2024-01-12` and single-level analysis JSON. `build/real_analysis.json` is referenced by README but is not present in the repository. May S1 proceed using the live accepted easy-tdx baseline plus Copy Time Log / Copy P0 / Copy Step / Copy Result Validation / strategy diagnostics, or must a matching offline fixture be added first?
+- Answer from supervising party: S1 may proceed using the live accepted easy-tdx baseline because the only checked offline fixture is relevant but not suitable for the selected S1 runtime acceptance. The exception is accepted only for this S1 request. S1 still requires high-speed runtime diagnostics, Copy Time Log, Copy P0, Copy Step, Copy Result Validation, and strategy diagnostics proving source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name. A matching offline fixture is recommended later but is not required before this S1 can proceed.
 
 Goal:
 
@@ -152,10 +155,9 @@ S1 sample/offline data report:
   - use live accepted easy-tdx baseline request already defined in this manual;
   - require high-speed runtime path diagnostics;
   - require Copy Time Log, Copy P0, Copy Step, Copy Result Validation;
-  - require strategy diagnostics proving source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name;
-  - accept S1 only after supervisor adjudicates the offline sample exception.
+  - require strategy diagnostics proving source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name.
 - `sample_data_used: false`.
-- `sample_data_supervisor_decision: pending`.
+- `sample_data_supervisor_decision: accepted_for_this_S1_request`.
 
 S1 required evidence:
 
@@ -180,7 +182,7 @@ S1 acceptance criteria:
 - `native_cchan_lv_list: true`.
 - Copy Step remains `frame_source: native_step_frame`.
 - `final_snapshot_rendered_as_step: false`.
-- Sample/offline data rule is satisfied or adjudicated by the supervisor.
+- Sample/offline data exception is accepted for this S1 request only.
 - Accepted strategy output must include source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name.
 
 Forbidden in S1:
@@ -204,14 +206,14 @@ Forbidden in S1:
 - Performance chain F1a-F1k is stopped by rule.
 - Runtime path switch and Dart Chan cleanup B1 is accepted.
 - S1 Strategy mode runtime acceptance is in progress.
-- `sample_data_supervisor_decision: pending` blocks S1 acceptance.
+- S1 sample/offline data exception is adjudicated and no longer blocks implementation, but S1 is not accepted yet.
 
 ## Next task-party operation
 
-1. Wait for supervisor adjudication on the sample/offline data exception before claiming S1 acceptance.
-2. If supervisor allows live baseline verification, implement or wire Strategy mode runtime acceptance on the high-speed path only.
-3. Keep runtime path dropdown unchanged: high-speed default, slow path debug/baseline only.
-4. Keep Dart/Flutter as parser/renderer/validator only.
+1. Implement or wire Strategy mode runtime acceptance on the high-speed path only.
+2. Keep runtime path dropdown unchanged: high-speed default, slow path debug/baseline only.
+3. Keep Dart/Flutter as parser/renderer/validator only.
+4. Use the live accepted easy-tdx baseline request for this S1 validation.
 5. Paste Copy Time Log, Copy P0, Copy Step, Copy Result Validation, and strategy diagnostics.
 6. Add a short experience note if the task encounters complex tooling/manual/code problems.
-7. Accept S1 only if high-speed path, validation, strict backend step, sample/offline rule, and traceability requirements all pass.
+7. Accept S1 only if high-speed path, validation, strict backend step, accepted sample/offline exception, and traceability requirements all pass.
