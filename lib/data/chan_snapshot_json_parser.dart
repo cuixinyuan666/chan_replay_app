@@ -8,6 +8,11 @@ import '../core/models/raw_bar.dart';
 import '../core/models/seg.dart';
 import '../core/models/zs.dart';
 
+/// Passive backend JSON -> Dart DTO adapter.
+///
+/// This parser must not synthesize or calculate Chan structures. It only
+/// consumes structure fields exported by the backend. The sole Chan calculation
+/// authority remains the original `python/chan.py` engine.
 class ChanSnapshotJsonParser {
   const ChanSnapshotJsonParser._();
 
@@ -42,9 +47,7 @@ class ChanSnapshotJsonParser {
         }
       }
     }
-    final structuralMergedBars = backendMergedBars.isNotEmpty
-        ? backendMergedBars
-        : [for (final bar in bars) _dummyMergedBar(bar)];
+    final structuralMergedBars = backendMergedBars;
     _addTiming(timing, '$timingPrefix.merged', mergedSw.elapsedMilliseconds);
 
     final fxSw = Stopwatch()..start();
@@ -330,22 +333,6 @@ class ChanSnapshotJsonParser {
       confirmed: row['confirmed'] != false,
     );
   }
-
-  static MergedBar _dummyMergedBar(RawBar bar) => MergedBar(
-        index: bar.index,
-        startRawIndex: bar.index,
-        endRawIndex: bar.index,
-        highRawIndex: bar.index,
-        lowRawIndex: bar.index,
-        time: bar.time,
-        highTime: bar.time,
-        lowTime: bar.time,
-        open: bar.open,
-        high: bar.high,
-        low: bar.low,
-        close: bar.close,
-        volume: bar.volume,
-      );
 
   static MergedBar _mergedAt(List<MergedBar> bars, int rawIndex) {
     for (final bar in bars) {
