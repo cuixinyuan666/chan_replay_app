@@ -45,7 +45,8 @@ Branch: origin_vespa_tdx
 - `b85aef4fafd3b5d644fc3f533e1fb483f009da72`: wire selected runtime path into Copy P0 and Copy Step.
 - `3085d9390d0dc70e8c59e2abd7da975326d57287`: move runtime path dropdown away from header to avoid overlap with Load/request controls.
 - `077a1d11c8228a45cb14b1d3b360ccdf3214a51c`: remove Dart-side dummy merged-bar synthesis from Chan snapshot parser.
-- Current update: record B1b parser cleanup progress. B1b is still pending broader Dart-side search evidence, build analysis, and runtime validation.
+- `d839c0c6b4963b933cf94e1f9fa7c842caeea343`: route single-level source parsing through passive Chan snapshot parser and remove duplicate Dart-side structure parser.
+- Current update: record B1b single-level source cleanup. B1b is still pending broader Dart-side search evidence, build analysis, and runtime validation.
 
 ## Current accepted work
 
@@ -265,6 +266,10 @@ Implementation progress:
 - Removed the old `_dummyMergedBar` fallback that synthesized one Dart `MergedBar` per raw bar when backend `merged_bars` was absent.
 - `structuralMergedBars` now uses only backend-exported `merged_bars`.
 - This removes the first identified Dart-side Chan structure synthesis path.
+- Commit `d839c0c6b4963b933cf94e1f9fa7c842caeea343` updates `lib/data/python_chan_analysis_source.dart`.
+- `PythonChanAnalysisSource` no longer maintains a duplicate single-level Dart parser for FX/BI/SEG/ZS/BSP DTO construction.
+- Single-level backend JSON parsing now routes through the passive `ChanSnapshotJsonParser.parse()` adapter.
+- This removes the remaining known active single-level `_dummyMergedBar` fallback and reduces parser drift.
 
 Required evidence:
 
