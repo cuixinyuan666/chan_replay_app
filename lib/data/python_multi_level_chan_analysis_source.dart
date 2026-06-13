@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
@@ -404,7 +404,7 @@ class PythonMultiLevelChanAnalysisSource {
     final enrichedSnapshot = _snapshotWithMeta(snapshot, {'time_log': timeLog});
     final List<MultiLevelChanSnapshot> enrichedFrames;
     if (frames is _LazyMultiLevelFrameList) {
-      final lazyFrames = frames as _LazyMultiLevelFrameList;
+      final lazyFrames = frames;
       lazyFrames.timeLog.addAll(timeLog);
       enrichedFrames = lazyFrames;
     } else {
@@ -632,3 +632,4 @@ class PythonMultiLevelChanAnalysisSource {
     // rebuilds during the app session so F1d warm backend reuse can work.
   }
 }
+
