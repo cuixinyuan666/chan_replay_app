@@ -174,15 +174,33 @@ Goal:
 - Add or reuse a CLI validator that checks strategy diagnostics against the pinned fixture without launching the App.
 - Prove the strategy diagnostic path can be validated from command line when the requirement is not visual UI behavior.
 
-S4 requirements:
+completed_tasks:
 
-- Prefer one command after `git pull`.
-- Must use `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json`.
-- Must not request live data.
-- Must not import or modify `python/chan.py`.
-- Must not recalculate Chan FX/BI/SEG/ZS/BSP.
-- Must verify at least: strategy rule name, source policy, relation pair availability, BSP availability/no-output diagnosis, strict-step frame evidence, compact validation status, no bridge fallback, native lv_list flag, and no forbidden Dart-side Chan calculation markers.
-- Output must be copyable from terminal and short enough for receiver to paste directly.
+- Added `tools/validate_s4_cli_strategy_diagnostics.py` in commit `fcabcf93f077fe8275656e343039d4cfbfff7938`.
+- The validator defaults to `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json`.
+- It checks strategy rule `DAILY_2B_MIN30_1B`, source policy, relation pair availability, high/low BSP availability, no-output diagnosis, strict-step frame evidence, compact validation status, bridge fallback, native lv_list flag, and forbidden Dart-side Chan calculation markers.
+- It does not launch the App, does not request live data, does not import or modify `python/chan.py`, and does not recalculate Chan FX/BI/SEG/ZS/BSP.
+
+validation_result:
+
+- pending receiver run.
+- Preferred command after `git pull`: `python tools/validate_s4_cli_strategy_diagnostics.py`.
+- Expected fields:
+  - `ok: true`.
+  - `strategy_rule_name: DAILY_2B_MIN30_1B`.
+  - `source_policy: original chan.py BSP + native LevelRelation only`.
+  - relation pairs include `DAILY->MIN30` and `MIN30->MIN5`.
+  - `available_signals: 0` for the pinned first-frame/no-output condition.
+  - `source_bsp_identifiers: none`.
+  - `no_output_diagnosis` explains no candidate matched the current strategy rule.
+  - strict-step frame evidence shows `frame_source: native_step_frame` and `final_snapshot_rendered_as_step: false`.
+  - `compact_validation_status: match`.
+  - `compact_validation_mismatch_count: 0`.
+  - `native_cchan_lv_list: true`.
+  - `fallback_to_bridge: false`.
+  - `forbidden_dart_calc_patterns: []`.
+  - `chan_recalculated: false`.
+  - `dart_chan_calculation_authority: false`.
 
 S4 acceptance evidence:
 
@@ -193,9 +211,9 @@ S4 acceptance evidence:
 
 ## Next task-party operation
 
-1. Implement S4 CLI strategy diagnostics validator, or prove an existing CLI command already satisfies S4.
-2. Use the pinned S1 fixture as default input.
-3. Make receiver validation path: `git pull` then one documented `python tools/...py` command.
+1. Receiver pulls commit `fcabcf93f077fe8275656e343039d4cfbfff7938`.
+2. Receiver runs `python tools/validate_s4_cli_strategy_diagnostics.py`.
+3. Accept S4 only if the CLI output passes.
 4. Do not require App evidence unless the task party proves CLI cannot cover the requirement.
 5. Do not add additional large full fixtures unless the manual explicitly requires them.
 6. Do not continue performance optimization by default.
