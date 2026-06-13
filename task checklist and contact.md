@@ -159,6 +159,25 @@ S1 sample/offline data report:
 - `sample_data_used: false`.
 - `sample_data_supervisor_decision: accepted_for_this_S1_request`.
 
+S1 strategy wiring audit:
+
+- Existing `MultiLevelIntervalSignalPanel` already exposes strategy mode through `rule mode = strategy` and the strategy rule dropdown.
+- Strategy rules currently supported:
+  - `DAILY_2B_MIN30_1B`.
+  - `DAILY_3B_MIN30_1B`.
+  - `DAILY_3B_MIN30_2B`.
+- Strategy mode locks the selected pair to `DAILY->MIN30` and uses backend-exported BSPs plus native `LevelRelation` only.
+- `Copy Signal` selected-signal diagnostics already include:
+  - high/low BSP index, type, raw index, time, price, confirmed flag, BI/SEG/ZS references;
+  - high/low source levels and strategy type/trigger type;
+  - parent relation range, child relation range, child union range, relation count;
+  - `strict_step_verified`, `visibleAt.frame`, `confirmedAt.frame`, `state`, and `signal_state`;
+  - `signal_rule_mode`, `rule_mode_ui`, `strategy_rule_name`, `candidate_rule`, `source_policy`, `future_function_policy`, and warnings.
+- `Copy Signal` no-output diagnostics include BSP counts, type counts, relation count, candidate rule, source policy, future policy, and diagnosis.
+- `Copy Time Log` from the signal panel includes runtime path diagnostics, `native_cchan_lv_list`, `fallback_to_bridge`, compact step-frame transport fields, request context, and strategy rule fields.
+- `Copy Result Validation` from the signal panel includes validation status, compact validation status, runtime path diagnostics, selected pair, rule mode, strategy rule name, baseline level counts, sample BSP, and sample relation.
+- No code change is required for S1 wiring at this step; the task now requires live high-speed runtime evidence pasted from the App.
+
 S1 required evidence:
 
 - sample/offline data search/use report;
@@ -206,14 +225,15 @@ Forbidden in S1:
 - Performance chain F1a-F1k is stopped by rule.
 - Runtime path switch and Dart Chan cleanup B1 is accepted.
 - S1 Strategy mode runtime acceptance is in progress.
-- S1 sample/offline data exception is adjudicated and no longer blocks implementation, but S1 is not accepted yet.
+- S1 sample/offline data exception is adjudicated and no longer blocks implementation.
+- S1 live high-speed runtime evidence is still required before acceptance.
 
 ## Next task-party operation
 
-1. Implement or wire Strategy mode runtime acceptance on the high-speed path only.
-2. Keep runtime path dropdown unchanged: high-speed default, slow path debug/baseline only.
-3. Keep Dart/Flutter as parser/renderer/validator only.
-4. Use the live accepted easy-tdx baseline request for this S1 validation.
-5. Paste Copy Time Log, Copy P0, Copy Step, Copy Result Validation, and strategy diagnostics.
+1. Run the accepted live easy-tdx baseline request in the App on the default high-speed path.
+2. In the interval signal panel, set `rule mode` to `strategy` and select a strategy rule.
+3. Copy and paste: Copy Time Log, Copy P0, Copy Step, Copy Result Validation, and Copy Signal.
+4. Keep runtime path dropdown unchanged: high-speed default, slow path debug/baseline only.
+5. Keep Dart/Flutter as parser/renderer/validator only.
 6. Add a short experience note if the task encounters complex tooling/manual/code problems.
 7. Accept S1 only if high-speed path, validation, strict backend step, accepted sample/offline exception, and traceability requirements all pass.
