@@ -157,20 +157,7 @@ completed_tasks:
 validation_result:
 
 - accepted.
-- Receiver output included:
-  - `ok: true`.
-  - `rule_mode_default: strategy`.
-  - `strategy_rule_default: DAILY_2B_MIN30_1B`.
-  - `one_click_label: S1一键复制`.
-  - debug copy buttons: `Debug: Copy Signal`, `Debug: Copy Time Log`, `Debug: Copy Result Validation`.
-  - evidence sections: `Copy Time Log`, `Copy P0 Summary`, `Copy Step Summary`, `Copy Result Validation`, `Copy Signal`.
-  - `debug_copy_tools: de_emphasized`.
-  - `evidence_status: s1_evidence_exported`.
-  - `missing: []`.
-  - `forbidden: []`.
-  - `forbidden_dart_calc_patterns: []`.
-  - `chan_recalculated: false`.
-  - `dart_chan_calculation_authority: false`.
+- Receiver output included `ok: true`, `rule_mode_default: strategy`, `strategy_rule_default: DAILY_2B_MIN30_1B`, `one_click_label: S1一键复制`, debug copy buttons, required evidence sections, `debug_copy_tools: de_emphasized`, `evidence_status: s1_evidence_exported`, `missing: []`, `forbidden: []`, `forbidden_dart_calc_patterns: []`, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
 
 next_task:
 
@@ -178,11 +165,38 @@ next_task:
 2. App evidence is only required when the manual asks for UI runtime behavior or visual confirmation.
 3. R1b no longer blocks larger business-chain work.
 
+## S4 selected: CLI strategy diagnostics validator
+
+Goal:
+
+- Continue business-chain work using the lowest-burden receiver path.
+- Use the pinned S1 fixture as the input.
+- Add or reuse a CLI validator that checks strategy diagnostics against the pinned fixture without launching the App.
+- Prove the strategy diagnostic path can be validated from command line when the requirement is not visual UI behavior.
+
+S4 requirements:
+
+- Prefer one command after `git pull`.
+- Must use `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json`.
+- Must not request live data.
+- Must not import or modify `python/chan.py`.
+- Must not recalculate Chan FX/BI/SEG/ZS/BSP.
+- Must verify at least: strategy rule name, source policy, relation pair availability, BSP availability/no-output diagnosis, strict-step frame evidence, compact validation status, no bridge fallback, native lv_list flag, and no forbidden Dart-side Chan calculation markers.
+- Output must be copyable from terminal and short enough for receiver to paste directly.
+
+S4 acceptance evidence:
+
+- command used;
+- validator output;
+- `ok: true`;
+- completion summary with completed_tasks, evidence_button or command, validation_result, remaining_risk, and next_task.
+
 ## Next task-party operation
 
-1. Use `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json` as preferred offline fixture for S1-compatible checks.
-2. Use `python tools/validate_pinned_s1_fixture.py` as the preferred receiver validation command for S1-compatible offline checks.
-3. Use `python tools/validate_r1_receiver_burden.py` for static receiver-burden UI checks.
-4. Do not add additional large full fixtures unless the manual explicitly requires them.
-5. Do not continue performance optimization by default.
-6. Choose the next business-chain task before implementation.
+1. Implement S4 CLI strategy diagnostics validator, or prove an existing CLI command already satisfies S4.
+2. Use the pinned S1 fixture as default input.
+3. Make receiver validation path: `git pull` then one documented `python tools/...py` command.
+4. Do not require App evidence unless the task party proves CLI cannot cover the requirement.
+5. Do not add additional large full fixtures unless the manual explicitly requires them.
+6. Do not continue performance optimization by default.
+7. Write the S4 completion summary into this manual after evidence is accepted.
