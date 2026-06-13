@@ -44,7 +44,8 @@ Branch: origin_vespa_tdx
 - `982ab7dc66e57a3ea3cd7a97d257e2fa00d2541b`: attach selected runtime path to analyze_multi Time Log and meta.
 - `b85aef4fafd3b5d644fc3f533e1fb483f009da72`: wire selected runtime path into Copy P0 and Copy Step.
 - `3085d9390d0dc70e8c59e2abd7da975326d57287`: move runtime path dropdown away from header to avoid overlap with Load/request controls.
-- Current update: accept B1a runtime path dropdown / copy diagnostics and select B1b Dart-side Chan cleanup next.
+- `077a1d11c8228a45cb14b1d3b360ccdf3214a51c`: remove Dart-side dummy merged-bar synthesis from Chan snapshot parser.
+- Current update: record B1b parser cleanup progress. B1b is still pending broader Dart-side search evidence, build analysis, and runtime validation.
 
 ## Current accepted work
 
@@ -67,7 +68,7 @@ Branch: origin_vespa_tdx
 - F1k lazy Easy TDX indicator parsing: accepted.
 - Performance chain F1a-F1k: stopped by rule; return to business/runtime task chain.
 - B1a runtime path dropdown and copy diagnostics: accepted.
-- B1b Dart-side Chan cleanup/search evidence: selected next task, not accepted.
+- B1b Dart-side Chan cleanup/search evidence: in progress, not accepted.
 
 ## Accepted runtime baseline
 
@@ -239,7 +240,7 @@ B1a conclusion:
 
 ### B1b: delete or neutralize legacy Dart-side Chan calculation
 
-Selected next task.
+In progress.
 
 Required cleanup:
 
@@ -255,6 +256,15 @@ Required cleanup:
 - Keep Dart models/parsers/renderers only if they consume backend output and do not calculate Chan structures.
 - If a Dart file is kept for compatibility, add clear comments that it is a parser/model/rendering adapter and not a Chan calculation engine.
 - Any old Dart Chan service/calculator class must either be deleted or made unreachable from runtime paths.
+
+Implementation progress:
+
+- Commit `077a1d11c8228a45cb14b1d3b360ccdf3214a51c` updates `lib/data/chan_snapshot_json_parser.dart`.
+- `ChanSnapshotJsonParser` is now explicitly documented as a passive backend JSON -> Dart DTO adapter.
+- The parser now states that it must not synthesize or calculate Chan structures and that `python/chan.py` remains the sole Chan calculation authority.
+- Removed the old `_dummyMergedBar` fallback that synthesized one Dart `MergedBar` per raw bar when backend `merged_bars` was absent.
+- `structuralMergedBars` now uses only backend-exported `merged_bars`.
+- This removes the first identified Dart-side Chan structure synthesis path.
 
 Required evidence:
 
@@ -291,5 +301,5 @@ Forbidden in B1:
 - Performance chain F1a-F1k is stopped by rule.
 - Runtime path switch and Dart Chan cleanup B1 is now the selected task chain.
 - B1a runtime path dropdown/copy diagnostics is accepted.
-- B1b Dart-side Chan cleanup/search evidence is selected next and still pending.
+- B1b parser cleanup has started; broader Dart-side search evidence, build analysis, and runtime validation are still pending.
 - Strategy mode runtime acceptance should resume after B1 unless this manual explicitly selects another business-chain item.
