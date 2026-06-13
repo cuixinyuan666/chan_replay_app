@@ -64,8 +64,8 @@ The supervisor decides whether a reason for not using repository sample data is 
 
 - P0 App-managed bundled Python backend: accepted.
 - Batch A active-route strict step replay: accepted.
-- Batch B native LevelRelation targeting: accepted.
-- Batch C arbitrary BSP pair strict-step validation: accepted.
+- Batch B native LevelRelation targeting: accepted for DAILY->MIN30 and MIN30->MIN5.
+- Batch C arbitrary BSP pair strict-step validation: accepted using real easy-tdx/original chan.py data.
 - P0 Time Log instrumentation: accepted.
 - F0 Copy Result Validation blocked gate: accepted.
 - F1a-F1k performance chain: accepted and stopped by rule.
@@ -111,7 +111,11 @@ Verified against commit `302ed08a667c0c461b1e225c1712aacee5b4f2cf`.
 
 ## Phase S1: Strategy mode runtime acceptance
 
-Selected next task.
+In progress.
+
+open_questions:
+
+- Question to supervising party: `test/fixtures/research_pipeline_contract_valid.json` is a relevant offline research pipeline contract fixture, but it cannot reproduce the selected S1 request (`600340`, `SH`, `DAILY,MIN30,MIN5`, `2025-09-01~2025-10-20`) because it uses synthetic `TEST.LOCAL` data from `2024-01-01~2024-01-12` and single-level analysis JSON. `build/real_analysis.json` is referenced by README but is not present in the repository. May S1 proceed using the live accepted easy-tdx baseline plus Copy Time Log / Copy P0 / Copy Step / Copy Result Validation / strategy diagnostics, or must a matching offline fixture be added first?
 
 Goal:
 
@@ -126,13 +130,32 @@ Required runtime path:
 - Slow path is debug/baseline only and must not be the accepted strategy runtime path.
 - S1 must not start F1l/F1m or any new performance phase.
 
-S1 must include a sample/offline data report:
+S1 sample/offline data report:
 
-- `sample_data_available`.
-- `sample_data_paths` when applicable.
-- `sample_data_used` when applicable.
-- `sample_data_unusable_reason` when applicable.
-- `sample_data_supervisor_decision` when applicable.
+- `sample_data_available: true` for a relevant research pipeline fixture, but not usable for selected S1 runtime acceptance.
+- searched paths or patterns:
+  - commit search: `600340`, `600340.SH`, `SH600340`, `csv`, `sample`, `fixture`, `fixtures`, `offline`, `test data`, `sample data csv`, `tdx data`.
+  - README references: `test/fixtures/research_pipeline_contract_valid.json`, `build/real_analysis.json`, `tools/validate_research_pipeline_contract.py`.
+- matching files:
+  - `test/fixtures/research_pipeline_contract_valid.json`.
+  - `tools/validate_research_pipeline_contract.py`.
+- relevant because:
+  - the fixture is a chan.py-style analysis JSON with bars, BI, SEG, ZS, BSP, indicators, and meta `engine: chan.py`.
+  - the validator explicitly consumes an exported chan.py analysis JSON and runs `extract_bsp_features -> score_bsp_features -> run_bsp_backtest` without importing or modifying `chan.py`.
+- cannot be used for selected S1 acceptance because:
+  - fixture symbol is `TEST.LOCAL`, not `600340.SH`.
+  - fixture dates are `2024-01-01~2024-01-12`, not `2025-09-01~2025-10-20`.
+  - fixture is single-level top-level analysis JSON, not selected multi-level `DAILY,MIN30,MIN5` with native LevelRelation range.
+  - fixture has `frames: []`, so it cannot prove strict-step native frame visibility.
+  - README-referenced `build/real_analysis.json` is not present in the repository.
+- proposed alternative verification:
+  - use live accepted easy-tdx baseline request already defined in this manual;
+  - require high-speed runtime path diagnostics;
+  - require Copy Time Log, Copy P0, Copy Step, Copy Result Validation;
+  - require strategy diagnostics proving source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name;
+  - accept S1 only after supervisor adjudicates the offline sample exception.
+- `sample_data_used: false`.
+- `sample_data_supervisor_decision: pending`.
 
 S1 required evidence:
 
@@ -180,19 +203,15 @@ Forbidden in S1:
 - Full-history/paged strict step replay remains deferred.
 - Performance chain F1a-F1k is stopped by rule.
 - Runtime path switch and Dart Chan cleanup B1 is accepted.
-- S1 Strategy mode runtime acceptance is now selected.
-- Sample/offline data search/use report is required for S1 acceptance.
+- S1 Strategy mode runtime acceptance is in progress.
+- `sample_data_supervisor_decision: pending` blocks S1 acceptance.
 
 ## Next task-party operation
 
-1. Answer all open questions before editing or accepting the task.
-2. Search the repository for sample/offline data relevant to the selected S1 test request.
-3. Record sample/offline data availability, paths, and use status.
-4. If relevant data can be used, run at least one S1 validation using it or compare against it.
-5. If relevant data cannot be used, document the reason and wait for supervisor adjudication before claiming acceptance.
-6. Implement or wire Strategy mode runtime acceptance on the high-speed path only.
-7. Keep runtime path dropdown unchanged: high-speed default, slow path debug/baseline only.
-8. Keep Dart/Flutter as parser/renderer/validator only.
-9. Paste Copy Time Log, Copy P0, Copy Step, Copy Result Validation, and strategy diagnostics.
-10. Add a short experience note if the task encounters complex tooling/manual/code problems.
-11. Accept S1 only if high-speed path, validation, strict backend step, sample/offline rule, and traceability requirements all pass.
+1. Wait for supervisor adjudication on the sample/offline data exception before claiming S1 acceptance.
+2. If supervisor allows live baseline verification, implement or wire Strategy mode runtime acceptance on the high-speed path only.
+3. Keep runtime path dropdown unchanged: high-speed default, slow path debug/baseline only.
+4. Keep Dart/Flutter as parser/renderer/validator only.
+5. Paste Copy Time Log, Copy P0, Copy Step, Copy Result Validation, and strategy diagnostics.
+6. Add a short experience note if the task encounters complex tooling/manual/code problems.
+7. Accept S1 only if high-speed path, validation, strict backend step, sample/offline rule, and traceability requirements all pass.
