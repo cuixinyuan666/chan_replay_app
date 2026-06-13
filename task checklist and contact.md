@@ -4,7 +4,7 @@ Branch: origin_vespa_tdx
 
 ## Open questions
 
-open_questions: none
+- Question to task party: Receiver-side App validation with `S1一键复制` still feels heavy. Is there a better burden-reduction method than asking the receiver to open the App, set/check panel state, and copy evidence? If yes, propose it with exact one-command or one-click steps. If no better method exists, make the command-line flow the highest-priority receiver validation path when applicable, for example `git pull` then `python tools/validate_pinned_s1_fixture.py`.
 
 ## Hard rules
 
@@ -20,9 +20,13 @@ open_questions: none
 
 - Merge compatible checks into one stage when safe.
 - Avoid unnecessary task rounds.
+- Prefer command-line validation over App validation when a command can verify the same requirement with less receiver work.
+- If a pinned/offline validator exists for the current stage, the preferred receiver path is: `git pull` then run the documented validator command.
+- For S1-compatible offline checks, highest-priority receiver path is currently `python tools/validate_pinned_s1_fixture.py` after pulling the latest branch.
+- Use App validation only when command-line validation cannot verify the UI-specific requirement or when the manual explicitly requires App evidence.
 - If the receiver must validate in the App, preset all required defaults.
 - For S1-like stages, default to `rule mode = strategy` and `strategy rule = DAILY_2B_MIN30_1B` unless the manual selects another rule.
-- Each receiver-run stage must provide a stage-specific one-click evidence button, such as `S1一键复制` or `Copy S1 Evidence`.
+- Each receiver-run App stage must provide a stage-specific one-click evidence button, such as `S1一键复制` or `Copy S1 Evidence`.
 - The one-click payload must include all required evidence for that stage.
 - Hide or de-emphasize duplicate copy buttons when one-click evidence covers them.
 - Keep low-level copy buttons only for debugging.
@@ -132,19 +136,23 @@ evidence_button:
 remaining_risk:
 
 - The R1 UI cleanup simplified the interval signal panel while preserving diagnostic output. If future UI behavior regresses, revert only the simplification while keeping the four R1 requirements.
+- Receiver still considers App-based validation heavier than command-line validation when equivalent command-line validation is available.
 
 next_task:
 
-1. R1 no longer blocks larger business-chain work.
-2. Use pinned S1 fixture for compatible offline checks.
-3. Use `python tools/validate_pinned_s1_fixture.py` for fixture sanity checks.
-4. Do not continue performance optimization by default.
-5. Choose the next business-chain task before implementation.
+1. Ask the task party whether an even lighter receiver validation method exists than App one-click evidence.
+2. If no better method exists, command-line validation must be treated as highest-priority receiver validation when it covers the same requirements.
+3. R1 no longer blocks larger business-chain work, but future receiver-run tasks must minimize manual App work.
+4. Use pinned S1 fixture for compatible offline checks.
+5. Use `python tools/validate_pinned_s1_fixture.py` for fixture sanity checks.
+6. Do not continue performance optimization by default.
+7. Choose the next business-chain task before implementation.
 
 ## Next task-party operation
 
-1. Use `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json` as preferred offline fixture for S1-compatible checks.
-2. Use `python tools/validate_pinned_s1_fixture.py` for fixture sanity checks.
-3. Do not add additional large full fixtures unless the manual explicitly requires them.
-4. Do not continue performance optimization by default.
-5. Choose the next business-chain task before implementation.
+1. Answer the open question about whether there is a lighter receiver validation path than App one-click evidence.
+2. Use `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json` as preferred offline fixture for S1-compatible checks.
+3. Use `python tools/validate_pinned_s1_fixture.py` as the preferred receiver validation command for S1-compatible offline checks unless a better method is proposed and accepted.
+4. Do not add additional large full fixtures unless the manual explicitly requires them.
+5. Do not continue performance optimization by default.
+6. Choose the next business-chain task before implementation.
