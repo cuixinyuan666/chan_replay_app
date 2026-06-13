@@ -107,12 +107,23 @@ Reason:
 - Supervisor found four receiver-burden issues in the current code after S1 acceptance.
 - These issues do not invalidate S1 calculation evidence, but they do not fully satisfy the receiver workload minimization rule.
 
-Issues to fix:
+completed_tasks:
 
-1. `rule mode` default is still `validation`; S1-like receiver-run stages should default to `strategy`.
-2. The one-click button label is still `Copy S1 Evidence`; add or prefer receiver-facing label `S1一键复制`.
-3. `Copy Signal`, `Copy Time Log`, and `Copy Result Validation` remain shown at the same level as the one-click evidence button; duplicate copy actions should be hidden, folded, or de-emphasized as debug tools.
-4. S1 evidence payload still outputs `status: pending_runtime_acceptance`; change it to `status: s1_evidence_exported` or another non-confusing exported/accepted evidence status.
+- Started R1 because commit `d482d7d9b5b1efbc54d4c83f981e0ccfabd32ce6` requires R1 before larger business-chain work.
+- Updated `lib/ui/widgets/multi_level_interval_signal_panel.dart` in commit `0c52befb4ba9f46af9709c8a9232d9271558f45e`.
+- Changed S1-like default `rule mode` from `validation` to `strategy`.
+- Kept default strategy rule as `DAILY_2B_MIN30_1B`.
+- Preferred receiver-facing one-click button label `S1一键复制`.
+- De-emphasized lower-level copy actions by labeling them `Debug: Copy Signal`, `Debug: Copy Time Log`, and `Debug: Copy Result Validation` with debug styling.
+- Changed S1 evidence payload status from `pending_runtime_acceptance` to `s1_evidence_exported`.
+- Preserved one-click evidence sections: Time Log, P0 Summary, Step Summary, Result Validation, and Signal.
+- No `python/chan.py` changes were made.
+- No Dart-side FX/BI/SEG/ZS/BSP calculation authority was introduced; the panel still consumes backend snapshot BSPs and native LevelRelation only.
+
+validation_result:
+
+- pending receiver `flutter analyze`.
+- pending receiver check of the one-click S1 evidence output.
 
 R1 acceptance criteria:
 
@@ -124,11 +135,28 @@ R1 acceptance criteria:
 - `flutter analyze` passes.
 - Task party writes completion summary with completed_tasks, evidence_button, validation_result, remaining_risk, and next_task.
 
+evidence_button:
+
+- Main receiver-facing button: `S1一键复制`.
+- Debug-only low-level buttons: `Debug: Copy Signal`, `Debug: Copy Time Log`, `Debug: Copy Result Validation`.
+
+remaining_risk:
+
+- The panel was simplified while preserving diagnostic output. Receiver must run `flutter analyze` before R1 acceptance.
+- If UI behavior regresses, revert only the UI simplification while keeping the four R1 requirements.
+
+next_task:
+
+1. Receiver pulls commit `0c52befb4ba9f46af9709c8a9232d9271558f45e`.
+2. Receiver runs `flutter analyze`.
+3. Receiver opens an S1-like strategy panel and presses `S1一键复制`.
+4. Receiver verifies output includes `rule_mode_ui: strategy`, `strategy_rule_name: DAILY_2B_MIN30_1B`, `status: s1_evidence_exported`, full evidence sections, and debug copy tools de-emphasized.
+5. If validation passes, accept R1.
+
 ## Next task-party operation
 
-1. Complete R1 receiver burden code cleanup before starting a larger business-chain task.
-2. Use `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json` as preferred offline fixture for S1-compatible checks.
-3. Use `python tools/validate_pinned_s1_fixture.py` for fixture sanity checks.
-4. Do not add additional large full fixtures unless the manual explicitly requires them.
+1. Wait for receiver to run `flutter analyze` after pulling R1 code.
+2. Wait for receiver to paste `S1一键复制` evidence output or at least the key R1 fields.
+3. Accept R1 only after static analysis and one-click evidence output pass.
+4. Do not start a larger business-chain task before R1 is accepted or explicitly deferred by the supervisor.
 5. Do not continue performance optimization by default.
-6. Choose the next business-chain task only after R1 is completed or explicitly deferred by the supervisor.
