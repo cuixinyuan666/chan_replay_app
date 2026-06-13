@@ -57,7 +57,8 @@ Required completion summary fields:
 - S1 Strategy mode runtime acceptance: accepted.
 - S2 pinned offline fixture export for accepted S1 baseline: accepted.
 - S3 pinned S1 fixture offline validator: accepted.
-- R1 receiver burden code cleanup: accepted by App evidence; CLI-first R1b validation is pending.
+- R1 receiver burden code cleanup: accepted by App evidence.
+- R1b CLI receiver-burden validation: accepted.
 
 ## S1 summary
 
@@ -135,10 +136,10 @@ evidence_button:
 
 remaining_risk:
 
-- Receiver still considers App-based validation heavier than command-line validation when equivalent command-line validation is available.
+- App-based validation is heavier than command-line validation when an equivalent CLI validator is available.
 - R1b adds CLI validation to reduce receiver burden and answer the prior open question.
 
-## R1b pending: CLI receiver-burden validation
+## R1b summary
 
 Answer to prior open question:
 
@@ -151,15 +152,18 @@ completed_tasks:
 - Added `tools/validate_r1_receiver_burden.py` in commit `70d87b1bda05da2d8691774a3608949f57f154d2`.
 - The script statically checks `lib/ui/widgets/multi_level_interval_signal_panel.dart` for strategy default, `DAILY_2B_MIN30_1B` default strategy rule, `S1一键复制` label, debug copy de-emphasis, required evidence sections, `s1_evidence_exported`, absence of `pending_runtime_acceptance`, and absence of known Dart-side Chan calculation markers.
 - The script does not run the App, does not request live data, does not import or modify `python/chan.py`, and does not recalculate Chan structures.
+- Receiver pulled the script and ran `python tools/validate_r1_receiver_burden.py`.
 
 validation_result:
 
-- pending receiver run.
-- Expected fields:
+- accepted.
+- Receiver output included:
   - `ok: true`.
   - `rule_mode_default: strategy`.
   - `strategy_rule_default: DAILY_2B_MIN30_1B`.
   - `one_click_label: S1一键复制`.
+  - debug copy buttons: `Debug: Copy Signal`, `Debug: Copy Time Log`, `Debug: Copy Result Validation`.
+  - evidence sections: `Copy Time Log`, `Copy P0 Summary`, `Copy Step Summary`, `Copy Result Validation`, `Copy Signal`.
   - `debug_copy_tools: de_emphasized`.
   - `evidence_status: s1_evidence_exported`.
   - `missing: []`.
@@ -170,16 +174,15 @@ validation_result:
 
 next_task:
 
-1. Receiver pulls commit `70d87b1bda05da2d8691774a3608949f57f154d2`.
-2. Receiver runs `python tools/validate_r1_receiver_burden.py`.
-3. If it passes, accept R1b and treat CLI validation as the preferred burden-reduction path for similar static UI-requirement checks.
+1. Treat CLI validation as the preferred burden-reduction path for similar static UI-requirement checks.
+2. App evidence is only required when the manual asks for UI runtime behavior or visual confirmation.
+3. R1b no longer blocks larger business-chain work.
 
 ## Next task-party operation
 
-1. Wait for receiver to run `python tools/validate_r1_receiver_burden.py`.
-2. Accept R1b only if the CLI output passes.
-3. Use `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json` as preferred offline fixture for S1-compatible checks.
-4. Use `python tools/validate_pinned_s1_fixture.py` as the preferred receiver validation command for S1-compatible offline checks.
-5. Do not add additional large full fixtures unless the manual explicitly requires them.
-6. Do not continue performance optimization by default.
-7. Choose the next business-chain task only after R1b is accepted or explicitly deferred.
+1. Use `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json` as preferred offline fixture for S1-compatible checks.
+2. Use `python tools/validate_pinned_s1_fixture.py` as the preferred receiver validation command for S1-compatible offline checks.
+3. Use `python tools/validate_r1_receiver_burden.py` for static receiver-burden UI checks.
+4. Do not add additional large full fixtures unless the manual explicitly requires them.
+5. Do not continue performance optimization by default.
+6. Choose the next business-chain task before implementation.
