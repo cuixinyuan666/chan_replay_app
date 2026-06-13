@@ -213,7 +213,7 @@ S4 acceptance evidence:
 
 Default order after S4 acceptance: S5 -> S6 -> S7 -> S8, unless the supervisor explicitly changes priority.
 
-## S5 planned: CLI strategy rule matrix validation
+## S5 selected: CLI strategy rule matrix validation
 
 Goal:
 
@@ -231,6 +231,42 @@ S5 acceptance evidence:
 - One documented command after `git pull`.
 - Output contains each strategy rule name, source policy, selected relation pair, BSP counts, matched signal count or no-output diagnosis, strict-step frame evidence, compact validation status, no bridge fallback, native lv_list flag, and no forbidden Dart-side Chan calculation markers.
 - Completion summary is written back to this manual.
+
+completed_tasks:
+
+- Added `tools/validate_s5_cli_strategy_rule_matrix.py` in commit `5430ba09004151e90bd4866536928fa2a062fdc1`.
+- The validator reuses S4 fixture parsing and static checks, and defaults to `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json`.
+- It validates the strategy rule matrix for `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, and `DAILY_3B_MIN30_2B`.
+- For each rule, it reports source policy, selected relation pair, high/low BSP counts and type counts, matched signal count or no-output diagnosis, sample source BSP identifiers when present, strict-step frame evidence, compact validation status, native lv_list flag, bridge fallback status, and forbidden Dart-side Chan calculation markers.
+- It does not launch the App, does not request live data, does not import or modify `python/chan.py`, and does not recalculate Chan FX/BI/SEG/ZS/BSP.
+
+evidence_button:
+
+- CLI command: `python tools/validate_s5_cli_strategy_rule_matrix.py`.
+
+validation_result:
+
+- pending receiver run.
+- Expected fields:
+  - `ok: true`.
+  - `rules_checked` contains `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, and `DAILY_3B_MIN30_2B`.
+  - `matrix` contains one item per strategy rule.
+  - each matrix item contains `strategy_rule_name`, `source_policy`, `selected_relation_pair`, `high_bsp_count`, `low_bsp_count`, `matched_signal_count` or `no_output_diagnosis`, `strict_step_frame_evidence`, `compact_validation_status`, `native_cchan_lv_list`, `fallback_to_bridge`, and `forbidden_dart_calc_patterns`.
+  - `panel_strategy_rules_present: true`.
+  - `chan_recalculated: false`.
+  - `dart_chan_calculation_authority: false`.
+
+remaining_risk:
+
+- S4 is still recorded as pending receiver run in this manual; if the receiver has not accepted S4 yet, run and accept S4 before treating S5 as accepted.
+- The pinned fixture may produce no-output for all three rules; this is acceptable for S5 matrix validation but S6 must cover matched-output evidence when available or add a minimal traceable sample.
+
+next_task:
+
+1. Receiver pulls the latest `origin_vespa_tdx` and runs `python tools/validate_s4_cli_strategy_diagnostics.py` if S4 has not already been accepted.
+2. Receiver then runs `python tools/validate_s5_cli_strategy_rule_matrix.py`.
+3. Accept S5 only if the S5 CLI output passes and contains the full three-rule matrix evidence.
+4. After S5 acceptance, start S6 strategy signal sample coverage by default.
 
 ## S6 planned: strategy signal sample coverage
 
@@ -293,11 +329,12 @@ S8 acceptance evidence:
 
 ## Next task-party operation
 
-1. Finish S4 first. Receiver pulls commit `fcabcf93f077fe8275656e343039d4cfbfff7938` and runs `python tools/validate_s4_cli_strategy_diagnostics.py`.
-2. Accept S4 only if the CLI output passes.
-3. After S4 acceptance, start S5 by default.
-4. Preserve the post-S4 order: S5 -> S6 -> S7 -> S8 unless supervisor changes it.
-5. Do not require App evidence unless CLI cannot cover the requirement.
-6. Do not add additional large full fixtures unless the manual explicitly requires them.
-7. Do not continue performance optimization by default.
-8. Write every stage completion summary into this manual after evidence is accepted.
+1. Pull the latest `origin_vespa_tdx`.
+2. If S4 has not already been accepted, run `python tools/validate_s4_cli_strategy_diagnostics.py` and accept S4 only if the output passes.
+3. Run `python tools/validate_s5_cli_strategy_rule_matrix.py`.
+4. Accept S5 only if the output includes `ok: true`, all three strategy rules, matrix evidence per rule, strict-step evidence, compact validation match, no bridge fallback, native lv_list, and no forbidden Dart-side Chan calculation markers.
+5. After S5 acceptance, start S6 by default.
+6. Do not require App evidence unless CLI cannot cover the requirement.
+7. Do not add additional large full fixtures unless the manual explicitly requires them.
+8. Do not continue performance optimization by default.
+9. Write every stage completion summary into this manual after evidence is accepted.
