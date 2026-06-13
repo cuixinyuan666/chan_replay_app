@@ -108,9 +108,52 @@ next_task:
 3. Preserve high-speed path as default and slow path as debug/baseline only.
 4. Choose the next business-chain task before implementation.
 
+## Phase S3: pinned S1 fixture offline validator
+
+In progress.
+
+open_questions: none
+
+completed_tasks:
+
+- Selected S3 as the next business-chain task because S2 accepted a pinned fixture and future S1-compatible checks should prefer offline validation.
+- Added `tools/validate_pinned_s1_fixture.py` in commit `1e50666911c6d4cc15790b056e380440860d971b`.
+- The validator is read-only. It loads the pinned JSON fixture and checks metadata, compact transport status, native lv_list flag, no fallback, frame count, level availability, relation pairs, and first-frame level payloads.
+- The validator does not request live data, does not import or modify `python/chan.py`, and does not recalculate Chan structures.
+
+Evidence button / receiver flow:
+
+- CLI validation command:
+  - `python tools/validate_pinned_s1_fixture.py`
+- The command prints a JSON summary with fixture path, size, levels, frames_total, frames_returned, compact validation status, native lv_list flag, fallback flag, relation pairs, level counts, validator name, and `chan_recalculated: false`.
+
+validation_result:
+
+- pending receiver run.
+- Expected successful summary fields:
+  - `ok: true`;
+  - `compact_validation_status: match`;
+  - `compact_validation_mismatch_count: 0`;
+  - `native_cchan_lv_list: true`;
+  - `fallback_to_bridge: false`;
+  - `chan_recalculated: false`;
+  - relation pairs include `DAILY->MIN30` and `MIN30->MIN5`.
+
+remaining_risk:
+
+- The validator has not yet been run in the receiver environment.
+- If the validator fails, inspect whether fixture schema uses alternate key names before changing acceptance rules.
+
+next_task:
+
+1. Pull commit `1e50666911c6d4cc15790b056e380440860d971b`.
+2. Run `python tools/validate_pinned_s1_fixture.py` from the repository root.
+3. Paste the JSON summary.
+4. If the summary matches expected fields, accept S3.
+
 ## Next task-party operation
 
-1. Use `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json` as the preferred offline fixture for S1-compatible checks.
-2. Do not add additional large full fixtures unless the manual explicitly requires them.
-3. Do not continue performance optimization by default.
-4. Choose the next business-chain task before implementation.
+1. Wait for receiver to run `python tools/validate_pinned_s1_fixture.py`.
+2. Validate the JSON summary.
+3. Accept S3 only if the pinned fixture validates offline without Chan recalculation.
+4. Do not continue performance optimization by default.
