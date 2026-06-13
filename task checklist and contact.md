@@ -44,10 +44,11 @@ Branch: origin_vespa_tdx
 - F1a-F1k performance chain: accepted and stopped by rule.
 - B1a runtime path dropdown and copy diagnostics: accepted.
 - B1b Dart-side Chan cleanup/search evidence: accepted.
+- S1 Strategy mode runtime acceptance: accepted.
 
 ## Phase S1: Strategy mode runtime acceptance
 
-In progress.
+Accepted.
 
 open_questions: none
 
@@ -55,7 +56,7 @@ Supervisor sample-data adjudication:
 
 - The repository fixture is relevant but not suitable for selected S1.
 - The live easy-tdx baseline exception is accepted for this S1 request only.
-- A matching offline fixture is recommended later but not required before this S1 proceeds.
+- A matching offline fixture is recommended later but not required before this S1 acceptance.
 
 S1 one-click evidence implementation:
 
@@ -63,7 +64,7 @@ S1 one-click evidence implementation:
 - The action emits one clipboard payload containing S1 header, sample exception state, runtime path policy, Time Log diagnostics, P0 summary, Step summary, Result Validation, and Signal diagnostics.
 - This is diagnostics aggregation only. It introduces no Dart-side Chan calculation.
 
-S1 received one-click runtime evidence:
+S1 accepted evidence:
 
 - Received payload type: `manual S1 evidence diagnostics` / `button: Copy S1 Evidence`.
 - `open_questions: none`.
@@ -96,32 +97,26 @@ S1 received one-click runtime evidence:
   - `source_policy: original chan.py BSP + native LevelRelation only`.
   - `future_function_policy: current strict step frame only; no final snapshot signal confirmation`.
   - `status: no signal for current rule scope`.
-- This no-output strategy diagnostic is sufficient as runtime traceability evidence because S1 requires strategy output diagnostic or no-output diagnostic, and the no-output case still proves source policy, selected pair, native relation scope, strict-step visibility, rule name, and absence of matching source BSPs.
+- `flutter analyze` after pulling latest `origin_vespa_tdx` returned `No issues found!`.
 
-S1 acceptance criteria:
+S1 conclusion:
 
-- `runtime_path: high_speed`.
-- `high_speed_enabled: true`.
-- `slow_path_enabled: false`.
-- `validation_status: match`.
-- `compact_validation_status: match`.
-- `compact_validation_mismatch_count: 0`.
-- `fallback_to_bridge: false`.
-- `native_cchan_lv_list: true`.
-- Copy Step remains `frame_source: native_step_frame`.
-- `final_snapshot_rendered_as_step: false`.
-- Sample/offline data exception is accepted for this S1 request only.
-- Accepted strategy output must include source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name.
-- One-click S1 evidence copy is completed and includes Time Log, P0, Step, Result Validation, and Signal diagnostics.
+- Strategy mode runtime acceptance is accepted for the selected live baseline request.
+- The no-output strategy diagnostic is accepted because it proves the strategy rule, source policy, selected pair, native relation scope, strict-step visibility, and absence of matching source BSPs in the current strict step frame.
+- This acceptance does not accept any trading recommendation, speed mode, bridge fallback, Dart-side Chan calculation, final-snapshot fake step replay, or Chan result cache.
+- The live baseline sample-data exception is accepted for this S1 request only.
 
-Current blockers / pending verification:
+## Current blockers / pending verification
 
-- `Copy S1 Evidence` implementation is committed and runtime evidence has been pasted.
-- S1 live high-speed runtime evidence is received and matches the required runtime gates.
-- S1 is not accepted yet because `flutter analyze` after commit `4f9b56162f4ce6bb7d5751da0c663d1a8bfac160` has not yet been provided.
+- No algorithmic fast/turbo/speed mode is accepted.
+- Chan result cache remains prohibited.
+- Full-history/paged strict step replay remains deferred.
+- Performance chain F1a-F1k is stopped by rule.
+- A matching offline fixture for the selected S1 request is still recommended later, but it is not blocking S1.
 
 ## Next task-party operation
 
-1. Run `flutter analyze` after pulling commit `4f9b56162f4ce6bb7d5751da0c663d1a8bfac160`.
-2. Paste the clean analyze result.
-3. If analyze is clean, S1 can be accepted based on the received one-click evidence payload.
+1. Do not continue performance optimization by default.
+2. Preserve high-speed as default and slow path as debug/baseline only.
+3. Preserve Flutter/Dart as parser/renderer/validator only.
+4. Choose the next business-chain task before implementation.
