@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/bsp.dart';
-import '../../core/models/interval_nest_signal.dart';
 import '../../core/models/level_relation.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
-import '../../core/models/signal_visibility_state.dart';
 
 class MultiLevelIntervalSignalPanel extends StatefulWidget {
   final MultiLevelChanSnapshot snapshot;
@@ -30,7 +28,7 @@ class MultiLevelIntervalSignalPanel extends StatefulWidget {
 class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignalPanel> {
   int _selectedIndex = 0;
   int _pairIndex = 0;
-  String _ruleMode = 'validation';
+  String _ruleMode = 'strategy';
   String _strategyRuleName = 'DAILY_2B_MIN30_1B';
   String _directionFilter = 'same';
   String _highTypeFilter = 'ANY';
@@ -77,8 +75,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
   }
 
   Object? _compactMeta(String key, [Map<String, dynamic>? log]) {
-    final fromLog = log == null ? null : log[key];
-    return fromLog ?? widget.snapshot.meta[key] ?? '';
+    return (log == null ? null : log[key]) ?? widget.snapshot.meta[key] ?? '';
   }
 
   String _compactMetaText(String key, [Map<String, dynamic>? log]) => '${_compactMeta(key, log)}'.trim();
@@ -90,9 +87,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     }
     if (relationPairs.isNotEmpty) return relationPairs.values.toList();
     final levels = widget.snapshot.levels;
-    return [
-      for (var i = 0; i < levels.length - 1; i++) _LevelPair(levels[i], levels[i + 1]),
-    ];
+    return [for (var i = 0; i < levels.length - 1; i++) _LevelPair(levels[i], levels[i + 1])];
   }
 
   _LevelPair? get _selectedPair {
@@ -158,69 +153,45 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
           if (_isStrategyMode) _chip('high', _highStrategyType, true),
           if (_isStrategyMode) _chip('low', _lowTriggerType, true),
           if (selected != null) _chip('selected', '${_selectedIndex + 1}/${signals.length}', true),
-          if (selected != null) _chip('state', selected.signal.state.wireName, selected.signal.state != SignalVisibilityState.invalid),
+          if (selected != null) _chip('state', selected.state, selected.confirmed),
           if (selected != null) _chip('pattern', '${selected.highBsp.type}->${selected.lowBsp.type}', true),
-          if (selected != null) _chip('parent', 'raw:${selected.parentRelation.parentRawIndex}', true),
-          if (selected != null) _chip('child', 'raw:${selected.lowBsp.rawIndex}', true),
           _smallButton('Prev', signals.isEmpty ? null : () => _setSelected(_selectedIndex - 1, signals.length)),
           _smallButton('Next', signals.isEmpty ? null : () => _setSelected(_selectedIndex + 1, signals.length)),
           OutlinedButton.icon(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: _copySignalText(pair, signals, selected)));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Signal diagnostics copied'), duration: Duration(seconds: 3)),
-                );
-              }
-            },
-            icon: const Icon(Icons.copy, size: 14),
-            label: const Text('Copy Signal'),
-            style: _buttonStyle(),
+            onPressed: () => _copy(context, _copyS1EvidenceText(pair, signals, selected), 'S1 evidence copied'),
+            icon: const Icon(Icons.fact_check, size: 15),
+            label: const Text('S1一键复制'),
+            style: _primaryButtonStyle(),
+          ),
+          _chip('debug', 'low-level copies below', false),
+          OutlinedButton.icon(
+            onPressed: () => _copy(context, _copySignalText(pair, signals, selected), 'Debug signal diagnostics copied'),
+            icon: const Icon(Icons.copy, size: 13),
+            label: const Text('Debug: Copy Signal'),
+            style: _debugButtonStyle(),
           ),
           OutlinedButton.icon(
-            onPressed: _hasTimeLog
-                ? () async {
-                    await Clipboard.setData(ClipboardData(text: _copyTimeLogText()));
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Time Log copied'), duration: Duration(seconds: 3)),
-                      );
-                    }
-                  }
-                : null,
-            icon: const Icon(Icons.timer, size: 14),
-            label: const Text('Copy Time Log'),
-            style: _buttonStyle(),
+            onPressed: _hasTimeLog ? () => _copy(context, _copyTimeLogText(), 'Debug time log copied') : null,
+            icon: const Icon(Icons.timer, size: 13),
+            label: const Text('Debug: Copy Time Log'),
+            style: _debugButtonStyle(),
           ),
           OutlinedButton.icon(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: _copyResultValidationText(pair, signals)));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Result validation copied'), duration: Duration(seconds: 3)),
-                );
-              }
-            },
-            icon: const Icon(Icons.verified, size: 14),
-            label: const Text('Copy Result Validation'),
-            style: _buttonStyle(),
-          ),
-          OutlinedButton.icon(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: _copyS1EvidenceText(pair, signals, selected)));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('S1 evidence copied'), duration: Duration(seconds: 3)),
-                );
-              }
-            },
-            icon: const Icon(Icons.fact_check, size: 14),
-            label: const Text('Copy S1 Evidence'),
-            style: _buttonStyle(),
+            onPressed: () => _copy(context, _copyResultValidationText(pair, signals), 'Debug result validation copied'),
+            icon: const Icon(Icons.verified, size: 13),
+            label: const Text('Debug: Copy Result Validation'),
+            style: _debugButtonStyle(),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _copy(BuildContext context, String text, String message) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 3)));
+    }
   }
 
   Widget _ruleModeDropdown() {
@@ -234,7 +205,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         decoration: _dropdownDecoration('rule mode'),
         items: [for (final value in values) DropdownMenuItem(value: value, child: Text(value))],
         onChanged: (v) => setState(() {
-          _ruleMode = v ?? 'validation';
+          _ruleMode = v ?? 'strategy';
           _selectedIndex = 0;
           if (_isStrategyMode) {
             _directionFilter = 'same';
@@ -355,53 +326,10 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       final childEnd = relations.map((r) => r.childEndRawIndex).reduce((a, b) => a > b ? a : b);
       for (final lowBsp in low.bsps.where((b) => _matchesLowFilter(b, highBsp, childStart, childEnd))) {
         final relation = _relationContaining(relations, lowBsp.rawIndex) ?? relations.first;
-        final state = highBsp.confirmed && lowBsp.confirmed ? SignalVisibilityState.confirmed : SignalVisibilityState.candidate;
-        final direction = _directionOfPair(highBsp, lowBsp);
-        final signal = IntervalNestSignal(
-          direction: direction,
-          highLevel: pair.parentLevel,
-          lowLevel: pair.childLevel,
-          highPattern: highBsp.type,
-          lowTrigger: lowBsp.type,
-          highRawIndex: highBsp.rawIndex,
-          lowRawIndex: lowBsp.rawIndex,
-          score: _scoreFor(state),
-          state: state,
-          reasons: [
-            'high level BSP is from original chan.py output',
-            'low level BSP is from original chan.py output',
-            'high-low range is bound by native LevelRelation',
-            _isStrategyMode ? 'strategy_interval_nest_buy matched $_strategyRuleName' : 'validation mode accepts arbitrary BSP type combinations',
-          ],
-          warnings: [
-            _isScanMode ? 'Scan snapshot candidate only; verify in strict step before formal step acceptance' : 'Visible in current strict step frame',
-            _isStrategyMode ? 'Strategy rule is a candidate signal only; not a trading recommendation' : 'Validation mode only; not a trading plan',
-          ],
-          observedAtCursor: _isScanMode ? null : widget.frameIndex,
-          confirmedAtCursor: !_isScanMode && state == SignalVisibilityState.confirmed ? widget.frameIndex : null,
-          meta: {
-            'rule_mode': _signalRuleMode,
-            'strategy_rule_name': _isStrategyMode ? _strategyRuleName : '',
-            'high_strategy_type': _isStrategyMode ? _highStrategyType : '',
-            'low_trigger_type': _isStrategyMode ? _lowTriggerType : '',
-            'direction_filter': _effectiveDirectionFilter,
-            'high_type_filter': _isStrategyMode ? 'strategy_rule' : _highTypeFilter,
-            'low_type_filter': _isStrategyMode ? 'strategy_rule' : _lowTypeFilter,
-            'relation_source': 'native chan_parent_child LevelRelation',
-            'parent_relation_range': '${relation.parentRawIndex}-${relation.parentRawIndex}',
-            'child_relation_range': '${relation.childStartRawIndex}-${relation.childEndRawIndex}',
-            'child_union_range': '$childStart-$childEnd',
-            'high_bsp_index': highBsp.index,
-            'low_bsp_index': lowBsp.index,
-            'high_bsp_type': highBsp.type,
-            'low_bsp_type': lowBsp.type,
-          },
-        );
         result.add(_SignalMatch(
-          signal: signal,
           highBsp: highBsp,
           lowBsp: lowBsp,
-          parentRelation: relation,
+          relation: relation,
           relationCount: relations.length,
           childStartRawIndex: childStart,
           childEndRawIndex: childEnd,
@@ -409,9 +337,9 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       }
     }
     result.sort((a, b) {
-      final byHigh = a.signal.highRawIndex.compareTo(b.signal.highRawIndex);
+      final byHigh = a.highBsp.rawIndex.compareTo(b.highBsp.rawIndex);
       if (byHigh != 0) return byHigh;
-      return (a.signal.lowRawIndex ?? 0).compareTo(b.signal.lowRawIndex ?? 0);
+      return a.lowBsp.rawIndex.compareTo(b.lowBsp.rawIndex);
     });
     return result;
   }
@@ -457,19 +385,6 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     return true;
   }
 
-  String _directionOfPair(BspPoint highPoint, BspPoint lowPoint) {
-    if (highPoint.isBuy && lowPoint.isBuy) return 'buy';
-    if (highPoint.isSell && lowPoint.isSell) return 'sell';
-    if (highPoint.isBuy && lowPoint.isSell) return 'mixed_buy_sell';
-    if (highPoint.isSell && lowPoint.isBuy) return 'mixed_sell_buy';
-    return 'unknown';
-  }
-
-  double _scoreFor(SignalVisibilityState state) {
-    final base = state == SignalVisibilityState.confirmed ? 1.0 : 0.5;
-    return _isStrategyMode ? base + 0.25 : base;
-  }
-
   LevelRelation? _relationContaining(List<LevelRelation> relations, int childRawIndex) {
     for (final relation in relations) {
       if (childRawIndex >= relation.childStartRawIndex && childRawIndex <= relation.childEndRawIndex) return relation;
@@ -486,7 +401,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     final log = _timeLog ?? const <String, dynamic>{};
     return [
       'manual S1 evidence diagnostics',
-      'button: Copy S1 Evidence',
+      'button: S1一键复制',
       's1_phase: strategy_mode_runtime_acceptance',
       'open_questions: none',
       'sample_data_supervisor_decision: accepted_for_this_S1_request',
@@ -502,7 +417,8 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'frame_source: ${_isScanMode ? 'scan_snapshot' : 'native_step_frame'}',
       'final_snapshot_rendered_as_step: false',
       'strategy_traceability_required: source_bsp_identifiers,source_target_levels,native_relation_range,strict_step_visibility,state,rule_mode_name',
-      'status: pending_runtime_acceptance',
+      'debug_copy_tools: de_emphasized',
+      'status: s1_evidence_exported',
       '',
       '--- Copy Time Log ---',
       _copyTimeLogText(),
@@ -525,7 +441,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     final log = _timeLog ?? const <String, dynamic>{};
     return [
       'manual P0 diagnostics',
-      'button: Copy S1 Evidence/P0 Summary',
+      'button: S1一键复制/P0 Summary',
       'copy_p0_visible: true',
       ..._runtimePathLines(log),
       'symbol: ${log['symbol'] ?? widget.symbol}',
@@ -546,7 +462,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     final log = _timeLog ?? const <String, dynamic>{};
     return [
       'manual step diagnostics',
-      'button: Copy S1 Evidence/Step Summary',
+      'button: S1一键复制/Step Summary',
       'frame_source: ${_isScanMode ? 'scan_snapshot' : 'native_step_frame'}',
       'final_snapshot_rendered_as_step: false',
       'mode: ${widget.mode}',
@@ -573,7 +489,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     if (pair == null) {
       return [
         'manual interval signal diagnostics',
-        'button: Copy Signal',
+        'button: Debug: Copy Signal',
         'mode: ${widget.mode}',
         'symbol: ${widget.symbol}',
         ..._runtimePathLines(_timeLog),
@@ -583,6 +499,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
         'status: no available native relation pair',
       ].join('\n');
     }
+
     final high = widget.snapshot.of(pair.parentLevel);
     final low = widget.snapshot.of(pair.childLevel);
     final highBsps = high?.bsps ?? const <BspPoint>[];
@@ -614,7 +531,6 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       ].join('\n');
     }
 
-    final signal = selected.signal;
     return [
       ..._copyHeader(pair, availablePairs),
       'available_signals: ${signals.length}',
@@ -622,14 +538,14 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'source_bsp_identifiers: high=${pair.parentLevel}#${selected.highBsp.index}:raw=${selected.highBsp.rawIndex}:type=${selected.highBsp.type};low=${pair.childLevel}#${selected.lowBsp.index}:raw=${selected.lowBsp.rawIndex}:type=${selected.lowBsp.type}',
       'source_levels: ${pair.parentLevel},${pair.childLevel}',
       'target_levels: ${pair.parentLevel}->${pair.childLevel}',
-      'direction: ${signal.direction}',
-      'signal_state: ${signal.state.wireName}',
-      'state: ${signal.state.wireName}',
-      'score: ${signal.score}',
+      'direction: ${selected.direction}',
+      'signal_state: ${selected.state}',
+      'state: ${selected.state}',
+      'score: ${selected.score}',
       'strict_step_verified: ${_isScanMode ? 'false' : 'true'}',
-      'high_level: ${signal.highLevel}',
+      'high_level: ${pair.parentLevel}',
       'high_strategy_type: ${_isStrategyMode ? _highStrategyType : ''}',
-      'high_pattern: ${signal.highPattern}',
+      'high_pattern: ${selected.highBsp.type}',
       'high_bsp_index: ${selected.highBsp.index}',
       'high_bsp_type: ${selected.highBsp.type}',
       'high_raw_index: ${selected.highBsp.rawIndex}',
@@ -639,9 +555,9 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'high_bi_index: ${selected.highBsp.biIndex ?? ''}',
       'high_seg_index: ${selected.highBsp.segIndex ?? ''}',
       'high_zs_index: ${selected.highBsp.zsIndex ?? ''}',
-      'low_level: ${signal.lowLevel}',
+      'low_level: ${pair.childLevel}',
       'low_trigger_type: ${_isStrategyMode ? _lowTriggerType : ''}',
-      'low_trigger: ${signal.lowTrigger}',
+      'low_trigger: ${selected.lowBsp.type}',
       'low_bsp_index: ${selected.lowBsp.index}',
       'low_bsp_type: ${selected.lowBsp.type}',
       'low_raw_index: ${selected.lowBsp.rawIndex}',
@@ -651,22 +567,22 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'low_bi_index: ${selected.lowBsp.biIndex ?? ''}',
       'low_seg_index: ${selected.lowBsp.segIndex ?? ''}',
       'low_zs_index: ${selected.lowBsp.zsIndex ?? ''}',
-      'parent_relation_range: ${selected.parentRelation.parentRawIndex}-${selected.parentRelation.parentRawIndex}',
-      'child_relation_range: ${selected.parentRelation.childStartRawIndex}-${selected.parentRelation.childEndRawIndex}',
+      'parent_relation_range: ${selected.relation.parentRawIndex}-${selected.relation.parentRawIndex}',
+      'child_relation_range: ${selected.relation.childStartRawIndex}-${selected.relation.childEndRawIndex}',
       'child_union_range: ${selected.childStartRawIndex}-${selected.childEndRawIndex}',
       'low_in_child_range: ${selected.lowBsp.rawIndex >= selected.childStartRawIndex && selected.lowBsp.rawIndex <= selected.childEndRawIndex}',
       'relation_count_for_parent: ${selected.relationCount}',
       'native_relation_count_for_pair: $relationCount',
-      'visibleAt.frame: ${signal.observedAtCursor ?? ''}',
-      'confirmedAt.frame: ${signal.confirmedAtCursor ?? ''}',
-      'invalidatedAt.frame: ${signal.invalidatedAtCursor ?? ''}',
+      'visibleAt.frame: ${widget.frameIndex ?? ''}',
+      'confirmedAt.frame: ${selected.confirmed ? widget.frameIndex ?? '' : ''}',
+      'invalidatedAt.frame: ',
       'invalidation_reason: ',
       'source_policy: original chan.py BSP + native LevelRelation only',
       'future_function_policy: ${_futurePolicy}',
       'candidate_rule: ${_candidateRuleText}',
       'strategy_caveat: ${_strategyCaveat}',
-      'reasons: ${signal.reasons.join(' | ')}',
-      'warnings: ${signal.warnings.join(' | ')}',
+      'reasons: high level BSP is from original chan.py output | low level BSP is from original chan.py output | high-low range is bound by native LevelRelation',
+      'warnings: ${_isStrategyMode ? 'Strategy rule is a candidate signal only; not a trading recommendation' : 'Validation mode only; not a trading plan'}',
       'status: ok',
     ].join('\n');
   }
@@ -676,7 +592,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     if (log == null) {
       return [
         'time log diagnostics',
-        'button: Copy Time Log',
+        'button: Debug: Copy Time Log',
         'time_log_context: interval_signal_panel',
         'rule_mode_ui: $_ruleMode',
         'signal_rule_mode: $_signalRuleMode',
@@ -689,7 +605,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     final slow = stages.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     return [
       'time log diagnostics',
-      'button: Copy Time Log',
+      'button: Debug: Copy Time Log',
       'time_log_context: interval_signal_panel',
       'rule_mode_ui: $_ruleMode',
       'signal_rule_mode: $_signalRuleMode',
@@ -713,17 +629,6 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'backend_url: ${log['backend_url'] ?? ''}',
       'python_runtime: ${log['python_runtime'] ?? ''}',
       'process_source: ${log['process_source'] ?? ''}',
-      'backend_process_pid: ${log['backend_process_pid'] ?? ''}',
-      'backend_process_start_count: ${log['backend_process_start_count'] ?? ''}',
-      'backend_process_started_at: ${log['backend_process_started_at'] ?? ''}',
-      'backend_process_ready_at: ${log['backend_process_ready_at'] ?? ''}',
-      'backend_process_uptime_ms: ${log['backend_process_uptime_ms'] ?? ''}',
-      'backend_startup_elapsed_ms: ${log['backend_startup_elapsed_ms'] ?? ''}',
-      'backend_last_health_check_elapsed_ms: ${log['backend_last_health_check_elapsed_ms'] ?? ''}',
-      'backend_health_check_count: ${log['backend_health_check_count'] ?? ''}',
-      'backend_request_count: ${log['backend_request_count'] ?? ''}',
-      'backend_last_request_reused: ${log['backend_last_request_reused'] ?? ''}',
-      'backend_last_ready_elapsed_ms: ${log['backend_last_ready_elapsed_ms'] ?? ''}',
       'used_app_bundled_python: ${log['used_app_bundled_python'] ?? ''}',
       'native_cchan_lv_list: ${log['native_cchan_lv_list'] ?? ''}',
       'fallback_to_bridge: ${log['fallback_to_bridge'] ?? ''}',
@@ -740,11 +645,6 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'parsed_frame_count: ${log['parsed_frame_count'] ?? ''}',
       'parsed_level_count: ${log['parsed_level_count'] ?? ''}',
       'lazy_frame_parsing: ${log['lazy_frame_parsing'] ?? ''}',
-      'lazy_frame_cache_hits: ${log['lazy_frame_cache_hits'] ?? ''}',
-      'lazy_frame_cache_misses: ${log['lazy_frame_cache_misses'] ?? ''}',
-      'lazy_frame_parse_ms: ${log['lazy_frame_parse_ms'] ?? ''}',
-      'lazy_frame_last_index: ${log['lazy_frame_last_index'] ?? ''}',
-      'lazy_frame_last_parse_ms: ${log['lazy_frame_last_parse_ms'] ?? ''}',
       'total_elapsed_ms: ${log['total_elapsed_ms'] ?? ''}',
       'backend_elapsed_ms: ${log['backend_elapsed_ms'] ?? ''}',
       'frontend_elapsed_ms: ${log['frontend_elapsed_ms'] ?? ''}',
@@ -771,12 +671,11 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     final finalStatus = hasCompactValidation ? (compactStatus == 'match' ? 'ok' : 'mismatch') : 'blocked';
     return [
       'result validation diagnostics',
-      'button: Copy Result Validation',
+      'button: Debug: Copy Result Validation',
       'validation_phase: ${hasCompactValidation ? 'F1a' : 'F0'}',
       'validation_scope: ${hasCompactValidation ? compactScope : 'baseline_vs_fast_candidate'}',
       'baseline_source: original chan.py analyze_multi',
       'fast_candidate_enabled: false',
-      'fast_candidate_source: ',
       'compact_candidate_enabled: $hasCompactValidation',
       'compact_candidate_source: ${hasCompactValidation ? 'compact_v1 transport adapter' : ''}',
       'validation_status: ${hasCompactValidation ? compactStatus : 'blocked'}',
@@ -800,14 +699,8 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
       'frame.index.local: ${widget.frameIndex ?? ''}',
       'frame.count.local: ${widget.frameCount ?? ''}',
       'step_frame_format: ${_compactMeta('step_frame_format', log)}',
-      'frame_policy: ${_compactMeta('frame_policy', log)}',
-      'frame_stride: ${_compactMeta('frame_stride', log)}',
       'frames_total: ${_compactMeta('frames_total', log)}',
       'frames_returned: ${_compactMeta('frames_returned', log)}',
-      'frames_truncated: ${_compactMeta('frames_truncated', log)}',
-      'include_bars_in_frames: ${_compactMeta('include_bars_in_frames', log)}',
-      'include_indicators_in_frames: ${_compactMeta('include_indicators_in_frames', log)}',
-      'compact_validation_scope: $compactScope',
       'compact_validation_status: $compactStatus',
       'compact_validation_mismatch_count: $compactMismatchCount',
       'compact_validation_first_mismatch: $compactFirstMismatch',
@@ -876,7 +769,7 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
   List<String> _copyHeader(_LevelPair pair, String availablePairs) {
     return [
       'manual interval signal diagnostics',
-      'button: Copy Signal',
+      'button: Debug: Copy Signal',
       'mode: ${widget.mode}',
       'symbol: ${widget.symbol}',
       ..._runtimePathLines(_timeLog),
@@ -934,6 +827,25 @@ class _MultiLevelIntervalSignalPanelState extends State<MultiLevelIntervalSignal
     );
   }
 
+  ButtonStyle _primaryButtonStyle() {
+    return OutlinedButton.styleFrom(
+      foregroundColor: const Color(0xFFFFFFFF),
+      backgroundColor: const Color(0x663A76F0),
+      side: const BorderSide(color: Color(0xAA8AB4FF)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+    );
+  }
+
+  ButtonStyle _debugButtonStyle() {
+    return OutlinedButton.styleFrom(
+      foregroundColor: const Color(0xFF9AA0A6),
+      side: const BorderSide(color: Color(0x449AA0A6)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+    );
+  }
+
   Widget _chip(String label, String value, bool ok) {
     final color = ok ? const Color(0xFF66BB6A) : const Color(0xFFFFB74D);
     return Container(
@@ -958,21 +870,31 @@ class _LevelPair {
 }
 
 class _SignalMatch {
-  final IntervalNestSignal signal;
   final BspPoint highBsp;
   final BspPoint lowBsp;
-  final LevelRelation parentRelation;
+  final LevelRelation relation;
   final int relationCount;
   final int childStartRawIndex;
   final int childEndRawIndex;
 
   const _SignalMatch({
-    required this.signal,
     required this.highBsp,
     required this.lowBsp,
-    required this.parentRelation,
+    required this.relation,
     required this.relationCount,
     required this.childStartRawIndex,
     required this.childEndRawIndex,
   });
+
+  bool get confirmed => highBsp.confirmed && lowBsp.confirmed;
+  String get state => confirmed ? 'confirmed' : 'candidate';
+  double get score => confirmed ? 1.0 : 0.5;
+
+  String get direction {
+    if (highBsp.isBuy && lowBsp.isBuy) return 'buy';
+    if (highBsp.isSell && lowBsp.isSell) return 'sell';
+    if (highBsp.isBuy && lowBsp.isSell) return 'mixed_buy_sell';
+    if (highBsp.isSell && lowBsp.isBuy) return 'mixed_sell_buy';
+    return 'unknown';
+  }
 }
