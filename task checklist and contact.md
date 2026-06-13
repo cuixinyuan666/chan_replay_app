@@ -120,6 +120,11 @@ Resolved supervisor question:
 - Question to supervising party: `test/fixtures/research_pipeline_contract_valid.json` is a relevant offline research pipeline contract fixture, but it cannot reproduce the selected S1 request (`600340`, `SH`, `DAILY,MIN30,MIN5`, `2025-09-01~2025-10-20`) because it uses synthetic `TEST.LOCAL` data from `2024-01-01~2024-01-12` and single-level analysis JSON. `build/real_analysis.json` is referenced by README but is not present in the repository. May S1 proceed using the live accepted easy-tdx baseline plus Copy Time Log / Copy P0 / Copy Step / Copy Result Validation / strategy diagnostics, or must a matching offline fixture be added first?
 - Answer from supervising party: S1 may proceed using the live accepted easy-tdx baseline because the only checked offline fixture is relevant but not suitable for the selected S1 runtime acceptance. The exception is accepted only for this S1 request. S1 still requires high-speed runtime diagnostics, Copy Time Log, Copy P0, Copy Step, Copy Result Validation, and strategy diagnostics proving source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name. A matching offline fixture is recommended later but is not required before this S1 can proceed.
 
+S1 explicit answers before closure:
+
+- Offline data answer: the repository fixture is relevant but not suitable for the selected S1 request, and the supervisor has accepted a live baseline exception only for this S1. Therefore S1 may proceed with live easy-tdx baseline evidence; no matching offline fixture is required before implementation or runtime validation, but a matching fixture remains recommended later.
+- One-click copy answer: S1 must not be closed until a consolidated evidence-copy action is completed. The accepted target is a `Copy S1 Evidence` / one-click equivalent that copies, in one payload, Time Log, P0, Step, Result Validation, and Signal diagnostics for the selected live high-speed request. The current separate Copy buttons are useful but not sufficient to close S1 because they increase the chance of missing one required diagnostic.
+
 Goal:
 
 - Resume business-chain work after B1.
@@ -176,7 +181,7 @@ S1 strategy wiring audit:
 - `Copy Signal` no-output diagnostics include BSP counts, type counts, relation count, candidate rule, source policy, future policy, and diagnosis.
 - `Copy Time Log` from the signal panel includes runtime path diagnostics, `native_cchan_lv_list`, `fallback_to_bridge`, compact step-frame transport fields, request context, and strategy rule fields.
 - `Copy Result Validation` from the signal panel includes validation status, compact validation status, runtime path diagnostics, selected pair, rule mode, strategy rule name, baseline level counts, sample BSP, and sample relation.
-- No code change is required for S1 wiring at this step; the task now requires live high-speed runtime evidence pasted from the App.
+- The remaining S1 UX/diagnostic task is the one-click evidence-copy action described above; S1 cannot be accepted until this is completed or an equivalent single-copy payload is proven.
 
 S1 required evidence:
 
@@ -185,7 +190,8 @@ S1 required evidence:
 - Copy P0;
 - Copy Step;
 - Copy Result Validation;
-- strategy output diagnostic, or no-output diagnostic.
+- Copy Signal;
+- consolidated one-click S1 evidence output.
 
 S1 acceptance criteria:
 
@@ -203,6 +209,7 @@ S1 acceptance criteria:
 - `final_snapshot_rendered_as_step: false`.
 - Sample/offline data exception is accepted for this S1 request only.
 - Accepted strategy output must include source BSP identifiers, source/target levels, native relation range, strict-step visibility, state, and rule/mode name.
+- One-click S1 evidence copy is completed and includes Time Log, P0, Step, Result Validation, and Signal diagnostics.
 
 Forbidden in S1:
 
@@ -226,14 +233,16 @@ Forbidden in S1:
 - Runtime path switch and Dart Chan cleanup B1 is accepted.
 - S1 Strategy mode runtime acceptance is in progress.
 - S1 sample/offline data exception is adjudicated and no longer blocks implementation.
+- S1 one-click evidence copy action must be completed before S1 closure.
 - S1 live high-speed runtime evidence is still required before acceptance.
 
 ## Next task-party operation
 
-1. Run the accepted live easy-tdx baseline request in the App on the default high-speed path.
-2. In the interval signal panel, set `rule mode` to `strategy` and select a strategy rule.
-3. Copy and paste: Copy Time Log, Copy P0, Copy Step, Copy Result Validation, and Copy Signal.
-4. Keep runtime path dropdown unchanged: high-speed default, slow path debug/baseline only.
-5. Keep Dart/Flutter as parser/renderer/validator only.
-6. Add a short experience note if the task encounters complex tooling/manual/code problems.
-7. Accept S1 only if high-speed path, validation, strict backend step, accepted sample/offline exception, and traceability requirements all pass.
+1. Implement or wire a consolidated `Copy S1 Evidence` action that emits Time Log, P0, Step, Result Validation, and Signal diagnostics in one clipboard payload.
+2. Run the accepted live easy-tdx baseline request in the App on the default high-speed path.
+3. In the interval signal panel, set `rule mode` to `strategy` and select a strategy rule.
+4. Copy and paste: the consolidated S1 evidence output, plus individual diagnostics if needed for debugging.
+5. Keep runtime path dropdown unchanged: high-speed default, slow path debug/baseline only.
+6. Keep Dart/Flutter as parser/renderer/validator only.
+7. Add a short experience note if the task encounters complex tooling/manual/code problems.
+8. Accept S1 only if high-speed path, validation, strict backend step, accepted sample/offline exception, one-click evidence copy, and traceability requirements all pass.
