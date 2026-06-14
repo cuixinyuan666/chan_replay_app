@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Any
 
 from .a_indicator_export import build_display_indicators, indicator_source_meta
@@ -15,6 +15,11 @@ from .chanpy_engine import (
     _safe_code,
 )
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
+
+
+_MAX_EXPANDED_LEVEL_COUNT = 200000
+_COUNT_EXPANSION_BUFFER_RATIO = 1.35
+_COUNT_EXPANSION_BUFFER_BARS = 500
 
 
 def _normalize_levels(value: Any) -> list[str]:
@@ -50,6 +55,21 @@ def _parse_bar_dt(row: dict[str, Any]) -> datetime | None:
         return datetime.fromisoformat(text)
     except ValueError:
         return None
+
+
+def _parse_request_window_bound(value: str | None, *, is_end: bool) -> datetime | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    parsed = _parse_bar_dt({'dt': text})
+    if parsed is None:
+        return None
+    date_only = len(text.replace('/', '-')) <= 10 and ':' not in text
+    if date_only:
+        return datetime.combine(parsed.date(), time.max if is_end else time.min)
+    return parsed
 
 
 def _level_intraday_bars_per_day(level: str) -> int:
@@ -113,10 +133,49 @@ def _effective_csv_dt(level: str, row: dict[str, Any]) -> datetime | None:
     return datetime.combine(row_dt.date(), time(23, 59))
 
 
-def _expanded_count_for_level(level: str, top_bar_count: int, requested_count: int) -> int:
+def _trading_days_inclusive(start_dt: datetime, end_dt: datetime) -> int:
+    start_date = min(start_dt.date(), end_dt.date())
+    end_date = max(start_dt.date(), end_dt.date())
+    days = 0
+    cur = start_date
+    while cur <= end_date:
+        if cur.weekday() < 5:
+            days += 1
+        cur += timedelta(days=1)
+    return max(1, days)
+
+
+def _count_expansion_basis(
+    level: str,
+    requested_count: int,
+    window_start: datetime,
+    window_end: datetime,
+) -> dict[str, int | float | str]:
     bars_per_day = _level_intraday_bars_per_day(level)
-    estimated = int(top_bar_count * bars_per_day * 1.35) + 500
-    return min(200000, max(int(requested_count), estimated))
+    trading_days = _trading_days_inclusive(window_start, window_end)
+    window_estimated = int(trading_days * bars_per_day * _COUNT_EXPANSION_BUFFER_RATIO) + _COUNT_EXPANSION_BUFFER_BARS
+    expanded_count = min(_MAX_EXPANDED_LEVEL_COUNT, max(int(requested_count), window_estimated))
+    return {
+        'level': level,
+        'requested_count': int(requested_count),
+        'bars_per_day': bars_per_day,
+        'window_trading_days': trading_days,
+        'buffer_ratio': _COUNT_EXPANSION_BUFFER_RATIO,
+        'buffer_bars': _COUNT_EXPANSION_BUFFER_BARS,
+        'window_estimated_count': window_estimated,
+        'expanded_count': expanded_count,
+        'window_start': window_start.isoformat(sep=' '),
+        'window_end': window_end.isoformat(sep=' '),
+    }
+
+
+def _expanded_count_for_level(
+    level: str,
+    requested_count: int,
+    window_start: datetime,
+    window_end: datetime,
+) -> int:
+    return int(_count_expansion_basis(level, requested_count, window_start, window_end)['expanded_count'])
 
 
 def _max_step_frames(config: dict[str, Any] | None) -> int:
@@ -200,12 +259,23 @@ def _load_aligned_bars_by_level(
     end: str | None,
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
     top_level = level_order[0]
+    requested_start_dt = _parse_request_window_bound(start, is_end=False)
+    requested_end_dt = _parse_request_window_bound(end, is_end=True)
+    if requested_start_dt is not None and requested_end_dt is not None and requested_start_dt > requested_end_dt:
+        raise RuntimeError(f'analyze_multi request window is invalid: start={start}, end={end}')
+
+    top_count = int(count)
+    prefetch_count_basis: dict[str, dict[str, int | float | str]] = {}
+    if requested_start_dt is not None and requested_end_dt is not None:
+        prefetch_count_basis[top_level] = _count_expansion_basis(top_level, int(count), requested_start_dt, requested_end_dt)
+        top_count = int(prefetch_count_basis[top_level]['expanded_count'])
+
     top_bars = load_easy_tdx_bars(
         symbol=code,
         market=market_name,
         period=top_level,
         adjust=adjust,
-        count=count,
+        count=top_count,
         start=start,
         end=end,
     )
@@ -216,13 +286,29 @@ def _load_aligned_bars_by_level(
     if top_start is None or top_end is None:
         raise RuntimeError(f'{top_level} K线缺少可解析时间字段')
 
-    data_start = start or datetime.combine(top_start.date(), time.min).isoformat(sep=' ')
-    data_end = end or datetime.combine(top_end.date(), time.max).isoformat(sep=' ')
+    data_start_dt = requested_start_dt or datetime.combine(top_start.date(), time.min)
+    data_end_dt = requested_end_dt or datetime.combine(top_end.date(), time.max)
+    if data_start_dt > data_end_dt:
+        raise RuntimeError(f'analyze_multi data window is invalid: start={data_start_dt}, end={data_end_dt}')
+    data_start = data_start_dt.isoformat(sep=' ')
+    data_end = data_end_dt.isoformat(sep=' ')
+
     bars_by_level: dict[str, list[dict[str, Any]]] = {top_level: top_bars}
-    requested_counts: dict[str, int] = {top_level: int(count)}
+    requested_counts: dict[str, int] = {top_level: top_count}
+    count_expansion_basis: dict[str, dict[str, int | float | str]] = {
+        top_level: prefetch_count_basis.get(
+            top_level,
+            {
+                **_count_expansion_basis(top_level, int(count), data_start_dt, data_end_dt),
+                'expanded_count': top_count,
+            },
+        )
+    }
 
     for level in level_order[1:]:
-        level_count = _expanded_count_for_level(level, len(top_bars), int(count))
+        basis = _count_expansion_basis(level, int(count), data_start_dt, data_end_dt)
+        level_count = int(basis['expanded_count'])
+        count_expansion_basis[level] = basis
         requested_counts[level] = level_count
         bars = load_easy_tdx_bars(
             symbol=code,
@@ -251,6 +337,12 @@ def _load_aligned_bars_by_level(
 
     meta = {
         'top_level': top_level,
+        'requested_window': {
+            'start': data_start,
+            'end': data_end,
+            'request_start_provided': start is not None,
+            'request_end_provided': end is not None,
+        },
         'raw_window': {
             'start': str(top_start),
             'end': str(top_end),
@@ -264,7 +356,9 @@ def _load_aligned_bars_by_level(
         'aligned_counts': {level: len(bars) for level, bars in aligned.items()},
         'duplicates_removed': duplicates_removed,
         'bars_per_day': {level: _level_intraday_bars_per_day(level) for level in level_order},
-        'alignment_policy': 'expanded sub-level count + common date trim + effective-time sort/dedupe',
+        'count_expansion_basis': count_expansion_basis,
+        'count_expansion_policy': 'deterministic request-window trading-day estimate + level bars_per_day + 35% buffer + 500, capped at 200000',
+        'alignment_policy': 'expanded top/lower-level count + common date trim + effective-time sort/dedupe',
     }
     return aligned, meta
 
