@@ -56,10 +56,11 @@ Required completion summary fields:
 - S11 post-S10 guardrail regression bundle: accepted by receiver CLI evidence.
 - S12a App single-stock replay high-speed baseline static validation: accepted by receiver CLI evidence.
 - S12b replay evidence button, indicator default-hidden state, and explicit level-validation feedback: accepted by receiver CLI + App evidence.
+- S12c step-load temporal evidence state tracking: accepted by receiver CLI + App evidence.
 
 ## Current selected task
 
-S12c selected: step-load temporal evidence state tracking for replay structures.
+S12d selected: interval-link marker ids for parent-child replay navigation evidence.
 
 ## Historical accepted summary
 
@@ -217,17 +218,56 @@ validation_result:
 - Receiver S12b validator output included `ok: true`, empty `missing_baseline_required`, empty `missing_s12b_required`, all `s12b_required_checks: true`, no forbidden Dart calculation patterns, no forbidden profit/trading wording, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
 - Receiver S11 regression output included `ok: true`, `required_ok: true`, `required_timeout_failure_count: 0`, `hygiene_ok: true`, and `dart_chan_calculation_authority: false`.
 - Receiver analyzer output included `No issues found`.
-- Receiver App evidence included:
-  - `s12_phase: app_single_stock_replay_high_speed_path`
-  - `symbol: 600340`
-  - `market: SH`
-  - `selected_levels: DAILY,MIN30,MIN5`
-  - `normalized_levels: DAILY,MIN30,MIN5`
-  - `level_validation: 级别组合有效：DAILY,MIN30,MIN5`
-  - `runtime_path: high_speed`
-  - `replay_mode: once`
-  - `enabled_easy_tdx_indicators: none`
-  - `backend_authority: native CChan(lv_list) through /api/chan/analyze_multi`
+- Receiver App evidence included `runtime_path: high_speed`, `replay_mode: once`, `enabled_easy_tdx_indicators: none`, native CChan authority, `fallback_to_bridge: false`, `dart_chan_calculation_authority: false`, and `candidate_policy: not a trading recommendation`.
+
+remaining_risk:
+
+- S12b App evidence uses `once` mode. Step-specific temporal evidence is intentionally deferred to S12c.
+
+next_task:
+
+- Start S12c: step-load temporal evidence state tracking for replay structures.
+
+## S12c accepted: step-load temporal evidence state tracking for replay structures
+
+completed_tasks:
+
+- Added temporal evidence lifecycle tracking in `lib/ui/pages/s12_single_stock_replay_page.dart`.
+- The App now rebuilds temporal evidence from backend-exported `analysis.frames` when frames exist, and from one snapshot only when frames are absent.
+- The tracker collects backend model objects only: BSP, FX, BI, SEG, ZS, and segZs/segseg-style ZS when present.
+- The tracker records `first_seen_step`, `confirmed_step`, `last_seen_step`, `temporal_source`, `temporal_state`, and `temporal_state_counts` in copied S12 evidence.
+- A backend-exported structure with `is_sure/confirmed == false` is classified as `provisional` while still present in the last frame.
+- A backend-exported structure with `is_sure/confirmed == true` is classified as `confirmed`; repeated sightings update the same evidence object instead of creating duplicates.
+- A backend-exported provisional structure that later disappears is preserved as `historical_provisional` and is not treated as confirmed.
+- Updated `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so S12c temporal tracking is required, while interval-link marker ids and marker-overlap policy remain review-only.
+- Removed unused temporary field after analyzer warning; temporal map remains stored inside `_TemporalSummary.evidence`.
+- Did not modify `python/chan.py` and did not add Dart-side Chan calculation authority.
+
+evidence_button:
+
+- Receiver command: `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
+- Receiver command: `python tools/validate_s11_guardrail_regression.py`.
+- Receiver command: `flutter analyze`.
+- Receiver App button: `复制复盘证据` in step mode.
+
+validation_result:
+
+- accepted.
+- Receiver S12c validator output included `ok: true`, all `s12c_required_checks: true`, empty `missing_baseline_required`, empty `missing_s12b_required`, empty `missing_s12c_required`, no forbidden Dart calculation patterns, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
+- Receiver S11 regression output included `ok: true`, `required_ok: true`, `required_timeout_failure_count: 0`, `hygiene_ok: true`, and `dart_chan_calculation_authority: false`.
+- Receiver App step evidence included:
+  - `replay_mode: step`
+  - `current_step: 0`
+  - `temporal_source: backend_step_frames`
+  - `temporal_state: provisional=44 confirmed=3288 historical_provisional=122`
+  - `temporal_state_counts: provisional=44 confirmed=3288 historical_provisional=122 total=3454`
+  - `temporal_sample_id: SEG:DAILY:211-323:3`
+  - `temporal_sample_type: SEG`
+  - `temporal_sample_state: historical_provisional`
+  - `first_seen_step: 0`
+  - `confirmed_step: unknown`
+  - `last_seen_step: 25`
+  - `temporal_evidence_policy: preserve backend-exported structures across frames; do not recalculate Chan structures in Dart`
   - `native_cchan_lv_list: true`
   - `fallback_to_bridge: false`
   - `dart_chan_calculation_authority: false`
@@ -235,62 +275,55 @@ validation_result:
 
 remaining_risk:
 
-- Full S12 is still not complete. The S12b validator still reports these review-only gaps:
-  - `temporal_state_provisional_confirmed_historical_exists`
+- Full S12 is still not complete. The S12c validator still reports these review-only gaps:
   - `interval_link_marker_id_exists`
   - `marker_overlap_policy_marker_exists`
 - `audit_origin_kline_global_label_layout_usage.py --strict` still reports `_drawFx does not accept chartLabels`; keep this as display-layout debt unless it is selected as the next specific chart-label task.
-- S12b App evidence uses `once` mode. Step-specific temporal evidence is intentionally deferred to S12c.
+- S12c tracks lifecycle evidence for backend-exported structures; it does not add clickable interval-link marker ids.
 
 next_task:
 
-- Start S12c: step-load temporal evidence state tracking for replay structures.
+- Start S12d: interval-link marker ids for parent-child replay navigation evidence.
 
-## S12c selected: step-load temporal evidence state tracking for replay structures
+## S12d selected: interval-link marker ids for parent-child replay navigation evidence
 
 Goal:
 
-- Convert S12 temporal evidence from a placeholder (`not_tracked_in_s12b`) into real replay-state evidence for structures produced by backend step frames.
-- Preserve backend authority: structures must come from backend step frames / snapshots only; Dart may track visual/evidence lifecycle state but must not calculate FX/BI/SEG/ZS/BSP/segseg.
+- Convert parent-child relation evidence from plain text into stable interval-link marker ids that can be copied, audited, and later used for navigation/highlighting.
 
 Scope:
 
-- Add temporal state tracking for backend-exported structures in the S12 replay workflow.
-- Track at least BSP first, then FX/BI/SEG/ZS/segseg when available through the existing backend model.
-- A structure or BSP that appeared in a previous step must not be silently removed only because later steps no longer expose it in the current frame/snapshot.
-- `is_sure == false` should be represented as `provisional`.
-- `is_sure == true` should be represented as `confirmed`.
-- If the same structure later changes from provisional to confirmed, update the existing evidence object instead of creating a duplicate.
-- If a provisional structure later disappears from later frames, preserve it as `historical_provisional`.
-- `historical_provisional` must not be treated as confirmed.
-- Copied evidence must distinguish `provisional`, `confirmed`, and `historical_provisional`.
-- S12c must not change `python/chan.py` algorithms.
-- S12c must not add Dart-side Chan calculation authority.
-- S12c must not add profit prediction, trading recommendation, or automatic trading wording.
+- Add stable marker ids for parent-child interval links in S12 replay evidence.
+- Marker id format should start with `interval_link_` and include enough deterministic data to identify parent level, child level, parent raw index, and child raw range.
+- Source of relation data must remain backend-exported `MultiLevelChanSnapshot.relations`; Dart may format ids and attach evidence, but must not calculate parent-child relation logic.
+- Copied S12 evidence must include at least one `parent_child_interval_link` or `interval_link_marker_ids` field when backend relation data exists.
+- If relation data does not exist for the current sample, copied evidence must explicitly state `interval_link_marker_ids: none` and the reason.
+- Update `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so interval-link marker ids become required for S12d while marker-overlap policy remains review-only.
+- Do not modify `python/chan.py` algorithms.
+- Do not add Dart-side FX/BI/SEG/ZS/BSP/segseg calculation authority.
+- Do not add profit prediction, trading recommendation, or automatic trading wording.
 
 Acceptance evidence:
 
-- Update `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so temporal state tracking becomes required for S12c while interval-link marker ids and marker-overlap policy remain review-only.
 - Receiver command: `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
 - Receiver command: `python tools/validate_s11_guardrail_regression.py`.
 - Receiver command: `flutter analyze`.
-- Receiver App evidence should include at least one copied S12 replay evidence text showing:
-  - `temporal_state: provisional` or a temporal-state summary including provisional count;
-  - `temporal_state: confirmed` or a confirmed count;
-  - `historical_provisional` count or sample when available;
-  - source policy proving backend step frames are the source;
+- Receiver App evidence should include:
+  - `temporal_source: backend_step_frames` or accepted once fallback;
+  - `interval_link_marker_ids:` or `parent_child_interval_link:` with an `interval_link_...` marker id when relation data exists;
+  - relation source policy proving backend relations are the source;
   - `dart_chan_calculation_authority: false`.
 
 remaining_risk:
 
-- Interval-link marker ids and marker-overlap policy remain for later S12 sub-stages unless explicitly included in S12c implementation.
+- Marker-overlap policy remains for later S12 sub-stage unless explicitly included in S12d implementation.
 - The optional `_drawFx does not accept chartLabels` display-layout debt remains separate unless the supervisor selects it as the next chart-label-layout task.
 
 ## Next task-party operation
 
 1. Receiver pulls latest `origin_vespa_tdx`.
-2. Task party implements S12c in small changes.
+2. Task party implements S12d in small changes.
 3. Receiver runs `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
 4. Receiver runs `python tools/validate_s11_guardrail_regression.py`.
 5. Receiver runs `flutter analyze`.
-6. Receiver shares S12c validator output and App replay evidence for acceptance.
+6. Receiver shares S12d validator output and App replay evidence for acceptance.
