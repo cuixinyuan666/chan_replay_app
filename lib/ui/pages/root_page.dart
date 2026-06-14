@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../core/runtime/runtime_path.dart';
 import 'ashare_bsp_scanner_page.dart';
 import 'origin_replay_strict_page.dart';
@@ -6,48 +7,242 @@ import 'research_backtest_page.dart';
 import 's8_strategy_batch_page.dart';
 import 's13_single_stock_replay_page.dart';
 
-class RootPage extends StatefulWidget { const RootPage({super.key}); @override State<RootPage> createState() => _RootPageState(); }
+class RootPage extends StatefulWidget {
+  const RootPage({super.key});
+
+  @override
+  State<RootPage> createState() => _RootPageState();
+}
 
 class _RootPageState extends State<RootPage> {
-  static const int _replayIndex = 0, _multiLevelIndex = 1, _scannerIndex = 2, _s8BatchIndex = 3, _researchIndex = 4;
+  static const int _replayIndex = 0;
+  static const int _multiLevelIndex = 1;
+  static const int _scannerIndex = 2;
+  static const int _s8BatchIndex = 3;
+  static const int _researchIndex = 4;
+
   int _index = _multiLevelIndex;
-  final Set<int> _visited = {_multiLevelIndex};
-  void _open(int i) { if (_index == i) return; setState(() { _index = i; _visited.add(i); }); }
-  @override Widget build(BuildContext context) => Scaffold(body: Stack(children: [
-    _LazyRouteStack(index: _index, visited: _visited, builders: const [
-      _RouteBuilder(child: OriginReplayStrictPage()),
-      _RouteBuilder(child: S13SingleStockReplayPage()),
-      _RouteBuilder(child: AshareBspScannerPage()),
-      _RouteBuilder(child: S8StrategyBatchPage()),
-      _RouteBuilder(child: ResearchBacktestPage()),
-    ]),
-    _RouteToolColumn(currentIndex: _index, onOpen: _open),
-    const Positioned(left: 52, bottom: 18, child: _RuntimePathDropdown()),
-  ]));
+  final Set<int> _visited = <int>{_multiLevelIndex};
+
+  void _open(int index) {
+    if (_index == index) return;
+    setState(() {
+      _index = index;
+      _visited.add(index);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: <Widget>[
+          _LazyRouteStack(
+            index: _index,
+            visited: _visited,
+            builders: const <_RouteBuilder>[
+              _RouteBuilder(child: OriginReplayStrictPage()),
+              _RouteBuilder(
+                child: Padding(
+                  padding: EdgeInsets.only(left: 48),
+                  child: S13SingleStockReplayPage(),
+                ),
+              ),
+              _RouteBuilder(child: AshareBspScannerPage()),
+              _RouteBuilder(child: S8StrategyBatchPage()),
+              _RouteBuilder(child: ResearchBacktestPage()),
+            ],
+          ),
+          _RouteToolColumn(currentIndex: _index, onOpen: _open),
+          const Positioned(left: 52, bottom: 18, child: _RuntimePathDropdown()),
+        ],
+      ),
+    );
+  }
 }
 
-class _RouteBuilder { final Widget child; const _RouteBuilder({required this.child}); }
+class _RouteBuilder {
+  final Widget child;
+  const _RouteBuilder({required this.child});
+}
+
 class _LazyRouteStack extends StatelessWidget {
-  final int index; final Set<int> visited; final List<_RouteBuilder> builders; const _LazyRouteStack({required this.index, required this.visited, required this.builders});
-  @override Widget build(BuildContext context) => Stack(children: [for (var i = 0; i < builders.length; i++) Offstage(offstage: index != i, child: TickerMode(enabled: index == i, child: visited.contains(i) ? KeyedSubtree(key: ValueKey('root-route-$i'), child: builders[i].child) : const SizedBox.shrink()))]);
+  final int index;
+  final Set<int> visited;
+  final List<_RouteBuilder> builders;
+
+  const _LazyRouteStack({
+    required this.index,
+    required this.visited,
+    required this.builders,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: <Widget>[
+        for (var i = 0; i < builders.length; i++)
+          Offstage(
+            offstage: index != i,
+            child: TickerMode(
+              enabled: index == i,
+              child: visited.contains(i)
+                  ? KeyedSubtree(
+                      key: ValueKey<String>('root-route-$i'),
+                      child: builders[i].child,
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
-class _RuntimePathDropdown extends StatelessWidget { const _RuntimePathDropdown(); @override Widget build(BuildContext context) => Material(color: Colors.transparent, child: ValueListenableBuilder<RuntimePath>(valueListenable: RuntimePathController.selected, builder: (context, path, _) => SizedBox(width: 220, child: DropdownButtonFormField<RuntimePath>(value: path, dropdownColor: const Color(0xFF20242E), style: const TextStyle(color: Colors.white, fontSize: 12), decoration: InputDecoration(labelText: 'runtime path', labelStyle: const TextStyle(color: Colors.white54, fontSize: 10), isDense: true, filled: true, fillColor: const Color(0xEE131722), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: path.isHighSpeed ? const Color(0xFF66BB6A) : const Color(0xFFFFB74D)))), items: const [DropdownMenuItem(value: RuntimePath.highSpeed, child: Text('高速路（默认）')), DropdownMenuItem(value: RuntimePath.slowPath, child: Text('慢速路（原始校验/调试）'))], onChanged: (v) { if (v != null) RuntimePathController.set(v); })))) ; }
+class _RuntimePathDropdown extends StatelessWidget {
+  const _RuntimePathDropdown();
 
-class _RouteToolColumn extends StatelessWidget { final int currentIndex; final ValueChanged<int> onOpen; const _RouteToolColumn({required this.currentIndex, required this.onOpen});
-  @override Widget build(BuildContext context) => Positioned(left: 3, bottom: 18, child: Material(color: Colors.transparent, child: Column(mainAxisSize: MainAxisSize.min, children: [
-    _RouteToolButton(tooltip: '复盘', icon: Icons.candlestick_chart, selected: currentIndex == _RootPageState._replayIndex, onPressed: () => onOpen(_RootPageState._replayIndex)),
-    const SizedBox(height: 6),
-    _RouteToolButton(tooltip: '单股多级别复盘', icon: Icons.account_tree, selected: currentIndex == _RootPageState._multiLevelIndex, onPressed: () => onOpen(_RootPageState._multiLevelIndex)),
-    const SizedBox(height: 6),
-    _RouteToolButton(tooltip: '扫描器', icon: Icons.radar, selected: currentIndex == _RootPageState._scannerIndex, onPressed: () => onOpen(_RootPageState._scannerIndex)),
-    const SizedBox(height: 6),
-    _RouteToolButton(tooltip: 'S8批量候选', icon: Icons.view_list, selected: currentIndex == _RootPageState._s8BatchIndex, onPressed: () => onOpen(_RootPageState._s8BatchIndex)),
-    const SizedBox(height: 6),
-    _RouteToolButton(tooltip: '研究', icon: Icons.science, selected: currentIndex == _RootPageState._researchIndex, onPressed: () => onOpen(_RootPageState._researchIndex)),
-  ])));
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: ValueListenableBuilder<RuntimePath>(
+        valueListenable: RuntimePathController.selected,
+        builder: (context, path, _) {
+          return SizedBox(
+            width: 220,
+            child: DropdownButtonFormField<RuntimePath>(
+              value: path,
+              dropdownColor: const Color(0xFF20242E),
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+              decoration: InputDecoration(
+                labelText: 'runtime path',
+                labelStyle: const TextStyle(color: Colors.white54, fontSize: 10),
+                isDense: true,
+                filled: true,
+                fillColor: const Color(0xEE131722),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: path.isHighSpeed
+                        ? const Color(0xFF66BB6A)
+                        : const Color(0xFFFFB74D),
+                  ),
+                ),
+              ),
+              items: const <DropdownMenuItem<RuntimePath>>[
+                DropdownMenuItem(
+                  value: RuntimePath.highSpeed,
+                  child: Text('高速路（默认）'),
+                ),
+                DropdownMenuItem(
+                  value: RuntimePath.slowPath,
+                  child: Text('慢速路（原始校验/调试）'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) RuntimePathController.set(value);
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
 
-class _RouteToolButton extends StatelessWidget { final String tooltip; final IconData icon; final bool selected; final VoidCallback onPressed; const _RouteToolButton({required this.tooltip, required this.icon, required this.selected, required this.onPressed});
-  @override Widget build(BuildContext context) => Tooltip(message: tooltip, child: SizedBox(width: 42, height: 38, child: IconButton(onPressed: selected ? null : onPressed, icon: Icon(icon, size: 19), color: selected ? Colors.white : Colors.white70, disabledColor: Colors.white, style: IconButton.styleFrom(backgroundColor: selected ? const Color(0xFF2962FF) : const Color(0xEE131722), side: BorderSide(color: selected ? const Color(0xFF8AB4FF) : Colors.white24), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))))));
+class _RouteToolColumn extends StatelessWidget {
+  final int currentIndex;
+  final ValueChanged<int> onOpen;
+
+  const _RouteToolColumn({required this.currentIndex, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: 3,
+      bottom: 18,
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _RouteToolButton(
+              tooltip: '复盘',
+              icon: Icons.candlestick_chart,
+              selected: currentIndex == _RootPageState._replayIndex,
+              onPressed: () => onOpen(_RootPageState._replayIndex),
+            ),
+            const SizedBox(height: 6),
+            _RouteToolButton(
+              tooltip: '单股多级别复盘',
+              icon: Icons.account_tree,
+              selected: currentIndex == _RootPageState._multiLevelIndex,
+              onPressed: () => onOpen(_RootPageState._multiLevelIndex),
+            ),
+            const SizedBox(height: 6),
+            _RouteToolButton(
+              tooltip: '扫描器',
+              icon: Icons.radar,
+              selected: currentIndex == _RootPageState._scannerIndex,
+              onPressed: () => onOpen(_RootPageState._scannerIndex),
+            ),
+            const SizedBox(height: 6),
+            _RouteToolButton(
+              tooltip: 'S8批量候选',
+              icon: Icons.view_list,
+              selected: currentIndex == _RootPageState._s8BatchIndex,
+              onPressed: () => onOpen(_RootPageState._s8BatchIndex),
+            ),
+            const SizedBox(height: 6),
+            _RouteToolButton(
+              tooltip: '研究',
+              icon: Icons.science,
+              selected: currentIndex == _RootPageState._researchIndex,
+              onPressed: () => onOpen(_RootPageState._researchIndex),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RouteToolButton extends StatelessWidget {
+  final String tooltip;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  const _RouteToolButton({
+    required this.tooltip,
+    required this.icon,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        width: 42,
+        height: 38,
+        child: IconButton(
+          onPressed: selected ? null : onPressed,
+          icon: Icon(icon, size: 19),
+          color: selected ? Colors.white : Colors.white70,
+          disabledColor: Colors.white,
+          style: IconButton.styleFrom(
+            backgroundColor: selected ? const Color(0xFF2962FF) : const Color(0xEE131722),
+            side: BorderSide(
+              color: selected ? const Color(0xFF8AB4FF) : Colors.white24,
+            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      ),
+    );
+  }
 }
