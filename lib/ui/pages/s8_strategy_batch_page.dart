@@ -191,6 +191,7 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
   Widget _headerPanel() {
     return _panel(
       title: 'S8 batch candidates',
+      expandChild: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -207,11 +208,6 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
                     ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.folder_open, size: 16),
                 label: const Text('读取候选'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _selected == null ? null : _copyS8Evidence,
-                icon: const Icon(Icons.copy, size: 16),
-                label: const Text('复制S8证据'),
               ),
             ],
           ),
@@ -282,6 +278,11 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
       height: 190,
       child: _panel(
         title: 'S8 traceability evidence',
+        trailing: OutlinedButton.icon(
+          onPressed: selected == null ? null : _copyS8Evidence,
+          icon: const Icon(Icons.copy, size: 16),
+          label: const Text('复制S8证据'),
+        ),
         child: SingleChildScrollView(
           child: SelectableText(
             selected == null ? 'No S8 candidate selected.' : selected.toEvidenceText(),
@@ -365,7 +366,7 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
     ];
   }
 
-  Widget _panel({required String title, required Widget child}) => Container(
+  Widget _panel({required String title, required Widget child, Widget? trailing, bool expandChild = true}) => Container(
         width: double.infinity,
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
@@ -374,9 +375,12 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
           border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          Row(children: [
+            Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+            if (trailing != null) trailing,
+          ]),
           const SizedBox(height: 8),
-          Expanded(child: child),
+          if (expandChild) Expanded(child: child) else child,
         ]),
       );
 
