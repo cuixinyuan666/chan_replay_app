@@ -48,6 +48,8 @@ Required completion summary fields:
 - S6 strategy signal sample coverage: accepted.
 - S7 App strategy signal display loop: accepted.
 - S8a CLI scanner / batch candidate output: accepted.
+- S8b App scanner / batch candidate navigation: accepted.
+- S8 scanner / batch strategy output: accepted.
 
 ## S1-S3 summary
 
@@ -191,7 +193,7 @@ next_task:
 
 - Start S8 scanner / batch strategy output.
 
-## S8 planned: scanner / batch strategy output
+## S8 accepted: scanner / batch strategy output
 
 Goal:
 
@@ -204,11 +206,20 @@ Scope:
 - Clicking a candidate should navigate to the corresponding replay position when App evidence is required.
 - Use CLI validation first for static/batch correctness.
 
-S8 acceptance evidence:
+Overall validation_result:
 
-- CLI batch validation where possible.
-- App evidence only for navigation/display behavior.
-- Completion summary is written back to this manual.
+- accepted.
+- S8a accepted by CLI exporter and validator.
+- S8b accepted by static App validator and receiver App evidence.
+
+remaining_risk:
+
+- Generated batch output is intentionally local and not committed; rerun the exporter when local backend/data changes.
+- Visual marker comfort depends on screen size and chart zoom, but S8 evidence proves marker id generation and jump target traceability.
+
+next_task:
+
+- S8 accepted. Select the next stage explicitly before continuing.
 
 ## S8a accepted: CLI scanner / batch candidate output
 
@@ -242,13 +253,44 @@ next_task:
 
 - Continue S8b: App scanner/batch result list with candidate click navigation into Multi-level replay, using App evidence only for the UI navigation behavior.
 
+## S8b accepted: App scanner / batch candidate navigation
+
+completed_tasks:
+
+- Added `lib/ui/pages/s8_strategy_batch_page.dart` in commit `6505bf414789de6b960fbc307ca3a536628d0e0c`.
+- Added the `S8批量候选` route in `lib/ui/pages/root_page.dart` in commit `74872a607b43ba16aba42f3485fe9bbcfc0b2b44`.
+- Added `tools/validate_s8_app_batch_navigation.py` in commit `35a30ac46287a5d0afdc4ef4304a90f6ea6d99fc`.
+- Moved the `复制S8证据` button into the visible traceability evidence panel and fixed the local S8 panel layout in commit `31022bc1deaf6fc6ecef5d51468b8499b60a2927`.
+- The App page reads the locally generated S8 candidate JSON, displays candidates, opens the clicked candidate through the existing multi-level backend path, jumps to the candidate `jump_target`, marks the chart with `s8_batch_candidate_marker`, and copies traceability evidence.
+
+evidence_button:
+
+- CLI/static command: `python tools/validate_s8_app_batch_navigation.py`.
+- Analyzer command: `flutter analyze` after UI changes.
+- App evidence button: `复制S8证据` in the `S8 traceability evidence` panel.
+
+validation_result:
+
+- accepted.
+- Receiver static validator output included `ok: true`, root route present, local exporter JSON loading, candidate list, candidate click navigation, jump target navigation, chart marker, traceability fields, copy evidence, existing backend authority, and no Dart-side Chan calculation authority.
+- Receiver App evidence included `s8_phase: app_batch_candidate_navigation`, code `600340.SH`, rule `DAILY_2B_MIN30_1B`, source BSP identifiers `DAILY#4:raw=334:type=B2s;MIN30#21:raw=2672:type=B1`, target levels `DAILY->MIN30`, native relation range `parent=334:child=2672-2679`, strict-step visibility, state `candidate`, jump target `MIN30 raw_index=2672`, levels `DAILY,MIN30,MIN5`, window `2022-01-01` to `2025-12-31`, count `900`, candidate policy, source policy, no Dart Chan calculation authority, and chart marker id `s8_batch_candidate_marker_600340.SH_DAILY_2B_MIN30_1B_MIN30_2672`.
+
+remaining_risk:
+
+- The receiver should rerun `python tools/validate_s8_app_batch_navigation.py` and `flutter analyze` after pulling commit `31022bc1deaf6fc6ecef5d51468b8499b60a2927` to close static validation on the latest UI visibility patch.
+- The S8 output JSON remains local by design.
+
+next_task:
+
+- S8 accepted. Select the next stage explicitly before continuing.
+
 ## Next task-party operation
 
 1. Pull the latest `origin_vespa_tdx`.
 2. Run `python tools/export_s8_strategy_batch_candidates.py` then `python tools/validate_s8_strategy_batch_candidates.py` if S8a acceptance needs to be rechecked.
-3. Run `flutter analyze` after UI changes.
-4. Continue S8b App scanner / batch result navigation.
-5. Prefer CLI/static validation for non-visual S8 requirements.
+3. Run `python tools/validate_s8_app_batch_navigation.py` and `flutter analyze` after pulling the final S8b UI patch.
+4. Decide the next stage explicitly before continuing.
+5. Prefer CLI/static validation for non-visual requirements.
 6. Require App evidence only for chart display, candidate click navigation, and jump behavior.
 7. Do not add additional large full fixtures unless the manual explicitly requires them.
 8. Do not continue performance optimization by default.
