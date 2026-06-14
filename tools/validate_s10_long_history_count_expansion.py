@@ -65,6 +65,14 @@ def _import_backend() -> Any:
     return importlib.import_module('backend.app.a_multilevel_native_engine')
 
 
+def _s10_manual_marker_ok(manual_text: str) -> bool:
+    return (
+        'S10 selected: formalize analyze_multi long-history window count expansion' in manual_text
+        or 'S10 analyze_multi long-history window count expansion: accepted' in manual_text
+        or '## S10 accepted: analyze_multi long-history window count expansion' in manual_text
+    )
+
+
 def _validate() -> dict[str, Any]:
     backend_text = _read(BACKEND)
     manual_text = _read(MANUAL)
@@ -90,7 +98,7 @@ def _validate() -> dict[str, Any]:
     expanded_sig = inspect.signature(native._expanded_count_for_level)
 
     checks: dict[str, bool] = {
-        's10_manual_selected': 'S10 selected: formalize analyze_multi long-history window count expansion' in manual_text,
+        's10_manual_marker_ok': _s10_manual_marker_ok(manual_text),
         'request_window_parser_present': '_parse_request_window_bound' in backend_text,
         'request_start_end_used': 'requested_start_dt = _parse_request_window_bound(start' in load_src and 'requested_end_dt = _parse_request_window_bound(end' in load_src,
         'expanded_signature_uses_window_bounds': {'window_start', 'window_end'}.issubset(set(expanded_sig.parameters)),
