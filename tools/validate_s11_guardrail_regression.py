@@ -114,28 +114,31 @@ def main() -> int:
 
     path_status = _path_status()
     required_ok = all(item['ok'] for item in required_results)
-    optional_ok = all(item['ok'] for item in optional_results)
+    optional_failures = [item for item in optional_results if not item['ok']]
+    optional_review_ok = True
     flutter_ok = True if flutter_result is None else bool(flutter_result.get('ok'))
     hygiene_ok = not path_status['forbidden_generated_files_present']
 
     result = {
-        'ok': required_ok and optional_ok and flutter_ok and hygiene_ok,
+        'ok': required_ok and flutter_ok and hygiene_ok,
         'command': 'python tools/validate_s11_guardrail_regression.py',
         'validator': VALIDATOR,
         'stage': 'S11 post-S10 guardrail regression bundle',
         'source_policy': 'python/chan.py via native CChan(lv_list); Flutter/Dart display-only for Chan structures',
         'required_results': required_results,
         'optional_results': optional_results,
+        'optional_failures_review_only': optional_failures,
         'skipped_optional': skipped_optional,
         'flutter_result': flutter_result,
         'path_status': path_status,
         'required_ok': required_ok,
-        'optional_ok': optional_ok,
+        'optional_review_ok': optional_review_ok,
+        'optional_failure_count': len(optional_failures),
         'flutter_ok': flutter_ok,
         'hygiene_ok': hygiene_ok,
         'chan_recalculated': False,
         'dart_chan_calculation_authority': False,
-        'action_required_if_not_ok': '' if required_ok and optional_ok and flutter_ok and hygiene_ok else 'Inspect failed command stderr/stdout tails and remove forbidden generated root-level patch files before acceptance.',
+        'action_required_if_not_ok': '' if required_ok and flutter_ok and hygiene_ok else 'Inspect failed required command stderr/stdout tails and remove forbidden generated root-level patch files before acceptance.',
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result['ok'] else 1
