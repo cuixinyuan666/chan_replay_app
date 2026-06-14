@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/chan_snapshot.dart';
+import '../../core/models/level_relation.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/runtime/runtime_path.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
@@ -33,6 +34,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
 
   PythonMultiLevelChanAnalysis? _analysis;
   _TemporalSummary _temporalSummary = _TemporalSummary.empty();
+  _IntervalLinkSummary _intervalLinkSummary = _IntervalLinkSummary.empty();
   String _mode = 'once';
   String _activeLevel = 'DAILY';
   String _status = 'S12 single-stock replay not loaded; default uses proven S8/S11 once window';
@@ -154,10 +156,12 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
         },
       );
       final temporal = _rebuildTemporalEvidence(analysis);
+      final intervalLinks = _buildIntervalLinks(analysis);
       if (!mounted) return;
       setState(() {
         _analysis = analysis;
         _temporalSummary = temporal;
+        _intervalLinkSummary = intervalLinks;
         _frameIndex = 0;
         _activeLevel = analysis.snapshot.safeActiveLevel;
         _viewEndIndex = null;
@@ -182,19 +186,12 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   }
 
   _TemporalSummary _rebuildTemporalEvidence(PythonMultiLevelChanAnalysis analysis) {
-    final frames = analysis.frames.isNotEmpty
-        ? analysis.frames
-        : <MultiLevelChanSnapshot>[analysis.snapshot];
+    final frames = analysis.frames.isNotEmpty ? analysis.frames : <MultiLevelChanSnapshot>[analysis.snapshot];
     final evidence = <String, _TemporalEvidence>{};
     for (var step = 0; step < frames.length; step++) {
       final frame = frames[step];
       for (final entry in frame.snapshots.entries) {
-        _collectSnapshotTemporalEvidence(
-          target: evidence,
-          level: entry.key,
-          snapshot: entry.value,
-          step: step,
-        );
+        _collectSnapshotTemporalEvidence(target: evidence, level: entry.key, snapshot: entry.value, step: step);
       }
     }
     final finalStep = frames.isEmpty ? 0 : frames.length - 1;
@@ -215,76 +212,22 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     required int step,
   }) {
     for (final bsp in snapshot.bsps) {
-      _recordTemporalEvidence(
-        target,
-        id: 'BSP:$level:${bsp.rawIndex}:${bsp.type}:${bsp.index}',
-        type: 'BSP',
-        level: level,
-        rawIndex: bsp.rawIndex,
-        label: '${bsp.type}#${bsp.index}',
-        isSure: bsp.confirmed,
-        step: step,
-      );
+      _recordTemporalEvidence(target, id: 'BSP:$level:${bsp.rawIndex}:${bsp.type}:${bsp.index}', type: 'BSP', level: level, rawIndex: bsp.rawIndex, label: '${bsp.type}#${bsp.index}', isSure: bsp.confirmed, step: step);
     }
     for (final fx in snapshot.fxs) {
-      _recordTemporalEvidence(
-        target,
-        id: 'FX:$level:${fx.rawIndex}:${fx.type}:${fx.index}',
-        type: 'FX',
-        level: level,
-        rawIndex: fx.rawIndex,
-        label: '${fx.type}#${fx.index}',
-        isSure: fx.confirmed,
-        step: step,
-      );
+      _recordTemporalEvidence(target, id: 'FX:$level:${fx.rawIndex}:${fx.type}:${fx.index}', type: 'FX', level: level, rawIndex: fx.rawIndex, label: '${fx.type}#${fx.index}', isSure: fx.confirmed, step: step);
     }
     for (final bi in snapshot.bis) {
-      _recordTemporalEvidence(
-        target,
-        id: 'BI:$level:${bi.startRawIndex}-${bi.endRawIndex}:${bi.index}',
-        type: 'BI',
-        level: level,
-        rawIndex: bi.endRawIndex,
-        label: '${bi.direction}#${bi.index}',
-        isSure: bi.isSure,
-        step: step,
-      );
+      _recordTemporalEvidence(target, id: 'BI:$level:${bi.startRawIndex}-${bi.endRawIndex}:${bi.index}', type: 'BI', level: level, rawIndex: bi.endRawIndex, label: '${bi.direction}#${bi.index}', isSure: bi.isSure, step: step);
     }
     for (final seg in snapshot.segs) {
-      _recordTemporalEvidence(
-        target,
-        id: 'SEG:$level:${seg.startRawIndex}-${seg.endRawIndex}:${seg.index}',
-        type: 'SEG',
-        level: level,
-        rawIndex: seg.endRawIndex,
-        label: '${seg.direction}#${seg.index}',
-        isSure: seg.isSure,
-        step: step,
-      );
+      _recordTemporalEvidence(target, id: 'SEG:$level:${seg.startRawIndex}-${seg.endRawIndex}:${seg.index}', type: 'SEG', level: level, rawIndex: seg.endRawIndex, label: '${seg.direction}#${seg.index}', isSure: seg.isSure, step: step);
     }
     for (final zs in snapshot.zss) {
-      _recordTemporalEvidence(
-        target,
-        id: 'ZS:$level:${zs.startRawIndex}-${zs.endRawIndex}:${zs.index}',
-        type: 'ZS',
-        level: level,
-        rawIndex: zs.endRawIndex,
-        label: 'ZS#${zs.index}',
-        isSure: zs.confirmed,
-        step: step,
-      );
+      _recordTemporalEvidence(target, id: 'ZS:$level:${zs.startRawIndex}-${zs.endRawIndex}:${zs.index}', type: 'ZS', level: level, rawIndex: zs.endRawIndex, label: 'ZS#${zs.index}', isSure: zs.confirmed, step: step);
     }
     for (final zs in snapshot.segZss) {
-      _recordTemporalEvidence(
-        target,
-        id: 'SEGZS:$level:${zs.startRawIndex}-${zs.endRawIndex}:${zs.index}',
-        type: 'segseg/二级线段/2段 ZS',
-        level: level,
-        rawIndex: zs.endRawIndex,
-        label: 'SEGZS#${zs.index}',
-        isSure: zs.confirmed,
-        step: step,
-      );
+      _recordTemporalEvidence(target, id: 'SEGZS:$level:${zs.startRawIndex}-${zs.endRawIndex}:${zs.index}', type: 'segseg/二级线段/2段 ZS', level: level, rawIndex: zs.endRawIndex, label: 'SEGZS#${zs.index}', isSure: zs.confirmed, step: step);
     }
   }
 
@@ -300,16 +243,40 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   }) {
     final item = target.putIfAbsent(
       id,
-      () => _TemporalEvidence(
-        id: id,
-        type: type,
-        level: level,
-        rawIndex: rawIndex,
-        label: label,
-        firstSeenStep: step,
-      ),
+      () => _TemporalEvidence(id: id, type: type, level: level, rawIndex: rawIndex, label: label, firstSeenStep: step),
     );
     item.markSeen(step: step, isSure: isSure);
+  }
+
+  _IntervalLinkSummary _buildIntervalLinks(PythonMultiLevelChanAnalysis analysis) {
+    final evidence = <String, _IntervalLinkEvidence>{};
+    void collect(MultiLevelChanSnapshot snapshot) {
+      for (final relation in snapshot.relations) {
+        if (relation.parentLevel.trim().isEmpty || relation.childLevel.trim().isEmpty) continue;
+        final id = _intervalLinkMarkerId(relation);
+        evidence.putIfAbsent(id, () => _IntervalLinkEvidence(id: id, relation: relation));
+      }
+    }
+
+    for (final frame in analysis.frames) {
+      collect(frame);
+    }
+    collect(analysis.snapshot);
+    return _IntervalLinkSummary.fromEvidence(
+      evidence: evidence,
+      source: analysis.frames.isNotEmpty ? 'backend_step_frames.relations + final_snapshot.relations' : 'backend_snapshot_relations',
+    );
+  }
+
+  String _intervalLinkMarkerId(LevelRelation relation) {
+    final parent = _safeMarkerToken(relation.parentLevel);
+    final child = _safeMarkerToken(relation.childLevel);
+    return 'interval_link_${parent}_${child}_p${relation.parentRawIndex}_c${relation.childStartRawIndex}_${relation.childEndRawIndex}';
+  }
+
+  String _safeMarkerToken(String value) {
+    final normalized = value.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+    return normalized.isEmpty ? 'unknown' : normalized;
   }
 
   @override
@@ -383,6 +350,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
               _chip('runtime_path', RuntimePathController.current.wireName, RuntimePathController.current.isHighSpeed),
               const SizedBox(height: 6),
               _chip('temporal_state_counts', _temporalSummary.shortText, _temporalSummary.total > 0),
+              const SizedBox(height: 6),
+              _chip('interval_link_marker_ids', _intervalLinkSummary.shortText, _intervalLinkSummary.total > 0),
               const SizedBox(height: 6),
               Text(_status, maxLines: 5, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ],
@@ -565,7 +534,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
 
   String _buildStatus(PythonMultiLevelChanAnalysis analysis) {
     final meta = analysis.meta;
-    return 'S12 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} temporal:${_temporalSummary.shortText}';
+    return 'S12 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} temporal:${_temporalSummary.shortText} interval_links:${_intervalLinkSummary.shortText}';
   }
 
   String _runtimePathText(PythonMultiLevelChanAnalysis analysis) {
@@ -604,7 +573,13 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       'first_seen_step: ${_temporalSummary.sample?.firstSeenStep ?? 'unknown'}',
       'confirmed_step: ${_temporalSummary.sample?.confirmedStep ?? 'unknown'}',
       'last_seen_step: ${_temporalSummary.sample?.lastSeenStep ?? 'unknown'}',
-      'parent_child_interval_link: not_tracked_in_s12c',
+      'interval_link_source: ${_intervalLinkSummary.source}',
+      'interval_link_marker_ids: ${_intervalLinkSummary.idsText}',
+      'parent_child_interval_link: ${_intervalLinkSummary.sample?.id ?? 'none'}',
+      'parent_child_interval_link_reason: ${_intervalLinkSummary.reason}',
+      'interval_link_sample: ${_intervalLinkSummary.sample?.sampleText ?? 'none'}',
+      'interval_link_relation_count: ${_intervalLinkSummary.total}',
+      'interval_link_policy: backend MultiLevelChanSnapshot.relations only; Dart formats stable marker ids and does not calculate parent-child relation logic',
       'temporal_evidence_policy: preserve backend-exported structures across frames; do not recalculate Chan structures in Dart',
       'source_policy: python/chan.py via native CChan(lv_list); Flutter/Dart display, route, mark, and copy evidence only',
       'backend_authority: native CChan(lv_list) through /api/chan/analyze_multi',
@@ -722,15 +697,7 @@ class _TemporalSummary {
         break;
       }
     }
-    return _TemporalSummary(
-      evidence: evidence,
-      source: source,
-      frameCount: frameCount,
-      provisionalCount: provisional,
-      confirmedCount: confirmed,
-      historicalProvisionalCount: historical,
-      sample: sample,
-    );
+    return _TemporalSummary(evidence: evidence, source: source, frameCount: frameCount, provisionalCount: provisional, confirmedCount: confirmed, historicalProvisionalCount: historical, sample: sample);
   }
 
   int get total => provisionalCount + confirmedCount + historicalProvisionalCount;
@@ -738,4 +705,43 @@ class _TemporalSummary {
   String get stateLine => 'provisional=$provisionalCount confirmed=$confirmedCount historical_provisional=$historicalProvisionalCount';
 
   String get shortText => 'source=$source frames=$frameCount $stateLine';
+}
+
+class _IntervalLinkEvidence {
+  final String id;
+  final LevelRelation relation;
+
+  const _IntervalLinkEvidence({required this.id, required this.relation});
+
+  String get sampleText => 'parent=${relation.parentLevel}@${relation.parentRawIndex} child=${relation.childLevel}:${relation.childStartRawIndex}-${relation.childEndRawIndex}';
+}
+
+class _IntervalLinkSummary {
+  final Map<String, _IntervalLinkEvidence> evidence;
+  final String source;
+  final _IntervalLinkEvidence? sample;
+
+  const _IntervalLinkSummary({required this.evidence, required this.source, required this.sample});
+
+  factory _IntervalLinkSummary.empty() => const _IntervalLinkSummary(
+        evidence: <String, _IntervalLinkEvidence>{},
+        source: 'not_loaded',
+        sample: null,
+      );
+
+  factory _IntervalLinkSummary.fromEvidence({required Map<String, _IntervalLinkEvidence> evidence, required String source}) {
+    final sample = evidence.isEmpty ? null : evidence.values.first;
+    return _IntervalLinkSummary(evidence: evidence, source: source, sample: sample);
+  }
+
+  int get total => evidence.length;
+
+  String get idsText {
+    if (evidence.isEmpty) return 'none';
+    return evidence.keys.take(8).join(',');
+  }
+
+  String get reason => evidence.isEmpty ? 'backend relation data is empty for this request' : 'backend relation data exists and was formatted as stable interval_link marker ids';
+
+  String get shortText => 'source=$source total=$total sample=${sample?.id ?? 'none'}';
 }
