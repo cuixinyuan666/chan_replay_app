@@ -55,7 +55,7 @@ Required completion summary fields:
 
 ## Current selected task
 
-S10 selected: formalize analyze_multi long-history window count expansion
+S11 selected: post-S10 guardrail regression bundle.
 
 ## S1-S3 summary
 
@@ -368,15 +368,44 @@ validation_result:
 
 remaining_risk:
 
-- The receiver must `git pull` this manual update before rerunning the S10 validator, otherwise the local manual marker can still report `s10_manual_selected: false`.
 - S10 validation is CLI/static evidence plus S8 regression evidence; visual App behavior remains covered by the existing S8 App static/App evidence chain.
 
 next_task:
 
-- After receiver pulls this manual update and reruns `python tools/validate_s10_long_history_count_expansion.py`, S10 can be closed if the validator reports `ok: true`.
+- Continue S11: post-S10 guardrail regression bundle.
+
+## S11 selected: post-S10 guardrail regression bundle
+
+Goal:
+
+- Provide one receiver-friendly CLI entrypoint to prove the S10 backend change still satisfies the S10/S8/guardrail chain before new feature work continues.
+
+Scope:
+
+- Add `tools/validate_s11_guardrail_regression.py`.
+- The validator must run S10 validation, S8 export, S8 output validation, S8 App static validation, global lazy-loading audit, and chan.py placement guardrail.
+- The validator may run optional existing Dart algorithm/layout audits when the scripts exist.
+- `flutter analyze` remains a separate acceptance command by default, with an optional `--include-flutter-analyze` flag for receivers that want one command to include it.
+- Do not modify `python/chan.py`.
+- Do not add Dart-side FX/BI/SEG/ZS/BSP calculation authority.
+
+Acceptance evidence:
+
+- Receiver command: `python tools/validate_s11_guardrail_regression.py`.
+- Receiver command: `flutter analyze`.
+- Optional receiver command: `python tools/validate_s11_guardrail_regression.py --include-flutter-analyze`.
+
+remaining_risk:
+
+- The S8 exporter intentionally regenerates `test/fixtures/derived/s8_strategy_batch_candidates_v1.json` locally. Receivers should not commit that derived JSON by default.
+
+next_task:
+
+- Receiver pulls the S11 validator and runs the S11 commands. If accepted, write S11 completion summary into this manual and select the next feature task.
 
 ## Next task-party operation
 
-1. Receiver pulls the latest `origin_vespa_tdx` so the manual contains the S10 accepted summary.
-2. Receiver reruns `python tools/validate_s10_long_history_count_expansion.py`.
-3. If S10 reports `ok: true`, continue with the next supervisor-selected task.
+1. Receiver pulls latest `origin_vespa_tdx`.
+2. Receiver runs `python tools/validate_s11_guardrail_regression.py`.
+3. Receiver runs `flutter analyze`.
+4. Receiver shares the S11 output for acceptance.
