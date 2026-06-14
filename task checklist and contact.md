@@ -58,10 +58,13 @@ Required completion summary fields:
 - S12b replay evidence button, indicator default-hidden state, and explicit level-validation feedback: accepted by receiver CLI + App evidence.
 - S12c step-load temporal evidence state tracking: accepted by receiver CLI + App evidence.
 - S12d interval-link marker ids for parent-child replay navigation evidence: accepted by receiver CLI + App evidence.
+- S12e shared marker-overlap policy for S12 chart and evidence markers: accepted by receiver CLI + App evidence.
 
 ## Current selected task
 
-S12e selected: shared marker-overlap policy for S12 chart and evidence markers.
+S12 full evidence chain complete. No mandatory S12 task selected.
+
+Optional next task if selected: global chart-label migration debt, specifically `_drawFx` migration through the shared `ChartLabelLayout` path.
 
 ## Historical accepted summary
 
@@ -331,43 +334,56 @@ next_task:
 
 - Start S12e: shared marker-overlap policy for S12 chart and evidence markers.
 
-## S12e selected: shared marker-overlap policy for S12 chart and evidence markers
+## S12e accepted: shared marker-overlap policy for S12 chart and evidence markers
 
-Goal:
+completed_tasks:
 
-- Finish the remaining S12 review-only gap by adding an explicit shared marker-overlap policy marker/evidence path for S12 chart and evidence markers.
+- Added stable `marker_overlap_policy` evidence in `lib/ui/pages/s12_single_stock_replay_page.dart`.
+- Added `marker_overlap_policy_detail` and `marker_overlap_policy_scope` to copied S12 evidence.
+- Added visible S12 panel chip for `marker_overlap_policy` so the policy is inspectable before copying evidence.
+- Updated `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so S12e marker-overlap policy evidence is required.
+- S12 validator now reports `full_s12_completion: true` and no remaining full-S12 review-only gaps.
+- Preserved S12b evidence button/default-hidden indicator/level-validation behavior.
+- Preserved S12c temporal evidence lifecycle fields.
+- Preserved S12d interval-link marker id evidence.
+- Did not modify `python/chan.py` and did not add Dart-side Chan calculation authority.
 
-Scope:
-
-- Add a stable `marker_overlap_policy` marker/evidence field to S12 replay evidence.
-- The policy should describe how overlapping S12 evidence markers are handled at the display/evidence layer.
-- Prefer reusing existing chart label/marker layout infrastructure when available; do not rewrite Chan algorithms.
-- Do not move Chan structure calculation into Dart.
-- Keep `python/chan.py` unchanged.
-- Preserve accepted S12b/S12c/S12d evidence fields.
-- Update `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so marker-overlap policy becomes required for S12e.
-- Do not add profit prediction, trading recommendation, or automatic trading wording.
-
-Acceptance evidence:
+evidence_button:
 
 - Receiver command: `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
 - Receiver command: `python tools/validate_s11_guardrail_regression.py`.
 - Receiver command: `flutter analyze`.
-- Receiver App evidence should include:
-  - `marker_overlap_policy:` with a stable policy value;
-  - accepted S12 temporal evidence fields;
-  - accepted interval-link marker id fields;
-  - `dart_chan_calculation_authority: false`.
+- Receiver App button: `复制复盘证据`.
+
+validation_result:
+
+- accepted.
+- Receiver S12e validator output included `ok: true`, `full_s12_completion: true`, all `s12e_required_checks: true`, empty `missing_baseline_required`, empty `missing_s12b_required`, empty `missing_s12c_required`, empty `missing_s12d_required`, empty `missing_s12e_required`, empty `full_s12_missing_review_only`, no forbidden Dart calculation patterns, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
+- Receiver S11 regression output included `ok: true`, `required_ok: true`, `required_timeout_failure_count: 0`, `hygiene_ok: true`, and `dart_chan_calculation_authority: false`.
+- Receiver analyzer output included `No issues found`.
+- Receiver App evidence included:
+  - `marker_overlap_policy: stable_s12_marker_order`
+  - `marker_overlap_policy_detail: deterministic_order;capped_marker_list;reuse_existing_layout_path`
+  - `marker_overlap_policy_scope: S12 evidence markers and display marker evidence only; global FX label migration remains a separate chart-label task`
+  - accepted temporal evidence fields.
+  - accepted interval-link marker id fields.
+  - `native_cchan_lv_list: true`
+  - `fallback_to_bridge: false`
+  - `dart_chan_calculation_authority: false`
 
 remaining_risk:
 
-- Optional global chart-label migration debt may still remain outside S12e unless explicitly selected as a separate task.
+- S12 full evidence chain is complete.
+- Optional global chart-label migration debt remains outside S12e:
+  - `audit_origin_kline_global_label_layout_usage.py --strict` still reports `_drawFx does not accept chartLabels`.
+
+next_task:
+
+- No mandatory S12 task remains.
+- Optional next task if selected: migrate FX labels through the shared `ChartLabelLayout` path and clear `audit_origin_kline_global_label_layout_usage.py --strict`.
 
 ## Next task-party operation
 
 1. Receiver pulls latest `origin_vespa_tdx`.
-2. Task party implements S12e in small changes.
-3. Receiver runs `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
-4. Receiver runs `python tools/validate_s11_guardrail_regression.py`.
-5. Receiver runs `flutter analyze`.
-6. Receiver shares S12e validator output and App replay evidence for acceptance.
+2. Receiver removes local generated validation output if present: `test/fixtures/derived/s8_strategy_batch_candidates_v1.json`.
+3. If continuing, supervisor selects the next optional display-layout task explicitly.
