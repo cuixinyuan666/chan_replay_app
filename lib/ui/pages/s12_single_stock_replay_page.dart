@@ -16,22 +16,8 @@ class S12SingleStockReplayPage extends StatefulWidget {
 }
 
 class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
-  static const List<String> _levelOptions = <String>[
-    'DAILY',
-    'MIN60',
-    'MIN30',
-    'MIN15',
-    'MIN5',
-    'MIN1',
-  ];
-  static const Set<String> _levelOptionSet = <String>{
-    'DAILY',
-    'MIN60',
-    'MIN30',
-    'MIN15',
-    'MIN5',
-    'MIN1',
-  };
+  static const List<String> _levelOptions = <String>['DAILY', 'MIN60', 'MIN30', 'MIN15', 'MIN5', 'MIN1'];
+  static const Set<String> _levelOptionSet = <String>{'DAILY', 'MIN60', 'MIN30', 'MIN15', 'MIN5', 'MIN1'};
   static const List<int> _countOptions = <int>[80, 120, 220, 600, 900];
   static const List<int> _stepFrameOptions = <int>[24, 40, 60, 120, 391];
 
@@ -105,22 +91,12 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   _LevelValidationResult _validateSelectedLevels() {
     final raw = [for (final level in _selectedLevels) level.trim().toUpperCase()];
     final normalized = _normalizedLevels;
-    if (raw.isEmpty) {
-      return _LevelValidationResult(false, normalized, '级别组合无效：至少选择两个级别');
-    }
+    if (raw.isEmpty) return _LevelValidationResult(false, normalized, '级别组合无效：至少选择两个级别');
     final unsupported = raw.where((level) => !_levelOptionSet.contains(level)).toList(growable: false);
-    if (unsupported.isNotEmpty) {
-      return _LevelValidationResult(false, normalized, '级别组合无效：不支持 ${unsupported.join(',')}');
-    }
-    if (raw.toSet().length != raw.length) {
-      return _LevelValidationResult(false, normalized, '级别组合无效：存在重复级别');
-    }
-    if (normalized.length < 2) {
-      return _LevelValidationResult(false, normalized, '级别组合无效：至少选择两个级别');
-    }
-    if (normalized.length != raw.length) {
-      return _LevelValidationResult(true, normalized, '级别组合已归一化：${normalized.join(',')}');
-    }
+    if (unsupported.isNotEmpty) return _LevelValidationResult(false, normalized, '级别组合无效：不支持 ${unsupported.join(',')}');
+    if (raw.toSet().length != raw.length) return _LevelValidationResult(false, normalized, '级别组合无效：存在重复级别');
+    if (normalized.length < 2) return _LevelValidationResult(false, normalized, '级别组合无效：至少选择两个级别');
+    if (normalized.length != raw.length) return _LevelValidationResult(true, normalized, '级别组合已归一化：${normalized.join(',')}');
     return _LevelValidationResult(true, normalized, '级别组合有效：${normalized.join(',')}');
   }
 
@@ -222,6 +198,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       children: <Widget>[
         _panel(
           title: 'S12 single-stock replay / high_speed',
+          expandChild: false,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -249,9 +226,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
                 children: <Widget>[
                   FilledButton.icon(
                     onPressed: _loading ? null : _loadReplay,
-                    icon: _loading
-                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.play_arrow, size: 16),
+                    icon: _loading ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow, size: 16),
                     label: const Text('载入复盘'),
                   ),
                   OutlinedButton.icon(
@@ -283,18 +258,13 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       title: 'S12 replay evidence preview',
       child: analysis == null
           ? const Center(child: Text('载入后可复制 S12 复盘证据。', style: TextStyle(color: Colors.white54)))
-          : SingleChildScrollView(
-              child: SelectableText(_buildReplayEvidenceText(analysis), style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35)),
-            ),
+          : SingleChildScrollView(child: SelectableText(_buildReplayEvidenceText(analysis), style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35))),
     );
   }
 
   Widget _chartPanel(dynamic snapshot) {
     if (snapshot == null || snapshot.rawBars.isEmpty) {
-      return _panel(
-        title: 'Chart',
-        child: const Center(child: Text('Load S12 replay to show chart.', style: TextStyle(color: Colors.white54))),
-      );
+      return _panel(title: 'Chart', child: const Center(child: Text('Load S12 replay to show chart.', style: TextStyle(color: Colors.white54))));
     }
     return OriginKlineChart(
       snapshot: snapshot,
@@ -401,22 +371,13 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   Widget _input(TextEditingController controller, String label, {required double width, bool enabled = true}) {
     return SizedBox(
       width: width,
-      child: TextField(
-        controller: controller,
-        enabled: enabled && !_loading,
-        style: const TextStyle(color: Colors.white, fontSize: 12),
-        decoration: _decoration(label),
-      ),
+      child: TextField(controller: controller, enabled: enabled && !_loading, style: const TextStyle(color: Colors.white, fontSize: 12), decoration: _decoration(label)),
     );
   }
 
-  Widget _panel({required String title, required Widget child}) {
+  Widget _panel({required String title, required Widget child, bool expandChild = true}) {
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xDD111722),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-      ),
+      decoration: BoxDecoration(color: const Color(0xDD111722), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.14))),
       child: Padding(
         padding: const EdgeInsets.all(10),
         child: Column(
@@ -424,7 +385,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
           children: <Widget>[
             Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
-            Expanded(child: child),
+            if (expandChild) Expanded(child: child) else child,
           ],
         ),
       ),
@@ -435,11 +396,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     final color = ok ? const Color(0xFF66BB6A) : const Color(0xFFFFB74D);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.45)),
-      ),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(999), border: Border.all(color: color.withValues(alpha: 0.45))),
       child: Text('$label: $value', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
@@ -457,14 +414,12 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     );
   }
 
-  ButtonStyle _copyButtonStyle() {
-    return OutlinedButton.styleFrom(
-      foregroundColor: const Color(0xFF8AB4FF),
-      side: const BorderSide(color: Color(0x668AB4FF)),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-    );
-  }
+  ButtonStyle _copyButtonStyle() => OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF8AB4FF),
+        side: const BorderSide(color: Color(0x668AB4FF)),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+      );
 
   String _buildStatus(PythonMultiLevelChanAnalysis analysis) {
     final meta = analysis.meta;
