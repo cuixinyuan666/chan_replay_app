@@ -51,6 +51,10 @@ Required completion summary fields:
 - S8b App scanner / batch candidate navigation: accepted.
 - S8 scanner / batch strategy output: accepted.
 
+## Current selected task
+
+- S9 selected: local generated artifact hygiene and continuation baseline.
+
 ## S1-S3 summary
 
 - S1 accepted with `rule mode = strategy` and `strategy rule = DAILY_2B_MIN30_1B`.
@@ -219,7 +223,7 @@ remaining_risk:
 
 next_task:
 
-- S8 accepted. Select the next stage explicitly before continuing.
+- Start S9 local generated artifact hygiene and continuation baseline.
 
 ## S8a accepted: CLI scanner / batch candidate output
 
@@ -282,16 +286,43 @@ remaining_risk:
 
 next_task:
 
-- S8 accepted. Select the next stage explicitly before continuing.
+- Start S9 local generated artifact hygiene and continuation baseline.
+
+## S9 selected: local generated artifact hygiene and continuation baseline
+
+Goal:
+
+- Establish a clean continuation baseline after S8 so the next functional stage does not start from an ambiguous local working tree.
+
+Scope:
+
+- Inspect and classify current local `git status --short` output.
+- Keep or delete local generated files explicitly: `test/fixtures/derived/s8_strategy_batch_candidates_v1.json` and `test/fixtures/derived/s6_strategy_matched_sample_v1.local.backup.json`.
+- Inspect local modified files before any future change: `backend/app/a_multilevel_native_engine.py`, `windows/flutter/generated_plugin_registrant.cc`, and `windows/flutter/generated_plugins.cmake`.
+- Decide whether generated/local-only files need `.gitignore` coverage or manual-only handling.
+- Re-run the accepted S8 validators and `flutter analyze` only as a baseline check; do not change Chan calculation logic.
+
+Acceptance evidence:
+
+- Receiver posts `git status --short` after cleanup decisions.
+- If local generated files are kept, manual records why they remain untracked.
+- If local generated files are deleted, manual records the deletion decision and confirms S8 can regenerate them.
+- No backend or Dart Chan authority changes are made during S9 unless explicitly selected later.
+
+next_task:
+
+- Start S9 by collecting current local status and deciding which local files to keep/delete.
 
 ## Next task-party operation
 
 1. Pull the latest `origin_vespa_tdx`.
-2. Run `python tools/export_s8_strategy_batch_candidates.py` then `python tools/validate_s8_strategy_batch_candidates.py` if S8a acceptance needs to be rechecked.
-3. Run `python tools/validate_s8_app_batch_navigation.py` and `flutter analyze` after pulling the final S8b UI patch.
-4. Decide the next stage explicitly before continuing.
-5. Prefer CLI/static validation for non-visual requirements.
-6. Require App evidence only for chart display, candidate click navigation, and jump behavior.
-7. Do not add additional large full fixtures unless the manual explicitly requires them.
-8. Do not continue performance optimization by default.
-9. Write every stage completion summary into this manual after evidence is accepted.
+2. Run `git status --short`.
+3. Decide S9 cleanup policy for local generated files:
+   - keep or delete `test/fixtures/derived/s8_strategy_batch_candidates_v1.json`.
+   - delete if unused: `test/fixtures/derived/s6_strategy_matched_sample_v1.local.backup.json`.
+4. Inspect but do not reset local modified files unless explicitly requested:
+   - `backend/app/a_multilevel_native_engine.py`
+   - `windows/flutter/generated_plugin_registrant.cc`
+   - `windows/flutter/generated_plugins.cmake`
+5. Run `python tools/validate_s8_app_batch_navigation.py` and `flutter analyze` as a post-S8 baseline if needed.
+6. Write S9 completion summary into this manual after cleanup evidence is accepted.
