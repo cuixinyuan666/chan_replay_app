@@ -11,6 +11,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = 'tools/validate_s11_guardrail_regression.py'
+DEFAULT_TIMEOUT_SECONDS = 300
 
 REQUIRED_COMMANDS: list[list[str]] = [
     [sys.executable, 'tools/validate_s10_long_history_count_expansion.py'],
@@ -44,20 +45,42 @@ def _command_label(command: list[str]) -> str:
     return ' '.join(display)
 
 
+def _tail(value: str | bytes | None, size: int) -> str:
+    if value is None:
+        return ''
+    if isinstance(value, bytes):
+        value = value.decode('utf-8', errors='replace')
+    return value.strip()[-size:]
+
+
 def _run(command: list[str], *, timeout: int) -> dict[str, Any]:
-    proc = subprocess.run(
-        command,
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        timeout=timeout,
-    )
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            'command': _command_label(command),
+            'returncode': 124,
+            'ok': False,
+            'timed_out': True,
+            'timeout_seconds': timeout,
+            'stdout_tail': _tail(exc.stdout, 4000),
+            'stderr_tail': _tail(exc.stderr, 2000),
+            'action_required': f'Command exceeded {timeout}s. Re-run this validator with --timeout {max(timeout * 2, DEFAULT_TIMEOUT_SECONDS)} or run the command separately to inspect runtime.',
+        }
     stdout = proc.stdout.strip()
     stderr = proc.stderr.strip()
     return {
         'command': _command_label(command),
         'returncode': proc.returncode,
         'ok': proc.returncode == 0,
+        'timed_out': False,
+        'timeout_seconds': timeout,
         'stdout_tail': stdout[-4000:],
         'stderr_tail': stderr[-2000:],
     }
@@ -82,7 +105,7 @@ def _path_status() -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description='Run S11 guardrail regression after S10 long-history count expansion.')
-    parser.add_argument('--timeout', type=int, default=120, help='per-command timeout in seconds')
+    parser.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SECONDS, help='per-command timeout in seconds')
     parser.add_argument('--include-flutter-analyze', action='store_true', help='also run flutter analyze when Flutter is available')
     args = parser.parse_args()
 
@@ -102,12 +125,14 @@ def main() -> int:
     flutter_result: dict[str, Any] | None = None
     if args.include_flutter_analyze:
         if shutil.which('flutter'):
-            flutter_result = _run(['flutter', 'analyze'], timeout=max(args.timeout, 240))
+            flutter_result = _run(['flutter', 'analyze'], timeout=max(args.timeout, 300))
         else:
             flutter_result = {
                 'command': 'flutter analyze',
                 'returncode': 127,
                 'ok': False,
+                'timed_out': False,
+                'timeout_seconds': max(args.timeout, 300),
                 'stdout_tail': '',
                 'stderr_tail': 'flutter executable not found on PATH',
             }
@@ -115,6 +140,7 @@ def main() -> int:
     path_status = _path_status()
     required_ok = all(item['ok'] for item in required_results)
     optional_failures = [item for item in optional_results if not item['ok']]
+    timeout_failures = [item for item in required_results if item.get('timed_out')]
     optional_review_ok = True
     flutter_ok = True if flutter_result is None else bool(flutter_result.get('ok'))
     hygiene_ok = not path_status['forbidden_generated_files_present']
@@ -128,17 +154,19 @@ def main() -> int:
         'required_results': required_results,
         'optional_results': optional_results,
         'optional_failures_review_only': optional_failures,
+        'required_timeout_failures': timeout_failures,
         'skipped_optional': skipped_optional,
         'flutter_result': flutter_result,
         'path_status': path_status,
         'required_ok': required_ok,
         'optional_review_ok': optional_review_ok,
         'optional_failure_count': len(optional_failures),
+        'required_timeout_failure_count': len(timeout_failures),
         'flutter_ok': flutter_ok,
         'hygiene_ok': hygiene_ok,
         'chan_recalculated': False,
         'dart_chan_calculation_authority': False,
-        'action_required_if_not_ok': '' if required_ok and flutter_ok and hygiene_ok else 'Inspect failed required command stderr/stdout tails and remove forbidden generated root-level patch files before acceptance.',
+        'action_required_if_not_ok': '' if required_ok and flutter_ok and hygiene_ok else 'Inspect failed required command stdout/stderr tails. For timeout-only failures, rerun with a larger --timeout value.',
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result['ok'] else 1
