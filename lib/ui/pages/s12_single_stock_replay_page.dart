@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/models/chan_snapshot.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/runtime/runtime_path.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
@@ -31,6 +32,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   final Set<String> _enabledEasyTdxIndicators = <String>{};
 
   PythonMultiLevelChanAnalysis? _analysis;
+  Map<String, _TemporalEvidence> _temporalEvidence = <String, _TemporalEvidence>{};
+  _TemporalSummary _temporalSummary = _TemporalSummary.empty();
   String _mode = 'once';
   String _activeLevel = 'DAILY';
   String _status = 'S12 single-stock replay not loaded; default uses proven S8/S11 once window';
@@ -151,9 +154,12 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
           if (_mode == 'step') 'max_step_frames': _maxStepFrames,
         },
       );
+      final temporal = _rebuildTemporalEvidence(analysis);
       if (!mounted) return;
       setState(() {
         _analysis = analysis;
+        _temporalEvidence = temporal.evidence;
+        _temporalSummary = temporal;
         _frameIndex = 0;
         _activeLevel = analysis.snapshot.safeActiveLevel;
         _viewEndIndex = null;
@@ -175,6 +181,137 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
 
   String _friendlyLoadError(Object error) {
     return 'S12 replay load failed: $error | request: symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_mode levels=${_normalizedLevels.join(',')} count=$_count window=${_startController.text.trim()}~${_endController.text.trim()} runtime_path=${RuntimePathController.current.wireName}';
+  }
+
+  _TemporalSummary _rebuildTemporalEvidence(PythonMultiLevelChanAnalysis analysis) {
+    final frames = analysis.frames.isNotEmpty
+        ? analysis.frames
+        : <MultiLevelChanSnapshot>[analysis.snapshot];
+    final evidence = <String, _TemporalEvidence>{};
+    for (var step = 0; step < frames.length; step++) {
+      final frame = frames[step];
+      for (final entry in frame.snapshots.entries) {
+        _collectSnapshotTemporalEvidence(
+          target: evidence,
+          level: entry.key,
+          snapshot: entry.value,
+          step: step,
+        );
+      }
+    }
+    final finalStep = frames.isEmpty ? 0 : frames.length - 1;
+    for (final item in evidence.values) {
+      item.finalize(finalStep);
+    }
+    return _TemporalSummary.fromEvidence(
+      evidence: evidence,
+      source: analysis.frames.isNotEmpty ? 'backend_step_frames' : 'once_snapshot',
+      frameCount: frames.length,
+    );
+  }
+
+  void _collectSnapshotTemporalEvidence({
+    required Map<String, _TemporalEvidence> target,
+    required String level,
+    required ChanSnapshot snapshot,
+    required int step,
+  }) {
+    for (final bsp in snapshot.bsps) {
+      _recordTemporalEvidence(
+        target,
+        id: 'BSP:$level:${bsp.rawIndex}:${bsp.type}:${bsp.index}',
+        type: 'BSP',
+        level: level,
+        rawIndex: bsp.rawIndex,
+        label: '${bsp.type}#${bsp.index}',
+        isSure: bsp.confirmed,
+        step: step,
+      );
+    }
+    for (final fx in snapshot.fxs) {
+      _recordTemporalEvidence(
+        target,
+        id: 'FX:$level:${fx.rawIndex}:${fx.type}:${fx.index}',
+        type: 'FX',
+        level: level,
+        rawIndex: fx.rawIndex,
+        label: '${fx.type}#${fx.index}',
+        isSure: fx.confirmed,
+        step: step,
+      );
+    }
+    for (final bi in snapshot.bis) {
+      _recordTemporalEvidence(
+        target,
+        id: 'BI:$level:${bi.startRawIndex}-${bi.endRawIndex}:${bi.index}',
+        type: 'BI',
+        level: level,
+        rawIndex: bi.endRawIndex,
+        label: '${bi.direction}#${bi.index}',
+        isSure: bi.isSure,
+        step: step,
+      );
+    }
+    for (final seg in snapshot.segs) {
+      _recordTemporalEvidence(
+        target,
+        id: 'SEG:$level:${seg.startRawIndex}-${seg.endRawIndex}:${seg.index}',
+        type: 'SEG',
+        level: level,
+        rawIndex: seg.endRawIndex,
+        label: '${seg.direction}#${seg.index}',
+        isSure: seg.isSure,
+        step: step,
+      );
+    }
+    for (final zs in snapshot.zss) {
+      _recordTemporalEvidence(
+        target,
+        id: 'ZS:$level:${zs.startRawIndex}-${zs.endRawIndex}:${zs.index}',
+        type: 'ZS',
+        level: level,
+        rawIndex: zs.endRawIndex,
+        label: 'ZS#${zs.index}',
+        isSure: zs.confirmed,
+        step: step,
+      );
+    }
+    for (final zs in snapshot.segZss) {
+      _recordTemporalEvidence(
+        target,
+        id: 'SEGZS:$level:${zs.startRawIndex}-${zs.endRawIndex}:${zs.index}',
+        type: 'segseg/二级线段/2段 ZS',
+        level: level,
+        rawIndex: zs.endRawIndex,
+        label: 'SEGZS#${zs.index}',
+        isSure: zs.confirmed,
+        step: step,
+      );
+    }
+  }
+
+  void _recordTemporalEvidence(
+    Map<String, _TemporalEvidence> target, {
+    required String id,
+    required String type,
+    required String level,
+    required int rawIndex,
+    required String label,
+    required bool isSure,
+    required int step,
+  }) {
+    final item = target.putIfAbsent(
+      id,
+      () => _TemporalEvidence(
+        id: id,
+        type: type,
+        level: level,
+        rawIndex: rawIndex,
+        label: label,
+        firstSeenStep: step,
+      ),
+    );
+    item.markSeen(step: step, isSure: isSure);
   }
 
   @override
@@ -246,6 +383,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
               _chip('level_validation', _lastLevelValidation, _lastLevelValidation.contains('有效') || _lastLevelValidation.contains('归一化')),
               const SizedBox(height: 6),
               _chip('runtime_path', RuntimePathController.current.wireName, RuntimePathController.current.isHighSpeed),
+              const SizedBox(height: 6),
+              _chip('temporal_state_counts', _temporalSummary.shortText, _temporalSummary.total > 0),
               const SizedBox(height: 6),
               Text(_status, maxLines: 5, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ],
@@ -428,7 +567,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
 
   String _buildStatus(PythonMultiLevelChanAnalysis analysis) {
     final meta = analysis.meta;
-    return 'S12 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')}';
+    return 'S12 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} temporal:${_temporalSummary.shortText}';
   }
 
   String _runtimePathText(PythonMultiLevelChanAnalysis analysis) {
@@ -456,11 +595,19 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       'enabled_easy_tdx_indicators: ${_enabledEasyTdxIndicators.isEmpty ? 'none' : _enabledEasyTdxIndicators.join(',')}',
       'selected_marker_id: none',
       'selected_marker_type: none',
-      'is_sure: unknown',
-      'temporal_state: not_tracked_in_s12b',
-      'first_seen_step: unknown',
-      'confirmed_step: unknown',
-      'parent_child_interval_link: not_tracked_in_s12b',
+      'is_sure: ${_temporalSummary.sample?.confirmed ?? 'unknown'}',
+      'temporal_source: ${_temporalSummary.source}',
+      'temporal_state: ${_temporalSummary.stateLine}',
+      'temporal_state_counts: provisional=${_temporalSummary.provisionalCount} confirmed=${_temporalSummary.confirmedCount} historical_provisional=${_temporalSummary.historicalProvisionalCount} total=${_temporalSummary.total}',
+      'temporal_sample_id: ${_temporalSummary.sample?.id ?? 'none'}',
+      'temporal_sample_type: ${_temporalSummary.sample?.type ?? 'none'}',
+      'temporal_sample_level: ${_temporalSummary.sample?.level ?? 'none'}',
+      'temporal_sample_state: ${_temporalSummary.sample?.state ?? 'none'}',
+      'first_seen_step: ${_temporalSummary.sample?.firstSeenStep ?? 'unknown'}',
+      'confirmed_step: ${_temporalSummary.sample?.confirmedStep ?? 'unknown'}',
+      'last_seen_step: ${_temporalSummary.sample?.lastSeenStep ?? 'unknown'}',
+      'parent_child_interval_link: not_tracked_in_s12c',
+      'temporal_evidence_policy: preserve backend-exported structures across frames; do not recalculate Chan structures in Dart',
       'source_policy: python/chan.py via native CChan(lv_list); Flutter/Dart display, route, mark, and copy evidence only',
       'backend_authority: native CChan(lv_list) through /api/chan/analyze_multi',
       'native_cchan_lv_list: ${analysis.meta['native_cchan_lv_list'] ?? analysis.snapshot.meta['native_cchan_lv_list']}',
@@ -488,4 +635,109 @@ class _LevelValidationResult {
   final String message;
 
   const _LevelValidationResult(this.ok, this.normalizedLevels, this.message);
+}
+
+class _TemporalEvidence {
+  final String id;
+  final String type;
+  final String level;
+  final int rawIndex;
+  final String label;
+  final int firstSeenStep;
+  int lastSeenStep;
+  int? confirmedStep;
+  bool confirmed;
+  String state = 'provisional';
+
+  _TemporalEvidence({
+    required this.id,
+    required this.type,
+    required this.level,
+    required this.rawIndex,
+    required this.label,
+    required this.firstSeenStep,
+  })  : lastSeenStep = firstSeenStep,
+        confirmed = false;
+
+  void markSeen({required int step, required bool isSure}) {
+    lastSeenStep = step;
+    if (isSure) {
+      confirmed = true;
+      confirmedStep ??= step;
+    }
+  }
+
+  void finalize(int finalStep) {
+    if (confirmed) {
+      state = 'confirmed';
+    } else if (lastSeenStep < finalStep) {
+      state = 'historical_provisional';
+    } else {
+      state = 'provisional';
+    }
+  }
+}
+
+class _TemporalSummary {
+  final Map<String, _TemporalEvidence> evidence;
+  final String source;
+  final int frameCount;
+  final int provisionalCount;
+  final int confirmedCount;
+  final int historicalProvisionalCount;
+  final _TemporalEvidence? sample;
+
+  const _TemporalSummary({
+    required this.evidence,
+    required this.source,
+    required this.frameCount,
+    required this.provisionalCount,
+    required this.confirmedCount,
+    required this.historicalProvisionalCount,
+    required this.sample,
+  });
+
+  factory _TemporalSummary.empty() => const _TemporalSummary(
+        evidence: <String, _TemporalEvidence>{},
+        source: 'not_loaded',
+        frameCount: 0,
+        provisionalCount: 0,
+        confirmedCount: 0,
+        historicalProvisionalCount: 0,
+        sample: null,
+      );
+
+  factory _TemporalSummary.fromEvidence({
+    required Map<String, _TemporalEvidence> evidence,
+    required String source,
+    required int frameCount,
+  }) {
+    final values = evidence.values.toList(growable: false);
+    final provisional = values.where((item) => item.state == 'provisional').length;
+    final confirmed = values.where((item) => item.state == 'confirmed').length;
+    final historical = values.where((item) => item.state == 'historical_provisional').length;
+    _TemporalEvidence? sample;
+    for (final state in const ['historical_provisional', 'provisional', 'confirmed']) {
+      final matches = values.where((item) => item.state == state).toList(growable: false);
+      if (matches.isNotEmpty) {
+        sample = matches.first;
+        break;
+      }
+    }
+    return _TemporalSummary(
+      evidence: evidence,
+      source: source,
+      frameCount: frameCount,
+      provisionalCount: provisional,
+      confirmedCount: confirmed,
+      historicalProvisionalCount: historical,
+      sample: sample,
+    );
+  }
+
+  int get total => provisionalCount + confirmedCount + historicalProvisionalCount;
+
+  String get stateLine => 'provisional=$provisionalCount confirmed=$confirmedCount historical_provisional=$historicalProvisionalCount';
+
+  String get shortText => 'source=$source frames=$frameCount $stateLine';
 }
