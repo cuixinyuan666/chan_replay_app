@@ -32,7 +32,6 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   final Set<String> _enabledEasyTdxIndicators = <String>{};
 
   PythonMultiLevelChanAnalysis? _analysis;
-  Map<String, _TemporalEvidence> _temporalEvidence = <String, _TemporalEvidence>{};
   _TemporalSummary _temporalSummary = _TemporalSummary.empty();
   String _mode = 'once';
   String _activeLevel = 'DAILY';
@@ -158,7 +157,6 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       if (!mounted) return;
       setState(() {
         _analysis = analysis;
-        _temporalEvidence = temporal.evidence;
         _temporalSummary = temporal;
         _frameIndex = 0;
         _activeLevel = analysis.snapshot.safeActiveLevel;
