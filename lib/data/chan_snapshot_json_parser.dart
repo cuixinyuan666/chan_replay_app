@@ -147,27 +147,14 @@ class ChanSnapshotJsonParser {
   }
 
   static RawBar? _parseRawBar(Map row, int index) {
-    final time =
-        _parseTime(row['dt'] ?? row['datetime'] ?? row['date'] ?? row['time']);
+    final time = _parseTime(row['dt'] ?? row['datetime'] ?? row['date'] ?? row['time']);
     final open = _num(row['open'] ?? row['o']);
     final high = _num(row['high'] ?? row['h']);
     final low = _num(row['low'] ?? row['l']);
     final close = _num(row['close'] ?? row['c']);
     final volume = _num(row['vol'] ?? row['volume'] ?? row['v']) ?? 0.0;
-    if (time == null ||
-        open == null ||
-        high == null ||
-        low == null ||
-        close == null) return null;
-    return RawBar(
-      index: index,
-      time: time,
-      open: open,
-      high: high,
-      low: low,
-      close: close,
-      volume: volume,
-    );
+    if (time == null || open == null || high == null || low == null || close == null) return null;
+    return RawBar(index: index, time: time, open: open, high: high, low: low, close: close, volume: volume);
   }
 
   static MergedBar? _parseMergedBar(Map row, List<RawBar> bars) {
@@ -176,19 +163,13 @@ class ChanSnapshotJsonParser {
     final endRaw = _int(row['end_raw_index'] ?? row['endRawIndex']);
     final high = _num(row['high']);
     final low = _num(row['low']);
-    if (index == null ||
-        startRaw == null ||
-        endRaw == null ||
-        high == null ||
-        low == null ||
-        bars.isEmpty) return null;
+    if (index == null || startRaw == null || endRaw == null || high == null || low == null || bars.isEmpty) return null;
     final raw = bars[startRaw.clamp(0, bars.length - 1).toInt()];
     return MergedBar(
       index: index,
       startRawIndex: startRaw,
       endRawIndex: endRaw,
-      highRawIndex:
-          _int(row['high_raw_index'] ?? row['highRawIndex']) ?? startRaw,
+      highRawIndex: _int(row['high_raw_index'] ?? row['highRawIndex']) ?? startRaw,
       lowRawIndex: _int(row['low_raw_index'] ?? row['lowRawIndex']) ?? startRaw,
       time: _parseTime(row['time']) ?? raw.time,
       highTime: _parseTime(row['high_time'] ?? row['highTime']) ?? raw.time,
@@ -225,64 +206,21 @@ class ChanSnapshotJsonParser {
     final endRaw = _int(row['end_raw_index'] ?? row['endRawIndex']);
     final startPrice = _num(row['start_price'] ?? row['startPrice']);
     final endPrice = _num(row['end_price'] ?? row['endPrice']);
-    if (startRaw == null ||
-        endRaw == null ||
-        startPrice == null ||
-        endPrice == null ||
-        mergedBars.isEmpty) return null;
+    if (startRaw == null || endRaw == null || startPrice == null || endPrice == null || mergedBars.isEmpty) return null;
     final isDown = '${row['direction'] ?? ''}'.toLowerCase().contains('down');
     final startMerged = _mergedAt(mergedBars, startRaw);
     final endMerged = _mergedAt(mergedBars, endRaw);
-    final startFx = FX(
-      index: startMerged.index,
-      rawIndex: startRaw,
-      time: _parseTime(row['start_time'] ?? row['startTime']) ??
-          startMerged.time,
-      type: isDown ? FxType.top : FxType.bottom,
-      price: startPrice,
-      left: startMerged,
-      center: startMerged,
-      right: startMerged,
-      confirmed: true,
-    );
-    final endFx = FX(
-      index: endMerged.index,
-      rawIndex: endRaw,
-      time: _parseTime(row['end_time'] ?? row['endTime']) ?? endMerged.time,
-      type: isDown ? FxType.bottom : FxType.top,
-      price: endPrice,
-      left: endMerged,
-      center: endMerged,
-      right: endMerged,
-      confirmed: row['is_sure'] != false,
-    );
-    return BI(
-      index: _int(row['index']) ?? index,
-      start: startFx,
-      end: endFx,
-      direction: isDown ? BiDirection.down : BiDirection.up,
-      isSure: row['is_sure'] != false,
-    );
+    final startFx = FX(index: startMerged.index, rawIndex: startRaw, time: _parseTime(row['start_time'] ?? row['startTime']) ?? startMerged.time, type: isDown ? FxType.top : FxType.bottom, price: startPrice, left: startMerged, center: startMerged, right: startMerged, confirmed: true);
+    final endFx = FX(index: endMerged.index, rawIndex: endRaw, time: _parseTime(row['end_time'] ?? row['endTime']) ?? endMerged.time, type: isDown ? FxType.bottom : FxType.top, price: endPrice, left: endMerged, center: endMerged, right: endMerged, confirmed: row['is_sure'] != false);
+    return BI(index: _int(row['index']) ?? index, start: startFx, end: endFx, direction: isDown ? BiDirection.down : BiDirection.up, isSure: row['is_sure'] != false);
   }
 
   static SEG? _parseSeg(Map row, int index, List<BI> bis) {
     final start = _int(row['start_bi_index'] ?? row['startBiIndex']);
     final end = _int(row['end_bi_index'] ?? row['endBiIndex']);
-    if (start == null ||
-        end == null ||
-        start < 0 ||
-        end < start ||
-        end >= bis.length) return null;
+    if (start == null || end == null || start < 0 || end < start || end >= bis.length) return null;
     final isDown = '${row['direction'] ?? ''}'.toLowerCase().contains('down');
-    return SEG(
-      index: _int(row['index']) ?? index,
-      startBi: bis[start],
-      endBi: bis[end],
-      direction: isDown ? SegDirection.down : SegDirection.up,
-      isSure: row['is_sure'] == true,
-      reason: '${row['reason'] ?? 'chan.py'}',
-      biList: bis.sublist(start, end + 1),
-    );
+    return SEG(index: _int(row['index']) ?? index, startBi: bis[start], endBi: bis[end], direction: isDown ? SegDirection.down : SegDirection.up, isSure: row['is_sure'] == true, reason: '${row['reason'] ?? 'chan.py'}', biList: bis.sublist(start, end + 1));
   }
 
   static ZS? _parseZs(Map row, int index) {
@@ -292,28 +230,8 @@ class ChanSnapshotJsonParser {
     final zd = _num(row['zd']);
     final gg = _num(row['gg']);
     final dd = _num(row['dd']);
-    if (startBi == null ||
-        endBi == null ||
-        zg == null ||
-        zd == null ||
-        gg == null ||
-        dd == null) return null;
-    return ZS(
-      index: _int(row['index']) ?? index,
-      startBiIndex: startBi,
-      endBiIndex: endBi,
-      startRawIndex: _int(row['start_raw_index'] ?? row['startRawIndex']) ?? 0,
-      endRawIndex: _int(row['end_raw_index'] ?? row['endRawIndex']) ?? 0,
-      zg: zg,
-      zd: zd,
-      gg: gg,
-      dd: dd,
-      confirmed: row['confirmed'] == true,
-      biInIndex: _int(row['bi_in_index'] ?? row['biInIndex']),
-      biOutIndex: _int(row['bi_out_index'] ?? row['biOutIndex']),
-      startSegIndex: _int(row['start_seg_index'] ?? row['startSegIndex']),
-      endSegIndex: _int(row['end_seg_index'] ?? row['endSegIndex']),
-    );
+    if (startBi == null || endBi == null || zg == null || zd == null || gg == null || dd == null) return null;
+    return ZS(index: _int(row['index']) ?? index, startBiIndex: startBi, endBiIndex: endBi, startRawIndex: _int(row['start_raw_index'] ?? row['startRawIndex']) ?? 0, endRawIndex: _int(row['end_raw_index'] ?? row['endRawIndex']) ?? 0, zg: zg, zd: zd, gg: gg, dd: dd, confirmed: row['confirmed'] == true, biInIndex: _int(row['bi_in_index'] ?? row['biInIndex']), biOutIndex: _int(row['bi_out_index'] ?? row['biOutIndex']), startSegIndex: _int(row['start_seg_index'] ?? row['startSegIndex']), endSegIndex: _int(row['end_seg_index'] ?? row['endSegIndex']));
   }
 
   static BspPoint? _parseBsp(Map row, int index) {
@@ -330,22 +248,19 @@ class ChanSnapshotJsonParser {
       biIndex: _int(row['bi_index'] ?? row['biIndex']),
       segIndex: _int(row['seg_index'] ?? row['segIndex']),
       zsIndex: _int(row['zs_index'] ?? row['zsIndex']),
-      confirmed: row['confirmed'] != false,
+      confirmed: (row['confirmed'] ?? row['is_sure']) != false,
     );
   }
 
   static MergedBar _mergedAt(List<MergedBar> bars, int rawIndex) {
     for (final bar in bars) {
-      if (rawIndex >= bar.startRawIndex && rawIndex <= bar.endRawIndex) {
-        return bar;
-      }
+      if (rawIndex >= bar.startRawIndex && rawIndex <= bar.endRawIndex) return bar;
     }
     return bars[rawIndex.clamp(0, bars.length - 1).toInt()];
   }
 
   static DateTime? _parseTime(Object? value) {
-    final text =
-        '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
+    final text = '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
     if (text.isEmpty || text == 'null') return null;
     return DateTime.tryParse(text);
   }
@@ -353,10 +268,7 @@ class ChanSnapshotJsonParser {
   static double? _num(Object? value) {
     if (value is num) return value.toDouble();
     final text = '${value ?? ''}'.trim().replaceAll(',', '');
-    if (text.isEmpty ||
-        text == '-' ||
-        text.toLowerCase() == 'nan' ||
-        text == 'null') return null;
+    if (text.isEmpty || text == '-' || text.toLowerCase() == 'nan' || text == 'null') return null;
     return double.tryParse(text);
   }
 
