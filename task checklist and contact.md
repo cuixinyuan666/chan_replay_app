@@ -47,12 +47,13 @@ Required completion summary fields:
 - S5 CLI strategy rule matrix validation: accepted.
 - S6 strategy signal sample coverage: accepted.
 - S7 App strategy signal display loop: accepted.
+- S8a CLI scanner / batch candidate output: accepted.
 
 ## S1-S3 summary
 
 - S1 accepted with `rule mode = strategy` and `strategy rule = DAILY_2B_MIN30_1B`.
 - S2 accepted pinned fixture export: `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json`.
-- S3 accepted pinned fixture CLI validation with compact match, native lv_list, no bridge fallback, relation pairs `DAILY->MIN30` and `MIN30->MIN5`, and no Chan recalculation.
+- S3 accepted pinned S1 fixture CLI validation with compact match, native lv_list, no bridge fallback, relation pairs `DAILY->MIN30` and `MIN30->MIN5`, and no Chan recalculation.
 
 remaining_risk:
 
@@ -209,12 +210,44 @@ S8 acceptance evidence:
 - App evidence only for navigation/display behavior.
 - Completion summary is written back to this manual.
 
+## S8a accepted: CLI scanner / batch candidate output
+
+completed_tasks:
+
+- Added `tools/export_s8_strategy_batch_candidates.py` in commit `6530d2de03459c5dacfbd03ee8e3c6c010c527a8`.
+- Added `tools/validate_s8_strategy_batch_candidates.py` in commit `448f2e5947cb50d418519ebe7c09866f4aa79c41`.
+- The exporter scans multiple symbols, uses the existing backend `analyze_multi` path, reuses S6/S5 strategy matching helpers, outputs candidate strategy results with traceability fields, and derives `jump_target` from the low-level trigger BSP raw index.
+- The validator checks exporter static contract, output `sample_kind`, source policy, candidate fields, jump fields, supported rule names, selected relation pair, native lv_list/no fallback diagnostics, and no Dart-side Chan calculation authority.
+- The generated output file `test/fixtures/derived/s8_strategy_batch_candidates_v1.json` is intentionally not committed by default; receivers should generate it locally with the exporter to avoid untracked-file pull conflicts and stale scan data.
+
+evidence_button:
+
+- Export command: `python tools/export_s8_strategy_batch_candidates.py`.
+- Validation command: `python tools/validate_s8_strategy_batch_candidates.py`.
+- Analyzer command: `flutter analyze`.
+
+validation_result:
+
+- accepted.
+- Receiver exporter output included `ok: true`, output file `test/fixtures/derived/s8_strategy_batch_candidates_v1.json`, `candidate_count: 20`, `attempt_count: 2`, sample code `600340.SH`, rule `DAILY_2B_MIN30_1B`, source BSP identifiers `DAILY#4:raw=334:type=B2s;MIN30#21:raw=2672:type=B1`, target levels `DAILY->MIN30`, native relation range `parent=334:child=2672-2679`, strict-step visibility, state `candidate`, and jump target `MIN30 raw_index=2672`.
+- Receiver validator output included `ok: true`, exporter static `ok: true`, output validation `ok: true`, `candidate_count: 20`, `attempt_count: 2`, supported rules `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, `DAILY_3B_MIN30_2B`, selected relation pair `DAILY->MIN30`, empty candidate errors, empty native violations, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
+- Receiver analyzer output included `No issues found!`.
+
+remaining_risk:
+
+- S8a proves batch candidate output and traceability by CLI. It does not yet add an App scanner result list or click-to-replay navigation UI.
+- The exporter runs against the receiver's current local backend state; local uncommitted backend changes can affect generated candidate output.
+
+next_task:
+
+- Continue S8b: App scanner/batch result list with candidate click navigation into Multi-level replay, using App evidence only for the UI navigation behavior.
+
 ## Next task-party operation
 
 1. Pull the latest `origin_vespa_tdx`.
-2. Run `python tools/validate_s7_app_strategy_signal_display_loop.py` if S7 acceptance needs to be rechecked.
+2. Run `python tools/export_s8_strategy_batch_candidates.py` then `python tools/validate_s8_strategy_batch_candidates.py` if S8a acceptance needs to be rechecked.
 3. Run `flutter analyze` after UI changes.
-4. Start S8 scanner / batch strategy output.
+4. Continue S8b App scanner / batch result navigation.
 5. Prefer CLI/static validation for non-visual S8 requirements.
 6. Require App evidence only for chart display, candidate click navigation, and jump behavior.
 7. Do not add additional large full fixtures unless the manual explicitly requires them.
