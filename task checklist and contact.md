@@ -46,6 +46,7 @@ Required completion summary fields:
 - S4 CLI strategy diagnostics validator: accepted.
 - S5 CLI strategy rule matrix validation: accepted.
 - S6 strategy signal sample coverage: accepted.
+- S7 App strategy signal display loop: accepted.
 
 ## S1-S3 summary
 
@@ -153,26 +154,41 @@ next_task:
 
 - Start S7 App strategy signal display loop.
 
-## S7 selected: App strategy signal display loop
+## S7 accepted: App strategy signal display loop
 
 Goal:
 
 - Show validated strategy signals in the App and verify UI-only behavior that CLI cannot cover.
 
-Scope:
+completed_tasks:
 
-- Show strategy signals in the App.
-- Mark matched strategy signals on the chart.
-- Allow selecting a signal and jumping to the corresponding raw index/time.
-- Display source BSP, relation range, strict-step visibility, rule name, and state.
-- Preserve one-click evidence for receiver-run UI validation.
+- Added `tools/validate_s7_app_strategy_signal_display_loop.py` in commit `055d586d4bfe10cb7faddda2ec9a46fdb209f933`.
+- Exposed `MultiLevelStrategySignalSelection`, selected-signal callback, and Jump callback in `lib/ui/widgets/multi_level_interval_signal_panel.dart` in commit `22512bb4d99ea7c0ba83cc7f70f02a17c1d201c6`.
+- Wired selected strategy signal, chart marker objects, and raw-index/time jump in `lib/ui/pages/multi_level_replay_page.dart` in commit `50cd6386d9c1496be7f36887cff80f4cf2d79d4c`.
+- Cleaned analyzer findings in commit `c4850e55ffcb0e69d60aecbc6c0a597f74e12318`.
+- Changed Multi-level replay to chart-first layout with collapsible/floating controls in commit `83e71600a8237b54451dff690ff593e432f571bc` so K-line area is not compressed by diagnostics and signal panels.
 
-S7 acceptance evidence:
+evidence_button:
 
-- App evidence only for UI-specific behavior.
-- CLI/static validators still cover non-visual requirements where possible.
-- No Dart-side Chan calculation authority is introduced.
-- Completion summary is written back to this manual.
+- CLI/static command: `python tools/validate_s7_app_strategy_signal_display_loop.py`.
+- Analyzer command: `flutter analyze`.
+- App evidence button: `S1一键复制` in the `Interval strategy` panel.
+
+validation_result:
+
+- accepted.
+- Receiver static validator output included `ok: true`, selected-signal callback, Jump callback, page signal reception, raw-index jump, chart marker wiring, chart overlay markers, no missing requirements, no forbidden Dart-side Chan calculation markers, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
+- Receiver analyzer output included `No issues found!`.
+- Receiver App evidence included `s7_phase: app_strategy_signal_display_loop`, `available_signals: 2`, `rule_mode_name: DAILY_2B_MIN30_1B`, source BSP identifiers `DAILY#4:raw=334:type=B2s;MIN30#21:raw=2672:type=B1`, target levels `DAILY->MIN30`, native relation range `parent=334:child=2672-2679`, strict step visibility, state `confirmed`, raw/time/price fields, and chart marker id `s7_strategy_signal_marker_DAILY_2B_MIN30_1B_DAILY_334_MIN30_2672`.
+
+remaining_risk:
+
+- S7 App evidence proves signal traceability and marker id generation from the App. Visual confirmation of marker rendering and Jump positioning is still receiver-side observational evidence, not reproducible by CLI.
+- The chart-first layout reduces compression, but exact visual comfort depends on screen size and DPI.
+
+next_task:
+
+- Start S8 scanner / batch strategy output.
 
 ## S8 planned: scanner / batch strategy output
 
@@ -196,10 +212,11 @@ S8 acceptance evidence:
 ## Next task-party operation
 
 1. Pull the latest `origin_vespa_tdx`.
-2. Run `python tools/validate_s6_strategy_signal_sample_coverage.py` if S6 acceptance needs to be rechecked.
-3. Start S7 by inspecting the App strategy signal display path.
-4. Prefer CLI/static validation for non-visual S7 requirements.
-5. Require App evidence only for chart display, signal marking, selection, and jump behavior.
-6. Do not add additional large full fixtures unless the manual explicitly requires them.
-7. Do not continue performance optimization by default.
-8. Write every stage completion summary into this manual after evidence is accepted.
+2. Run `python tools/validate_s7_app_strategy_signal_display_loop.py` if S7 acceptance needs to be rechecked.
+3. Run `flutter analyze` after UI changes.
+4. Start S8 scanner / batch strategy output.
+5. Prefer CLI/static validation for non-visual S8 requirements.
+6. Require App evidence only for chart display, candidate click navigation, and jump behavior.
+7. Do not add additional large full fixtures unless the manual explicitly requires them.
+8. Do not continue performance optimization by default.
+9. Write every stage completion summary into this manual after evidence is accepted.
