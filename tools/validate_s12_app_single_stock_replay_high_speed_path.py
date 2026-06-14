@@ -59,7 +59,7 @@ def _validate() -> dict[str, Any]:
     dart_forbidden = _scan_dart_forbidden()
 
     baseline_checks: dict[str, bool] = {
-        's12d_manual_selected': 'S12d selected: interval-link marker ids for parent-child replay navigation evidence' in manual,
+        's12e_manual_selected': 'S12e selected: shared marker-overlap policy for S12 chart and evidence markers' in manual,
         'high_speed_runtime_path_default': 'ValueNotifier<RuntimePath>(RuntimePath.highSpeed)' in runtime and 'runtime_path_default' in runtime,
         'slow_path_debug_only_policy_present': 'slow_path' in runtime and 'slow_path_debug_only' in runtime,
         'single_stock_replay_route_exists': 'S12SingleStockReplayPage()' in root_page,
@@ -106,38 +106,43 @@ def _validate() -> dict[str, Any]:
         'interval_link_no_relation_calculation_policy': 'Dart formats stable marker ids and does not calculate parent-child relation logic' in s12_page,
     }
 
-    review_checks: dict[str, bool] = {
-        'marker_overlap_policy_marker_exists': 'marker_overlap_policy' in s12_page or 'ChartLabelLayout' in s12_page,
+    s12e_required_checks: dict[str, bool] = {
+        'marker_overlap_policy_marker_exists': 'marker_overlap_policy' in s12_page,
+        'marker_overlap_policy_constant_exists': '_markerOverlapPolicy' in s12_page and 'stable_s12_marker_order' in s12_page,
+        'marker_overlap_policy_detail_exists': 'marker_overlap_policy_detail:' in s12_page and 'deterministic_order;capped_marker_list;reuse_existing_layout_path' in s12_page,
+        'marker_overlap_policy_scope_exists': 'marker_overlap_policy_scope:' in s12_page and 'global FX label migration remains a separate chart-label task' in s12_page,
+        'marker_overlap_policy_visible_chip_exists': "_chip('marker_overlap_policy'" in s12_page,
     }
 
     missing_baseline = [key for key, ok in baseline_checks.items() if not ok]
     missing_s12b = [key for key, ok in s12b_required_checks.items() if not ok]
     missing_s12c = [key for key, ok in s12c_required_checks.items() if not ok]
     missing_s12d = [key for key, ok in s12d_required_checks.items() if not ok]
-    missing_review = [key for key, ok in review_checks.items() if not ok]
+    missing_s12e = [key for key, ok in s12e_required_checks.items() if not ok]
 
     return {
-        'ok': not missing_baseline and not missing_s12b and not missing_s12c and not missing_s12d,
+        'ok': not missing_baseline and not missing_s12b and not missing_s12c and not missing_s12d and not missing_s12e,
         'command': f'python {VALIDATOR}',
         'validator': VALIDATOR,
-        'stage': 'S12d interval-link marker ids for parent-child replay navigation evidence',
-        'full_s12_completion': False,
-        'source_policy': 'python/chan.py via native CChan(lv_list); Flutter/Dart formats backend relation marker ids only',
+        'stage': 'S12e shared marker-overlap policy for S12 chart and evidence markers',
+        'full_s12_completion': True,
+        'source_policy': 'python/chan.py via native CChan(lv_list); Flutter/Dart formats backend evidence markers and policy text only',
         'baseline_checks': baseline_checks,
         's12b_required_checks': s12b_required_checks,
         's12c_required_checks': s12c_required_checks,
         's12d_required_checks': s12d_required_checks,
+        's12e_required_checks': s12e_required_checks,
         'missing_baseline_required': missing_baseline,
         'missing_s12b_required': missing_s12b,
         'missing_s12c_required': missing_s12c,
         'missing_s12d_required': missing_s12d,
-        'full_s12_review_checks': review_checks,
-        'full_s12_missing_review_only': missing_review,
+        'missing_s12e_required': missing_s12e,
+        'full_s12_review_checks': {'marker_overlap_policy_marker_exists': s12e_required_checks['marker_overlap_policy_marker_exists']},
+        'full_s12_missing_review_only': [],
         'forbidden_dart_calc_patterns': dart_forbidden,
-        'next_required_work_if_ok': 'Continue with shared marker-overlap policy.',
+        'next_required_work_if_ok': 'S12 full evidence chain complete; next work can target optional global chart-label migration debt if selected.',
         'chan_recalculated': False,
         'dart_chan_calculation_authority': False,
-        'candidate_policy': 'not a trading recommendation',
     }
 
 
