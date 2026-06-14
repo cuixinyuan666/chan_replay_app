@@ -9,12 +9,13 @@ open_questions: none
 ## Hard rules
 
 - Original `python/chan.py` is the only Chan calculation engine.
-- Flutter/Dart must not calculate FX/BI/SEG/ZS/BSP.
+- Flutter/Dart must not calculate FX/BI/SEG/ZS/BSP/segseg.
 - Multi-level native calculation must use `CChan(lv_list=[...])`.
 - Strict step replay must use backend step frames, never final-snapshot slicing.
 - Bridge fallback, Chan result cache, and algorithmic fast/turbo/speed mode are not accepted.
 - High-speed path remains default; slow path is debug/baseline only.
 - Prefer repository offline/sample data for validation when it can reproduce the task.
+- New files under `python/chan.py` must be in `a_*` folders or named `a_*.py`.
 
 ## Receiver workload minimization rule
 
@@ -54,188 +55,37 @@ Required completion summary fields:
 - S10 analyze_multi long-history window count expansion: accepted by receiver CLI evidence.
 - S11 post-S10 guardrail regression bundle: accepted by receiver CLI evidence.
 - S12a App single-stock replay high-speed baseline static validation: accepted by receiver CLI evidence.
+- S12b replay evidence button, indicator default-hidden state, and explicit level-validation feedback: accepted by receiver CLI + App evidence.
 
 ## Current selected task
 
-S12b selected: replay evidence button, indicator default-hidden state, and explicit level-validation feedback.
+S12c selected: step-load temporal evidence state tracking for replay structures.
 
-## S1-S3 summary
+## Historical accepted summary
+
+### S1-S3
 
 - S1 accepted with `rule mode = strategy` and `strategy rule = DAILY_2B_MIN30_1B`.
 - S2 accepted pinned fixture export: `test/fixtures/pinned/s1_600340_SH_DAILY_MIN30_MIN5_2025-09-01_2025-10-20_step_compact_v1.json`.
 - S3 accepted pinned S1 fixture CLI validation with compact match, native lv_list, no bridge fallback, relation pairs `DAILY->MIN30` and `MIN30->MIN5`, and no Chan recalculation.
 
-remaining_risk:
-
-- The pinned fixture is about 7.06 MB. Prefer this fixture or a smaller derived metadata sample for later checks.
-
-## R1/R1b summary
+### R1/R1b
 
 - R1 accepted by App evidence. It made `rule mode = strategy` and `strategy rule = DAILY_2B_MIN30_1B` the S1-like defaults, kept `S1一键复制`, and de-emphasized low-level debug copy buttons.
 - R1b accepted by CLI validation: `python tools/validate_r1_receiver_burden.py`.
 
-## S4 accepted: CLI strategy diagnostics validator
+### S4-S7
 
-completed_tasks:
+- S4 accepted: CLI strategy diagnostics validator.
+- S5 accepted: CLI strategy rule matrix validation for `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, and `DAILY_3B_MIN30_2B`.
+- S6 accepted: strategy signal sample coverage, including matched-output metadata and no-output diagnostic path.
+- S7 accepted: App strategy signal display loop, selected-signal callback, raw-index jump, chart marker wiring, and copy evidence.
 
-- Added `tools/validate_s4_cli_strategy_diagnostics.py`.
-- Validated the pinned S1 fixture, source policy, relation pairs, BSP availability/no-output diagnosis, strict-step frame evidence, compact validation, bridge fallback absence, native lv_list, and forbidden Dart-side Chan calculation markers.
+### S8-S9
 
-evidence_button:
-
-- CLI command: `python tools/validate_s4_cli_strategy_diagnostics.py`.
-
-validation_result:
-
-- accepted.
-- Receiver output included `ok: true`, relation pairs `DAILY->MIN30` and `MIN30->MIN5`, strict-step evidence, compact match, native lv_list, no fallback, no forbidden Dart-side markers, and no Chan recalculation.
-
-remaining_risk:
-
-- None for S4 CLI acceptance.
-
-next_task:
-
-- S4 accepted. Continue S5 and S6.
-
-## S5 accepted: CLI strategy rule matrix validation
-
-completed_tasks:
-
-- Added `tools/validate_s5_cli_strategy_rule_matrix.py`.
-- Validated `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, and `DAILY_3B_MIN30_2B`.
-
-evidence_button:
-
-- CLI command: `python tools/validate_s5_cli_strategy_rule_matrix.py`.
-
-validation_result:
-
-- accepted.
-- Receiver output included `ok: true`, all three required strategy rules, strict-step evidence, compact match, native lv_list, no fallback, no forbidden Dart-side markers, and no Chan recalculation.
-
-remaining_risk:
-
-- The pinned fixture reports no matched output for all three S5 rules. This is acceptable for S5 matrix/no-output validation.
-- S6 must prove both no-output and matched-output diagnostic paths.
-
-next_task:
-
-- S5 accepted. Start S6 by default.
-
-## S6 accepted: strategy signal sample coverage
-
-completed_tasks:
-
-- Added `tools/export_s6_strategy_matched_sample.py` and `tools/validate_s6_strategy_signal_sample_coverage.py`.
-- Added/validated `test/fixtures/derived/s6_strategy_matched_sample_v1.json` as backend-traceable matched-output metadata.
-
-evidence_button:
-
-- Export command: `python tools/export_s6_strategy_matched_sample.py`.
-- Validation command: `python tools/validate_s6_strategy_signal_sample_coverage.py`.
-
-validation_result:
-
-- accepted.
-- Receiver export output included `ok: true`, matched rule `DAILY_2B_MIN30_1B`, source BSP identifiers `DAILY#4:raw=334:type=B2s;MIN30#21:raw=2672:type=B1`, relation range `parent=334:child=2672-2679`, compact match, native lv_list, and no fallback.
-- Receiver validation output included `ok: true`, no-output path, matched-output path, traceability fields, no forbidden Dart-side markers, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
-
-remaining_risk:
-
-- S6 validates diagnostic coverage, not chart display behavior. S7 must verify App display, marking, selection, and navigation behavior.
-
-next_task:
-
-- Start S7 App strategy signal display loop.
-
-## S7 accepted: App strategy signal display loop
-
-completed_tasks:
-
-- Added `tools/validate_s7_app_strategy_signal_display_loop.py`.
-- Wired selected strategy signal, chart marker objects, raw-index/time jump, and App copy evidence around the Interval strategy panel.
-- Changed multi-level replay toward a chart-first layout with collapsible/floating controls.
-
-evidence_button:
-
-- CLI/static command: `python tools/validate_s7_app_strategy_signal_display_loop.py`.
-- Analyzer command: `flutter analyze`.
-- App evidence button: `S1一键复制` in the `Interval strategy` panel.
-
-validation_result:
-
-- accepted.
-- Receiver static validator output included `ok: true`, selected-signal callback, Jump callback, page signal reception, raw-index jump, chart marker wiring, chart overlay markers, no forbidden Dart-side Chan calculation markers, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
-- Receiver App evidence included `s7_phase: app_strategy_signal_display_loop`, `available_signals: 2`, rule `DAILY_2B_MIN30_1B`, target levels `DAILY->MIN30`, native relation range, strict-step visibility, state `confirmed`, raw/time/price fields, and chart marker id.
-
-remaining_risk:
-
-- Visual confirmation of marker rendering and Jump positioning remains receiver-side observational evidence.
-- Exact visual comfort depends on screen size and DPI.
-
-next_task:
-
-- Start S8 scanner / batch strategy output.
-
-## S8 accepted: scanner / batch strategy output
-
-completed_tasks:
-
-- Added `tools/export_s8_strategy_batch_candidates.py`.
-- Added `tools/validate_s8_strategy_batch_candidates.py`.
-- Added `lib/ui/pages/s8_strategy_batch_page.dart` and the `S8批量候选` route.
-- Added `tools/validate_s8_app_batch_navigation.py`.
-- The App page reads the locally generated S8 candidate JSON, displays candidates, opens the clicked candidate through the existing multi-level backend path, jumps to the candidate `jump_target`, marks the chart with `s8_batch_candidate_marker`, and copies traceability evidence.
-
-evidence_button:
-
-- Export command: `python tools/export_s8_strategy_batch_candidates.py`.
-- Validation command: `python tools/validate_s8_strategy_batch_candidates.py`.
-- CLI/static command: `python tools/validate_s8_app_batch_navigation.py`.
-- Analyzer command: `flutter analyze`.
-- App evidence button: `复制S8证据` in the `S8 traceability evidence` panel.
-
-validation_result:
-
-- accepted.
-- S8a accepted by CLI exporter and validator.
-- S8b accepted by static App validator and receiver App evidence.
-- Receiver outputs included `ok: true`, `candidate_count: 20`, `attempt_count: 2`, sample `600340.SH`, rule `DAILY_2B_MIN30_1B`, source BSP identifiers `DAILY#4:raw=334:type=B2s;MIN30#21:raw=2672:type=B1`, native relation range `parent=334:child=2672-2679`, jump target `MIN30 raw_index=2672`, no native violations, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
-
-remaining_risk:
-
-- Generated batch output is intentionally local and not committed; rerun the exporter when local backend/data changes.
-- Visual marker comfort depends on screen size and chart zoom.
-
-next_task:
-
-- Start S9 local generated artifact hygiene and continuation baseline.
-
-## S9 accepted: local generated artifact hygiene and continuation baseline
-
-completed_tasks:
-
-- Deleted local generated/backup files from the receiver working tree.
-- Restored Windows generated files and accidental manual edit.
-- Classified `backend/app/a_multilevel_native_engine.py` as a real backend functionality patch, not cleanup noise.
-
-evidence_button:
-
-- Receiver commands: `git status --short`, `git diff -- backend/app/a_multilevel_native_engine.py`, `git diff --stat`, and targeted `git restore` commands.
-
-validation_result:
-
-- accepted.
-- Local generated files were deleted and Windows generated files were restored.
-
-remaining_risk:
-
-- `backend/app/a_multilevel_native_engine.py` remained modified by design and was promoted to S10.
-
-next_task:
-
-- Start S10: formalize analyze_multi long-history window count expansion.
+- S8 accepted: scanner / batch strategy output, local generated candidate JSON, App candidate navigation, chart marker, and traceability evidence.
+- S9 accepted: local generated artifact hygiene and continuation baseline.
+- Generated `test/fixtures/derived/s8_strategy_batch_candidates_v1.json` is local validation output and should not be committed by default.
 
 ## S10 accepted: analyze_multi long-history window count expansion
 
@@ -250,11 +100,8 @@ completed_tasks:
 
 evidence_button:
 
-- S10 validation command: `python tools/validate_s10_long_history_count_expansion.py`.
-- S8 export command: `python tools/export_s8_strategy_batch_candidates.py`.
-- S8 validation command: `python tools/validate_s8_strategy_batch_candidates.py`.
-- S8 App static command: `python tools/validate_s8_app_batch_navigation.py`.
-- Analyzer command: `flutter analyze`.
+- Receiver command: `python tools/validate_s10_long_history_count_expansion.py`.
+- Regression chain: S8 export, S8 validation, S8 App static validation, and `flutter analyze`.
 
 validation_result:
 
@@ -264,16 +111,14 @@ validation_result:
   - `MIN30`: `900 -> 11764`
   - `MIN5`: `900 -> 68086`
 - Receiver S10 checks passed for request-window parser, request `start/end` usage, expanded helper signature using window bounds, top-level prefetch expansion, lower-level window count expansion, metadata `requested_window`, metadata `count_expansion_basis`, preserved S8 window basis, native `CChan(lv_list)` authority, no bridge fallback or wall-clock count, and no Dart-side Chan calculation authority.
-- Receiver S8 regression outputs included `ok: true` and no Dart-side Chan calculation authority.
-- Receiver analyzer output included `No issues found!`.
 
 remaining_risk:
 
-- S10 validation is CLI/static evidence plus S8 regression evidence; visual App behavior remains covered by the existing S8 App static/App evidence chain.
+- Visual App behavior remains covered by existing S8/S12 App evidence chains.
 
 next_task:
 
-- Continue S11: post-S10 guardrail regression bundle.
+- S10 accepted. Continue S11.
 
 ## S11 accepted: post-S10 guardrail regression bundle
 
@@ -320,7 +165,7 @@ completed_tasks:
 
 - Added `tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
 - Established a static baseline for single-stock replay on the accepted high-speed runtime path.
-- Verified the existing App already has a visible multi-level single-stock replay entry, stock code input, market input, date window input, level selection UI, high-speed runtime path default, analyze_multi backend path, native `CChan(lv_list=[...])` authority, existing OriginKlineChart reuse, TradingView toolbox/easy-tdx entry, strict step frame usage, relation/signal locate hooks, and no Dart-side Chan calculation authority.
+- Verified the App has a visible multi-level single-stock replay entry, stock code input, market input, date window input, level selection UI, high-speed runtime path default, analyze_multi backend path, native `CChan(lv_list=[...])` authority, OriginKlineChart reuse, TradingView toolbox/easy-tdx entry, strict step frame usage, relation/signal locate hooks, and no Dart-side Chan calculation authority.
 - Kept full S12 completion items as review-only instead of pretending the full S12 UI workflow is complete.
 
 evidence_button:
@@ -338,54 +183,114 @@ validation_result:
 
 remaining_risk:
 
-- Full S12 is not complete. The S12a validator still reports these review-only gaps:
-  - `explicit_s12_evidence_button_exists`
-  - `indicator_display_hidden_by_default`
-  - `invalid_level_combination_feedback_exists`
-  - `temporal_state_provisional_confirmed_historical_exists`
-  - `interval_link_marker_id_exists`
-  - `marker_overlap_policy_marker_exists`
-- `audit_origin_kline_global_label_layout_usage.py --strict` still reports `_drawFx does not accept chartLabels`; keep this as display-layout debt unless it is selected as the next specific chart-label task.
+- Full S12 was not complete at S12a. The validator still reported review-only gaps for evidence button, default-hidden indicators, invalid-level feedback, temporal states, interval-link marker ids, and marker-overlap policy.
 
 next_task:
 
 - Start S12b: replay evidence button, indicator default-hidden state, and explicit level-validation feedback.
 
-## S12b selected: replay evidence button, indicator default-hidden state, and explicit level-validation feedback
+## S12b accepted: replay evidence button, indicator default-hidden state, and explicit level-validation feedback
 
-Goal:
+completed_tasks:
 
-- Convert the first three S12a review-only gaps into required behavior while preserving the high-speed single-stock replay baseline.
+- Added `lib/ui/pages/s12_single_stock_replay_page.dart`.
+- Routed the default multi-level/single-stock replay entry to `S12SingleStockReplayPage` while preserving existing S7/S8 pages and validators.
+- Added visible `复制复盘证据` button.
+- Added S12 evidence text with symbol, market, selected levels, normalized levels, active level, runtime path, replay mode, current step, visible window, enabled Chan overlays, enabled easy-tdx indicators, source policy, backend authority, native CChan flag, fallback flag, `dart_chan_calculation_authority: false`, and `candidate_policy: not a trading recommendation`.
+- Made easy-tdx indicators hidden by default through empty `_enabledEasyTdxIndicators`, while keeping indicator toggles inside the existing OriginKlineChart / TradingView-style tool entrance.
+- Added explicit selected-level validation before `analyze_multi`, including unsupported/duplicate/too-few-level feedback and normalized level reporting.
+- Changed S12 default App evidence path to the S8/S11-proven once window: `600340.SH`, `DAILY,MIN30,MIN5`, `2022-01-01~2025-12-31`, `count=900`, `runtime_path=high_speed`.
+- Enhanced S12 load failure status so future errors show request context instead of only a generic backend failure.
+- Updated `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so the evidence button, default-hidden indicator state, and invalid-level feedback are required S12b checks.
+- Did not modify `python/chan.py` and did not add Dart-side Chan calculation authority.
 
-Scope:
-
-- Add a visible `复制复盘证据` button in the single-stock replay workflow.
-- Copied evidence must include at least `s12_phase: app_single_stock_replay_high_speed_path`, symbol, market, selected levels, normalized levels when different, active level, runtime path, mode, current step/frame, visible window, enabled Chan overlays, enabled easy-tdx indicators, source policy, backend authority, `dart_chan_calculation_authority: false`, and `candidate_policy: not a trading recommendation`.
-- Make easy-tdx indicators hidden by default in the single-stock replay page. Users may enable indicators manually through the existing TradingView-style toolbox/indicator entrance only.
-- Add explicit UI feedback for invalid or unsupported level combinations before `analyze_multi` is called.
-- Report normalized level result when the App normalizes selected levels.
-- Update `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so the evidence button, default-hidden indicator state, and invalid-level feedback become required S12b checks.
-- Do not modify `python/chan.py` Chan algorithms.
-- Do not add Dart-side FX/BI/SEG/ZS/BSP/segseg calculation authority.
-- Do not add profit prediction, trading recommendation, or automatic trading wording.
-
-Acceptance evidence:
+evidence_button:
 
 - Receiver command: `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
 - Receiver command: `python tools/validate_s11_guardrail_regression.py`.
 - Receiver command: `flutter analyze`.
-- Receiver App evidence: use one stock, one valid multi-level combination, one invalid combination attempt, then click `复制复盘证据` and paste the copied evidence.
+- Receiver App button: `复制复盘证据`.
+
+validation_result:
+
+- accepted.
+- Receiver S12b validator output included `ok: true`, empty `missing_baseline_required`, empty `missing_s12b_required`, all `s12b_required_checks: true`, no forbidden Dart calculation patterns, no forbidden profit/trading wording, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
+- Receiver S11 regression output included `ok: true`, `required_ok: true`, `required_timeout_failure_count: 0`, `hygiene_ok: true`, and `dart_chan_calculation_authority: false`.
+- Receiver analyzer output included `No issues found`.
+- Receiver App evidence included:
+  - `s12_phase: app_single_stock_replay_high_speed_path`
+  - `symbol: 600340`
+  - `market: SH`
+  - `selected_levels: DAILY,MIN30,MIN5`
+  - `normalized_levels: DAILY,MIN30,MIN5`
+  - `level_validation: 级别组合有效：DAILY,MIN30,MIN5`
+  - `runtime_path: high_speed`
+  - `replay_mode: once`
+  - `enabled_easy_tdx_indicators: none`
+  - `backend_authority: native CChan(lv_list) through /api/chan/analyze_multi`
+  - `native_cchan_lv_list: true`
+  - `fallback_to_bridge: false`
+  - `dart_chan_calculation_authority: false`
+  - `candidate_policy: not a trading recommendation`
 
 remaining_risk:
 
-- Temporal evidence state tracking, interval-link marker ids, and marker-overlap policy remain for later S12 sub-stages unless explicitly included in S12b implementation.
+- Full S12 is still not complete. The S12b validator still reports these review-only gaps:
+  - `temporal_state_provisional_confirmed_historical_exists`
+  - `interval_link_marker_id_exists`
+  - `marker_overlap_policy_marker_exists`
+- `audit_origin_kline_global_label_layout_usage.py --strict` still reports `_drawFx does not accept chartLabels`; keep this as display-layout debt unless it is selected as the next specific chart-label task.
+- S12b App evidence uses `once` mode. Step-specific temporal evidence is intentionally deferred to S12c.
+
+next_task:
+
+- Start S12c: step-load temporal evidence state tracking for replay structures.
+
+## S12c selected: step-load temporal evidence state tracking for replay structures
+
+Goal:
+
+- Convert S12 temporal evidence from a placeholder (`not_tracked_in_s12b`) into real replay-state evidence for structures produced by backend step frames.
+- Preserve backend authority: structures must come from backend step frames / snapshots only; Dart may track visual/evidence lifecycle state but must not calculate FX/BI/SEG/ZS/BSP/segseg.
+
+Scope:
+
+- Add temporal state tracking for backend-exported structures in the S12 replay workflow.
+- Track at least BSP first, then FX/BI/SEG/ZS/segseg when available through the existing backend model.
+- A structure or BSP that appeared in a previous step must not be silently removed only because later steps no longer expose it in the current frame/snapshot.
+- `is_sure == false` should be represented as `provisional`.
+- `is_sure == true` should be represented as `confirmed`.
+- If the same structure later changes from provisional to confirmed, update the existing evidence object instead of creating a duplicate.
+- If a provisional structure later disappears from later frames, preserve it as `historical_provisional`.
+- `historical_provisional` must not be treated as confirmed.
+- Copied evidence must distinguish `provisional`, `confirmed`, and `historical_provisional`.
+- S12c must not change `python/chan.py` algorithms.
+- S12c must not add Dart-side Chan calculation authority.
+- S12c must not add profit prediction, trading recommendation, or automatic trading wording.
+
+Acceptance evidence:
+
+- Update `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so temporal state tracking becomes required for S12c while interval-link marker ids and marker-overlap policy remain review-only.
+- Receiver command: `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
+- Receiver command: `python tools/validate_s11_guardrail_regression.py`.
+- Receiver command: `flutter analyze`.
+- Receiver App evidence should include at least one copied S12 replay evidence text showing:
+  - `temporal_state: provisional` or a temporal-state summary including provisional count;
+  - `temporal_state: confirmed` or a confirmed count;
+  - `historical_provisional` count or sample when available;
+  - source policy proving backend step frames are the source;
+  - `dart_chan_calculation_authority: false`.
+
+remaining_risk:
+
+- Interval-link marker ids and marker-overlap policy remain for later S12 sub-stages unless explicitly included in S12c implementation.
 - The optional `_drawFx does not accept chartLabels` display-layout debt remains separate unless the supervisor selects it as the next chart-label-layout task.
 
 ## Next task-party operation
 
 1. Receiver pulls latest `origin_vespa_tdx`.
-2. Task party implements S12b in small changes.
+2. Task party implements S12c in small changes.
 3. Receiver runs `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
 4. Receiver runs `python tools/validate_s11_guardrail_regression.py`.
 5. Receiver runs `flutter analyze`.
-6. Receiver shares S12b validator output and App replay evidence for acceptance.
+6. Receiver shares S12c validator output and App replay evidence for acceptance.
