@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/runtime/runtime_path.dart';
 import 'ashare_bsp_scanner_page.dart';
-import 'multi_level_replay_page.dart';
 import 'origin_replay_strict_page.dart';
 import 'research_backtest_page.dart';
 import 's8_strategy_batch_page.dart';
+import 's12_single_stock_replay_page.dart';
 
 class RootPage extends StatefulWidget {
   const RootPage({super.key});
@@ -42,7 +42,7 @@ class _RootPageState extends State<RootPage> {
             visited: _visited,
             builders: const [
               _RouteBuilder(child: OriginReplayStrictPage()),
-              _RouteBuilder(child: MultiLevelReplayPage()),
+              _RouteBuilder(child: S12SingleStockReplayPage()),
               _RouteBuilder(child: AshareBspScannerPage()),
               _RouteBuilder(child: S8StrategyBatchPage()),
               _RouteBuilder(child: ResearchBacktestPage()),
@@ -175,7 +175,7 @@ class _RouteToolColumn extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             _RouteToolButton(
-              tooltip: '多级别',
+              tooltip: '单股多级别复盘',
               icon: Icons.account_tree,
               selected: currentIndex == _RootPageState._multiLevelIndex,
               onPressed: () => onOpen(_RootPageState._multiLevelIndex),
@@ -238,11 +238,9 @@ class _RouteToolButton extends StatelessWidget {
                 ? const Color(0xFF2962FF)
                 : const Color(0xEE131722),
             side: BorderSide(
-              color: selected
-                  ? const Color(0xFF8AB4FF)
-                  : Colors.white.withValues(alpha: 0.10),
+              color: selected ? const Color(0xFF8AB4FF) : Colors.white24,
             ),
-            visualDensity: VisualDensity.compact,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
       ),
