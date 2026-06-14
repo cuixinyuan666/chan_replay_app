@@ -34,6 +34,13 @@ def _has(text: str, *needles: str) -> bool:
     return all(needle in text for needle in needles)
 
 
+def _manual_has_s7_record(manual: str) -> bool:
+    return (
+        '## S7 selected: App strategy signal display loop' in manual
+        or '## S7 accepted: App strategy signal display loop' in manual
+    )
+
+
 def _forbidden_hits(texts: dict[str, str]) -> list[str]:
     hits: list[str] = []
     for file_name, text in texts.items():
@@ -56,50 +63,43 @@ def _validate() -> dict[str, Any]:
     forbidden = _forbidden_hits(texts)
 
     checks: dict[str, bool] = {
-        # Display / traceability already present in the signal panel.
         'signal_panel_present': 'class MultiLevelIntervalSignalPanel' in panel,
         'strategy_rule_matrix_present': _has(panel, 'DAILY_2B_MIN30_1B', 'DAILY_3B_MIN30_1B', 'DAILY_3B_MIN30_2B'),
         'panel_builds_signals_from_bsp_and_relations': _has(panel, '_buildSignals', 'relationsForParentRange', '_matchesHighFilter', '_matchesLowFilter'),
         'traceability_fields_present': _has(panel, 'source_bsp_identifiers', 'target_levels', 'parent_relation_range', 'child_relation_range', 'strict_step_verified', 'state: ${selected.state}', 'rule_mode_name'),
         'one_click_evidence_present': _has(panel, 'S1一键复制', 'strategy_traceability_required'),
-
-        # Page already wires panel and chart into the multi-level replay surface.
         'multi_level_page_uses_signal_panel': 'MultiLevelIntervalSignalPanel(' in page,
         'multi_level_page_uses_origin_chart': 'OriginKlineChart(' in page,
         'page_has_relation_locator_baseline': _has(page, '_locateRelationTarget', '_barListIndexForRawIndex', '_viewEndIndex', '_crosshairIndex'),
-
-        # S7-specific loop expected after this diagnostic stage.
         'panel_exposes_selected_signal_callback': _has(panel, 'onSelectedSignalChanged', 'MultiLevelStrategySignalSelection'),
         'panel_exposes_jump_callback': _has(panel, 'onJumpToSignal'),
         'page_receives_selected_signal': _has(page, '_selectedStrategySignal', 'onSelectedSignalChanged'),
         'page_jumps_to_signal_raw_index': _has(page, '_locateStrategySignal', 'lowRawIndex', 'highRawIndex'),
         'page_marks_strategy_signal_on_chart': _has(page, '_strategySignalDrawingObjects', 's7_strategy_signal_marker', 'drawingObjects:'),
         'chart_accepts_overlay_markers': 'final List<DrawingObject> drawingObjects' in chart and 'drawingObjects:' in chart,
-        'manual_s7_selected': '## S7 selected: App strategy signal display loop' in manual,
+        'manual_s7_recorded': _manual_has_s7_record(manual),
         'no_dart_chan_calculation_authority': not forbidden,
     }
 
-    missing_required = [
-        key for key, ok in checks.items()
-        if key in {
-            'signal_panel_present',
-            'strategy_rule_matrix_present',
-            'panel_builds_signals_from_bsp_and_relations',
-            'traceability_fields_present',
-            'one_click_evidence_present',
-            'multi_level_page_uses_signal_panel',
-            'multi_level_page_uses_origin_chart',
-            'page_has_relation_locator_baseline',
-            'panel_exposes_selected_signal_callback',
-            'panel_exposes_jump_callback',
-            'page_receives_selected_signal',
-            'page_jumps_to_signal_raw_index',
-            'page_marks_strategy_signal_on_chart',
-            'chart_accepts_overlay_markers',
-            'manual_s7_selected',
-            'no_dart_chan_calculation_authority',
-        } and not ok
-    ]
+    required = {
+        'signal_panel_present',
+        'strategy_rule_matrix_present',
+        'panel_builds_signals_from_bsp_and_relations',
+        'traceability_fields_present',
+        'one_click_evidence_present',
+        'multi_level_page_uses_signal_panel',
+        'multi_level_page_uses_origin_chart',
+        'page_has_relation_locator_baseline',
+        'panel_exposes_selected_signal_callback',
+        'panel_exposes_jump_callback',
+        'page_receives_selected_signal',
+        'page_jumps_to_signal_raw_index',
+        'page_marks_strategy_signal_on_chart',
+        'chart_accepts_overlay_markers',
+        'manual_s7_recorded',
+        'no_dart_chan_calculation_authority',
+    }
+    missing_required = [key for key, ok in checks.items() if key in required and not ok]
     return {
         'ok': not missing_required,
         'command': f'python {VALIDATOR}',
@@ -112,7 +112,7 @@ def _validate() -> dict[str, Any]:
         'diagnosis': (
             'S7 static requirements are satisfied; App evidence is still required for visual display and interaction.'
             if not missing_required
-            else 'S7 is not yet accepted. Existing signal panel/display evidence is present, but selected-signal callback, jump-to-raw-index, and chart marker wiring must be completed before App evidence.'
+            else 'S7 is not yet accepted. Existing signal panel/display evidence is present, but selected-signal callback, jump-to-raw-index, chart marker wiring, or manual record is incomplete.'
         ),
         'app_evidence_required_after_static_ok': [
             'Open Multi-level replay',
