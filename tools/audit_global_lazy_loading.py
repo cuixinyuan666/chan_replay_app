@@ -71,6 +71,10 @@ def _iter_dart_files() -> list[Path]:
     return sorted((ROOT / 'lib').rglob('*.dart'))
 
 
+def _import_line_is_allowed(line: str, allowed: set[str]) -> bool:
+    return any(item in line for item in allowed)
+
+
 def _scan_file(path: Path, *, strict: bool) -> list[Finding]:
     full = ROOT / path
     if not full.exists():
@@ -101,8 +105,10 @@ def _scan_file(path: Path, *, strict: bool) -> list[Finding]:
                     reason='global entry/shell must not eagerly import or reference Dart Chan algorithm engines',
                 ))
         if stripped.startswith('import '):
+            if _import_line_is_allowed(stripped, allowed):
+                continue
             for pattern in HEAVY_PAGE_PATTERNS:
-                if pattern in stripped and pattern not in allowed:
+                if pattern in stripped:
                     findings.append(Finding(
                         path=path,
                         line=lineno,
