@@ -57,10 +57,11 @@ Required completion summary fields:
 - S12a App single-stock replay high-speed baseline static validation: accepted by receiver CLI evidence.
 - S12b replay evidence button, indicator default-hidden state, and explicit level-validation feedback: accepted by receiver CLI + App evidence.
 - S12c step-load temporal evidence state tracking: accepted by receiver CLI + App evidence.
+- S12d interval-link marker ids for parent-child replay navigation evidence: accepted by receiver CLI + App evidence.
 
 ## Current selected task
 
-S12d selected: interval-link marker ids for parent-child replay navigation evidence.
+S12e selected: shared marker-overlap policy for S12 chart and evidence markers.
 
 ## Historical accepted summary
 
@@ -275,32 +276,76 @@ validation_result:
 
 remaining_risk:
 
-- Full S12 is still not complete. The S12c validator still reports these review-only gaps:
-  - `interval_link_marker_id_exists`
-  - `marker_overlap_policy_marker_exists`
-- `audit_origin_kline_global_label_layout_usage.py --strict` still reports `_drawFx does not accept chartLabels`; keep this as display-layout debt unless it is selected as the next specific chart-label task.
 - S12c tracks lifecycle evidence for backend-exported structures; it does not add clickable interval-link marker ids.
 
 next_task:
 
 - Start S12d: interval-link marker ids for parent-child replay navigation evidence.
 
-## S12d selected: interval-link marker ids for parent-child replay navigation evidence
+## S12d accepted: interval-link marker ids for parent-child replay navigation evidence
+
+completed_tasks:
+
+- Added interval-link marker evidence in `lib/ui/pages/s12_single_stock_replay_page.dart`.
+- The App now reads backend-exported `MultiLevelChanSnapshot.relations` from step frames and final snapshots.
+- Added stable interval-link marker ids in the form `interval_link_<parent>_<child>_p<parentRawIndex>_c<childStartRawIndex>_<childEndRawIndex>`.
+- Added copied evidence fields: `interval_link_source`, `interval_link_marker_ids`, `parent_child_interval_link`, `parent_child_interval_link_reason`, `interval_link_sample`, `interval_link_relation_count`, and `interval_link_policy`.
+- Added an explicit empty-data reason when backend relation data is empty.
+- Updated `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so S12d interval-link marker ids are required while marker-overlap policy remains review-only.
+- Did not modify `python/chan.py` and did not add Dart-side parent-child relation calculation authority.
+
+evidence_button:
+
+- Receiver command: `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
+- Receiver command: `python tools/validate_s11_guardrail_regression.py`.
+- Receiver command: `flutter analyze`.
+- Receiver App button: `复制复盘证据`.
+
+validation_result:
+
+- accepted.
+- Receiver S12d validator output included `ok: true`, all `s12d_required_checks: true`, empty `missing_baseline_required`, empty `missing_s12b_required`, empty `missing_s12c_required`, empty `missing_s12d_required`, no forbidden Dart calculation patterns, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
+- Receiver S11 regression output included `ok: true`, `required_ok: true`, `required_timeout_failure_count: 0`, `hygiene_ok: true`, and `dart_chan_calculation_authority: false`.
+- Receiver analyzer output included `No issues found`.
+- Receiver App evidence included:
+  - `interval_link_source: backend_snapshot_relations`
+  - `interval_link_marker_ids: interval_link_daily_min30_p0_c0_7,...`
+  - `parent_child_interval_link: interval_link_daily_min30_p0_c0_7`
+  - `parent_child_interval_link_reason: backend relation data exists and was formatted as stable interval_link marker ids`
+  - `interval_link_sample: parent=DAILY@0 child=MIN30:0-7`
+  - `interval_link_relation_count: 3528`
+  - `interval_link_policy: backend MultiLevelChanSnapshot.relations only; Dart formats stable marker ids and does not calculate parent-child relation logic`
+  - `native_cchan_lv_list: true`
+  - `fallback_to_bridge: false`
+  - `dart_chan_calculation_authority: false`
+  - `candidate_policy: not a trading recommendation`
+
+remaining_risk:
+
+- Full S12 still has one review-only gap:
+  - `marker_overlap_policy_marker_exists`
+- `audit_origin_kline_global_label_layout_usage.py --strict` still reports `_drawFx does not accept chartLabels`; keep this as display-layout debt unless it is selected as the next chart-label-layout task.
+- S12d formats stable marker ids and copy evidence; it does not implement shared marker-overlap layout policy.
+
+next_task:
+
+- Start S12e: shared marker-overlap policy for S12 chart and evidence markers.
+
+## S12e selected: shared marker-overlap policy for S12 chart and evidence markers
 
 Goal:
 
-- Convert parent-child relation evidence from plain text into stable interval-link marker ids that can be copied, audited, and later used for navigation/highlighting.
+- Finish the remaining S12 review-only gap by adding an explicit shared marker-overlap policy marker/evidence path for S12 chart and evidence markers.
 
 Scope:
 
-- Add stable marker ids for parent-child interval links in S12 replay evidence.
-- Marker id format should start with `interval_link_` and include enough deterministic data to identify parent level, child level, parent raw index, and child raw range.
-- Source of relation data must remain backend-exported `MultiLevelChanSnapshot.relations`; Dart may format ids and attach evidence, but must not calculate parent-child relation logic.
-- Copied S12 evidence must include at least one `parent_child_interval_link` or `interval_link_marker_ids` field when backend relation data exists.
-- If relation data does not exist for the current sample, copied evidence must explicitly state `interval_link_marker_ids: none` and the reason.
-- Update `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so interval-link marker ids become required for S12d while marker-overlap policy remains review-only.
-- Do not modify `python/chan.py` algorithms.
-- Do not add Dart-side FX/BI/SEG/ZS/BSP/segseg calculation authority.
+- Add a stable `marker_overlap_policy` marker/evidence field to S12 replay evidence.
+- The policy should describe how overlapping S12 evidence markers are handled at the display/evidence layer.
+- Prefer reusing existing chart label/marker layout infrastructure when available; do not rewrite Chan algorithms.
+- Do not move Chan structure calculation into Dart.
+- Keep `python/chan.py` unchanged.
+- Preserve accepted S12b/S12c/S12d evidence fields.
+- Update `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so marker-overlap policy becomes required for S12e.
 - Do not add profit prediction, trading recommendation, or automatic trading wording.
 
 Acceptance evidence:
@@ -309,21 +354,20 @@ Acceptance evidence:
 - Receiver command: `python tools/validate_s11_guardrail_regression.py`.
 - Receiver command: `flutter analyze`.
 - Receiver App evidence should include:
-  - `temporal_source: backend_step_frames` or accepted once fallback;
-  - `interval_link_marker_ids:` or `parent_child_interval_link:` with an `interval_link_...` marker id when relation data exists;
-  - relation source policy proving backend relations are the source;
+  - `marker_overlap_policy:` with a stable policy value;
+  - accepted S12 temporal evidence fields;
+  - accepted interval-link marker id fields;
   - `dart_chan_calculation_authority: false`.
 
 remaining_risk:
 
-- Marker-overlap policy remains for later S12 sub-stage unless explicitly included in S12d implementation.
-- The optional `_drawFx does not accept chartLabels` display-layout debt remains separate unless the supervisor selects it as the next chart-label-layout task.
+- Optional global chart-label migration debt may still remain outside S12e unless explicitly selected as a separate task.
 
 ## Next task-party operation
 
 1. Receiver pulls latest `origin_vespa_tdx`.
-2. Task party implements S12d in small changes.
+2. Task party implements S12e in small changes.
 3. Receiver runs `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
 4. Receiver runs `python tools/validate_s11_guardrail_regression.py`.
 5. Receiver runs `flutter analyze`.
-6. Receiver shares S12d validator output and App replay evidence for acceptance.
+6. Receiver shares S12e validator output and App replay evidence for acceptance.
