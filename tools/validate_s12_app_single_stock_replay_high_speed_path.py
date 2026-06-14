@@ -59,7 +59,7 @@ def _validate() -> dict[str, Any]:
     dart_forbidden = _scan_dart_forbidden()
 
     baseline_checks: dict[str, bool] = {
-        's12c_manual_selected': 'S12c selected: step-load temporal evidence state tracking for replay structures' in manual,
+        's12d_manual_selected': 'S12d selected: interval-link marker ids for parent-child replay navigation evidence' in manual,
         'high_speed_runtime_path_default': 'ValueNotifier<RuntimePath>(RuntimePath.highSpeed)' in runtime and 'runtime_path_default' in runtime,
         'slow_path_debug_only_policy_present': 'slow_path' in runtime and 'slow_path_debug_only' in runtime,
         'single_stock_replay_route_exists': 'S12SingleStockReplayPage()' in root_page,
@@ -96,33 +96,45 @@ def _validate() -> dict[str, Any]:
         'temporal_evidence_copy_fields_present': all(token in s12_page for token in ('temporal_source:', 'temporal_state:', 'temporal_state_counts:', 'temporal_sample_id:', 'first_seen_step:', 'confirmed_step:', 'last_seen_step:')),
     }
 
+    s12d_required_checks: dict[str, bool] = {
+        'interval_link_summary_exists': 'class _IntervalLinkSummary' in s12_page and 'class _IntervalLinkEvidence' in s12_page,
+        'interval_link_builds_from_backend_relations': '_buildIntervalLinks' in s12_page and 'snapshot.relations' in s12_page and 'LevelRelation' in s12_page,
+        'interval_link_marker_id_format_exists': "return 'interval_link_" in s12_page and '_intervalLinkMarkerId' in s12_page,
+        'interval_link_deterministic_fields_present': all(token in s12_page for token in ('parentRawIndex', 'childStartRawIndex', 'childEndRawIndex', 'parentLevel', 'childLevel')),
+        'interval_link_copy_fields_present': all(token in s12_page for token in ('interval_link_source:', 'interval_link_marker_ids:', 'parent_child_interval_link:', 'interval_link_relation_count:', 'interval_link_policy:')),
+        'interval_link_empty_reason_exists': 'backend relation data is empty for this request' in s12_page,
+        'interval_link_no_relation_calculation_policy': 'Dart formats stable marker ids and does not calculate parent-child relation logic' in s12_page,
+    }
+
     review_checks: dict[str, bool] = {
-        'interval_link_marker_id_exists': 'interval_link_' in s12_page,
         'marker_overlap_policy_marker_exists': 'marker_overlap_policy' in s12_page or 'ChartLabelLayout' in s12_page,
     }
 
     missing_baseline = [key for key, ok in baseline_checks.items() if not ok]
     missing_s12b = [key for key, ok in s12b_required_checks.items() if not ok]
     missing_s12c = [key for key, ok in s12c_required_checks.items() if not ok]
+    missing_s12d = [key for key, ok in s12d_required_checks.items() if not ok]
     missing_review = [key for key, ok in review_checks.items() if not ok]
 
     return {
-        'ok': not missing_baseline and not missing_s12b and not missing_s12c,
+        'ok': not missing_baseline and not missing_s12b and not missing_s12c and not missing_s12d,
         'command': f'python {VALIDATOR}',
         'validator': VALIDATOR,
-        'stage': 'S12c step-load temporal evidence state tracking',
+        'stage': 'S12d interval-link marker ids for parent-child replay navigation evidence',
         'full_s12_completion': False,
-        'source_policy': 'python/chan.py via native CChan(lv_list); Flutter/Dart lifecycle-tracks backend-exported structures only',
+        'source_policy': 'python/chan.py via native CChan(lv_list); Flutter/Dart formats backend relation marker ids only',
         'baseline_checks': baseline_checks,
         's12b_required_checks': s12b_required_checks,
         's12c_required_checks': s12c_required_checks,
+        's12d_required_checks': s12d_required_checks,
         'missing_baseline_required': missing_baseline,
         'missing_s12b_required': missing_s12b,
         'missing_s12c_required': missing_s12c,
+        'missing_s12d_required': missing_s12d,
         'full_s12_review_checks': review_checks,
         'full_s12_missing_review_only': missing_review,
         'forbidden_dart_calc_patterns': dart_forbidden,
-        'next_required_work_if_ok': 'Continue with interval_link marker ids and shared marker-overlap policy.',
+        'next_required_work_if_ok': 'Continue with shared marker-overlap policy.',
         'chan_recalculated': False,
         'dart_chan_calculation_authority': False,
         'candidate_policy': 'not a trading recommendation',
