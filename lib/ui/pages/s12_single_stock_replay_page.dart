@@ -22,6 +22,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   static const Set<String> _levelOptionSet = <String>{'DAILY', 'MIN60', 'MIN30', 'MIN15', 'MIN5', 'MIN1'};
   static const List<int> _countOptions = <int>[80, 120, 220, 600, 900];
   static const List<int> _stepFrameOptions = <int>[24, 40, 60, 120, 391];
+  static const String _markerOverlapPolicy = 'stable_s12_marker_order';
+  static const String _markerOverlapPolicyDetail = 'deterministic_order;capped_marker_list;reuse_existing_layout_path';
 
   final TextEditingController _backendUrlController = TextEditingController(text: 'app-managed bundled Python');
   final TextEditingController _symbolController = TextEditingController(text: '600340');
@@ -353,6 +355,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
               const SizedBox(height: 6),
               _chip('interval_link_marker_ids', _intervalLinkSummary.shortText, _intervalLinkSummary.total > 0),
               const SizedBox(height: 6),
+              _chip('marker_overlap_policy', _markerOverlapPolicy, true),
+              const SizedBox(height: 6),
               Text(_status, maxLines: 5, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ],
           ),
@@ -534,7 +538,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
 
   String _buildStatus(PythonMultiLevelChanAnalysis analysis) {
     final meta = analysis.meta;
-    return 'S12 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} temporal:${_temporalSummary.shortText} interval_links:${_intervalLinkSummary.shortText}';
+    return 'S12 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} temporal:${_temporalSummary.shortText} interval_links:${_intervalLinkSummary.shortText} marker_overlap_policy:$_markerOverlapPolicy';
   }
 
   String _runtimePathText(PythonMultiLevelChanAnalysis analysis) {
@@ -580,6 +584,9 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       'interval_link_sample: ${_intervalLinkSummary.sample?.sampleText ?? 'none'}',
       'interval_link_relation_count: ${_intervalLinkSummary.total}',
       'interval_link_policy: backend MultiLevelChanSnapshot.relations only; Dart formats stable marker ids and does not calculate parent-child relation logic',
+      'marker_overlap_policy: $_markerOverlapPolicy',
+      'marker_overlap_policy_detail: $_markerOverlapPolicyDetail',
+      'marker_overlap_policy_scope: S12 evidence markers and display marker evidence only; global FX label migration remains a separate chart-label task',
       'temporal_evidence_policy: preserve backend-exported structures across frames; do not recalculate Chan structures in Dart',
       'source_policy: python/chan.py via native CChan(lv_list); Flutter/Dart display, route, mark, and copy evidence only',
       'backend_authority: native CChan(lv_list) through /api/chan/analyze_multi',
