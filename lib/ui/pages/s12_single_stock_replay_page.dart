@@ -24,19 +24,19 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   final TextEditingController _backendUrlController = TextEditingController(text: 'app-managed bundled Python');
   final TextEditingController _symbolController = TextEditingController(text: '600340');
   final TextEditingController _marketController = TextEditingController(text: 'SH');
-  final TextEditingController _startController = TextEditingController(text: '2025-09-01');
-  final TextEditingController _endController = TextEditingController(text: '2025-10-20');
+  final TextEditingController _startController = TextEditingController(text: '2022-01-01');
+  final TextEditingController _endController = TextEditingController(text: '2025-12-31');
 
   final List<String> _selectedLevels = <String>['DAILY', 'MIN30', 'MIN5'];
   final Set<String> _enabledEasyTdxIndicators = <String>{};
 
   PythonMultiLevelChanAnalysis? _analysis;
-  String _mode = 'step';
+  String _mode = 'once';
   String _activeLevel = 'DAILY';
-  String _status = 'S12 single-stock replay not loaded';
+  String _status = 'S12 single-stock replay not loaded; default uses proven S8/S11 once window';
   String _lastLevelValidation = '级别组合待校验';
   bool _loading = false;
-  int _count = 220;
+  int _count = 900;
   int _maxStepFrames = 60;
   int _frameIndex = 0;
   int _windowSize = 90;
@@ -164,12 +164,17 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       _showMessage('S12 replay loaded');
     } catch (e) {
       if (!mounted) return;
-      setState(() => _status = 'S12 replay load failed: $e');
-      _showMessage(_status);
+      final detail = _friendlyLoadError(e);
+      setState(() => _status = detail);
+      _showMessage(detail);
     } finally {
       source.close();
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  String _friendlyLoadError(Object error) {
+    return 'S12 replay load failed: $error | request: symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_mode levels=${_normalizedLevels.join(',')} count=$_count window=${_startController.text.trim()}~${_endController.text.trim()} runtime_path=${RuntimePathController.current.wireName}';
   }
 
   @override
@@ -242,7 +247,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
               const SizedBox(height: 6),
               _chip('runtime_path', RuntimePathController.current.wireName, RuntimePathController.current.isHighSpeed),
               const SizedBox(height: 6),
-              Text(_status, maxLines: 4, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              Text(_status, maxLines: 5, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ],
           ),
         ),
@@ -473,7 +478,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 3)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 4)));
   }
 }
 
