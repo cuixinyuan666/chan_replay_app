@@ -56,6 +56,7 @@ Required completion summary fields:
 ## Current selected task
 
 S11 selected: post-S10 guardrail regression bundle.
+S12 queued next feature: App single-stock replay on accepted high-speed runtime path after S11 acceptance.
 
 ## S1-S3 summary
 
@@ -403,9 +404,209 @@ next_task:
 
 - Receiver pulls the S11 validator and runs the S11 commands. If accepted, write S11 completion summary into this manual and select the next feature task.
 
+## S12 queued: App single-stock replay on accepted high-speed runtime path
+
+Goal:
+
+- Build the next App feature stage on the already accepted `runtime_path=high_speed` path.
+- Provide a complete single-stock replay workflow with stock-code input, arbitrary supported multi-level selection, backend Chan structure display, easy-tdx indicator controls through the existing TradingView-style tool entrance, step_load temporal evidence preservation, interval-nesting link markers, marker overlap control, and one-click replay evidence copy.
+- This is App integration only. It must not modify `python/chan.py` Chan algorithms and must not add Dart-side Chan calculation.
+
+Dependency:
+
+- S12 should start after S11 guardrail regression is accepted.
+- S12 must inherit all hard rules from this manual.
+- S12 must keep high-speed path as the default runtime path and slow path as debug/baseline only.
+
+High-speed path basis:
+
+- `runtime_path=high_speed` is already implemented through `RuntimePath.highSpeed`, `RuntimePathController.current`, `PythonMultiLevelChanAnalysisSource.analyzeMulti`, and the `/api/chan/analyze_multi` backend route.
+- The high-speed path is a UI/runtime routing and diagnostics policy. It must not become a Dart-side or cache-side Chan calculation authority.
+- The backend calculation source remains `python/chan.py` through native `CChan(lv_list=[...])`.
+- Bridge fallback, cache-as-authority, and algorithmic fast/turbo/speed modes remain forbidden.
+
+Scope:
+
+1. Single-stock replay entry
+
+- Provide a visible App entry for single-stock replay.
+- Provide stock-code input.
+- Support market auto-inference and manual market override when needed.
+- The user should be able to load one stock into replay without opening scanner or batch candidate pages.
+- The default workflow should be replay, not recommendation, scanner, backtest, or trading execution.
+
+2. Arbitrary multi-level selection
+
+- Provide dropdown controls for all backend-supported levels.
+- UI may allow arbitrary level combinations.
+- Before calling analyze_multi, validate that the selected level combination satisfies `chan.py` multi-level input requirements.
+- Validation should check backend-supported level names, duplicate or empty selection, ordering normalization, and `CChan(lv_list=[...])` submit eligibility.
+- Invalid combinations must produce visible UI feedback.
+- Do not silently change user-selected levels unless the UI reports the normalized result.
+
+3. Backend authority and no new algorithm
+
+- Continue to use the existing high-speed analyze_multi chain.
+- Keep `python/chan.py` and native `CChan(lv_list=[...])` as the only Chan calculation authority.
+- S12 must not modify `python/chan.py` Chan algorithms.
+- S12 must not add Dart-side FX/BI/SEG/ZS/BSP/segseg calculation.
+- App and Dart code may only parse, display, route, mark, and copy evidence from backend-exported structures.
+
+4. easy-tdx indicator display
+
+- easy-tdx indicators must use the same TradingView-style tool entrance as the replay chart.
+- Do not add a second independent indicator control system.
+- Main-chart and sub-chart indicators must be hidden by default.
+- Users may manually enable supported indicators such as MA, BOLL, VOL, MACD, and other backend-supported easy-tdx indicators.
+- Indicator display is UI-only and must not become the source of Chan structures or BSP calculation.
+
+5. Chan structure display
+
+- Reuse the existing replay chart implementation where possible.
+- Display backend-exported Chan structures:
+  - original K-lines
+  - merged K-lines
+  - FX
+  - BI
+  - SEG
+  - segseg / 二级线段 / 2段
+  - ZS
+  - BI BSP
+  - SEG BSP
+  - segseg BSP if provided by the backend
+- UI may display segseg as `2段`.
+- Manual text and code comments should preserve all three names: `segseg`, `二级线段`, and `2段`.
+
+6. step_load temporal evidence preservation
+
+- The App must preserve structures and BSPs produced by backend step_load as temporal evidence.
+- A structure or BSP that appeared in a previous step must not be silently removed only because later steps no longer expose it in the current frame/snapshot.
+- `is_sure == false` must be displayed in a light/provisional style.
+- `is_sure == true` must be displayed in a dark/confirmed style.
+- This rule applies to BSP, FX, BI, SEG, and segseg / 二级线段 / 2段.
+- If the same structure later changes from provisional to confirmed, update the existing visual object instead of creating a duplicate.
+- If a provisional structure later disappears, keep it visible as `historical_provisional`.
+- `historical_provisional` must not be treated as confirmed.
+- Copied evidence must distinguish `provisional`, `confirmed`, and `historical_provisional`.
+
+7. Interval-nesting link markers
+
+- Add interval-nesting link markers between parent-level and child-level evidence.
+- A parent marker should identify the high-level structure or BSP.
+- A child marker should identify the low-level trigger or confirmation point.
+- Clicking a parent marker should jump to the child level and locate the child raw index.
+- Clicking a child marker should show or jump back to parent evidence when applicable.
+- Link marker ids must be stable and traceable, for example:
+  - `interval_link_{symbol}_{parentLevel}_{parentRawIndex}_{childLevel}_{childRawIndex}_{rule}`
+
+8. Marker and UI overlap control
+
+- Marker labels must not fully overlap.
+- BSP, FX, BI, SEG, segseg, interval-link markers, and manual drawing labels should share a unified layout policy.
+- Same-raw-index markers must be vertically staggered.
+- Buy-side markers should prefer below-K-line placement.
+- Sell-side markers should prefer above-K-line placement.
+- Interval-link markers should use lightweight icons or labels and must not cover candle bodies unnecessarily.
+- Toolbar, dropdowns, evidence panel, crosshair, price axis, and time axis must not block each other.
+- On small screens, controls should be collapsible or moved into drawers or panels.
+- The chart area has priority over diagnostics panels.
+
+9. One-click replay evidence copy
+
+- Provide a visible one-click evidence copy button.
+- Suggested button label: `复制复盘证据`.
+- Copied evidence should include:
+  - `s12_phase: app_single_stock_replay_high_speed_path`
+  - symbol
+  - market
+  - selected levels
+  - normalized levels if different
+  - active level
+  - runtime_path
+  - replay mode
+  - current step
+  - visible window
+  - enabled Chan overlays
+  - enabled easy-tdx indicators
+  - selected marker id
+  - selected marker type
+  - is_sure
+  - temporal state: provisional / confirmed / historical_provisional
+  - first_seen_step
+  - confirmed_step
+  - parent/child interval-link evidence when applicable
+  - source policy
+  - backend authority
+  - `dart_chan_calculation_authority: false`
+  - `candidate_policy: not a trading recommendation`
+
+10. UI reference
+
+- Use OpenFlutter/k_chart only as UI interaction reference for K-line chart ergonomics:
+  - drag
+  - scale
+  - long press
+  - fling
+  - main/sub indicator state
+  - chart padding
+  - trendline-like interaction
+- Do not replace the current `OriginKlineChart`, TradingView drawing tool, or marker/evidence chain with k_chart.
+- Do not introduce k_chart as a dependency in S12 unless separately approved.
+- Any borrowed UI idea must be adapted into the existing App architecture and validator chain.
+
+Out of scope:
+
+- No profit prediction.
+- No trading recommendation.
+- No automatic trading.
+- No Dart-side FX/BI/SEG/ZS/BSP/segseg calculation.
+- No silent modification of `python/chan.py` Chan algorithms.
+- No cache-as-authority design.
+- No bridge fallback.
+- No large fixture unless explicitly approved.
+
+Acceptance evidence:
+
+- Add `tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
+- The validator must prove:
+  - high-speed runtime path remains default;
+  - slow path remains debug/baseline only;
+  - single-stock replay entry exists;
+  - stock-code input exists;
+  - level dropdown controls exist;
+  - arbitrary level selections are validated before analyze_multi;
+  - invalid level combinations show explicit UI feedback;
+  - analyze_multi backend path is used;
+  - native `CChan(lv_list=[...])` backend authority remains the source;
+  - easy-tdx indicators use the same TradingView-style tool entrance;
+  - main/sub indicators are hidden by default;
+  - Chan structures are parsed from backend output only;
+  - step_load temporal evidence is preserved;
+  - provisional, confirmed, and historical_provisional states are distinguishable;
+  - interval-nesting link markers are stable and clickable;
+  - marker overlap policy exists;
+  - one-click replay evidence copy exists;
+  - no Dart-side Chan calculation authority exists;
+  - no profit prediction or automatic trading wording exists.
+- Receiver should run:
+  - `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`
+  - `python tools/validate_s11_guardrail_regression.py`
+  - `flutter analyze`
+- Receiver App evidence should include:
+  - one stock code;
+  - selected arbitrary multi-level combination;
+  - normalized/validated level result;
+  - runtime path evidence showing `high_speed`;
+  - one provisional object if available;
+  - one confirmed object if available;
+  - one historical_provisional object if available;
+  - one interval-link marker if available;
+  - copied replay evidence text.
+
 ## Next task-party operation
 
 1. Receiver pulls latest `origin_vespa_tdx`.
 2. Receiver runs `python tools/validate_s11_guardrail_regression.py`.
 3. Receiver runs `flutter analyze`.
 4. Receiver shares the S11 output for acceptance.
+5. After S11 is accepted, continue S12: App single-stock replay on accepted high-speed runtime path.
