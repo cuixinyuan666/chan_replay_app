@@ -57,6 +57,11 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   }
 
   DateTime get _defaultEndDate => DateTime.now();
+  int get _frameCount => _analysis?.frames.length ?? 0;
+  bool get _isStepMode => _mode == 'step';
+  bool get _hasStepFrames => _isStepMode && _frameCount > 0;
+  int get _safeFrameIndex => _frameCount <= 0 ? 0 : _frameIndex.clamp(0, _frameCount - 1).toInt();
+  String get _stepFrameLabel => !_isStepMode ? 'once final snapshot' : (_frameCount <= 0 ? 'step no frames' : '${_safeFrameIndex + 1}/$_frameCount');
 
   List<String> get _normalizedLevels => <String>[
         for (final level in _levelOptions)
@@ -66,9 +71,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   MultiLevelChanSnapshot? get _currentSnapshot {
     final analysis = _analysis;
     if (analysis == null) return null;
-    if (_mode == 'step') {
+    if (_isStepMode) {
       if (analysis.frames.isEmpty) return null;
-      return analysis.frames[_frameIndex.clamp(0, analysis.frames.length - 1).toInt()];
+      return analysis.frames[_safeFrameIndex];
     }
     return analysis.snapshot;
   }
@@ -84,6 +89,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final current = _currentSnapshot;
     if (current == null || current.relations.isEmpty) return const <LevelRelation>[];
     final parent = _activeLevel.trim().toUpperCase();
+    final parentSnapshot = current.of(parent);
+    if (parentSnapshot == null || parentSnapshot.rawBars.isEmpty) return const <LevelRelation>[];
+    final parentMax = parentSnapshot.rawBars.length - 1;
     final loadedLevels = current.snapshots.keys.map((v) => v.trim().toUpperCase()).toSet();
     final seen = <String>{};
     final links = <LevelRelation>[];
@@ -97,6 +105,13 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       final relationParent = relation.parentLevel.trim().toUpperCase();
       final child = relation.childLevel.trim().toUpperCase();
       if (relationParent != parent || !loadedLevels.contains(child)) continue;
+      if (relation.parentRawIndex < 0 || relation.parentRawIndex > parentMax) continue;
+      final childSnapshot = current.of(child);
+      if (childSnapshot == null || childSnapshot.rawBars.isEmpty) continue;
+      final childMax = childSnapshot.rawBars.length - 1;
+      if (relation.childStartRawIndex < 0) continue;
+      if (relation.childEndRawIndex < relation.childStartRawIndex) continue;
+      if (relation.childEndRawIndex > childMax) continue;
       final key = '$relationParent:${relation.parentRawIndex}:$child:${relation.childStartRawIndex}:${relation.childEndRawIndex}';
       if (!seen.add(key)) continue;
       links.add(relation);
@@ -189,7 +204,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       setState(() {
         _analysis = analysis;
         _frameIndex = 0;
-        _activeLevel = analysis.snapshot.safeActiveLevel;
+        final initialSnapshot = _currentSnapshot ?? analysis.snapshot;
+        _activeLevel = initialSnapshot.safeActiveLevel;
         _viewEndIndex = null;
         _crosshairIndex = null;
         _priceScale = 1.0;
@@ -211,6 +227,40 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     return 'S13 replay load failed: $error | request: symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_mode levels=${_normalizedLevels.join(',')} window=$_effectiveWindowText runtime_path=${RuntimePathController.current.wireName}';
   }
 
+  void _setReplayMode(String value) {
+    if (_mode == value) return;
+    setState(() {
+      _mode = value;
+      _frameIndex = 0;
+      _viewEndIndex = null;
+      _crosshairIndex = null;
+      _priceScale = 1.0;
+      final current = _currentSnapshot;
+      if (current != null) {
+        _activeLevel = current.snapshots.containsKey(_activeLevel) ? _activeLevel : current.safeActiveLevel;
+      }
+    });
+  }
+
+  void _setFrameIndex(int index) {
+    final analysis = _analysis;
+    if (analysis == null || analysis.frames.isEmpty) return;
+    final next = index.clamp(0, analysis.frames.length - 1).toInt();
+    final frame = analysis.frames[next];
+    final level = frame.snapshots.containsKey(_activeLevel) ? _activeLevel : frame.safeActiveLevel;
+    setState(() {
+      _frameIndex = next;
+      _activeLevel = level;
+      _viewEndIndex = null;
+      _crosshairIndex = null;
+      _priceScale = 1.0;
+      _status = 'S13 step frame ${next + 1}/${analysis.frames.length} active:$level relations:${frame.relations.length} visible_links:${_visibleDownRelations.length}';
+    });
+  }
+
+  void _stepFrameBy(int delta) => _setFrameIndex(_safeFrameIndex + delta);
+  void _jumpToLatestFrame() => _setFrameIndex(_frameCount - 1);
+
   void _jumpDownRelation(LevelRelation relation) {
     final current = _currentSnapshot;
     if (current == null) return;
@@ -220,15 +270,23 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       return;
     }
     final childSnapshot = current.of(child);
-    final maxEnd = childSnapshot.rawBars.isEmpty ? 0 : childSnapshot.rawBars.length - 1;
+    if (childSnapshot == null || childSnapshot.rawBars.isEmpty) {
+      _showMessage('区间套子级别当前帧无K线：$child');
+      return;
+    }
+    final childMax = childSnapshot.rawBars.length - 1;
+    if (relation.childStartRawIndex < 0 || relation.childEndRawIndex < relation.childStartRawIndex || relation.childEndRawIndex > childMax) {
+      _showMessage('区间套尚未在当前step完整出现：$child ${relation.childStartRawIndex}-${relation.childEndRawIndex} / max=$childMax');
+      return;
+    }
     setState(() {
       _activeLevel = child;
-      _viewEndIndex = relation.childEndRawIndex.clamp(0, maxEnd).toInt();
-      _crosshairIndex = relation.childStartRawIndex.clamp(0, maxEnd).toInt();
+      _viewEndIndex = relation.childEndRawIndex.clamp(0, childMax).toInt();
+      _crosshairIndex = relation.childStartRawIndex.clamp(0, childMax).toInt();
       _priceScale = 1.0;
       _panel = _S13Panel.levels;
     });
-    _showMessage('区间套跳转：${relation.parentLevel}@${relation.parentRawIndex} ↓ $child ${relation.childStartRawIndex}-${relation.childEndRawIndex}');
+    _showMessage('区间套跳转：${relation.parentLevel}@${relation.parentRawIndex} ↓ $child ${relation.childStartRawIndex}-${relation.childEndRawIndex} | frame=$_stepFrameLabel');
   }
 
   @override
@@ -345,6 +403,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: [for (final level in _normalizedLevels) _activeLevelChip(level)]),
             const SizedBox(height: 10),
+            _chip('step_frame', _stepFrameLabel, !_isStepMode || _hasStepFrames),
+            const SizedBox(height: 8),
             _chip('level_validation', _lastLevelValidation, _lastLevelValidation.contains('有效') || _lastLevelValidation.contains('归一化')),
             const SizedBox(height: 8),
             _chip('normalized_levels', _normalizedLevels.join(','), _normalizedLevels.length >= 2),
@@ -367,6 +427,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               _dropdownInt('step frames', _maxStepFrames, _stepFrameOptions, (v) => setState(() => _maxStepFrames = v), width: 132),
             ]),
             const SizedBox(height: 10),
+            _stepControlPanel(),
+            const SizedBox(height: 10),
             FilledButton.icon(onPressed: _loading ? null : _loadReplay, icon: const Icon(Icons.play_arrow, size: 16), label: const Text('载入复盘')),
             const SizedBox(height: 8),
             OutlinedButton.icon(onPressed: _analysis == null ? null : () => _copyText('复制复盘证据', _buildReplayEvidenceText(_analysis!)), icon: const Icon(Icons.copy, size: 14), label: const Text('复制复盘证据'), style: _copyButtonStyle()),
@@ -378,6 +440,35 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             _chip('chart_interval_links', '${_visibleDownRelations.length}', _visibleDownRelations.isNotEmpty),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _stepControlPanel() {
+    if (!_isStepMode) {
+      return _chip('temporal_view', 'once 模式使用最终快照；切到 step 后使用当前帧', true);
+    }
+    final enabled = _frameCount > 0;
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white24)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('step 当下性：$_stepFrameLabel', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Row(
+            children: <Widget>[
+              IconButton(onPressed: enabled && _safeFrameIndex > 0 ? () => _setFrameIndex(0) : null, icon: const Icon(Icons.first_page), color: Colors.white70, tooltip: '第一帧'),
+              IconButton(onPressed: enabled && _safeFrameIndex > 0 ? () => _stepFrameBy(-1) : null, icon: const Icon(Icons.chevron_left), color: Colors.white70, tooltip: '上一帧'),
+              Expanded(child: Text(enabled ? '${_safeFrameIndex + 1} / $_frameCount' : '请以 step 模式重新载入', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12))),
+              IconButton(onPressed: enabled && _safeFrameIndex < _frameCount - 1 ? () => _stepFrameBy(1) : null, icon: const Icon(Icons.chevron_right), color: Colors.white70, tooltip: '下一帧'),
+              IconButton(onPressed: enabled && _safeFrameIndex < _frameCount - 1 ? _jumpToLatestFrame : null, icon: const Icon(Icons.last_page), color: Colors.white70, tooltip: '最新帧'),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('区间套箭头只读取当前 step frame 的 relations，并校验父/子 rawIndex 未超过当前帧 K 线范围。', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+        ],
       ),
     );
   }
@@ -470,7 +561,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              const Text('区间套链接', style: TextStyle(color: Color(0xFFFFD54F), fontSize: 12, fontWeight: FontWeight.w700)),
+              Text(_isStepMode ? '区间套链接 · 当前帧 $_stepFrameLabel' : '区间套链接 · 最终快照', style: const TextStyle(color: Color(0xFFFFD54F), fontSize: 12, fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
               for (final relation in links) _intervalLinkButton(relation),
             ],
@@ -533,15 +624,16 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
 
   Widget _activeLevelChip(String level) {
     final selected = _activeLevel == level;
+    final canSelect = _currentSnapshot?.snapshots.containsKey(level) == true;
     return ChoiceChip(
       label: Text(level),
       selected: selected,
-      onSelected: _activeSnapshot == null ? null : (_) => setState(() {
+      onSelected: canSelect ? (_) => setState(() {
         _activeLevel = level;
         _viewEndIndex = null;
         _crosshairIndex = null;
         _priceScale = 1.0;
-      }),
+      }) : null,
       selectedColor: const Color(0xFFFFD54F),
       backgroundColor: const Color(0xFF20242E),
       labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
@@ -553,7 +645,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     return ChoiceChip(
       label: Text(value),
       selected: selected,
-      onSelected: _loading ? null : (_) => setState(() => _mode = value),
+      onSelected: _loading ? null : (_) => _setReplayMode(value),
       selectedColor: const Color(0xFFFFD54F),
       backgroundColor: const Color(0xFF20242E),
       labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
@@ -647,7 +739,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
 
   String _buildStatus(PythonMultiLevelChanAnalysis analysis, DateTime startDate, DateTime endDate) {
     final meta = analysis.meta;
-    return 'S13 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} window:${_fmtDate(startDate)}~${_fmtDate(endDate)} links:${_visibleDownRelations.length}';
+    return 'S13 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} active_frame:$_stepFrameLabel levels:${analysis.snapshot.levels.join(',')} window:${_fmtDate(startDate)}~${_fmtDate(endDate)} links:${_visibleDownRelations.length}';
   }
 
   String _runtimePathText(PythonMultiLevelChanAnalysis analysis) {
@@ -666,11 +758,11 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       'active_level: $_activeLevel',
       'runtime_path: ${_runtimePathText(analysis)}',
       'replay_mode: $_mode',
-      'current_step: ${_mode == 'step' ? _frameIndex : 'once'}',
+      'current_step: $_stepFrameLabel',
       'request_window: $_effectiveWindowText',
       'date_window_policy: start empty defaults to 1990-01-01; end empty defaults to system current time; count parameter removed',
       'settings_layout: left_vertical_toolbar_with_stock_basic_settings_panel',
-      'chart_interval_link_policy: show downward arrow links on chart for backend parent-child LevelRelation records',
+      'chart_interval_link_policy: once uses final snapshot; step uses current frame only and validates parent/child rawIndex bounds',
       'chart_interval_link_count: ${_visibleDownRelations.length}',
       'enabled_easy_tdx_indicators: ${_enabledEasyTdxIndicators.isEmpty ? 'none' : _enabledEasyTdxIndicators.join(',')}',
       'source_policy: python/chan.py via native CChan(lv_list); Flutter/Dart display, route, request, and copy evidence only',
