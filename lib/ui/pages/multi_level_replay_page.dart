@@ -23,7 +23,14 @@ class MultiLevelReplayPage extends StatefulWidget {
 }
 
 class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
-  static const List<String> _levelOptions = ['DAILY', 'MIN60', 'MIN30', 'MIN15', 'MIN5', 'MIN1'];
+  static const List<String> _levelOptions = [
+    'DAILY',
+    'MIN60',
+    'MIN30',
+    'MIN15',
+    'MIN5',
+    'MIN1',
+  ];
   static const List<int> _countOptions = [40, 80, 120, 220, 600, 900];
   static const List<int> _maxStepFrameOptions = [24, 40, 60, 120, 391, 1000];
 
@@ -39,6 +46,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   MultiLevelStrategySignalSelection? _selectedStrategySignal;
   bool _loading = false;
   bool _signalScanLoading = false;
+  bool _chromeExpanded = false;
   bool _relationPanelExpanded = false;
   bool _signalPanelExpanded = false;
   String _mode = 'step';
@@ -78,7 +86,10 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   MultiLevelChanSnapshot? get _full => _analysis?.snapshot;
   bool get _stepFramesEmpty => _mode == 'step' && _analysis != null && _analysis!.frames.isEmpty;
 
-  List<String> get _levels => [for (final level in _levelOptions) if (_selectedLevels.contains(level)) level];
+  List<String> get _levels => [
+        for (final level in _levelOptions)
+          if (_selectedLevels.contains(level)) level,
+      ];
 
   MultiLevelChanSnapshot? get _current {
     final analysis = _analysis;
@@ -140,6 +151,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
 
     setState(() {
       _loading = true;
+      _chromeExpanded = false;
       _relationPanelExpanded = false;
       _signalPanelExpanded = false;
       _signalScanAnalysis = null;
@@ -177,7 +189,10 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         _priceScale = 1.0;
         _status = _mode == 'step' && analysis.frames.isEmpty
             ? _blockedStatus(analysis)
-            : _buildStatus(analysis, snapshot: _mode == 'step' && analysis.frames.isNotEmpty ? analysis.frames.first : analysis.snapshot);
+            : _buildStatus(
+                analysis,
+                snapshot: _mode == 'step' && analysis.frames.isNotEmpty ? analysis.frames.first : analysis.snapshot,
+              );
       });
       _showMessage(_status);
     } catch (e) {
@@ -209,6 +224,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
 
     setState(() {
       _signalScanLoading = true;
+      _chromeExpanded = true;
       _signalPanelExpanded = true;
       _selectedStrategySignal = null;
       _signalScanStatus = 'scanning once count=$_count window:${_startController.text}~${_endController.text}...';
@@ -273,14 +289,97 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
       body: SafeArea(
         child: Stack(
           children: [
-            Column(
+            Positioned.fill(
+              top: _chromeExpanded ? 122 : 48,
+              child: _chartSurface(snapshot, activeLevel),
+            ),
+            Positioned(left: 0, right: 0, top: 0, child: _header()),
+            if (_chromeExpanded && current != null)
+              Positioned(
+                left: 48,
+                right: 12,
+                top: 126,
+                child: _floatingPanels(
+                  full: full,
+                  current: current,
+                  signalSnapshot: signalSnapshot,
+                  activeLevel: activeLevel,
+                ),
+              ),
+            if (_loading || _signalScanLoading)
+              const Positioned.fill(
+                child: ColoredBox(
+                  color: Color(0x66000000),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chartSurface(dynamic snapshot, String activeLevel) {
+    if (_stepFramesEmpty) return _strictStepBlockedPanel();
+    if (snapshot == null || snapshot.rawBars.isEmpty) {
+      return const Center(
+        child: Text('Load analyze_multi to show multi-level chart.', style: TextStyle(color: Colors.white60)),
+      );
+    }
+    return OriginKlineChart(
+      snapshot: snapshot,
+      showFx: true,
+      showFxLine: true,
+      showFxText: true,
+      showBi: true,
+      showBiText: false,
+      showSeg: true,
+      showSegText: true,
+      showZs: true,
+      showBiBsp: true,
+      showSegBsp: true,
+      showMergedBars: false,
+      showEasyTdxIndicators: true,
+      easyTdxSubPanelCount: 2,
+      drawingObjects: _strategySignalDrawingObjects(activeLevel),
+      drawingStorageKey: 'multi_${_symbolController.text}_$activeLevel',
+      symbolLabel: '${_symbolController.text} $activeLevel',
+      windowSize: _windowSize,
+      priceScale: _priceScale,
+      viewEndIndex: _viewEndIndex,
+      crosshairIndex: _crosshairIndex,
+      onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
+      onPanBars: _panChartByBars,
+      onWindowSizeChanged: (v) => setState(() => _windowSize = v),
+      onPriceScaleChanged: (v) => setState(() => _priceScale = v),
+    );
+  }
+
+  Widget _floatingPanels({
+    required MultiLevelChanSnapshot? full,
+    required MultiLevelChanSnapshot current,
+    required MultiLevelChanSnapshot? signalSnapshot,
+    required String activeLevel,
+  }) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 360),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xDD0D1117),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+            boxShadow: const [BoxShadow(color: Color(0x99000000), blurRadius: 18, offset: Offset(0, 8))],
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                _header(),
-                if (_analysis != null) _manualP0Panel(_analysis!),
-                if (_analysis != null && _analysis!.frames.isNotEmpty) _stepControls(_analysis!),
                 if (full != null)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(48, 8, 12, 8),
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
                     child: MultiLevelSwitcher(
                       levels: full.levels,
                       activeLevel: activeLevel,
@@ -291,8 +390,10 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                       }),
                     ),
                   ),
-                if (current != null) _analysisToolStrip(current, signalSnapshot),
-                if (current != null && _relationPanelExpanded && current.relations.isNotEmpty)
+                if (_analysis != null) _manualP0Panel(_analysis!),
+                if (_analysis != null && _analysis!.frames.isNotEmpty) _stepControls(_analysis!),
+                _analysisToolStrip(current, signalSnapshot),
+                if (_relationPanelExpanded && current.relations.isNotEmpty)
                   MultiLevelRelationPanel(
                     snapshot: current,
                     mode: _mode,
@@ -305,101 +406,91 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
                   MultiLevelIntervalSignalPanel(
                     snapshot: signalSnapshot,
                     mode: _signalScanAnalysis == null ? _mode : 'signal_scan_once',
-                    frameIndex: _signalScanAnalysis == null && _mode == 'step' && _analysis?.frames.isNotEmpty == true ? _frameIndex : null,
+                    frameIndex: _signalScanAnalysis == null && _mode == 'step' && _analysis?.frames.isNotEmpty == true
+                        ? _frameIndex
+                        : null,
                     frameCount: _signalScanAnalysis == null && _mode == 'step' ? _analysis?.frames.length : null,
                     symbol: _symbolController.text.trim(),
                     onSelectedSignalChanged: (signal) => setState(() => _selectedStrategySignal = signal),
                     onJumpToSignal: _locateStrategySignal,
                   ),
-                Expanded(
-                  child: _stepFramesEmpty
-                      ? _strictStepBlockedPanel()
-                      : snapshot == null || snapshot.rawBars.isEmpty
-                          ? const Center(child: Text('Load analyze_multi to show multi-level chart.', style: TextStyle(color: Colors.white60)))
-                          : OriginKlineChart(
-                              snapshot: snapshot,
-                              showFx: true,
-                              showFxLine: true,
-                              showFxText: true,
-                              showBi: true,
-                              showBiText: false,
-                              showSeg: true,
-                              showSegText: true,
-                              showZs: true,
-                              showBiBsp: true,
-                              showSegBsp: true,
-                              showMergedBars: false,
-                              showEasyTdxIndicators: true,
-                              easyTdxSubPanelCount: 2,
-                              drawingObjects: _strategySignalDrawingObjects(activeLevel),
-                              drawingStorageKey: 'multi_${_symbolController.text}_$activeLevel',
-                              symbolLabel: '${_symbolController.text} $activeLevel',
-                              windowSize: _windowSize,
-                              priceScale: _priceScale,
-                              viewEndIndex: _viewEndIndex,
-                              crosshairIndex: _crosshairIndex,
-                              onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
-                              onPanBars: _panChartByBars,
-                              onWindowSizeChanged: (v) => setState(() => _windowSize = v),
-                              onPriceScaleChanged: (v) => setState(() => _priceScale = v),
-                            ),
-                ),
               ],
             ),
-            if (_loading || _signalScanLoading)
-              const Positioned.fill(child: ColoredBox(color: Color(0x66000000), child: Center(child: CircularProgressIndicator()))),
-          ],
+          ),
         ),
       ),
     );
   }
 
   Widget _header() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(48, 10, 12, 8),
-      decoration: const BoxDecoration(color: Color(0xFF111722), border: Border(bottom: BorderSide(color: Colors.white12))),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.account_tree, color: Color(0xFFFFD54F), size: 18),
-              const SizedBox(width: 8),
-              const Text('Multi-level replay', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-              const Spacer(),
-              _modeChip('once', 'once'),
-              const SizedBox(width: 6),
-              _modeChip('step', 'step'),
-              const SizedBox(width: 10),
-              ElevatedButton(onPressed: _loading ? null : _load, child: const Text('Load')),
+    final statusText = _status.length > 120 ? '${_status.substring(0, 120)}…' : _status;
+    return Material(
+      color: const Color(0xEE111722),
+      elevation: 10,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(48, 6, 12, 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.account_tree, color: Color(0xFFFFD54F), size: 18),
+                const SizedBox(width: 8),
+                const Text('Multi-level replay', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 8),
+                _diagChip('chart', _chromeExpanded ? 'overlay panels' : 'focus', !_chromeExpanded),
+                if (_selectedStrategySignal != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: _diagChip('selected_signal', _selectedStrategySignal!.ruleModeName, true),
+                  ),
+                const Spacer(),
+                Text(statusText, style: const TextStyle(color: Colors.white60, fontSize: 11), overflow: TextOverflow.ellipsis),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: _chromeExpanded ? '收起控制区，最大化K线图' : '展开控制/信号浮层',
+                  onPressed: () => setState(() => _chromeExpanded = !_chromeExpanded),
+                  icon: Icon(_chromeExpanded ? Icons.fullscreen : Icons.tune, color: Colors.white70, size: 18),
+                  visualDensity: VisualDensity.compact,
+                ),
+                ElevatedButton(onPressed: _loading ? null : _load, child: const Text('Load')),
+              ],
+            ),
+            if (_chromeExpanded) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _input(_backendUrlController, 'backend', 190, enabled: false),
+                  _input(_symbolController, 'symbol', 96),
+                  _input(_marketController, 'market', 70),
+                  _input(_startController, 'start', 112),
+                  _input(_endController, 'end', 112),
+                  _dropdownInt('count', _count, _countOptions, (v) => setState(() => _count = v)),
+                  _dropdownInt('step frames', _maxStepFrames, _maxStepFrameOptions, (v) => setState(() => _maxStepFrames = v)),
+                  _modeChip('once', 'once'),
+                  _modeChip('step', 'step'),
+                  OutlinedButton.icon(
+                    onPressed: (_loading || _signalScanLoading) ? null : _loadCandidateWindow,
+                    icon: const Icon(Icons.event_available, size: 14),
+                    label: const Text('S7样本窗口'),
+                    style: _copyButtonStyle(),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _signalScanLoading ? null : _scanSignals,
+                    icon: const Icon(Icons.search, size: 14),
+                    label: Text(_signalScanLoading ? '扫描中' : 'Scan Signal($_count)'),
+                    style: _copyButtonStyle(),
+                  ),
+                  for (final level in _levelOptions) _levelChip(level),
+                ],
+              ),
             ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _input(_backendUrlController, 'backend', 190, enabled: false),
-              _input(_symbolController, 'symbol', 96),
-              _input(_marketController, 'market', 70),
-              _input(_startController, 'start', 112),
-              _input(_endController, 'end', 112),
-              _dropdownInt('count', _count, _countOptions, (v) => setState(() => _count = v)),
-              _dropdownInt('step frames', _maxStepFrames, _maxStepFrameOptions, (v) => setState(() => _maxStepFrames = v)),
-              OutlinedButton.icon(onPressed: (_loading || _signalScanLoading) ? null : _loadCandidateWindow, icon: const Icon(Icons.event_available, size: 14), label: const Text('S7样本窗口'), style: _copyButtonStyle()),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            const Text('lv_list:', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
-            for (final level in _levelOptions) _levelChip(level),
-            _diagChip('selected', _levels.join(','), _levels.isNotEmpty),
-            if (_selectedStrategySignal != null) _diagChip('selected_signal', _selectedStrategySignal!.ruleModeName, true),
-          ]),
-          const SizedBox(height: 5),
-          Text(_status, style: const TextStyle(color: Colors.white70, fontSize: 12), overflow: TextOverflow.ellipsis),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -409,9 +500,13 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final usingScan = _signalScanAnalysis != null;
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(48, 4, 12, 0),
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 0),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: const Color(0x1A8AB4FF), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0x448AB4FF))),
+      decoration: BoxDecoration(
+        color: const Color(0x1A8AB4FF),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x448AB4FF)),
+      ),
       child: Wrap(
         spacing: 8,
         runSpacing: 6,
@@ -420,10 +515,25 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
           const Text('工具面板', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
           _diagChip('relations', '$relationCount', relationCount > 0),
           _diagChip('signal_source', usingScan ? 'scan once' : 'current frame', true),
-          OutlinedButton.icon(onPressed: relationCount == 0 ? null : () => setState(() => _relationPanelExpanded = !_relationPanelExpanded), icon: Icon(_relationPanelExpanded ? Icons.expand_less : Icons.account_tree, size: 14), label: Text(_relationPanelExpanded ? '收起关系' : '关系定位'), style: _copyButtonStyle()),
-          OutlinedButton.icon(onPressed: signalSnapshot == null ? null : () => setState(() => _signalPanelExpanded = !_signalPanelExpanded), icon: Icon(_signalPanelExpanded ? Icons.expand_less : Icons.radar, size: 14), label: Text(_signalPanelExpanded ? '收起信号' : '区间信号'), style: _copyButtonStyle()),
-          OutlinedButton.icon(onPressed: _signalScanLoading ? null : _scanSignals, icon: const Icon(Icons.search, size: 14), label: Text(_signalScanLoading ? '扫描中' : 'Scan Signal($_count)'), style: _copyButtonStyle()),
-          if (_selectedStrategySignal != null) OutlinedButton.icon(onPressed: () => _locateStrategySignal(_selectedStrategySignal!), icon: const Icon(Icons.my_location, size: 14), label: const Text('定位选中信号'), style: _copyButtonStyle()),
+          OutlinedButton.icon(
+            onPressed: relationCount == 0 ? null : () => setState(() => _relationPanelExpanded = !_relationPanelExpanded),
+            icon: Icon(_relationPanelExpanded ? Icons.expand_less : Icons.account_tree, size: 14),
+            label: Text(_relationPanelExpanded ? '收起关系' : '关系定位'),
+            style: _copyButtonStyle(),
+          ),
+          OutlinedButton.icon(
+            onPressed: signalSnapshot == null ? null : () => setState(() => _signalPanelExpanded = !_signalPanelExpanded),
+            icon: Icon(_signalPanelExpanded ? Icons.expand_less : Icons.radar, size: 14),
+            label: Text(_signalPanelExpanded ? '收起信号' : '区间信号'),
+            style: _copyButtonStyle(),
+          ),
+          if (_selectedStrategySignal != null)
+            OutlinedButton.icon(
+              onPressed: () => _locateStrategySignal(_selectedStrategySignal!),
+              icon: const Icon(Icons.my_location, size: 14),
+              label: const Text('定位选中信号'),
+              style: _copyButtonStyle(),
+            ),
           _diagChip('window', '${_startController.text}~${_endController.text}', true),
           _diagChip('scan', _signalScanStatus, usingScan),
         ],
@@ -436,9 +546,13 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final okNative = meta['native_cchan_lv_list'] == true && meta['level_relation_mode'] == 'chan_parent_child' && meta['fallback_to_bridge'] != true;
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(48, 8, 12, 0),
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 0),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: okNative ? const Color(0x332E7D32) : const Color(0x33424242), borderRadius: BorderRadius.circular(8), border: Border.all(color: okNative ? const Color(0xFF66BB6A) : Colors.white24)),
+      decoration: BoxDecoration(
+        color: okNative ? const Color(0x332E7D32) : const Color(0x33424242),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: okNative ? const Color(0xFF66BB6A) : Colors.white24),
+      ),
       child: Wrap(
         spacing: 8,
         runSpacing: 6,
@@ -463,13 +577,34 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final safeIndex = _frameIndex.clamp(0, frames.length - 1).toInt();
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(48, 8, 12, 0),
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 0),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: const Color(0x222A5CAA), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0x668AB4FF))),
+      decoration: BoxDecoration(
+        color: const Color(0x222A5CAA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x668AB4FF)),
+      ),
       child: Row(children: [
-        IconButton(tooltip: '上一帧', onPressed: safeIndex <= 0 ? null : () => _setFrameIndex(safeIndex - 1), icon: const Icon(Icons.skip_previous, color: Colors.white70)),
-        Expanded(child: Slider(value: safeIndex.toDouble(), min: 0, max: (frames.length - 1).toDouble(), divisions: frames.length > 1 ? frames.length - 1 : 1, label: '${safeIndex + 1}/${frames.length}', onChanged: (v) => _setFrameIndex(v.round()))),
-        IconButton(tooltip: '下一帧', onPressed: safeIndex >= frames.length - 1 ? null : () => _setFrameIndex(safeIndex + 1), icon: const Icon(Icons.skip_next, color: Colors.white70)),
+        IconButton(
+          tooltip: '上一帧',
+          onPressed: safeIndex <= 0 ? null : () => _setFrameIndex(safeIndex - 1),
+          icon: const Icon(Icons.skip_previous, color: Colors.white70),
+        ),
+        Expanded(
+          child: Slider(
+            value: safeIndex.toDouble(),
+            min: 0,
+            max: (frames.length - 1).toDouble(),
+            divisions: frames.length > 1 ? frames.length - 1 : 1,
+            label: '${safeIndex + 1}/${frames.length}',
+            onChanged: (v) => _setFrameIndex(v.round()),
+          ),
+        ),
+        IconButton(
+          tooltip: '下一帧',
+          onPressed: safeIndex >= frames.length - 1 ? null : () => _setFrameIndex(safeIndex + 1),
+          icon: const Icon(Icons.skip_next, color: Colors.white70),
+        ),
         _diagChip('frame', '${safeIndex + 1}/${frames.length}', true),
       ]),
     );
@@ -507,6 +642,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final endIndex = _barListIndexForRawIndex(levelSnapshot, lowRawIndex);
     setState(() {
       _selectedStrategySignal = signal;
+      _chromeExpanded = false;
       _viewState = _viewState.withActiveLevel(signal.lowLevel);
       _viewEndIndex = endIndex.clamp(0, levelSnapshot.rawBars.length - 1).toInt();
       _crosshairIndex = _viewEndIndex;
@@ -523,6 +659,7 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
     final startIndex = _barListIndexForRawIndex(levelSnapshot, request.startRawIndex);
     final rangeWidth = (endIndex - startIndex).abs() + 18;
     setState(() {
+      _chromeExpanded = false;
       _viewState = _viewState.withActiveLevel(request.level);
       _viewEndIndex = endIndex.clamp(0, levelSnapshot.rawBars.length - 1).toInt();
       if (rangeWidth > _windowSize) _windowSize = rangeWidth.clamp(30, 260).toInt();
@@ -563,23 +700,44 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   }
 
   Widget _strictStepBlockedPanel() {
-    return const Center(child: Text('Strict step blocked: frames.length = 0. 不用最终完整快照伪装逐K结果。', style: TextStyle(color: Color(0xFFFFB74D), fontSize: 14, fontWeight: FontWeight.w700)));
+    return const Center(
+      child: Text(
+        'Strict step blocked: frames.length = 0. 不用最终完整快照伪装逐K结果。',
+        style: TextStyle(color: Color(0xFFFFB74D), fontSize: 14, fontWeight: FontWeight.w700),
+      ),
+    );
   }
 
   Widget _modeChip(String value, String label) {
     final selected = _mode == value;
-    return ChoiceChip(label: Text(label), selected: selected, onSelected: _loading ? null : (_) => setState(() => _mode = value), selectedColor: const Color(0xFFFFD54F), backgroundColor: const Color(0xFF20242E), labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12));
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: _loading ? null : (_) => setState(() => _mode = value),
+      selectedColor: const Color(0xFFFFD54F),
+      backgroundColor: const Color(0xFF20242E),
+      labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
+    );
   }
 
   Widget _levelChip(String level) {
     final selected = _selectedLevels.contains(level);
-    return FilterChip(label: Text(level), selected: selected, onSelected: _loading || _signalScanLoading ? null : (v) => setState(() {
-      if (v) {
-        if (!_selectedLevels.contains(level)) _selectedLevels.add(level);
-      } else if (_selectedLevels.length > 1) {
-        _selectedLevels.remove(level);
-      }
-    }), selectedColor: const Color(0xFFFFD54F), backgroundColor: const Color(0xFF20242E), labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12));
+    return FilterChip(
+      label: Text(level),
+      selected: selected,
+      onSelected: _loading || _signalScanLoading
+          ? null
+          : (v) => setState(() {
+                if (v) {
+                  if (!_selectedLevels.contains(level)) _selectedLevels.add(level);
+                } else if (_selectedLevels.length > 1) {
+                  _selectedLevels.remove(level);
+                }
+              }),
+      selectedColor: const Color(0xFFFFD54F),
+      backgroundColor: const Color(0xFF20242E),
+      labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
+    );
   }
 
   Widget _dropdownInt(String label, int value, List<int> options, ValueChanged<int> onChanged) {
@@ -591,28 +749,72 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
         style: const TextStyle(color: Colors.white, fontSize: 12),
         decoration: _decoration(label),
         items: [for (final option in options) DropdownMenuItem<int>(value: option, child: Text('$option'))],
-        onChanged: (_loading || _signalScanLoading) ? null : (v) { if (v != null) onChanged(v); },
+        onChanged: (_loading || _signalScanLoading)
+            ? null
+            : (v) {
+                if (v != null) onChanged(v);
+              },
       ),
     );
   }
 
   Widget _input(TextEditingController controller, String label, double width, {bool enabled = true}) {
-    return SizedBox(width: width, child: TextField(controller: controller, enabled: enabled && !_loading && !_signalScanLoading, style: const TextStyle(color: Colors.white, fontSize: 12), decoration: _decoration(label)));
+    return SizedBox(
+      width: width,
+      child: TextField(
+        controller: controller,
+        enabled: enabled && !_loading && !_signalScanLoading,
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        decoration: _decoration(label),
+      ),
+    );
   }
 
   InputDecoration _decoration(String label) {
-    return InputDecoration(labelText: label, labelStyle: const TextStyle(color: Colors.white54, fontSize: 11), isDense: true, filled: true, fillColor: const Color(0xFF1C2330), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white24)), disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white12)));
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white54, fontSize: 11),
+      isDense: true,
+      filled: true,
+      fillColor: const Color(0xFF1C2330),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white24)),
+      disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white12)),
+    );
   }
 
-  ButtonStyle _copyButtonStyle() => OutlinedButton.styleFrom(foregroundColor: const Color(0xFF8AB4FF), side: const BorderSide(color: Color(0x668AB4FF)), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700));
+  ButtonStyle _copyButtonStyle() {
+    return OutlinedButton.styleFrom(
+      foregroundColor: const Color(0xFF8AB4FF),
+      side: const BorderSide(color: Color(0x668AB4FF)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+    );
+  }
 
   Widget _diagChip(String label, String value, bool ok) {
     final color = ok ? const Color(0xFF66BB6A) : const Color(0xFFFFB74D);
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(999), border: Border.all(color: color.withValues(alpha: 0.45))), child: Text('$label: $value', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Text('$label: $value', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+    );
   }
 
   Widget _copyButton(String label, String text) {
-    return OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: text)); _showMessage('$label copied'); }, icon: const Icon(Icons.copy, size: 14), label: Text(label), style: _copyButtonStyle());
+    return OutlinedButton.icon(
+      onPressed: () async {
+        await Clipboard.setData(ClipboardData(text: text));
+        _showMessage('$label copied');
+      },
+      icon: const Icon(Icons.copy, size: 14),
+      label: Text(label),
+      style: _copyButtonStyle(),
+    );
   }
 
   String _blockedStatus(PythonMultiLevelChanAnalysis analysis) {
@@ -627,11 +829,18 @@ class _MultiLevelReplayPageState extends State<MultiLevelReplayPage> {
   }
 
   String _buildCompactLevelSummary(MultiLevelChanSnapshot snapshot) {
-    return [for (final level in snapshot.levels) if (snapshot.of(level) != null) '$level K:${snapshot.of(level)!.rawBars.length} BI:${snapshot.of(level)!.bis.length}'].join(' | ');
+    return [
+      for (final level in snapshot.levels)
+        if (snapshot.of(level) != null) '$level K:${snapshot.of(level)!.rawBars.length} BI:${snapshot.of(level)!.bis.length}'
+    ].join(' | ');
   }
 
   String _buildLevelSummary(MultiLevelChanSnapshot snapshot) {
-    return [for (final level in snapshot.levels) if (snapshot.of(level) != null) '$level K:${snapshot.of(level)!.rawBars.length} BI:${snapshot.of(level)!.bis.length} FX:${snapshot.of(level)!.fxs.length} SEG:${snapshot.of(level)!.segs.length} ZS:${snapshot.of(level)!.zss.length} BSP:${snapshot.of(level)!.bsps.length}'].join(' | ');
+    return [
+      for (final level in snapshot.levels)
+        if (snapshot.of(level) != null)
+          '$level K:${snapshot.of(level)!.rawBars.length} BI:${snapshot.of(level)!.bis.length} FX:${snapshot.of(level)!.fxs.length} SEG:${snapshot.of(level)!.segs.length} ZS:${snapshot.of(level)!.zss.length} BSP:${snapshot.of(level)!.bsps.length}'
+    ].join(' | ');
   }
 
   String _runtimePathText(PythonMultiLevelChanAnalysis analysis) {
