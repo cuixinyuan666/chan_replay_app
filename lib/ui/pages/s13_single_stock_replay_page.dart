@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/chan_snapshot.dart';
+import '../../core/models/level_relation.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/runtime/runtime_path.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
@@ -77,6 +78,31 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     if (current == null) return null;
     final level = current.snapshots.containsKey(_activeLevel) ? _activeLevel : current.safeActiveLevel;
     return current.of(level);
+  }
+
+  List<LevelRelation> get _visibleDownRelations {
+    final current = _currentSnapshot;
+    if (current == null || current.relations.isEmpty) return const <LevelRelation>[];
+    final parent = _activeLevel.trim().toUpperCase();
+    final loadedLevels = current.snapshots.keys.map((v) => v.trim().toUpperCase()).toSet();
+    final seen = <String>{};
+    final links = <LevelRelation>[];
+    final sorted = current.relations.toList(growable: false)
+      ..sort((a, b) {
+        final parentCmp = a.parentRawIndex.compareTo(b.parentRawIndex);
+        if (parentCmp != 0) return parentCmp;
+        return a.childStartRawIndex.compareTo(b.childStartRawIndex);
+      });
+    for (final relation in sorted) {
+      final relationParent = relation.parentLevel.trim().toUpperCase();
+      final child = relation.childLevel.trim().toUpperCase();
+      if (relationParent != parent || !loadedLevels.contains(child)) continue;
+      final key = '$relationParent:${relation.parentRawIndex}:$child:${relation.childStartRawIndex}:${relation.childEndRawIndex}';
+      if (!seen.add(key)) continue;
+      links.add(relation);
+      if (links.length >= 8) break;
+    }
+    return links;
   }
 
   DateTime _dateOrDefault(TextEditingController controller, String label, DateTime fallback) {
@@ -185,6 +211,26 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     return 'S13 replay load failed: $error | request: symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_mode levels=${_normalizedLevels.join(',')} window=$_effectiveWindowText runtime_path=${RuntimePathController.current.wireName}';
   }
 
+  void _jumpDownRelation(LevelRelation relation) {
+    final current = _currentSnapshot;
+    if (current == null) return;
+    final child = relation.childLevel.trim().toUpperCase();
+    if (!current.snapshots.containsKey(child)) {
+      _showMessage('区间套子级别未加载：$child');
+      return;
+    }
+    final childSnapshot = current.of(child);
+    final maxEnd = childSnapshot.rawBars.isEmpty ? 0 : childSnapshot.rawBars.length - 1;
+    setState(() {
+      _activeLevel = child;
+      _viewEndIndex = relation.childEndRawIndex.clamp(0, maxEnd).toInt();
+      _crosshairIndex = relation.childStartRawIndex.clamp(0, maxEnd).toInt();
+      _priceScale = 1.0;
+      _panel = _S13Panel.levels;
+    });
+    _showMessage('区间套跳转：${relation.parentLevel}@${relation.parentRawIndex} ↓ $child ${relation.childStartRawIndex}-${relation.childEndRawIndex}');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -291,7 +337,13 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
+            const Text('加载级别', style: TextStyle(color: Colors.white70, fontSize: 12)),
+            const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: [for (final level in _levelOptions) _levelChip(level)]),
+            const SizedBox(height: 12),
+            const Text('当前图表级别', style: TextStyle(color: Colors.white70, fontSize: 12)),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [for (final level in _normalizedLevels) _activeLevelChip(level)]),
             const SizedBox(height: 10),
             _chip('level_validation', _lastLevelValidation, _lastLevelValidation.contains('有效') || _lastLevelValidation.contains('归一化')),
             const SizedBox(height: 8),
@@ -322,6 +374,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             _chip('runtime_path', RuntimePathController.current.wireName, RuntimePathController.current.isHighSpeed),
             const SizedBox(height: 8),
             _chip('replay_mode', _mode, true),
+            const SizedBox(height: 8),
+            _chip('chart_interval_links', '${_visibleDownRelations.length}', _visibleDownRelations.isNotEmpty),
           ],
         ),
       ),
@@ -359,33 +413,99 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     if (snapshot == null || snapshot.rawBars.isEmpty) {
       return _panelBox('Chart', const Center(child: Text('Load replay to show chart.', style: TextStyle(color: Colors.white54))));
     }
-    return OriginKlineChart(
-      snapshot: snapshot,
-      showFx: true,
-      showFxLine: true,
-      showFxText: true,
-      showBi: true,
-      showBiText: false,
-      showSeg: true,
-      showSegText: true,
-      showZs: true,
-      showBiBsp: true,
-      showSegBsp: true,
-      showMergedBars: false,
-      showEasyTdxIndicators: _enabledEasyTdxIndicators.isNotEmpty,
-      easyTdxSubPanelCount: 2,
-      enabledEasyTdxIndicators: _enabledEasyTdxIndicators,
-      onEasyTdxIndicatorToggled: _toggleEasyTdxIndicator,
-      drawingStorageKey: 's13_${_symbolController.text}_$_activeLevel',
-      symbolLabel: '${_symbolController.text.trim()} $_activeLevel',
-      windowSize: _windowSize,
-      priceScale: _priceScale,
-      viewEndIndex: _viewEndIndex,
-      crosshairIndex: _crosshairIndex,
-      onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
-      onPanBars: _panChartByBars,
-      onWindowSizeChanged: (v) => setState(() => _windowSize = v),
-      onPriceScaleChanged: (v) => setState(() => _priceScale = v),
+    return Stack(
+      children: <Widget>[
+        Positioned.fill(
+          child: OriginKlineChart(
+            snapshot: snapshot,
+            showFx: true,
+            showFxLine: true,
+            showFxText: true,
+            showBi: true,
+            showBiText: false,
+            showSeg: true,
+            showSegText: true,
+            showZs: true,
+            showBiBsp: true,
+            showSegBsp: true,
+            showMergedBars: false,
+            showEasyTdxIndicators: _enabledEasyTdxIndicators.isNotEmpty,
+            easyTdxSubPanelCount: 2,
+            enabledEasyTdxIndicators: _enabledEasyTdxIndicators,
+            onEasyTdxIndicatorToggled: _toggleEasyTdxIndicator,
+            drawingStorageKey: 's13_${_symbolController.text}_$_activeLevel',
+            symbolLabel: '${_symbolController.text.trim()} $_activeLevel',
+            windowSize: _windowSize,
+            priceScale: _priceScale,
+            viewEndIndex: _viewEndIndex,
+            crosshairIndex: _crosshairIndex,
+            onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
+            onPanBars: _panChartByBars,
+            onWindowSizeChanged: (v) => setState(() => _windowSize = v),
+            onPriceScaleChanged: (v) => setState(() => _priceScale = v),
+          ),
+        ),
+        _intervalLinkOverlay(),
+      ],
+    );
+  }
+
+  Widget _intervalLinkOverlay() {
+    final links = _visibleDownRelations;
+    if (links.isEmpty) return const SizedBox.shrink();
+    return Positioned(
+      top: 12,
+      right: 12,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 320),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xEE111722),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0x88FFD54F)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Text('区间套链接', style: TextStyle(color: Color(0xFFFFD54F), fontSize: 12, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              for (final relation in links) _intervalLinkButton(relation),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _intervalLinkButton(LevelRelation relation) {
+    final child = relation.childLevel.trim().toUpperCase();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => _jumpDownRelation(relation),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(8)),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Icon(Icons.arrow_downward, size: 14, color: Color(0xFFFFD54F)),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  '${relation.parentLevel}@${relation.parentRawIndex} → $child ${relation.childStartRawIndex}-${relation.childEndRawIndex}',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -401,9 +521,27 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                   if (!_selectedLevels.contains(level)) _selectedLevels.add(level);
                 } else {
                   _selectedLevels.remove(level);
+                  if (_activeLevel == level && _selectedLevels.isNotEmpty) _activeLevel = _normalizedLevels.first;
                 }
                 _lastLevelValidation = _validateSelectedLevels().message;
               }),
+      selectedColor: const Color(0xFFFFD54F),
+      backgroundColor: const Color(0xFF20242E),
+      labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
+    );
+  }
+
+  Widget _activeLevelChip(String level) {
+    final selected = _activeLevel == level;
+    return ChoiceChip(
+      label: Text(level),
+      selected: selected,
+      onSelected: _activeSnapshot == null ? null : (_) => setState(() {
+        _activeLevel = level;
+        _viewEndIndex = null;
+        _crosshairIndex = null;
+        _priceScale = 1.0;
+      }),
       selectedColor: const Color(0xFFFFD54F),
       backgroundColor: const Color(0xFF20242E),
       labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
@@ -509,7 +647,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
 
   String _buildStatus(PythonMultiLevelChanAnalysis analysis, DateTime startDate, DateTime endDate) {
     final meta = analysis.meta;
-    return 'S13 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} window:${_fmtDate(startDate)}~${_fmtDate(endDate)}';
+    return 'S13 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} window:${_fmtDate(startDate)}~${_fmtDate(endDate)} links:${_visibleDownRelations.length}';
   }
 
   String _runtimePathText(PythonMultiLevelChanAnalysis analysis) {
@@ -525,13 +663,15 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       'selected_levels: ${_selectedLevels.join(',')}',
       'normalized_levels: ${_normalizedLevels.join(',')}',
       'level_validation: $_lastLevelValidation',
-      'active_level: ${_currentSnapshot?.safeActiveLevel ?? _activeLevel}',
+      'active_level: $_activeLevel',
       'runtime_path: ${_runtimePathText(analysis)}',
       'replay_mode: $_mode',
       'current_step: ${_mode == 'step' ? _frameIndex : 'once'}',
       'request_window: $_effectiveWindowText',
       'date_window_policy: start empty defaults to 1990-01-01; end empty defaults to system current time; count parameter removed',
       'settings_layout: left_vertical_toolbar_with_stock_basic_settings_panel',
+      'chart_interval_link_policy: show downward arrow links on chart for backend parent-child LevelRelation records',
+      'chart_interval_link_count: ${_visibleDownRelations.length}',
       'enabled_easy_tdx_indicators: ${_enabledEasyTdxIndicators.isEmpty ? 'none' : _enabledEasyTdxIndicators.join(',')}',
       'source_policy: python/chan.py via native CChan(lv_list); Flutter/Dart display, route, request, and copy evidence only',
       'backend_authority: native CChan(lv_list) through /api/chan/analyze_multi',
