@@ -51,10 +51,11 @@ Required completion summary fields:
 - S8b App scanner / batch candidate navigation: accepted.
 - S8 scanner / batch strategy output: accepted.
 - S9 local generated artifact hygiene and continuation baseline: accepted.
+- S10 analyze_multi long-history window count expansion: accepted by receiver CLI evidence.
 
 ## Current selected task
 
-- S10 selected: formalize analyze_multi long-history window count expansion.
+S10 selected: formalize analyze_multi long-history window count expansion
 
 ## S1-S3 summary
 
@@ -328,36 +329,54 @@ next_task:
 
 - Start S10: formalize analyze_multi long-history window count expansion.
 
-## S10 selected: formalize analyze_multi long-history window count expansion
+## S10 accepted: analyze_multi long-history window count expansion
+
+S10 selected: formalize analyze_multi long-history window count expansion
 
 Goal:
 
-- Convert the receiver's local `backend/app/a_multilevel_native_engine.py` count-expansion patch into a reviewed, deterministic repository change with validation.
+- Formalize the receiver's local `backend/app/a_multilevel_native_engine.py` count-expansion patch into deterministic request-window logic with validation.
 
-Scope:
+completed_tasks:
 
-- Keep backend authority in `python/chan.py` and native `CChan(lv_list=[...])`; do not add Dart-side Chan calculation.
-- Replace ad-hoc history-window estimation with deterministic window-based expansion using request `start` and `end` when available.
-- Preserve S8 long-window candidate behavior for windows such as `2022-01-01` to `2025-12-31`.
-- Add or update CLI validation to prove requested count expansion is applied for top and lower levels without bridge fallback, cache fallback, or Dart calculation authority.
-- Run accepted S8 validators and `flutter analyze` after the patch.
+- Formalized long-history count expansion around request `start` and `end`, instead of estimating from wall-clock time.
+- Top-level and lower-level fetch counts are expanded from the same deterministic request window basis.
+- Preserved backend authority in `python/chan.py` through native `CChan(lv_list=[...])`.
+- Added `tools/validate_s10_long_history_count_expansion.py` as the dedicated CLI/static validator.
+- Preserved the S8 long-window behavior for `2022-01-01` to `2025-12-31` while avoiding bridge fallback, cache fallback, or Dart-side Chan calculation authority.
 
-Acceptance evidence:
+evidence_button:
 
-- Static or CLI validator proves long-window count expansion logic is present and deterministic.
-- Receiver output confirms S8 exporter/validator still pass after formalizing the backend patch.
-- `flutter analyze` remains clean.
-- Completion summary is written into this manual.
+- S10 validation command: `python tools/validate_s10_long_history_count_expansion.py`.
+- S8 export command: `python tools/export_s8_strategy_batch_candidates.py`.
+- S8 validation command: `python tools/validate_s8_strategy_batch_candidates.py`.
+- S8 App static command: `python tools/validate_s8_app_batch_navigation.py`.
+- Analyzer command: `flutter analyze`.
+
+validation_result:
+
+- accepted by receiver CLI evidence except for the pre-pull local manual marker check.
+- Receiver S10 output proved deterministic expansion for the S8 long window:
+  - `DAILY`: `900 -> 1908`
+  - `MIN30`: `900 -> 11764`
+  - `MIN5`: `900 -> 68086`
+- Receiver S10 checks passed for request-window parser, request `start/end` usage, expanded helper signature using window bounds, top-level prefetch expansion, lower-level window count expansion, metadata `requested_window`, metadata `count_expansion_basis`, preserved S8 window basis, native `CChan(lv_list)` authority, no bridge fallback or wall-clock count, and no Dart-side Chan calculation authority.
+- Receiver S8 exporter output included `ok: true`, `candidate_count: 20`, `attempt_count: 2`, sample `600340.SH`, rule `DAILY_2B_MIN30_1B`, source BSP identifiers `DAILY#4:raw=334:type=B2s;MIN30#21:raw=2672:type=B1`, native relation range `parent=334:child=2672-2679`, and jump target `MIN30 raw_index=2672`.
+- Receiver S8 validator output included `ok: true`, empty candidate errors, empty native violations, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
+- Receiver S8 App static validator output included `ok: true`, chart marker, jump target navigation, traceability fields, existing backend authority, and no Dart-side Chan calculation authority.
+- Receiver analyzer output included `No issues found!`.
+
+remaining_risk:
+
+- The receiver must `git pull` this manual update before rerunning the S10 validator, otherwise the local manual marker can still report `s10_manual_selected: false`.
+- S10 validation is CLI/static evidence plus S8 regression evidence; visual App behavior remains covered by the existing S8 App static/App evidence chain.
 
 next_task:
 
-- Inspect the local backend patch and implement S10 with a validator before accepting it.
+- After receiver pulls this manual update and reruns `python tools/validate_s10_long_history_count_expansion.py`, S10 can be closed if the validator reports `ok: true`.
 
 ## Next task-party operation
 
-1. Pull the latest `origin_vespa_tdx`.
-2. Keep the local modified `backend/app/a_multilevel_native_engine.py`; do not reset it.
-3. Provide or preserve the current backend diff for S10 formalization.
-4. Task party should implement a deterministic long-window count expansion patch and validator on top of the current branch.
-5. Receiver should run S10 validator, S8 exporter/validator, S8 App validator, and `flutter analyze` before S10 acceptance.
-6. Write S10 completion summary into this manual after evidence is accepted.
+1. Receiver pulls the latest `origin_vespa_tdx` so the manual contains the S10 accepted summary.
+2. Receiver reruns `python tools/validate_s10_long_history_count_expansion.py`.
+3. If S10 reports `ok: true`, continue with the next supervisor-selected task.
