@@ -53,10 +53,11 @@ Required completion summary fields:
 - S9 local generated artifact hygiene and continuation baseline: accepted.
 - S10 analyze_multi long-history window count expansion: accepted by receiver CLI evidence.
 - S11 post-S10 guardrail regression bundle: accepted by receiver CLI evidence.
+- S12a App single-stock replay high-speed baseline static validation: accepted by receiver CLI evidence.
 
 ## Current selected task
 
-S12 selected: App single-stock replay on accepted high-speed runtime path.
+S12b selected: replay evidence button, indicator default-hidden state, and explicit level-validation feedback.
 
 ## S1-S3 summary
 
@@ -244,6 +245,7 @@ completed_tasks:
 - Top-level and lower-level fetch counts are expanded from the same deterministic request window basis.
 - Preserved backend authority in `python/chan.py` through native `CChan(lv_list=[...])`.
 - Added `tools/validate_s10_long_history_count_expansion.py` as the dedicated CLI/static validator.
+- Updated the S10 validator so later-stage regressions accept both `S10 selected` and `S10 accepted` manual states.
 - Preserved the S8 long-window behavior for `2022-01-01` to `2025-12-31` while avoiding bridge fallback, cache fallback, or Dart-side Chan calculation authority.
 
 evidence_button:
@@ -275,16 +277,13 @@ next_task:
 
 ## S11 accepted: post-S10 guardrail regression bundle
 
-Goal:
-
-- Provide one receiver-friendly CLI entrypoint to prove the S10 backend change still satisfies the S10/S8/guardrail chain before new feature work continues.
-
 completed_tasks:
 
 - Added `tools/validate_s11_guardrail_regression.py`.
 - The validator runs S10 validation, S8 export, S8 output validation, S8 App static validation, global lazy-loading audit, and chan.py placement guardrail.
 - Fixed `tools/audit_global_lazy_loading.py` so whitelisted root-page imports are not falsely blocked by substring matching.
 - Updated S11 optional audits to review-only so non-S11 display-layout debt does not block the post-S10 guardrail bundle.
+- Hardened S11 command execution: default per-command timeout is now 300 seconds, and timeout failures are captured as structured JSON instead of traceback.
 - Preserved the rule that no S11 work modifies `python/chan.py` or adds Dart-side FX/BI/SEG/ZS/BSP calculation authority.
 
 evidence_button:
@@ -296,7 +295,7 @@ evidence_button:
 validation_result:
 
 - accepted.
-- Receiver S11 output included `ok: true`, `required_ok: true`, `flutter_ok: true`, `hygiene_ok: true`, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
+- Receiver S11 output included `ok: true`, `required_ok: true`, `flutter_ok: true`, `hygiene_ok: true`, `required_timeout_failure_count: 0`, `chan_recalculated: false`, and `dart_chan_calculation_authority: false`.
 - Required S11 chain passed:
   - `python tools/validate_s10_long_history_count_expansion.py`
   - `python tools/export_s8_strategy_batch_candidates.py`
@@ -304,7 +303,6 @@ validation_result:
   - `python tools/validate_s8_app_batch_navigation.py`
   - `python tools/audit_global_lazy_loading.py --strict`
   - `python tools/check_chanpy_guardrails.py`
-- Receiver `flutter analyze` output included `No issues found`.
 - Optional review-only audit still reported `audit_origin_kline_global_label_layout_usage.py --strict` failure: `_drawFx does not accept chartLabels`. This is not a blocker for S11 and remains display-layout debt for a later chart-label-layout task.
 
 remaining_risk:
@@ -316,210 +314,78 @@ next_task:
 
 - Start S12: App single-stock replay on accepted high-speed runtime path.
 
-## S12 selected: App single-stock replay on accepted high-speed runtime path
+## S12a accepted: App single-stock replay high-speed baseline static validation
+
+completed_tasks:
+
+- Added `tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
+- Established a static baseline for single-stock replay on the accepted high-speed runtime path.
+- Verified the existing App already has a visible multi-level single-stock replay entry, stock code input, market input, date window input, level selection UI, high-speed runtime path default, analyze_multi backend path, native `CChan(lv_list=[...])` authority, existing OriginKlineChart reuse, TradingView toolbox/easy-tdx entry, strict step frame usage, relation/signal locate hooks, and no Dart-side Chan calculation authority.
+- Kept full S12 completion items as review-only instead of pretending the full S12 UI workflow is complete.
+
+evidence_button:
+
+- Receiver command: `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
+- Receiver command: `python tools/validate_s11_guardrail_regression.py`.
+- Receiver command: `flutter analyze`.
+
+validation_result:
+
+- accepted for S12a baseline only.
+- Receiver S12a output included `ok: true`, `full_s12_completion: false`, empty `missing_baseline_required`, `chan_recalculated: false`, `dart_chan_calculation_authority: false`, and no forbidden profit/trading wording.
+- Receiver S11 regression output after timeout hardening included `ok: true`, all required commands passed, no required timeout failures, no bridge/cache/Dart Chan authority regression, and `hygiene_ok: true`.
+- Receiver analyzer output included `No issues found`.
+
+remaining_risk:
+
+- Full S12 is not complete. The S12a validator still reports these review-only gaps:
+  - `explicit_s12_evidence_button_exists`
+  - `indicator_display_hidden_by_default`
+  - `invalid_level_combination_feedback_exists`
+  - `temporal_state_provisional_confirmed_historical_exists`
+  - `interval_link_marker_id_exists`
+  - `marker_overlap_policy_marker_exists`
+- `audit_origin_kline_global_label_layout_usage.py --strict` still reports `_drawFx does not accept chartLabels`; keep this as display-layout debt unless it is selected as the next specific chart-label task.
+
+next_task:
+
+- Start S12b: replay evidence button, indicator default-hidden state, and explicit level-validation feedback.
+
+## S12b selected: replay evidence button, indicator default-hidden state, and explicit level-validation feedback
 
 Goal:
 
-- Build the next App feature stage on the already accepted `runtime_path=high_speed` path.
-- Provide a complete single-stock replay workflow with stock-code input, arbitrary supported multi-level selection, backend Chan structure display, easy-tdx indicator controls through the existing TradingView-style tool entrance, step_load temporal evidence preservation, interval-nesting link markers, marker overlap control, and one-click replay evidence copy.
-- This is App integration only. It must not modify `python/chan.py` Chan algorithms and must not add Dart-side Chan calculation.
-
-Dependency:
-
-- S12 starts after S11 guardrail regression acceptance.
-- S12 must inherit all hard rules from this manual.
-- S12 must keep high-speed path as the default runtime path and slow path as debug/baseline only.
-
-High-speed path basis:
-
-- `runtime_path=high_speed` is already implemented through `RuntimePath.highSpeed`, `RuntimePathController.current`, `PythonMultiLevelChanAnalysisSource.analyzeMulti`, and the `/api/chan/analyze_multi` backend route.
-- The high-speed path is a UI/runtime routing and diagnostics policy. It must not become a Dart-side or cache-side Chan calculation authority.
-- The backend calculation source remains `python/chan.py` through native `CChan(lv_list=[...])`.
-- Bridge fallback, cache-as-authority, and algorithmic fast/turbo/speed modes remain forbidden.
+- Convert the first three S12a review-only gaps into required behavior while preserving the high-speed single-stock replay baseline.
 
 Scope:
 
-1. Single-stock replay entry
-
-- Provide a visible App entry for single-stock replay.
-- Provide stock-code input.
-- Support market auto-inference and manual market override when needed.
-- The user should be able to load one stock into replay without opening scanner or batch candidate pages.
-- The default workflow should be replay, not recommendation, scanner, backtest, or trading execution.
-
-2. Arbitrary multi-level selection
-
-- Provide dropdown controls for all backend-supported levels.
-- UI may allow arbitrary level combinations.
-- Before calling analyze_multi, validate that the selected level combination satisfies `chan.py` multi-level input requirements.
-- Validation should check backend-supported level names, duplicate or empty selection, ordering normalization, and `CChan(lv_list=[...])` submit eligibility.
-- Invalid combinations must produce visible UI feedback.
-- Do not silently change user-selected levels unless the UI reports the normalized result.
-
-3. Backend authority and no new algorithm
-
-- Continue to use the existing high-speed analyze_multi chain.
-- Keep `python/chan.py` and native `CChan(lv_list=[...])` as the only Chan calculation authority.
-- S12 must not modify `python/chan.py` Chan algorithms.
-- S12 must not add Dart-side FX/BI/SEG/ZS/BSP/segseg calculation.
-- App and Dart code may only parse, display, route, mark, and copy evidence from backend-exported structures.
-
-4. easy-tdx indicator display
-
-- easy-tdx indicators must use the same TradingView-style tool entrance as the replay chart.
-- Do not add a second independent indicator control system.
-- Main-chart and sub-chart indicators must be hidden by default.
-- Users may manually enable supported indicators such as MA, BOLL, VOL, MACD, and other backend-supported easy-tdx indicators.
-- Indicator display is UI-only and must not become the source of Chan structures or BSP calculation.
-
-5. Chan structure display
-
-- Reuse the existing replay chart implementation where possible.
-- Display backend-exported Chan structures:
-  - original K-lines
-  - merged K-lines
-  - FX
-  - BI
-  - SEG
-  - segseg / 二级线段 / 2段
-  - ZS
-  - BI BSP
-  - SEG BSP
-  - segseg BSP if provided by the backend
-- UI may display segseg as `2段`.
-- Manual text and code comments should preserve all three names: `segseg`, `二级线段`, and `2段`.
-
-6. step_load temporal evidence preservation
-
-- The App must preserve structures and BSPs produced by backend step_load as temporal evidence.
-- A structure or BSP that appeared in a previous step must not be silently removed only because later steps no longer expose it in the current frame/snapshot.
-- `is_sure == false` must be displayed in a light/provisional style.
-- `is_sure == true` must be displayed in a dark/confirmed style.
-- This rule applies to BSP, FX, BI, SEG, and segseg / 二级线段 / 2段.
-- If the same structure later changes from provisional to confirmed, update the existing visual object instead of creating a duplicate.
-- If a provisional structure later disappears, keep it visible as `historical_provisional`.
-- `historical_provisional` must not be treated as confirmed.
-- Copied evidence must distinguish `provisional`, `confirmed`, and `historical_provisional`.
-
-7. Interval-nesting link markers
-
-- Add interval-nesting link markers between parent-level and child-level evidence.
-- A parent marker should identify the high-level structure or BSP.
-- A child marker should identify the low-level trigger or confirmation point.
-- Clicking a parent marker should jump to the child level and locate the child raw index.
-- Clicking a child marker should show or jump back to parent evidence when applicable.
-- Link marker ids must be stable and traceable, for example:
-  - `interval_link_{symbol}_{parentLevel}_{parentRawIndex}_{childLevel}_{childRawIndex}_{rule}`
-
-8. Marker and UI overlap control
-
-- Marker labels must not fully overlap.
-- BSP, FX, BI, SEG, segseg, interval-link markers, and manual drawing labels should share a unified layout policy.
-- Same-raw-index markers must be vertically staggered.
-- Buy-side markers should prefer below-K-line placement.
-- Sell-side markers should prefer above-K-line placement.
-- Interval-link markers should use lightweight icons or labels and must not cover candle bodies unnecessarily.
-- Toolbar, dropdowns, evidence panel, crosshair, price axis, and time axis must not block each other.
-- On small screens, controls should be collapsible or moved into drawers or panels.
-- The chart area has priority over diagnostics panels.
-
-9. One-click replay evidence copy
-
-- Provide a visible one-click evidence copy button.
-- Suggested button label: `复制复盘证据`.
-- Copied evidence should include:
-  - `s12_phase: app_single_stock_replay_high_speed_path`
-  - symbol
-  - market
-  - selected levels
-  - normalized levels if different
-  - active level
-  - runtime_path
-  - replay mode
-  - current step
-  - visible window
-  - enabled Chan overlays
-  - enabled easy-tdx indicators
-  - selected marker id
-  - selected marker type
-  - is_sure
-  - temporal state: provisional / confirmed / historical_provisional
-  - first_seen_step
-  - confirmed_step
-  - parent/child interval-link evidence when applicable
-  - source policy
-  - backend authority
-  - `dart_chan_calculation_authority: false`
-  - `candidate_policy: not a trading recommendation`
-
-10. UI reference
-
-- Use OpenFlutter/k_chart only as UI interaction reference for K-line chart ergonomics:
-  - drag
-  - scale
-  - long press
-  - fling
-  - main/sub indicator state
-  - chart padding
-  - trendline-like interaction
-- Do not replace the current `OriginKlineChart`, TradingView drawing tool, or marker/evidence chain with k_chart.
-- Do not introduce k_chart as a dependency in S12 unless separately approved.
-- Any borrowed UI idea must be adapted into the existing App architecture and validator chain.
-
-Out of scope:
-
-- No profit prediction.
-- No trading recommendation.
-- No automatic trading.
-- No Dart-side FX/BI/SEG/ZS/BSP/segseg calculation.
-- No silent modification of `python/chan.py` Chan algorithms.
-- No cache-as-authority design.
-- No bridge fallback.
-- No large fixture unless explicitly approved.
+- Add a visible `复制复盘证据` button in the single-stock replay workflow.
+- Copied evidence must include at least `s12_phase: app_single_stock_replay_high_speed_path`, symbol, market, selected levels, normalized levels when different, active level, runtime path, mode, current step/frame, visible window, enabled Chan overlays, enabled easy-tdx indicators, source policy, backend authority, `dart_chan_calculation_authority: false`, and `candidate_policy: not a trading recommendation`.
+- Make easy-tdx indicators hidden by default in the single-stock replay page. Users may enable indicators manually through the existing TradingView-style toolbox/indicator entrance only.
+- Add explicit UI feedback for invalid or unsupported level combinations before `analyze_multi` is called.
+- Report normalized level result when the App normalizes selected levels.
+- Update `tools/validate_s12_app_single_stock_replay_high_speed_path.py` so the evidence button, default-hidden indicator state, and invalid-level feedback become required S12b checks.
+- Do not modify `python/chan.py` Chan algorithms.
+- Do not add Dart-side FX/BI/SEG/ZS/BSP/segseg calculation authority.
+- Do not add profit prediction, trading recommendation, or automatic trading wording.
 
 Acceptance evidence:
 
-- Add `tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
-- The validator must prove:
-  - high-speed runtime path remains default;
-  - slow path remains debug/baseline only;
-  - single-stock replay entry exists;
-  - stock-code input exists;
-  - level dropdown controls exist;
-  - arbitrary level selections are validated before analyze_multi;
-  - invalid level combinations show explicit UI feedback;
-  - analyze_multi backend path is used;
-  - native `CChan(lv_list=[...])` backend authority remains the source;
-  - easy-tdx indicators use the same TradingView-style tool entrance;
-  - main/sub indicators are hidden by default;
-  - Chan structures are parsed from backend output only;
-  - step_load temporal evidence is preserved;
-  - provisional, confirmed, and historical_provisional states are distinguishable;
-  - interval-nesting link markers are stable and clickable;
-  - marker overlap policy exists;
-  - one-click replay evidence copy exists;
-  - no Dart-side Chan calculation authority exists;
-  - no profit prediction or automatic trading wording exists.
-- Receiver should run:
-  - `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`
-  - `python tools/validate_s11_guardrail_regression.py`
-  - `flutter analyze`
-- Receiver App evidence should include:
-  - one stock code;
-  - selected arbitrary multi-level combination;
-  - normalized/validated level result;
-  - runtime path evidence showing `high_speed`;
-  - one provisional object if available;
-  - one confirmed object if available;
-  - one historical_provisional object if available;
-  - one interval-link marker if available;
-  - copied replay evidence text.
+- Receiver command: `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
+- Receiver command: `python tools/validate_s11_guardrail_regression.py`.
+- Receiver command: `flutter analyze`.
+- Receiver App evidence: use one stock, one valid multi-level combination, one invalid combination attempt, then click `复制复盘证据` and paste the copied evidence.
+
+remaining_risk:
+
+- Temporal evidence state tracking, interval-link marker ids, and marker-overlap policy remain for later S12 sub-stages unless explicitly included in S12b implementation.
+- The optional `_drawFx does not accept chartLabels` display-layout debt remains separate unless the supervisor selects it as the next chart-label-layout task.
 
 ## Next task-party operation
 
 1. Receiver pulls latest `origin_vespa_tdx`.
-2. Task party implements S12 in small stages, starting with a CLI/static validator and single-stock replay entry.
+2. Task party implements S12b in small changes.
 3. Receiver runs `python tools/validate_s12_app_single_stock_replay_high_speed_path.py`.
 4. Receiver runs `python tools/validate_s11_guardrail_regression.py`.
 5. Receiver runs `flutter analyze`.
-6. Receiver shares S12 validator output and App replay evidence for acceptance.
+6. Receiver shares S12b validator output and App replay evidence for acceptance.
