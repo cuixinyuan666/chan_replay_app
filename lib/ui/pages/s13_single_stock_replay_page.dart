@@ -9,7 +9,7 @@ import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/runtime/runtime_path.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
 import 's13_nested_marker_numbering_policy.dart';
-import '../widgets/origin_kline_chart.dart';
+import '../widgets/recursive_seg_origin_kline_chart.dart';
 
 class S13SingleStockReplayPage extends StatefulWidget {
   final int currentRouteIndex;
@@ -331,10 +331,11 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       if (a.activeRawIndex != b.activeRawIndex) {
         return a.activeRawIndex.compareTo(b.activeRawIndex);
       }
-      final stateCompare = _nestedNumberingPolicy.compareTriggerState(
-          a.state, b.state);
+      final stateCompare =
+          _nestedNumberingPolicy.compareTriggerState(a.state, b.state);
       if (stateCompare != 0) return stateCompare;
-      final ai = levels.indexOf(a.sourceLevel), bi = levels.indexOf(b.sourceLevel);
+      final ai = levels.indexOf(a.sourceLevel),
+          bi = levels.indexOf(b.sourceLevel);
       if (ai != bi) return ai.compareTo(bi);
       final rawCompare = _nestedNumberingPolicy.compareTriggerRawIndex(
           a.sourceRawIndex, b.sourceRawIndex);
@@ -432,19 +433,23 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   _LevelValidationResult _validateSelectedLevels() {
     final raw = [for (final l in _selectedLevels) l.trim().toUpperCase()];
     final n = _normalizedLevels;
-    if (raw.isEmpty) return _LevelValidationResult(false, n, '级别组合无效：至少选择两个级别');
+    if (raw.isEmpty) return _LevelValidationResult(false, n, '级别组合无效：至少选择一个级别');
     final bad =
         raw.where((l) => !_levelOptionSet.contains(l)).toList(growable: false);
     if (bad.isNotEmpty)
       return _LevelValidationResult(false, n, '级别组合无效：不支持 ${bad.join(',')}');
     if (raw.toSet().length != raw.length)
       return _LevelValidationResult(false, n, '级别组合无效：存在重复级别');
-    if (n.length < 2)
-      return _LevelValidationResult(false, n, '级别组合无效：至少选择两个级别');
+    if (n.length == 1)
+      return _LevelValidationResult(
+          true, n, '单周期模式：加载 ${n.first} K线并执行一次 3段/4段递归段检验');
     if (n.length != raw.length)
       return _LevelValidationResult(true, n, '级别组合已归一化：${n.join(',')}');
     return _LevelValidationResult(true, n, '级别组合有效：${n.join(',')}');
   }
+
+  String _requestModeFor(_LevelValidationResult lv) =>
+      lv.normalizedLevels.length == 1 ? 'once' : _mode;
 
   Future<void> _loadReplay() async {
     if (_loading) return;
@@ -461,16 +466,18 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _showMessage('时间窗口无效：开始时间不能晚于结束时间');
       return;
     }
+    final requestMode = _requestModeFor(lv);
     setState(() {
       _loading = true;
+      _mode = requestMode;
       _status =
-          'S13 loading analyze_multi ${_mode.toUpperCase()} levels:${lv.normalizedLevels.join(',')} window:${_fmtDate(startDate)}~${_fmtDate(endDate)} runtime:${RuntimePathController.current.wireName}';
+          'S13 loading analyze_multi ${requestMode.toUpperCase()} levels:${lv.normalizedLevels.join(',')} window:${_fmtDate(startDate)}~${_fmtDate(endDate)} runtime:${RuntimePathController.current.wireName}';
     });
     final source = PythonMultiLevelChanAnalysisSource(
         baseUrl: _backendUrlController.text.trim());
     try {
       final a = await source.analyzeMulti(
-          mode: _mode,
+          mode: requestMode,
           market: _marketController.text.trim().toUpperCase(),
           code: _symbolController.text.trim(),
           levels: lv.normalizedLevels,
@@ -484,6 +491,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             'bi_algo': 'normal',
             'seg_algo': 'chan',
             'zs_algo': 'normal',
+            'recursive_seg_max_level': 4,
           });
       if (!mounted) return;
       setState(() {
@@ -509,7 +517,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   }
 
   String _friendlyLoadError(Object e) =>
-      'S13 replay load failed: $e | request: symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_mode levels=${_normalizedLevels.join(',')} window=$_effectiveWindowText runtime_path=${RuntimePathController.current.wireName}';
+      'S13 replay load failed: $e | request: symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=${_requestModeFor(_validateSelectedLevels())} levels=${_normalizedLevels.join(',')} window=$_effectiveWindowText runtime_path=${RuntimePathController.current.wireName}';
   void _setReplayMode(String v) {
     if (_mode == v) return;
     _stopPlay();
@@ -852,7 +860,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                   style: TextStyle(color: Colors.white54))));
     return Stack(children: <Widget>[
       Positioned.fill(
-          child: OriginKlineChart(
+          child: RecursiveSegOriginKlineChart(
               snapshot: s,
               showFx: true,
               showFxLine: true,
@@ -1130,9 +1138,13 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                   if (v) {
                     if (!_selectedLevels.contains(l)) _selectedLevels.add(l);
                   } else {
-                    _selectedLevels.remove(l);
-                    if (_activeLevel == l && _selectedLevels.isNotEmpty)
-                      _activeLevel = _normalizedLevels.first;
+                    if (_selectedLevels.length > 1) {
+                      _selectedLevels.remove(l);
+                      if (_selectedLevels.length == 1 && _mode == 'step')
+                        _mode = 'once';
+                      if (_activeLevel == l && _selectedLevels.isNotEmpty)
+                        _activeLevel = _normalizedLevels.first;
+                    }
                   }
                   _lastLevelValidation = _validateSelectedLevels().message;
                 }),
