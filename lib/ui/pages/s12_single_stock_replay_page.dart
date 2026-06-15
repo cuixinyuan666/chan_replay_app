@@ -8,7 +8,7 @@ import '../../core/models/level_relation.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/runtime/runtime_path.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
-import '../widgets/origin_kline_chart.dart';
+import '../widgets/recursive_seg_origin_kline_chart.dart';
 
 class S12SingleStockReplayPage extends StatefulWidget {
   const S12SingleStockReplayPage({super.key});
@@ -381,7 +381,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     if (snapshot == null || snapshot.rawBars.isEmpty) {
       return _panel(title: 'Chart', child: const Center(child: Text('Load S12 replay to show chart.', style: TextStyle(color: Colors.white54))));
     }
-    return OriginKlineChart(
+    return RecursiveSegOriginKlineChart(
       snapshot: snapshot,
       showFx: true,
       showFxLine: true,
@@ -549,63 +549,34 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   String _buildReplayEvidenceText(PythonMultiLevelChanAnalysis analysis) {
     final normalized = _normalizedLevels;
     final current = _currentSnapshot;
-    final active = current?.snapshots.containsKey(_activeLevel) == true ? _activeLevel : (current?.safeActiveLevel ?? _activeLevel);
-    return <String>[
-      's12_phase: app_single_stock_replay_high_speed_path',
-      'symbol: ${_symbolController.text.trim()}',
-      'market: ${_marketController.text.trim().toUpperCase()}',
-      'selected_levels: ${_selectedLevels.join(',')}',
-      'normalized_levels: ${normalized.join(',')}',
-      'level_validation: $_lastLevelValidation',
-      'active_level: $active',
-      'runtime_path: ${_runtimePathText(analysis)}',
-      'replay_mode: $_mode',
-      'current_step: ${_mode == 'step' ? _frameIndex : 'once'}',
-      'visible_window: window_size=$_windowSize view_end_index=${_viewEndIndex ?? 'auto'} crosshair_index=${_crosshairIndex ?? 'none'}',
-      'enabled_chan_overlays: FX,FX_LINE,FX_TEXT,BI,SEG,ZS,BI_BSP,SEG_BSP',
-      'enabled_easy_tdx_indicators: ${_enabledEasyTdxIndicators.isEmpty ? 'none' : _enabledEasyTdxIndicators.join(',')}',
-      'selected_marker_id: none',
-      'selected_marker_type: none',
-      'is_sure: ${_temporalSummary.sample?.confirmed ?? 'unknown'}',
-      'temporal_source: ${_temporalSummary.source}',
-      'temporal_state: ${_temporalSummary.stateLine}',
-      'temporal_state_counts: provisional=${_temporalSummary.provisionalCount} confirmed=${_temporalSummary.confirmedCount} historical_provisional=${_temporalSummary.historicalProvisionalCount} total=${_temporalSummary.total}',
-      'temporal_sample_id: ${_temporalSummary.sample?.id ?? 'none'}',
-      'temporal_sample_type: ${_temporalSummary.sample?.type ?? 'none'}',
-      'temporal_sample_level: ${_temporalSummary.sample?.level ?? 'none'}',
-      'temporal_sample_state: ${_temporalSummary.sample?.state ?? 'none'}',
-      'first_seen_step: ${_temporalSummary.sample?.firstSeenStep ?? 'unknown'}',
-      'confirmed_step: ${_temporalSummary.sample?.confirmedStep ?? 'unknown'}',
-      'last_seen_step: ${_temporalSummary.sample?.lastSeenStep ?? 'unknown'}',
-      'interval_link_source: ${_intervalLinkSummary.source}',
-      'interval_link_marker_ids: ${_intervalLinkSummary.idsText}',
-      'parent_child_interval_link: ${_intervalLinkSummary.sample?.id ?? 'none'}',
-      'parent_child_interval_link_reason: ${_intervalLinkSummary.reason}',
-      'interval_link_sample: ${_intervalLinkSummary.sample?.sampleText ?? 'none'}',
-      'interval_link_relation_count: ${_intervalLinkSummary.total}',
-      'interval_link_policy: backend MultiLevelChanSnapshot.relations only; Dart formats stable marker ids and does not calculate parent-child relation logic',
-      'marker_overlap_policy: $_markerOverlapPolicy',
-      'marker_overlap_policy_detail: $_markerOverlapPolicyDetail',
-      'marker_overlap_policy_scope: S12 evidence markers and display marker evidence only; global FX label migration remains a separate chart-label task',
-      'temporal_evidence_policy: preserve backend-exported structures across frames; do not recalculate Chan structures in Dart',
-      'source_policy: python/chan.py via native CChan(lv_list); Flutter/Dart display, route, mark, and copy evidence only',
-      'backend_authority: native CChan(lv_list) through /api/chan/analyze_multi',
-      'native_cchan_lv_list: ${analysis.meta['native_cchan_lv_list'] ?? analysis.snapshot.meta['native_cchan_lv_list']}',
-      'fallback_to_bridge: ${analysis.meta['fallback_to_bridge'] ?? analysis.snapshot.meta['fallback_to_bridge'] ?? false}',
-      'dart_chan_calculation_authority: false',
-      'candidate_policy: not a trading recommendation',
+    final active = _activeSnapshot;
+    final sampleTemporal = _temporalSummary.sample;
+    final sampleInterval = _intervalLinkSummary.sample;
+    final meta = analysis.meta;
+    return [
+      'S12_SINGLE_STOCK_REPLAY_EVIDENCE',
+      'request symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_mode levels=${normalized.join(',')} count=$_count window=${_startController.text.trim()}~${_endController.text.trim()} runtime_path=${_runtimePathText(analysis)}',
+      'backend engine=${meta['engine']} native=${meta['native_cchan_lv_list']} fallback=${meta['fallback_to_bridge'] ?? false} frames=${analysis.frames.length} current_frame=$_frameIndex',
+      'snapshot main=${current?.mainLevel ?? analysis.snapshot.mainLevel} active=$_activeLevel levels=${analysis.snapshot.levels.join(',')}',
+      'visible active bars=${active?.rawBars.length ?? 0} fx=${active?.fxs.length ?? 0} bi=${active?.bis.length ?? 0} seg=${active?.segs.length ?? 0} zs=${active?.zss.length ?? 0} bsp=${active?.bsps.length ?? 0}',
+      'temporal source=${_temporalSummary.source} frames=${_temporalSummary.frameCount} ${_temporalSummary.stateLine}',
+      if (sampleTemporal != null) 'temporal_sample id=${sampleTemporal.id} state=${sampleTemporal.state} first_seen=${sampleTemporal.firstSeenStep} confirmed_step=${sampleTemporal.confirmedStep} last_seen=${sampleTemporal.lastSeenStep}',
+      'interval_links source=${_intervalLinkSummary.source} total=${_intervalLinkSummary.total} ids=${_intervalLinkSummary.idsText}',
+      if (sampleInterval != null) 'interval_link_sample id=${sampleInterval.id} ${sampleInterval.sampleText}',
+      'marker_policy=$_markerOverlapPolicy detail=$_markerOverlapPolicyDetail',
+      'interval_link_reason=${_intervalLinkSummary.reason}',
+      'time_log=${meta['time_log'] ?? analysis.snapshot.meta['time_log'] ?? {}}',
     ].join('\n');
   }
 
   Future<void> _copyText(String label, String text) async {
     await Clipboard.setData(ClipboardData(text: text));
-    _showMessage('$label copied');
+    _showMessage('$label 已复制');
   }
 
-  void _showMessage(String message) {
+  void _showMessage(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 4)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text), duration: const Duration(milliseconds: 1600)));
   }
 }
 
@@ -613,7 +584,6 @@ class _LevelValidationResult {
   final bool ok;
   final List<String> normalizedLevels;
   final String message;
-
   const _LevelValidationResult(this.ok, this.normalizedLevels, this.message);
 }
 
@@ -626,18 +596,10 @@ class _TemporalEvidence {
   final int firstSeenStep;
   int lastSeenStep;
   int? confirmedStep;
-  bool confirmed;
   String state = 'provisional';
+  bool confirmed = false;
 
-  _TemporalEvidence({
-    required this.id,
-    required this.type,
-    required this.level,
-    required this.rawIndex,
-    required this.label,
-    required this.firstSeenStep,
-  })  : lastSeenStep = firstSeenStep,
-        confirmed = false;
+  _TemporalEvidence({required this.id, required this.type, required this.level, required this.rawIndex, required this.label, required this.firstSeenStep}) : lastSeenStep = firstSeenStep;
 
   void markSeen({required int step, required bool isSure}) {
     lastSeenStep = step;
