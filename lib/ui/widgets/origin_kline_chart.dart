@@ -1675,8 +1675,12 @@ class _OriginChartPainter extends CustomPainter {
       final isSegLevel = _isSegBsp(bsp);
       if (isSegLevel && !showSegBsp) continue;
       if (!isSegLevel && !showBiBsp) continue;
-      final color =
+      final isCandidateTrail = bsp.type.contains('候选轨迹');
+      final baseColor =
           bsp.isSell ? const Color(0xFFFF7043) : const Color(0xFF00E676);
+      final color = isCandidateTrail
+          ? baseColor.withValues(alpha: bsp.confirmed ? 0.60 : 0.34)
+          : baseColor.withValues(alpha: bsp.confirmed ? 1.0 : 0.82);
       final x = rawToX(bsp.rawIndex).clamp(rect.left, rect.right).toDouble();
       final y = priceToY(bsp.price).clamp(rect.top, rect.bottom).toDouble();
       final halfWidth = isSegLevel ? 8.0 : 6.0;
@@ -1731,6 +1735,8 @@ class _OriginChartPainter extends CustomPainter {
       ..strokeWidth = 0.8;
     canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), paint);
     canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
+    _drawText(canvas, _fmtDate(bar.time), Offset(rect.left + 6, rect.top + 6),
+        12, Colors.white);
     _drawText(
         canvas,
         'O:${bar.open.toStringAsFixed(2)} H:${bar.high.toStringAsFixed(2)} L:${bar.low.toStringAsFixed(2)} C:${bar.close.toStringAsFixed(2)} 光标:${price.toStringAsFixed(2)} V:${bar.volume.toStringAsFixed(0)}',

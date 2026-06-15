@@ -1973,7 +1973,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
             children: [
               Tooltip(
                 waitDuration: const Duration(seconds: 3),
-                message: '拖拽 TV 工具到这里固定为左侧快捷按钮',
+                message: '拖拽工具到这里固定为左侧快捷按钮',
                 child: Icon(active ? Icons.add_circle : Icons.push_pin_outlined,
                     size: 18, color: Colors.white70),
               ),
@@ -2044,7 +2044,7 @@ class _OriginReplayPageV2State extends State<OriginReplayPageV2> {
                     child: Column(
                       children: [
                         const Divider(height: 12, color: Colors.white12),
-                        _toolIcon('TV 工具箱', Icons.architecture,
+                        _toolIcon('工具栏', Icons.architecture,
                             () => _tvToolboxOpenSignal.value++),
                         _buildTvQuickToolDropZone(),
                         const Divider(height: 12, color: Colors.white12),

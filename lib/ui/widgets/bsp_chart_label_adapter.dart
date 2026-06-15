@@ -34,7 +34,7 @@ class BspChartLabelAdapter {
 
   String labelText({required BspPoint bsp, required bool isSegLevel}) {
     final prefix = isSegLevel ? '段' : '笔';
-    final suffix = bsp.confirmed ? '' : '?';
+    const suffix = '';
     return '$prefix${_displayType(bsp.type)}$suffix';
   }
 
@@ -58,16 +58,17 @@ class BspChartLabelAdapter {
     final normalized = rawType.trim();
     if (normalized.isEmpty) return 'BSP';
     return normalized
-        .replaceAll('buy', '')
-        .replaceAll('Buy', '')
-        .replaceAll('BUY', '')
-        .replaceAll('sell', '')
-        .replaceAll('Sell', '')
-        .replaceAll('SELL', '')
-        .replaceAll('买', '')
-        .replaceAll('卖', '')
-        .trim()
-        .isEmpty
+            .replaceAll('buy', '')
+            .replaceAll('Buy', '')
+            .replaceAll('BUY', '')
+            .replaceAll('sell', '')
+            .replaceAll('Sell', '')
+            .replaceAll('SELL', '')
+            .replaceAll('买', '')
+            .replaceAll('卖', '')
+            .replaceAll('候选轨迹', '')
+            .trim()
+            .isEmpty
         ? normalized
         : normalized
             .replaceAll('buy', '')
@@ -78,6 +79,7 @@ class BspChartLabelAdapter {
             .replaceAll('SELL', '')
             .replaceAll('买', '')
             .replaceAll('卖', '')
+            .replaceAll('候选轨迹', '')
             .trim();
   }
 }

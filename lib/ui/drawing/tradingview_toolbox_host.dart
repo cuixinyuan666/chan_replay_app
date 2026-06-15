@@ -96,6 +96,7 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
   bool _open = false;
   TradingViewDrawingTool _localSelectedTool = TradingViewDrawingTool.cursor;
   final List<TradingViewDrawingTool> _quickTools = [];
+  Offset? _panelOffset;
 
   TradingViewDrawingTool get _effectiveSelectedTool =>
       widget.selectedTool ?? _localSelectedTool;
@@ -165,6 +166,8 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
     final selected = _effectiveSelectedTool;
     final hasExternalButton = widget.openSignal != null;
     final hasExternalQuickRail = widget.onQuickToolAdded != null;
+    final defaultPanelOffset = Offset(hasExternalButton ? 92 : 8, 52);
+    final panelOffset = _panelOffset ?? defaultPanelOffset;
     return Stack(
       children: [
         widget.child,
@@ -195,30 +198,58 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
           ),
         if (_open)
           Positioned(
-            left: hasExternalButton ? 92 : 8,
-            top: 52,
-            bottom: 12,
+            left: panelOffset.dx,
+            top: panelOffset.dy,
             width: 372,
-            child: _ToolboxPanel(
-              selectedTool: selected,
-              hasBars: widget.hasBars,
-              hasChanSnapshot: widget.hasChanSnapshot,
-              isToolAvailable: widget.isToolAvailable,
-              drawingCount: widget.drawingCount,
-              canExportDrawings: widget.canExportDrawings,
-              onClearDrawings: widget.onClearDrawings,
-              onImportDrawings: widget.onImportDrawings,
-              onExportDrawings: widget.onExportDrawings,
-              isChanOverlayVisible: widget.isChanOverlayVisible,
-              onChanOverlayToggled: widget.onChanOverlayToggled,
-              onClose: () => setState(() => _open = false),
-              onSelected: _selectTool,
-              onQuickToolAdded: _handleQuickToolAdded,
-              easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
-              enabledIndicators: widget.enabledEasyTdxIndicators,
-              onSubPanelCountChanged: widget.onEasyTdxSubPanelCountChanged,
-              onIndicatorToggled: widget.onEasyTdxIndicatorToggled,
-              indicatorKeys: widget.indicatorKeys,
+            height: MediaQuery.sizeOf(context).height - panelOffset.dy - 12,
+            child: Stack(
+              children: [
+                Opacity(
+                  opacity: 0.72,
+                  child: _ToolboxPanel(
+                    selectedTool: selected,
+                    hasBars: widget.hasBars,
+                    hasChanSnapshot: widget.hasChanSnapshot,
+                    isToolAvailable: widget.isToolAvailable,
+                    drawingCount: widget.drawingCount,
+                    canExportDrawings: widget.canExportDrawings,
+                    onClearDrawings: widget.onClearDrawings,
+                    onImportDrawings: widget.onImportDrawings,
+                    onExportDrawings: widget.onExportDrawings,
+                    isChanOverlayVisible: widget.isChanOverlayVisible,
+                    onChanOverlayToggled: widget.onChanOverlayToggled,
+                    onClose: () => setState(() => _open = false),
+                    onSelected: _selectTool,
+                    onQuickToolAdded: _handleQuickToolAdded,
+                    easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
+                    enabledIndicators: widget.enabledEasyTdxIndicators,
+                    onSubPanelCountChanged:
+                        widget.onEasyTdxSubPanelCountChanged,
+                    onIndicatorToggled: widget.onEasyTdxIndicatorToggled,
+                    indicatorKeys: widget.indicatorKeys,
+                  ),
+                ),
+                Positioned(
+                  left: 46,
+                  top: 0,
+                  width: 170,
+                  height: 44,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onPanUpdate: (details) {
+                      final size = MediaQuery.sizeOf(context);
+                      setState(() {
+                        _panelOffset = Offset(
+                          (panelOffset.dx + details.delta.dx)
+                              .clamp(0.0, size.width - 372),
+                          (panelOffset.dy + details.delta.dy)
+                              .clamp(0.0, size.height - 120),
+                        );
+                      });
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
       ],
@@ -262,7 +293,7 @@ class _QuickToolRail extends StatelessWidget {
             children: [
               Tooltip(
                 waitDuration: _tooltipWait,
-                message: '拖拽 TV 工具到这里，形成左侧快捷工具栏',
+                message: '拖拽工具到这里，形成左侧快捷工具栏',
                 child: Icon(active ? Icons.add_circle : Icons.push_pin_outlined,
                     size: 18, color: Colors.white70),
               ),
@@ -319,11 +350,11 @@ class _ToolboxButton extends StatelessWidget {
       color: Colors.transparent,
       child: Tooltip(
         waitDuration: _tooltipWait,
-        message: 'TradingView 工具箱：$selectedLabel$suffix',
+        message: '工具栏：$selectedLabel$suffix',
         child: FilledButton.tonalIcon(
           onPressed: onPressed,
           icon: Icon(open ? Icons.close : Icons.architecture, size: 18),
-          label: Text('TV工具$suffix'),
+          label: Text('工具栏$suffix'),
           style: FilledButton.styleFrom(
             visualDensity: VisualDensity.compact,
             backgroundColor: const Color(0xDD1F2937),
@@ -416,7 +447,7 @@ class _ToolboxPanel extends StatelessWidget {
                   const SizedBox(width: 4),
                   const Expanded(
                     child: Text(
-                      'TradingView 画线工具箱',
+                      '工具栏',
                       style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
@@ -503,7 +534,7 @@ class _ToolboxPanel extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF131722),
-        title: const Text('TV 工具箱操作说明', style: TextStyle(color: Colors.white)),
+        title: const Text('工具栏操作说明', style: TextStyle(color: Colors.white)),
         content: const Text(
           '1. 缠论叠加来自后端/Vespa。\n2. easy-tdx 指标来自展示层，不参与 chan.py 缠论结构计算。\n3. 指标开关使用页面统一状态，避免按钮亮但图不变。\n4. 副图数量可用 + / - 调整。',
           style: TextStyle(color: Colors.white70, height: 1.45),

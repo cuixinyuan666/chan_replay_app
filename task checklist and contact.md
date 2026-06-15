@@ -387,3 +387,236 @@ next_task:
 1. Receiver pulls latest `origin_vespa_tdx`.
 2. Receiver removes local generated validation output if present: `test/fixtures/derived/s8_strategy_batch_candidates_v1.json`.
 3. If continuing, supervisor selects the next optional display-layout task explicitly.
+
+## UI optimization: single-stock multi-level replay workspace
+
+completed_tasks:
+
+- Optimized the single-stock multi-level replay page so the K-line chart uses the full route area by default.
+- Changed the S13 settings area from a permanent 430px layout column into a left-edge overlay toolbar drawer.
+- Removed visible S13 task-process evidence UI, including the evidence panel and copy-evidence button.
+- Kept essential operation feedback such as level validation, runtime path, interval link count, and request window in compact toolbar chips.
+- Renamed visible TradingView/TV toolbox labels to `工具栏`.
+- Removed the extra left padding around the S13 route so the chart is no longer pre-shrunk before rendering.
+
+evidence_button:
+
+- Receiver command: `flutter analyze`.
+- App path: open `单股多级别复盘`, use the left-edge `工具栏` buttons for stock, level, replay, and layer controls.
+
+validation_result:
+
+- `flutter analyze` passed with `No issues found`.
+- Static keyword check found no S13 visible `复制复盘证据`, `复盘证据`, `s13_phase`, `TV工具`, `TV 工具`, or old TradingView toolbox title strings in the touched UI files.
+
+remaining_risk:
+
+- Visual App spacing should still be inspected interactively on the target Windows viewport.
+- The root route toolbar and S13 page toolbar now both sit on the left edge; the route toolbar remains bottom-left and may overlap the lowest part of the S13 toolbar on short windows.
+
+next_task:
+
+- Receiver App validation: confirm the K-line area is maximized, the overlay toolbar can be opened/closed, and all required controls remain reachable from `工具栏`.
+
+## UI optimization: touch-friendly unified toolbar and full-step replay
+
+completed_tasks:
+
+- Consolidated S13 page navigation and tool categories under the single left-edge `工具栏` entry.
+- Hid the root route toolbar on the single-stock multi-level replay workspace and kept it low-opacity only on non-S13 pages.
+- Moved `runtime path` into one touch-friendly button under `工具栏 / 股票`.
+- Replaced S13 start/end text inputs with `showDatePicker`, compatible with Windows and Android Flutter.
+- Removed S13 `step frames` UI and stopped sending `max_step_frames` from S13; step mode now requests the full backend step sequence.
+- Moved replay step controls from `工具栏 / 复盘` to the K-line chart lower-right overlay, with first/last, previous/next, play/pause, and adjustable playback speed.
+- Switched S13 transient messages to `!` dialog prompts instead of snack-bar style inline hints.
+- Preserved BSP candidate trail markers in step mode and rendered them as lighter-color markers instead of removing them when backend provisional BSP disappears from later frames.
+
+evidence_button:
+
+- Receiver command: `flutter analyze`.
+- Static checks: no S13/root `step frames`, `max_step_frames`, old date controllers, root runtime dropdown, or old TV toolbar wording in touched active UI files.
+
+validation_result:
+
+- `flutter analyze` passed with `No issues found`.
+
+remaining_risk:
+
+- Windows and Android touch layout should be inspected in App, especially date picker behavior, lower-right replay overlay, and toolbar panel scrolling on small screens.
+- Existing unrelated working-tree changes remain untouched: Windows generated plugin files and local derived S8 fixture.
+
+next_task:
+
+- Receiver App validation on Windows and Android: load step replay, play/pause with speed changes, verify BSP candidate trail markers stay visible in lighter color, and confirm all navigation/tool functions are reachable from `工具栏`.
+
+## UI optimization: step-load nested BSP markers
+
+completed_tasks:
+
+- Removed the S13 visible step-mode `区间套链接` overlay/list from the chart workspace.
+- Added step-only nested BSP marker overlay on the K-line chart, based on backend step frames, loaded level order, BSP rows, and backend parent-child relations.
+- Marker rows follow loaded levels such as `DAILY / MIN30 / MIN5`; missing BSP rows render as `-`.
+- Buy BSP rows render red, sell BSP rows render green; the active chart level row is larger/thicker.
+- Marker direction follows active-level context: top-level active markers point downward; middle-level active markers show higher-level rows upward, active row downward, and lower-level rows upward.
+- Clicking a nested marker jumps to the next lower-level BSP region when one exists.
+- Nested marker rows reuse the BSP candidate trail policy for every loaded level, so disappeared provisional BSPs stay visible in lighter color instead of mutating historical marker state.
+
+evidence_button:
+
+- Receiver command: `flutter analyze`.
+- Static check: S13 no longer contains `区间套链接`, `_intervalLink`, `_visibleDownRelations`, `visible_links`, or `chart_interval` active UI paths.
+
+validation_result:
+
+- `flutter analyze` passed with `No issues found`.
+
+remaining_risk:
+
+- Pixel placement is an overlay approximation aligned to the chart visible rawIndex window; receiver should visually inspect marker alignment at different zoom/window sizes.
+- If backend relations contain multiple child ranges for one parent rawIndex, S13 currently uses the first sorted child range for the nested chain.
+
+next_task:
+
+- Receiver App validation: in step mode with `DAILY,MIN30,MIN5`, verify nested BSP arrows, colors, missing `-` rows, lighter candidate-trail rows, and click-through to the next lower-level BSP region.
+
+## UI correction: unified draggable floating toolbar
+
+completed_tasks:
+
+- Removed the remaining S13 left-edge vertical toolbar and its left-bottom load button so the chart can render to the far-left edge.
+- Consolidated S13 stock, level, replay, layer, drawing, and page navigation controls into one scrollable floating `工具栏` component.
+- Made the S13 floating toolbar draggable from its top button row and lowered its opacity.
+- Hid the chart-internal drawing quick rail in S13 and routed drawing-tool opening through the unified floating toolbar.
+- Made the drawing toolbox panel itself draggable from its title area and lowered its opacity while preserving internal list scrolling.
+- Replaced visible S13 status chips/text with `!` info buttons that open dialog prompts for window, status, step, validation, and marker details.
+- Moved step playback controls to the chart bottom-center and removed the outer frame around the control group.
+- Added a top title-area level switcher so active chart level can be changed without opening the toolbar.
+- Added click-outside behavior: when the S13 floating toolbar panel is open, tapping the non-toolbar chart area closes it.
+
+evidence_button:
+
+- Receiver command: `flutter analyze`.
+- Static checks: S13 has no `_leftToolbar`, `_chip`, visible `Text(_status)`, or old `工具栏 / 股票|级别|复盘|图层` split-panel titles.
+
+validation_result:
+
+- `flutter analyze` passed with `No issues found`.
+
+remaining_risk:
+
+- Receiver should inspect Windows mouse-wheel scrolling and Android touch scrolling inside the unified floating toolbar.
+- Receiver should inspect drag ergonomics for both the S13 toolbar and drawing toolbox panel.
+
+next_task:
+
+- Receiver App validation: verify chart reaches the far-left edge, unified toolbar scrolls, click-outside closes it, title-level switching works, and drawing toolbox can be opened and dragged from the floating toolbar.
+
+## UI correction: nested marker trigger and BSP candidate persistence
+
+completed_tasks:
+
+- Changed nested marker glyphs from stemmed arrows to chevron-only arrow heads.
+- Made each marker arrow row clickable; clicking a row jumps to that row's corresponding level/raw K-line.
+- Changed nested marker generation so any loaded level's BSP can trigger a marker on the current chart level after mapping through backend relations.
+- Big-level charts now show nested markers when lower-level BSPs appear, even if the big level itself has no BSP yet.
+- Fixed BSP confirmation parsing so string/number forms such as `is_sure=false`, `false`, or `0` are treated as unconfirmed.
+- Preserved historical provisional BSPs through the candidate-trail layer: previous provisional BSPs remain visible as lighter markers while current-frame BSPs remain deep-colored.
+
+evidence_button:
+
+- Receiver command: `flutter analyze`.
+- Static checks: marker code uses `keyboard_arrow_up/down`, `_mapRawIndexToLevel`, and row-level click handling; BSP parser uses robust `_bool(...)` for `confirmed/is_sure`.
+
+validation_result:
+
+- `flutter analyze` passed with `No issues found`.
+
+remaining_risk:
+
+- Receiver should validate with a real step replay where lower-level BSPs appear without a same-bar higher-level BSP.
+- Receiver should inspect one provisional BSP across consecutive step frames to confirm old markers stay light and new/current markers stay deep.
+
+next_task:
+
+- Receiver App validation: step through a known BSP candidate sequence and a multi-level nested BSP sequence, checking marker persistence, colors, click targets, and chevron-only glyphs.
+
+## UI correction: loaded-level switcher and step-history BSP persistence
+
+completed_tasks:
+
+- Changed the top title-area level switcher to use actual backend-loaded snapshot levels, falling back to selected levels only before data is loaded.
+- Updated nested marker relation mapping to use the actual loaded level chain instead of the default selected level list.
+- Made the step playback control default to bottom-center while allowing it to be dragged to another chart position.
+- Reworked BSP candidate trail persistence: step frames are accumulated up to the current frame, each first-seen BSP observation is preserved as historical when absent from the current frame, and its original type/confirmed state is not rewritten later.
+- Current-frame BSPs remain deep colored; historical BSP observations are lighter, with `is_sure/confirmed` still reflected by alpha.
+- Nested interval markers reuse the same historical BSP observation source, so they follow the same no-future, no-history-rewrite policy.
+
+evidence_button:
+
+- Receiver command: `flutter analyze`.
+- Static checks: S13 includes `_loadedLevels`, draggable `_replayControlOffset`, historical trail `confirmed: p.confirmed`, and nested marker alpha based on historical/current plus confirmed state.
+
+validation_result:
+
+- `flutter analyze` passed with `No issues found`.
+
+remaining_risk:
+
+- Receiver should validate visually with real step data where loaded levels differ from the default `DAILY/MIN30/MIN5`.
+- Receiver should step through several frames containing provisional BSPs to confirm old per-K observations persist light while the current frame stays deep.
+
+next_task:
+
+- Receiver App validation: load a non-default level chain, verify top switcher levels match backend-loaded levels, drag playback controls, and step BSP/interval markers through consecutive frames.
+
+## UI correction: independent replay controls and clean BSP labels
+
+completed_tasks:
+
+- Split S13 step replay controls into independent draggable controls.
+- Kept default replay-control placement at the bottom-center of the chart while allowing each button/speed control to be moved separately.
+- Replaced the playback speed slider with a popup speed button to avoid accidental speed changes while dragging/panning the K-line chart.
+- Removed visible `候选轨迹` suffix and `?` from BSP labels; historical/current and confirmed/provisional states are represented by color/alpha only.
+- Preserved internal `候选轨迹` tagging solely as a UI state marker for historical rendering.
+- Added crosshair date display at the chart's upper-left when the crosshair is enabled by double-clicking the K-line area.
+
+evidence_button:
+
+- Receiver command: `flutter analyze`.
+- Static checks: S13 no longer uses `Slider` for speed; replay controls use `_draggableReplayControl`; BSP label adapter strips `候选轨迹`; crosshair painter renders `_fmtDate(bar.time)`.
+
+validation_result:
+
+- `flutter analyze` passed with `No issues found`.
+
+remaining_risk:
+
+- Receiver should validate drag hit-testing in App: panning the K-line chart should not change playback speed, and dragging a replay button should move only that button.
+
+next_task:
+
+- Receiver App validation: double-click chart to enable crosshair/date, pan chart near replay controls, move each replay control independently, and verify labels show `笔1` rather than `笔1候选轨迹`.
+
+## S13 defaults and publish prep
+
+completed_tasks:
+
+- Changed S13 default start date to `2026-01-01`.
+- Changed S13 default end date to system current date minus two days.
+- Changed S13 default replay mode to `step`.
+
+evidence_button:
+
+- Receiver command: `flutter analyze`.
+
+validation_result:
+
+- `flutter analyze` passed with `No issues found`.
+
+remaining_risk:
+
+- Receiver should confirm App defaults on both Windows and Android.
+
+next_task:
+
+- Commit and push necessary files to `origin_vespa_tdx`.

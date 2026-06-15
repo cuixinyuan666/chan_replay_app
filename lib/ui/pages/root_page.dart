@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../core/runtime/runtime_path.dart';
 import 'ashare_bsp_scanner_page.dart';
 import 'origin_replay_strict_page.dart';
 import 'research_backtest_page.dart';
@@ -40,21 +39,22 @@ class _RootPageState extends State<RootPage> {
           _LazyRouteStack(
             index: _index,
             visited: _visited,
-            builders: const <_RouteBuilder>[
-              _RouteBuilder(child: OriginReplayStrictPage()),
+            builders: <_RouteBuilder>[
+              const _RouteBuilder(child: OriginReplayStrictPage()),
               _RouteBuilder(
-                child: Padding(
-                  padding: EdgeInsets.only(left: 48),
-                  child: S13SingleStockReplayPage(),
-                ),
-              ),
-              _RouteBuilder(child: AshareBspScannerPage()),
-              _RouteBuilder(child: S8StrategyBatchPage()),
-              _RouteBuilder(child: ResearchBacktestPage()),
+                  child: S13SingleStockReplayPage(
+                currentRouteIndex: _index,
+                onOpenRoute: _open,
+              )),
+              const _RouteBuilder(child: AshareBspScannerPage()),
+              const _RouteBuilder(child: S8StrategyBatchPage()),
+              const _RouteBuilder(child: ResearchBacktestPage()),
             ],
           ),
-          _RouteToolColumn(currentIndex: _index, onOpen: _open),
-          const Positioned(left: 52, bottom: 18, child: _RuntimePathDropdown()),
+          if (_index != _multiLevelIndex)
+            Opacity(
+                opacity: 0.18,
+                child: _RouteToolColumn(currentIndex: _index, onOpen: _open)),
         ],
       ),
     );
@@ -95,59 +95,6 @@ class _LazyRouteStack extends StatelessWidget {
             ),
           ),
       ],
-    );
-  }
-}
-
-class _RuntimePathDropdown extends StatelessWidget {
-  const _RuntimePathDropdown();
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: ValueListenableBuilder<RuntimePath>(
-        valueListenable: RuntimePathController.selected,
-        builder: (context, path, _) {
-          return SizedBox(
-            width: 220,
-            child: DropdownButtonFormField<RuntimePath>(
-              value: path,
-              dropdownColor: const Color(0xFF20242E),
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              decoration: InputDecoration(
-                labelText: 'runtime path',
-                labelStyle: const TextStyle(color: Colors.white54, fontSize: 10),
-                isDense: true,
-                filled: true,
-                fillColor: const Color(0xEE131722),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: path.isHighSpeed
-                        ? const Color(0xFF66BB6A)
-                        : const Color(0xFFFFB74D),
-                  ),
-                ),
-              ),
-              items: const <DropdownMenuItem<RuntimePath>>[
-                DropdownMenuItem(
-                  value: RuntimePath.highSpeed,
-                  child: Text('高速路（默认）'),
-                ),
-                DropdownMenuItem(
-                  value: RuntimePath.slowPath,
-                  child: Text('慢速路（原始校验/调试）'),
-                ),
-              ],
-              onChanged: (value) {
-                if (value != null) RuntimePathController.set(value);
-              },
-            ),
-          );
-        },
-      ),
     );
   }
 }
@@ -235,11 +182,13 @@ class _RouteToolButton extends StatelessWidget {
           color: selected ? Colors.white : Colors.white70,
           disabledColor: Colors.white,
           style: IconButton.styleFrom(
-            backgroundColor: selected ? const Color(0xFF2962FF) : const Color(0xEE131722),
+            backgroundColor:
+                selected ? const Color(0xFF2962FF) : const Color(0xEE131722),
             side: BorderSide(
               color: selected ? const Color(0xFF8AB4FF) : Colors.white24,
             ),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
       ),
