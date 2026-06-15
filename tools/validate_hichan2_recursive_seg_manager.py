@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 MANAGER = ROOT / 'backend' / 'app' / 'a_recursive_seg_manager.py'
 WRAPPER = ROOT / 'backend' / 'app' / 'a_multilevel_native_timed_recursive_engine.py'
 ENTRY = ROOT / 'backend' / 'app' / 'a_multilevel_engine_timed.py'
+DART_SNAPSHOT = ROOT / 'lib' / 'core' / 'models' / 'chan_snapshot.dart'
+DART_RECURSIVE_SEG = ROOT / 'lib' / 'core' / 'models' / 'recursive_seg.dart'
+DART_PARSER = ROOT / 'lib' / 'data' / 'chan_snapshot_json_parser.dart'
 
 
 def _read(path: Path) -> str:
@@ -29,6 +32,9 @@ def main() -> None:
         'manager_exists': MANAGER,
         'wrapper_exists': WRAPPER,
         'entry_exists': ENTRY,
+        'dart_snapshot_exists': DART_SNAPSHOT,
+        'dart_recursive_seg_exists': DART_RECURSIVE_SEG,
+        'dart_parser_exists': DART_PARSER,
     }.items():
         checks[label] = path.exists()
         if not path.exists():
@@ -41,7 +47,11 @@ def main() -> None:
     manager = _read(MANAGER)
     wrapper = _read(WRAPPER)
     entry = _read(ENTRY)
-    combined = manager + wrapper + entry
+    dart_snapshot = _read(DART_SNAPSHOT)
+    dart_recursive_seg = _read(DART_RECURSIVE_SEG)
+    dart_parser = _read(DART_PARSER)
+    combined_backend = manager + wrapper + entry
+    combined_dart = dart_snapshot + dart_recursive_seg + dart_parser
 
     checks.update({
         'manager_syntax_ok': _syntax_ok(MANAGER),
@@ -59,8 +69,13 @@ def main() -> None:
         'wrapper_attaches_to_once_result': '_native_once_response' in wrapper and '_attach_recursive_seg_layers(' in wrapper,
         'wrapper_attaches_to_step_final_result': '_recursive_timed_native_step_response' in wrapper and 'last_chan' in wrapper,
         'metadata_marks_export_only_policy': 'recursive_seg_layer_policy' in wrapper and 'recursive_seg_bsp_policy' in wrapper,
-        'no_dart_chan_authority_added': 'Dart' not in combined,
-        'no_chanpy_source_write_path_added': 'python/chan.py' not in combined and 'open(' not in manager,
+        'dart_recursive_seg_dto_exists': 'class RecursiveSEG' in dart_recursive_seg and 'RecursiveSegDirection' in dart_recursive_seg,
+        'dart_snapshot_exposes_recursive_layers': 'recursiveSegLayers' in dart_snapshot and 'Map<int, List<RecursiveSEG>>' in dart_snapshot,
+        'dart_parser_reads_backend_seg_layers': "data['seg_layers']" in dart_parser and '_parseRecursiveSegLayers' in dart_parser,
+        'dart_parser_uses_raw_price_not_bi_links_for_recursive_layers': 'start_raw_index' in dart_parser and 'start_price' in dart_parser and 'startParentIndex' in dart_parser,
+        'dart_frontend_parser_is_passive': 'must not synthesize or calculate Chan structures' in dart_parser,
+        'no_dart_chan_authority_added': 'CChan' not in combined_dart and 'check_fx' not in combined_dart and 'check_bi' not in combined_dart and 'cal_seg' not in combined_dart,
+        'no_chanpy_source_write_path_added': 'python/chan.py' not in combined_backend and 'open(' not in manager,
     })
 
     failed = [name for name, value in checks.items() if value is not True]
@@ -71,6 +86,7 @@ def main() -> None:
         'notes': [
             'hichan2 adds export-only recursive segment layers under backend/app/a_* files.',
             'Layer 1 uses native seg; layer 2 uses native segseg; layers >=3 call chan.py segment-list update() on deepcopy input.',
+            'Dart only parses backend seg_layers into a raw-index/price DTO; it does not calculate Chan structures.',
             'No seg3/seg4 BSP is generated; native bsp/segbsp remain authoritative.',
         ],
     }
