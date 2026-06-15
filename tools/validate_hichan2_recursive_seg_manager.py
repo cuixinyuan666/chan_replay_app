@@ -87,6 +87,7 @@ def main() -> None:
         'dart_overlay_uses_raw_index_price_anchors': 'DrawingAnchor.chart(rawIndex: seg.startRawIndex, price: seg.startPrice)' in dart_overlay and 'DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice)' in dart_overlay,
         's12_imports_recursive_chart': "../widgets/recursive_seg_origin_kline_chart.dart" in s12_page,
         's12_uses_recursive_chart': 'return RecursiveSegOriginKlineChart(' in s12_page,
+        's12_recursive_overlay_default_enabled': 'showRecursiveSegLayers: false' not in s12_page,
         's12_no_direct_origin_chart_import': "../widgets/origin_kline_chart.dart" not in s12_page,
         's12_retains_replay_entrypoints': 'class S12SingleStockReplayPage' in s12_page and 'Future<void> _loadReplay()' in s12_page and 'PythonMultiLevelChanAnalysisSource' in s12_page,
         'no_dart_chan_authority_added': 'CChan' not in combined_dart and 'check_fx' not in combined_dart and 'check_bi' not in combined_dart and 'cal_seg' not in combined_dart,
