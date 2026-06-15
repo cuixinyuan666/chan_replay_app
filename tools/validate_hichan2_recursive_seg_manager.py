@@ -90,6 +90,8 @@ def main() -> None:
         's12_recursive_overlay_default_enabled': 'showRecursiveSegLayers: false' not in s12_page,
         's12_no_direct_origin_chart_import': "../widgets/origin_kline_chart.dart" not in s12_page,
         's12_retains_replay_entrypoints': 'class S12SingleStockReplayPage' in s12_page and 'Future<void> _loadReplay()' in s12_page and 'PythonMultiLevelChanAnalysisSource' in s12_page,
+        's12_retains_step_frame_controls': 'Widget _frameControls()' in s12_page and 'Slider(' in s12_page and '_frameIndex' in s12_page,
+        's12_surfaces_recursive_seg_evidence': '_recursiveSegSummaryText' in s12_page and 'recursive_seg_layers' in s12_page and "type: '${layerEntry.key}段'" in s12_page,
         'no_dart_chan_authority_added': 'CChan' not in combined_dart and 'check_fx' not in combined_dart and 'check_bi' not in combined_dart and 'cal_seg' not in combined_dart,
         'no_chanpy_source_write_path_added': 'python/chan.py' not in combined_backend and 'open(' not in manager,
     })
