@@ -135,8 +135,8 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
   List<DrawingObject> _recursiveSegDrawingObjects(ChanSnapshot snapshot) {
     final rows = <DrawingObject>[];
     final now = DateTime.fromMillisecondsSinceEpoch(0);
-    final minLayer = minRecursiveSegLayer.clamp(1, 99).toInt();
-    final maxLayer = maxRecursiveSegLayer.clamp(minLayer, 99).toInt();
+    final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
+    final maxLayer = maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
     for (final entry in snapshot.recursiveSegLayers.entries) {
       final layer = entry.key;
       if (layer < minLayer || layer > maxLayer) continue;
@@ -168,7 +168,7 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
       2 => 2.2,
       3 => 2.8,
       4 => 3.4,
-      _ => 2.0 + layer.clamp(1, 8).toDouble() * 0.35,
+      _ => 2.0 + (layer < 1 ? 1 : layer > 8 ? 8 : layer).toDouble() * 0.35,
     };
     final opacity = seg.isSure ? 0.92 : 0.46;
     return DrawingStyle(
@@ -190,8 +190,8 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
 
   String _symbolLabelWithRecursiveSegSummary(String baseLabel, ChanSnapshot snapshot) {
     final layerCounts = <String>[];
-    final minLayer = minRecursiveSegLayer.clamp(1, 99).toInt();
-    final maxLayer = maxRecursiveSegLayer.clamp(minLayer, 99).toInt();
+    final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
+    final maxLayer = maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
     for (var layer = minLayer; layer <= maxLayer; layer++) {
       final count = snapshot.recursiveSegLayers[layer]?.length ?? 0;
       if (count > 0) layerCounts.add('L$layer:$count');
