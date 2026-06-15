@@ -2,7 +2,7 @@
 
 Branch: origin_vespa_tdx
 
-Last supervisor update: 2026-06-14
+Last supervisor update: 2026-06-15
 
 ## Open questions
 
@@ -46,7 +46,7 @@ Required completion summary fields:
 - S1 Strategy mode runtime acceptance: accepted.
 - S2 pinned offline fixture export for accepted S1 baseline: accepted.
 - S3 pinned S1 fixture offline validator: accepted.
-- R1 receiver burden code cleanup: accepted by App evidence.
+- R1 receiver burden code cleanup: accepted.
 - R1b CLI receiver-burden validation: accepted.
 - S4 CLI strategy diagnostics validator: accepted.
 - S5 CLI strategy rule matrix validation: accepted.
@@ -68,21 +68,31 @@ Required completion summary fields:
 - S13 native multi-level step frames through `CChan(lv_list=[...]).step_load()` and compact frame transport: implementation completed in code; dedicated S13 CLI/native validator remains required.
 - S13 nested BSP marker overlay, lower-level BSP upward trigger, loaded-level switcher, and BSP candidate persistence: implementation completed in code; hidden logic review remains required.
 - S13 default publish prep: start date `2026-01-01`, end date `system current date - 2 days`, replay mode `step`; `flutter analyze` passed.
+- hichanhuancun stage-1 backend cache/lazy-layer/BSP-freeze/anti-future contracts: implementation completed in code; dedicated static validator added as `python tools/validate_hichanhuancun_contracts.py`.
 
 ## Current selected task
 
-S13 interval-nest hidden logic review is selected.
+hichanhuancun stage-1 backend replay contract validation is selected.
 
 Current supervisor position:
 
 - S12 full evidence chain is complete.
 - S13 implementation work is recorded as code-complete but not fully accepted as logic-verified.
 - No new Chan algorithm authority is granted to Flutter/Dart.
-- Next required work is to add a dedicated S13 validator and/or receiver App evidence for nested marker correctness.
+- hichanhuancun adds backend-only cache, export-history fields, transport contracts, and anti-future metadata; it does not grant Flutter/Dart Chan calculation authority.
+- Next required work is to run the dedicated validator and then receiver App evidence if UI-specific behavior needs confirmation.
 
 Optional display-layout debt remains:
 
 - Global chart-label migration debt: `_drawFx` should eventually migrate through the shared `ChartLabelLayout` path and clear `audit_origin_kline_global_label_layout_usage.py --strict`.
+
+## hichanhuancun completion summary
+
+- completed_tasks: Added backend raw K-line session cache with key/TTL policy; added `chart_lazy_layers_v1` returned contract and layer manifest; added BSP `anchor/display/confirmed` frozen export fields; added `multi_level_anti_future_meta_v1` for final levels, returned step frames, and parent-child relations.
+- evidence_button: No App evidence button added in this stage; command-line receiver evidence is `python tools/validate_hichanhuancun_contracts.py`.
+- validation_result: Static validator added; full runtime validation still depends on receiver environment with easy-tdx / chan.py runtime available.
+- remaining_risk: Runtime cache hit/miss behavior and anti-future metadata should still be checked against real long-history step frames; `chart_lazy_layers` is a transport/rendering contract and does not imply reduced chan.py calculation.
+- next_task: Run validator, then validate one real S13 step replay case for cache stats, BSP frozen fields, and anti-future pass metadata.
 
 ## Historical accepted summary
 
@@ -118,171 +128,3 @@ Optional display-layout debt remains:
 - S12b accepted: replay evidence button, default-hidden indicators, and explicit level-validation feedback.
 - S12c accepted: backend step-frame temporal evidence state tracking for provisional/confirmed/historical provisional structures.
 - S12d accepted: interval-link marker ids from backend `MultiLevelChanSnapshot.relations`.
-- S12e accepted: shared marker-overlap policy evidence and full S12 evidence-chain closure.
-
-## S13 implementation inventory
-
-### S13 single-stock multi-level replay workspace
-
-completed_tasks:
-
-- Optimized the single-stock multi-level replay page so the K-line chart uses the full route area by default.
-- Replaced permanent side layout with a floating/draggable unified `工具栏`.
-- Consolidated stock, level, replay, layer, drawing, and page navigation controls into the unified toolbar.
-- Added top title-area level switcher using backend-loaded snapshot levels.
-- Kept K-line chart responsible for display, zoom, pan, crosshair, layer/indicator interaction, and drawing tools.
-
-validation_result:
-
-- `flutter analyze` passed in the recorded S13 UI optimization stages.
-
-remaining_risk:
-
-- Receiver still needs visual App validation on Windows and Android, especially toolbar scrolling, drag ergonomics, chart edge usage, and short-window overlap.
-
-### S13 time-window and replay defaults
-
-completed_tasks:
-
-- Changed S13 default start date to `2026-01-01`.
-- Changed S13 default end date to system current date minus two days.
-- Changed S13 default replay mode to `step`.
-- S13 page sends `startDate` and `endDate` to `analyzeMulti` and validates `start <= end`.
-
-validation_result:
-
-- `flutter analyze` passed.
-
-remaining_risk:
-
-- Need confirm backend S13 path does not effectively reintroduce `count` as a hidden truncation condition when `start/end` are provided.
-
-### S13 native step frames and compact transport
-
-completed_tasks:
-
-- Backend timed multi-level adapter calls native `analyze_multi_native_timed`.
-- Native step mode calls `CChan(lv_list=[...]).step_load()`.
-- Step response returns compact frames with `step_frame_format=compact_v1`.
-- Backend records `native_step_frames`, `native_step_frames_total`, `native_step_frames_returned`, `native_step_frames_truncated`, and timing metadata.
-- Dart source lazily parses compact frames and records lazy-frame parse/cache timing.
-
-validation_result:
-
-- Implementation is present in code.
-- Dedicated S13 CLI/native validator is not yet present.
-
-remaining_risk:
-
-- Need validator to prove first/middle/last compact frames match backend-visible counts and relations, and that no final-snapshot slicing is used.
-
-### S13 nested BSP marker overlay and candidate persistence
-
-completed_tasks:
-
-- Removed visible step-mode `区间套链接` overlay/list from the chart workspace.
-- Added step-only nested BSP marker overlay on the K-line chart.
-- Marker generation uses backend step frames, loaded level order, BSP rows, and backend parent-child relations.
-- Lower-level BSPs can trigger markers on a higher-level chart after mapping through backend relations.
-- Marker rows can be clicked to jump to the corresponding level/raw K-line.
-- Candidate trail accumulates historical BSP observations up to the current frame and preserves prior provisional observations as lighter UI markers.
-- Current-frame BSPs remain deep-colored; historical/provisional states are represented by color/alpha rather than text suffixes.
-- BSP parser handles `confirmed` and `is_sure`, including string/number false forms.
-
-validation_result:
-
-- `flutter analyze` passed in the recorded nested-marker correction stages.
-
-remaining_risk:
-
-- Current implementation can still have hidden logical display errors. See review section below.
-
-## S13 interval-nest logic review
-
-### Supervisor conclusion
-
-Current interval-nest implementation is not a Chan-calculation violation, because it reads backend-exported relations and backend-exported BSP rows. However, it is not yet logic-accepted as a correct interval-nest display. It has several hidden UI/model-mapping risks that can make the chart show a plausible but logically wrong nested marker chain.
-
-### Risk 1: first-child-range selection can lose valid child mapping
-
-- Current mapping from parent to child effectively selects the first sorted child range for a parent rawIndex.
-- If backend relations contain multiple child ranges for one parent rawIndex, selecting the first range can map to the wrong child segment for a BSP that actually belongs to a later child range.
-- This is a display-level logical error risk, not a chan.py computation error.
-
-Required fix:
-
-- When mapping downward, choose the child relation that contains the target lower-level BSP or target child raw index.
-- If only a parent rawIndex is available, expose multiple child candidates or mark ambiguity instead of silently taking the first range.
-
-### Risk 2: downward chain anchors to childStart when no child BSP exists
-
-- When no BSP exists inside the child range, the code can use `childStartRawIndex` as a placeholder anchor.
-- This is acceptable for navigation to a region, but not equivalent to a child-level buy/sell point.
-- If rendered as a nested BSP marker row, it can visually imply a child signal where only a child interval exists.
-
-Required fix:
-
-- Separate `interval anchor` from `BSP anchor` in the row model.
-- Render missing BSP rows as `-` or interval-only, and never style a childStart placeholder as a BSP signal.
-
-### Risk 3: active-level mapping can collapse many lower-level BSPs onto the same parent K
-
-- Mapping lower-level BSPs upward to the active higher level can collapse multiple lower-level BSPs into one higher-level rawIndex.
-- The current dedupe key includes row information, so some duplicates are preserved, but visible x-position can still overlap and imply a single event cluster.
-
-Required fix:
-
-- Add deterministic intra-bar stacking or horizontal offsets for multiple nested markers anchored to the same active rawIndex.
-- Add marker count/sequence text in the debug/evidence layer.
-
-### Risk 4: current-frame relation availability may be weaker than current-frame BSP availability
-
-- Strict step mode correctly reads `analysis.frames[_safeFrameIndex]`.
-- But if a frame contains a lower-level BSP before the corresponding parent-child relation is fully exported or stable, upward/downward mapping can fail or later change.
-
-Required fix:
-
-- In S13 evidence, record per-marker `frame_index`, `relation_source_frame`, `bsp_source_frame`, and whether mapping is `current_frame_exact` or `historical_candidate`.
-- Do not silently upgrade historical provisional observations into current confirmed interval chains.
-
-### Risk 5: candidate trail can be misread as current signal
-
-- Historical provisional BSPs are intentionally preserved as lighter UI observations.
-- This is useful for replay study, but it can be misread as a currently valid BSP if the alpha difference is not obvious or if labels were stripped.
-
-Required fix:
-
-- Keep internal state explicit: current/deep, historical/light, provisional/alpha.
-- Add optional debug tooltip or copied evidence showing `historical_candidate=true/false`.
-
-### Risk 6: loaded-level order must match backend semantic hierarchy
-
-- S13 now uses backend-loaded levels instead of default selected levels, which is better.
-- But if backend returns levels in a different order or missing an intermediate level, the chain `levels[i] -> levels[i+1]` can produce wrong parent/child assumptions.
-
-Required fix:
-
-- Validate every adjacent pair has relation rows before using it as a hierarchy edge.
-- If an edge lacks relations, disable nested mapping for that edge and report the missing pair.
-
-## Next task-party operation
-
-1. Receiver pulls latest `origin_vespa_tdx`.
-2. Run existing baseline checks:
-   - `flutter analyze`
-   - `python tools/audit_dart_algorithm_usage.py`
-   - `python tools/check_chanpy_guardrails.py`
-3. Add a dedicated S13 validator, recommended name:
-   - `tools/validate_s13_interval_nest_marker_logic.py`
-4. The S13 validator should statically or fixture-test:
-   - S13 uses `analysis.frames[_safeFrameIndex]`, not final snapshot slicing.
-   - Nested markers use backend `relations` only.
-   - Downward mapping does not silently choose the first child range when multiple ranges exist.
-   - Placeholder childStart anchors are not styled as BSP signals.
-   - Lower-level BSPs can map upward without requiring same-bar higher-level BSP.
-   - Historical candidate BSPs remain UI-only and never mutate backend frame data.
-5. Receiver App validation:
-   - Step through `DAILY,MIN30,MIN5` real data.
-   - Verify lower-level BSP appears on higher-level chart.
-   - Verify click-through lands on the intended lower-level BSP or explicitly marked interval-only region.
-   - Verify multiple lower-level BSPs under one parent K are not visually collapsed into one misleading signal.
