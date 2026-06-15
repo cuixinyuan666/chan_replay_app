@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'ashare_bsp_scanner_page.dart';
+import 'chan_settings_page.dart';
 import 'origin_replay_strict_page.dart';
 import 'research_backtest_page.dart';
 import 's8_strategy_batch_page.dart';
@@ -19,6 +20,7 @@ class _RootPageState extends State<RootPage> {
   static const int _scannerIndex = 2;
   static const int _s8BatchIndex = 3;
   static const int _researchIndex = 4;
+  static const int _settingsIndex = 5;
 
   int _index = _multiLevelIndex;
   final Set<int> _visited = <int>{_multiLevelIndex};
@@ -49,12 +51,12 @@ class _RootPageState extends State<RootPage> {
               const _RouteBuilder(child: AshareBspScannerPage()),
               const _RouteBuilder(child: S8StrategyBatchPage()),
               const _RouteBuilder(child: ResearchBacktestPage()),
+              const _RouteBuilder(child: ChanSettingsPage()),
             ],
           ),
-          if (_index != _multiLevelIndex)
-            Opacity(
-                opacity: 0.18,
-                child: _RouteToolColumn(currentIndex: _index, onOpen: _open)),
+          Opacity(
+              opacity: 0.18,
+              child: _RouteToolColumn(currentIndex: _index, onOpen: _open)),
         ],
       ),
     );
@@ -148,6 +150,13 @@ class _RouteToolColumn extends StatelessWidget {
               icon: Icons.science,
               selected: currentIndex == _RootPageState._researchIndex,
               onPressed: () => onOpen(_RootPageState._researchIndex),
+            ),
+            const SizedBox(height: 6),
+            _RouteToolButton(
+              tooltip: '设置',
+              icon: Icons.settings,
+              selected: currentIndex == _RootPageState._settingsIndex,
+              onPressed: () => onOpen(_RootPageState._settingsIndex),
             ),
           ],
         ),
