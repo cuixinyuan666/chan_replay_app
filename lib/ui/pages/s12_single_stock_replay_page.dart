@@ -225,6 +225,12 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     for (final seg in snapshot.segs) {
       _recordTemporalEvidence(target, id: 'SEG:$level:${seg.startRawIndex}-${seg.endRawIndex}:${seg.index}', type: 'SEG', level: level, rawIndex: seg.endRawIndex, label: '${seg.direction}#${seg.index}', isSure: seg.isSure, step: step);
     }
+    for (final layerEntry in snapshot.recursiveSegLayers.entries) {
+      if (layerEntry.key <= 1) continue;
+      for (final seg in layerEntry.value) {
+        _recordTemporalEvidence(target, id: 'SEG${layerEntry.key}:$level:${seg.startRawIndex}-${seg.endRawIndex}:${seg.index}', type: '${layerEntry.key}段', level: level, rawIndex: seg.endRawIndex, label: 'L${layerEntry.key}#${seg.index}', isSure: seg.isSure, step: step);
+      }
+    }
     for (final zs in snapshot.zss) {
       _recordTemporalEvidence(target, id: 'ZS:$level:${zs.startRawIndex}-${zs.endRawIndex}:${zs.index}', type: 'ZS', level: level, rawIndex: zs.endRawIndex, label: 'ZS#${zs.index}', isSure: zs.confirmed, step: step);
     }
@@ -347,6 +353,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
                 ],
               ),
               const SizedBox(height: 8),
+              if (_analysis?.hasFrames == true) _frameControls(),
+              const SizedBox(height: 8),
               _chip('level_validation', _lastLevelValidation, _lastLevelValidation.contains('有效') || _lastLevelValidation.contains('归一化')),
               const SizedBox(height: 6),
               _chip('runtime_path', RuntimePathController.current.wireName, RuntimePathController.current.isHighSpeed),
@@ -354,6 +362,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
               _chip('temporal_state_counts', _temporalSummary.shortText, _temporalSummary.total > 0),
               const SizedBox(height: 6),
               _chip('interval_link_marker_ids', _intervalLinkSummary.shortText, _intervalLinkSummary.total > 0),
+              const SizedBox(height: 6),
+              _chip('recursive_seg_layers', _recursiveSegSummaryText(_activeSnapshot), _recursiveSegTotal(_activeSnapshot) > 0),
               const SizedBox(height: 6),
               _chip('marker_overlap_policy', _markerOverlapPolicy, true),
               const SizedBox(height: 6),
@@ -363,6 +373,37 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
         ),
         const SizedBox(height: 8),
         Expanded(child: _evidencePreviewPanel()),
+      ],
+    );
+  }
+
+  Widget _frameControls() {
+    final frames = _analysis?.frames.length ?? 0;
+    if (frames <= 0) return const SizedBox.shrink();
+    return Row(
+      children: <Widget>[
+        IconButton(
+          tooltip: '上一帧',
+          onPressed: _frameIndex <= 0 ? null : () => setState(() => _frameIndex--),
+          icon: const Icon(Icons.chevron_left, color: Colors.white70, size: 18),
+          visualDensity: VisualDensity.compact,
+        ),
+        Expanded(
+          child: Slider(
+            value: _frameIndex.clamp(0, frames - 1).toDouble(),
+            min: 0,
+            max: (frames - 1).toDouble(),
+            divisions: frames > 1 ? frames - 1 : null,
+            label: '${_frameIndex + 1}/$frames',
+            onChanged: (v) => setState(() => _frameIndex = v.round().clamp(0, frames - 1).toInt()),
+          ),
+        ),
+        IconButton(
+          tooltip: '下一帧',
+          onPressed: _frameIndex + 1 >= frames ? null : () => setState(() => _frameIndex++),
+          icon: const Icon(Icons.chevron_right, color: Colors.white70, size: 18),
+          visualDensity: VisualDensity.compact,
+        ),
       ],
     );
   }
@@ -538,12 +579,38 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
 
   String _buildStatus(PythonMultiLevelChanAnalysis analysis) {
     final meta = analysis.meta;
-    return 'S12 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} temporal:${_temporalSummary.shortText} interval_links:${_intervalLinkSummary.shortText} marker_overlap_policy:$_markerOverlapPolicy';
+    return 'S12 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} temporal:${_temporalSummary.shortText} interval_links:${_intervalLinkSummary.shortText} recursive_seg:${_recursiveSegSummaryText(_activeSnapshot)} marker_overlap_policy:$_markerOverlapPolicy';
   }
 
   String _runtimePathText(PythonMultiLevelChanAnalysis analysis) {
     final raw = '${analysis.meta['runtime_path'] ?? analysis.snapshot.meta['runtime_path'] ?? RuntimePathController.current.wireName}'.trim();
     return raw == 'slow_path' ? 'slow_path' : 'high_speed';
+  }
+
+  int _recursiveSegTotal(dynamic snapshot) {
+    if (snapshot == null) return 0;
+    final layers = snapshot.recursiveSegLayers;
+    if (layers is! Map<int, dynamic>) return 0;
+    var total = 0;
+    for (final entry in layers.entries) {
+      if (entry.key <= 1) continue;
+      final rows = entry.value;
+      if (rows is List) total += rows.length;
+    }
+    return total;
+  }
+
+  String _recursiveSegSummaryText(dynamic snapshot) {
+    if (snapshot == null) return 'none';
+    final layers = snapshot.recursiveSegLayers;
+    if (layers is! Map<int, dynamic>) return 'none';
+    final parts = <String>[];
+    for (final entry in layers.entries.toList()..sort((a, b) => a.key.compareTo(b.key))) {
+      if (entry.key <= 1) continue;
+      final rows = entry.value;
+      if (rows is List && rows.isNotEmpty) parts.add('L${entry.key}:${rows.length}');
+    }
+    return parts.isEmpty ? 'none' : parts.join(' ');
   }
 
   String _buildReplayEvidenceText(PythonMultiLevelChanAnalysis analysis) {
@@ -558,7 +625,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       'request symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_mode levels=${normalized.join(',')} count=$_count window=${_startController.text.trim()}~${_endController.text.trim()} runtime_path=${_runtimePathText(analysis)}',
       'backend engine=${meta['engine']} native=${meta['native_cchan_lv_list']} fallback=${meta['fallback_to_bridge'] ?? false} frames=${analysis.frames.length} current_frame=$_frameIndex',
       'snapshot main=${current?.mainLevel ?? analysis.snapshot.mainLevel} active=$_activeLevel levels=${analysis.snapshot.levels.join(',')}',
-      'visible active bars=${active?.rawBars.length ?? 0} fx=${active?.fxs.length ?? 0} bi=${active?.bis.length ?? 0} seg=${active?.segs.length ?? 0} zs=${active?.zss.length ?? 0} bsp=${active?.bsps.length ?? 0}',
+      'visible active bars=${active?.rawBars.length ?? 0} fx=${active?.fxs.length ?? 0} bi=${active?.bis.length ?? 0} seg=${active?.segs.length ?? 0} recursive_seg=${_recursiveSegSummaryText(active)} zs=${active?.zss.length ?? 0} bsp=${active?.bsps.length ?? 0}',
       'temporal source=${_temporalSummary.source} frames=${_temporalSummary.frameCount} ${_temporalSummary.stateLine}',
       if (sampleTemporal != null) 'temporal_sample id=${sampleTemporal.id} state=${sampleTemporal.state} first_seen=${sampleTemporal.firstSeenStep} confirmed_step=${sampleTemporal.confirmedStep} last_seen=${sampleTemporal.lastSeenStep}',
       'interval_links source=${_intervalLinkSummary.source} total=${_intervalLinkSummary.total} ids=${_intervalLinkSummary.idsText}',
