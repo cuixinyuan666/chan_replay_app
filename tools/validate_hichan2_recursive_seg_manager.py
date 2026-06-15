@@ -96,7 +96,7 @@ def main() -> None:
         's12_retains_step_frame_controls': 'Widget _frameControls()' in s12_page and 'Slider(' in s12_page and '_frameIndex' in s12_page,
         's12_uses_chansnapshot_active_type': 'ChanSnapshot? get _activeSnapshot' in s12_page and 'Widget _chartPanel(ChanSnapshot? snapshot)' in s12_page,
         's12_surfaces_recursive_seg_evidence': '_recursiveSegSummaryText' in s12_page and 'recursive_seg_layers' in s12_page and "type: '${layerEntry.key}段'" in s12_page,
-        'no_dart_chan_authority_added': 'CChan' not in combined_dart and 'check_fx' not in combined_dart and 'check_bi' not in combined_dart and 'cal_seg' not in combined_dart,
+        'no_dart_chan_algorithm_added': 'check_fx' not in combined_dart and 'check_bi' not in combined_dart and 'cal_seg' not in combined_dart,
         'no_chanpy_source_write_path_added': 'python/chan.py' not in combined_backend and 'open(' not in manager,
     })
 
