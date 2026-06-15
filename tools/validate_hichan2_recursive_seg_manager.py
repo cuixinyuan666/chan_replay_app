@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 MANAGER = ROOT / 'backend' / 'app' / 'a_recursive_seg_manager.py'
 WRAPPER = ROOT / 'backend' / 'app' / 'a_multilevel_native_timed_recursive_engine.py'
 ENTRY = ROOT / 'backend' / 'app' / 'a_multilevel_engine_timed.py'
-FORBIDDEN_CHANPY_PATH = ROOT / 'python' / 'chan.py'
 
 
 def _read(path: Path) -> str:
@@ -42,6 +41,7 @@ def main() -> None:
     manager = _read(MANAGER)
     wrapper = _read(WRAPPER)
     entry = _read(ENTRY)
+    combined = manager + wrapper + entry
 
     checks.update({
         'manager_syntax_ok': _syntax_ok(MANAGER),
@@ -59,8 +59,8 @@ def main() -> None:
         'wrapper_attaches_to_once_result': '_native_once_response' in wrapper and '_attach_recursive_seg_layers(' in wrapper,
         'wrapper_attaches_to_step_final_result': '_recursive_timed_native_step_response' in wrapper and 'last_chan' in wrapper,
         'metadata_marks_export_only_policy': 'recursive_seg_layer_policy' in wrapper and 'recursive_seg_bsp_policy' in wrapper,
-        'no_dart_chan_authority_added': 'Dart' not in manager + wrapper,
-        'no_python_chanpy_source_file_written': not FORBIDDEN_CHANPY_PATH.exists() or True,
+        'no_dart_chan_authority_added': 'Dart' not in combined,
+        'no_chanpy_source_write_path_added': 'python/chan.py' not in combined and 'open(' not in manager,
     })
 
     failed = [name for name, value in checks.items() if value is not True]
