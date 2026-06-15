@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/chan_snapshot.dart';
-import '../../core/models/recursive_seg.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import 'origin_kline_chart.dart' as base;
@@ -150,7 +149,7 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
             DrawingAnchor.chart(rawIndex: seg.startRawIndex, price: seg.startPrice),
             DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice),
           ],
-          style: _styleForLayer(layer, seg),
+          style: _styleForLayer(layer: layer, isSure: seg.isSure),
           text: 'L$layer#${seg.index + 1}${seg.isSure ? '' : '?'}',
           locked: true,
           hidden: false,
@@ -163,19 +162,19 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
     return rows;
   }
 
-  DrawingStyle _styleForLayer(int layer, RecursiveSEG seg) {
+  DrawingStyle _styleForLayer({required int layer, required bool isSure}) {
     final strokeWidth = switch (layer) {
       2 => 2.2,
       3 => 2.8,
       4 => 3.4,
       _ => 2.0 + (layer < 1 ? 1 : layer > 8 ? 8 : layer).toDouble() * 0.35,
     };
-    final opacity = seg.isSure ? 0.92 : 0.46;
+    final opacity = isSure ? 0.92 : 0.46;
     return DrawingStyle(
       colorValue: _colorValueForLayer(layer),
       strokeWidth: strokeWidth,
       opacity: opacity,
-      dashed: !seg.isSure,
+      dashed: !isSure,
     );
   }
 
