@@ -3,6 +3,7 @@ import 'merged_bar.dart';
 import 'fx.dart';
 import 'bi.dart';
 import 'seg.dart';
+import 'recursive_seg.dart';
 import 'zs.dart';
 import 'bsp.dart';
 import 'plot_layer_item.dart';
@@ -14,6 +15,7 @@ class ChanSnapshot {
   final List<FX> fxs;
   final List<BI> bis;
   final List<SEG> segs;
+  final Map<int, List<RecursiveSEG>> recursiveSegLayers;
   final List<ZS> zss;
   final List<BspPoint> bsps;
   final List<ZS> segZss;
@@ -27,6 +29,7 @@ class ChanSnapshot {
     required this.fxs,
     required this.bis,
     required this.segs,
+    this.recursiveSegLayers = const <int, List<RecursiveSEG>>{},
     required this.zss,
     this.bsps = const [],
     this.segZss = const [],
@@ -41,6 +44,7 @@ class ChanSnapshot {
         fxs: [],
         bis: [],
         segs: [],
+        recursiveSegLayers: <int, List<RecursiveSEG>>{},
         zss: [],
         bsps: [],
         segZss: [],

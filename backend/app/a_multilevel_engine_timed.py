@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .a_multilevel_native_timed_engine import analyze_multi_native_timed
+from .a_multilevel_native_timed_recursive_engine import analyze_multi_native_timed_recursive
 
 
 def analyze_multi(
@@ -21,10 +21,10 @@ def analyze_multi(
 ) -> dict[str, Any]:
     """Timed multi-level App adapter entrypoint.
 
-    This keeps native CChan(lv_list) as the calculation source and only adds
-    timing metadata through `a_multilevel_native_timed_engine`.
+    This keeps native CChan(lv_list) as the calculation source and adds
+    export-only recursive segment layers through the hichan2 adapter.
     """
-    return analyze_multi_native_timed(
+    return analyze_multi_native_timed_recursive(
         symbol=symbol,
         market=market,
         levels=levels,
