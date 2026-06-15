@@ -23,15 +23,18 @@ def main() -> int:
     hardening_path = ROOT / 'backend/app/a_replay_contract_hardening.py'
     init_path = ROOT / 'backend/app/__init__.py'
     adapter_path = ROOT / 'backend/app/a_multilevel_engine_timed.py'
+    main_path = ROOT / 'backend/app/main.py'
     chan_core_path = ROOT / 'python/chan.py'
 
     check('hardening module exists', hardening_path.exists(), str(hardening_path))
     check('backend package init exists', init_path.exists(), str(init_path))
     check('analyze_multi adapter exists', adapter_path.exists(), str(adapter_path))
+    check('backend route file exists', main_path.exists(), str(main_path))
 
     hardening = _read('backend/app/a_replay_contract_hardening.py') if hardening_path.exists() else ''
     init_text = _read('backend/app/__init__.py') if init_path.exists() else ''
     adapter = _read('backend/app/a_multilevel_engine_timed.py') if adapter_path.exists() else ''
+    main_text = _read('backend/app/main.py') if main_path.exists() else ''
 
     required_hardening_tokens = {
         'session cache install': 'install_backend_kline_session_cache',
@@ -60,14 +63,21 @@ def main() -> int:
         'backend/app/__init__.py',
     )
     check(
-        'analyze_multi wraps returned contracts',
-        _has(adapter, 'apply_analyze_multi_contracts(result, payload, cfg)'),
+        'analyze_multi adapter keeps native source',
+        _has(adapter, 'analyze_multi_native_timed('),
         'backend/app/a_multilevel_engine_timed.py',
     )
     check(
-        'native CChan remains calculation source',
-        _has(adapter, 'analyze_multi_native_timed(') and _has(adapter, 'apply_analyze_multi_contracts'),
-        'wrapper calls native result first, then adds contracts',
+        'backend route applies contracts after compact',
+        main_text.find('_compact_multilevel_step_result(result, payload, config)') >= 0
+        and main_text.find('apply_analyze_multi_contracts(result, payload, config)')
+        > main_text.find('_compact_multilevel_step_result(result, payload, config)'),
+        'final returned frames are checked after route compact transform',
+    )
+    check(
+        'backend route records hardening timing',
+        _has(main_text, 'backend_route_contract_hardening_ms'),
+        'backend/app/main.py',
     )
     check(
         'hardening module does not edit python/chan.py',
@@ -75,7 +85,7 @@ def main() -> int:
         'no filesystem write path to chan.py in contract module',
     )
     check(
-        'python/chan.py still exists as external authority',
+        'python/chan.py remains external authority',
         chan_core_path.exists() or (ROOT / 'python').exists(),
         'guard only verifies no contract module rewrites it',
     )
