@@ -54,9 +54,14 @@ class _RootPageState extends State<RootPage> {
               const _RouteBuilder(child: CacheOptimizationPage()),
             ],
           ),
-          Opacity(
+          Positioned(
+            left: 3,
+            bottom: 18,
+            child: Opacity(
               opacity: 0.18,
-              child: _RouteToolColumn(currentIndex: _index, onOpen: _open)),
+              child: _RouteToolColumn(currentIndex: _index, onOpen: _open),
+            ),
+          ),
         ],
       ),
     );
@@ -109,57 +114,53 @@ class _RouteToolColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      left: 3,
-      bottom: 18,
-      child: Material(
-        color: Colors.transparent,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            _RouteToolButton(
-              tooltip: '复盘',
-              icon: Icons.candlestick_chart,
-              selected: currentIndex == _RootPageState._replayIndex,
-              onPressed: () => onOpen(_RootPageState._replayIndex),
-            ),
-            const SizedBox(height: 6),
-            _RouteToolButton(
-              tooltip: '单股多级别复盘',
-              icon: Icons.account_tree,
-              selected: currentIndex == _RootPageState._multiLevelIndex,
-              onPressed: () => onOpen(_RootPageState._multiLevelIndex),
-            ),
-            const SizedBox(height: 6),
-            _RouteToolButton(
-              tooltip: '扫描器',
-              icon: Icons.radar,
-              selected: currentIndex == _RootPageState._scannerIndex,
-              onPressed: () => onOpen(_RootPageState._scannerIndex),
-            ),
-            const SizedBox(height: 6),
-            _RouteToolButton(
-              tooltip: 'S8批量候选',
-              icon: Icons.view_list,
-              selected: currentIndex == _RootPageState._s8BatchIndex,
-              onPressed: () => onOpen(_RootPageState._s8BatchIndex),
-            ),
-            const SizedBox(height: 6),
-            _RouteToolButton(
-              tooltip: '研究',
-              icon: Icons.science,
-              selected: currentIndex == _RootPageState._researchIndex,
-              onPressed: () => onOpen(_RootPageState._researchIndex),
-            ),
-            const SizedBox(height: 6),
-            _RouteToolButton(
-              tooltip: '缓存优化',
-              icon: Icons.speed,
-              selected: currentIndex == _RootPageState._cacheOptimizationIndex,
-              onPressed: () => onOpen(_RootPageState._cacheOptimizationIndex),
-            ),
-          ],
-        ),
+    return Material(
+      color: Colors.transparent,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _RouteToolButton(
+            tooltip: '复盘',
+            icon: Icons.candlestick_chart,
+            selected: currentIndex == _RootPageState._replayIndex,
+            onPressed: () => onOpen(_RootPageState._replayIndex),
+          ),
+          const SizedBox(height: 6),
+          _RouteToolButton(
+            tooltip: '单股多级别复盘',
+            icon: Icons.account_tree,
+            selected: currentIndex == _RootPageState._multiLevelIndex,
+            onPressed: () => onOpen(_RootPageState._multiLevelIndex),
+          ),
+          const SizedBox(height: 6),
+          _RouteToolButton(
+            tooltip: '扫描器',
+            icon: Icons.radar,
+            selected: currentIndex == _RootPageState._scannerIndex,
+            onPressed: () => onOpen(_RootPageState._scannerIndex),
+          ),
+          const SizedBox(height: 6),
+          _RouteToolButton(
+            tooltip: 'S8批量候选',
+            icon: Icons.view_list,
+            selected: currentIndex == _RootPageState._s8BatchIndex,
+            onPressed: () => onOpen(_RootPageState._s8BatchIndex),
+          ),
+          const SizedBox(height: 6),
+          _RouteToolButton(
+            tooltip: '研究',
+            icon: Icons.science,
+            selected: currentIndex == _RootPageState._researchIndex,
+            onPressed: () => onOpen(_RootPageState._researchIndex),
+          ),
+          const SizedBox(height: 6),
+          _RouteToolButton(
+            tooltip: '缓存优化',
+            icon: Icons.speed,
+            selected: currentIndex == _RootPageState._cacheOptimizationIndex,
+            onPressed: () => onOpen(_RootPageState._cacheOptimizationIndex),
+          ),
+        ],
       ),
     );
   }
