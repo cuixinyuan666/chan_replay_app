@@ -14,22 +14,43 @@ class S12SingleStockReplayPage extends StatefulWidget {
   const S12SingleStockReplayPage({super.key});
 
   @override
-  State<S12SingleStockReplayPage> createState() => _S12SingleStockReplayPageState();
+  State<S12SingleStockReplayPage> createState() =>
+      _S12SingleStockReplayPageState();
 }
 
 class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
-  static const List<String> _levelOptions = <String>['DAILY', 'MIN60', 'MIN30', 'MIN15', 'MIN5', 'MIN1'];
-  static const Set<String> _levelOptionSet = <String>{'DAILY', 'MIN60', 'MIN30', 'MIN15', 'MIN5', 'MIN1'};
+  static const List<String> _levelOptions = <String>[
+    'DAILY',
+    'MIN60',
+    'MIN30',
+    'MIN15',
+    'MIN5',
+    'MIN1'
+  ];
+  static const Set<String> _levelOptionSet = <String>{
+    'DAILY',
+    'MIN60',
+    'MIN30',
+    'MIN15',
+    'MIN5',
+    'MIN1'
+  };
   static const List<int> _countOptions = <int>[80, 120, 220, 600, 900];
   static const List<int> _stepFrameOptions = <int>[24, 40, 60, 120, 391];
   static const String _markerOverlapPolicy = 'stable_s12_marker_order';
-  static const String _markerOverlapPolicyDetail = 'deterministic_order;capped_marker_list;reuse_existing_layout_path';
+  static const String _markerOverlapPolicyDetail =
+      'deterministic_order;capped_marker_list;reuse_existing_layout_path';
 
-  final TextEditingController _backendUrlController = TextEditingController(text: 'app-managed bundled Python');
-  final TextEditingController _symbolController = TextEditingController(text: '600340');
-  final TextEditingController _marketController = TextEditingController(text: 'SH');
-  final TextEditingController _startController = TextEditingController(text: '2022-01-01');
-  final TextEditingController _endController = TextEditingController(text: '2025-12-31');
+  final TextEditingController _backendUrlController =
+      TextEditingController(text: 'app-managed bundled Python');
+  final TextEditingController _symbolController =
+      TextEditingController(text: '600340');
+  final TextEditingController _marketController =
+      TextEditingController(text: 'SH');
+  final TextEditingController _startController =
+      TextEditingController(text: '2022-01-01');
+  final TextEditingController _endController =
+      TextEditingController(text: '2025-12-31');
 
   final List<String> _selectedLevels = <String>['DAILY', 'MIN30', 'MIN5'];
   final Set<String> _enabledEasyTdxIndicators = <String>{};
@@ -38,8 +59,10 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   _TemporalSummary _temporalSummary = _TemporalSummary.empty();
   _IntervalLinkSummary _intervalLinkSummary = _IntervalLinkSummary.empty();
   String _mode = 'once';
+  String _loadedRequestMode = 'once';
   String _activeLevel = 'DAILY';
-  String _status = 'S12 single-stock replay not loaded; default uses proven S8/S11 once window';
+  String _status =
+      'S12 single-stock replay not loaded; default uses proven S8/S11 once window';
   String _lastLevelValidation = '级别组合待校验';
   bool _loading = false;
   int _count = 900;
@@ -74,7 +97,10 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
 
   List<String> get _normalizedLevels => <String>[
         for (final level in _levelOptions)
-          if (_selectedLevels.map((v) => v.trim().toUpperCase()).contains(level)) level,
+          if (_selectedLevels
+              .map((v) => v.trim().toUpperCase())
+              .contains(level))
+            level,
       ];
 
   MultiLevelChanSnapshot? get _currentSnapshot {
@@ -82,7 +108,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     if (analysis == null) return null;
     if (_mode == 'step') {
       if (analysis.frames.isEmpty) return null;
-      return analysis.frames[_frameIndex.clamp(0, analysis.frames.length - 1).toInt()];
+      return analysis
+          .frames[_frameIndex.clamp(0, analysis.frames.length - 1).toInt()];
     }
     return analysis.snapshot;
   }
@@ -90,27 +117,46 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   ChanSnapshot? get _activeSnapshot {
     final current = _currentSnapshot;
     if (current == null) return null;
-    final level = current.snapshots.containsKey(_activeLevel) ? _activeLevel : current.safeActiveLevel;
+    final level = current.snapshots.containsKey(_activeLevel)
+        ? _activeLevel
+        : current.safeActiveLevel;
     return current.of(level);
   }
 
   _LevelValidationResult _validateSelectedLevels() {
-    final raw = [for (final level in _selectedLevels) level.trim().toUpperCase()];
+    final raw = [
+      for (final level in _selectedLevels) level.trim().toUpperCase()
+    ];
     final normalized = _normalizedLevels;
-    if (raw.isEmpty) return _LevelValidationResult(false, normalized, '级别组合无效：至少选择两个级别');
-    final unsupported = raw.where((level) => !_levelOptionSet.contains(level)).toList(growable: false);
-    if (unsupported.isNotEmpty) return _LevelValidationResult(false, normalized, '级别组合无效：不支持 ${unsupported.join(',')}');
-    if (raw.toSet().length != raw.length) return _LevelValidationResult(false, normalized, '级别组合无效：存在重复级别');
-    if (normalized.length < 2) return _LevelValidationResult(false, normalized, '级别组合无效：至少选择两个级别');
-    if (normalized.length != raw.length) return _LevelValidationResult(true, normalized, '级别组合已归一化：${normalized.join(',')}');
-    return _LevelValidationResult(true, normalized, '级别组合有效：${normalized.join(',')}');
+    if (raw.isEmpty)
+      return _LevelValidationResult(false, normalized, '级别组合无效：至少选择一个级别');
+    final unsupported = raw
+        .where((level) => !_levelOptionSet.contains(level))
+        .toList(growable: false);
+    if (unsupported.isNotEmpty)
+      return _LevelValidationResult(
+          false, normalized, '级别组合无效：不支持 ${unsupported.join(',')}');
+    if (raw.toSet().length != raw.length)
+      return _LevelValidationResult(false, normalized, '级别组合无效：存在重复级别');
+    if (normalized.length == 1)
+      return _LevelValidationResult(
+          true, normalized, '单周期模式：加载 ${normalized.first} K线并执行一次 3段/4段递归段检验');
+    if (normalized.length != raw.length)
+      return _LevelValidationResult(
+          true, normalized, '级别组合已归一化：${normalized.join(',')}');
+    return _LevelValidationResult(
+        true, normalized, '级别组合有效：${normalized.join(',')}');
   }
+
+  String _requestModeFor(_LevelValidationResult levelValidation) =>
+      levelValidation.normalizedLevels.length == 1 ? 'once' : _mode;
 
   DateTime? _dateOrNull(TextEditingController controller, String label) {
     final text = controller.text.trim();
     if (text.isEmpty) return null;
     final parsed = DateTime.tryParse(text.replaceAll('/', '-'));
-    if (parsed == null) throw FormatException('$label must be yyyy-MM-dd, current=$text');
+    if (parsed == null)
+      throw FormatException('$label must be yyyy-MM-dd, current=$text');
     return parsed;
   }
 
@@ -134,12 +180,16 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
 
     setState(() {
       _loading = true;
-      _status = 'S12 loading analyze_multi ${_mode.toUpperCase()} levels:${levelValidation.normalizedLevels.join(',')} runtime:${RuntimePathController.current.wireName}';
+      final requestMode = _requestModeFor(levelValidation);
+      _status =
+          'S12 loading analyze_multi ${requestMode.toUpperCase()} levels:${levelValidation.normalizedLevels.join(',')} runtime:${RuntimePathController.current.wireName}';
     });
-    final source = PythonMultiLevelChanAnalysisSource(baseUrl: _backendUrlController.text.trim());
+    final source = PythonMultiLevelChanAnalysisSource(
+        baseUrl: _backendUrlController.text.trim());
     try {
+      final requestMode = _requestModeFor(levelValidation);
       final analysis = await source.analyzeMulti(
-        mode: _mode,
+        mode: requestMode,
         market: _marketController.text.trim().toUpperCase(),
         code: _symbolController.text.trim(),
         levels: levelValidation.normalizedLevels,
@@ -154,7 +204,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
           'bi_algo': 'normal',
           'seg_algo': 'chan',
           'zs_algo': 'normal',
-          if (_mode == 'step') 'max_step_frames': _maxStepFrames,
+          'recursive_seg_max_level': 4,
+          if (requestMode == 'step') 'max_step_frames': _maxStepFrames,
         },
       );
       final temporal = _rebuildTemporalEvidence(analysis);
@@ -162,6 +213,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       if (!mounted) return;
       setState(() {
         _analysis = analysis;
+        _loadedRequestMode = requestMode;
         _temporalSummary = temporal;
         _intervalLinkSummary = intervalLinks;
         _frameIndex = 0;
@@ -184,16 +236,26 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   }
 
   String _friendlyLoadError(Object error) {
-    return 'S12 replay load failed: $error | request: symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_mode levels=${_normalizedLevels.join(',')} count=$_count window=${_startController.text.trim()}~${_endController.text.trim()} runtime_path=${RuntimePathController.current.wireName}';
+    final levelValidation = _validateSelectedLevels();
+    final requestMode =
+        levelValidation.ok ? _requestModeFor(levelValidation) : _mode;
+    return 'S12 replay load failed: $error | request: symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$requestMode levels=${_normalizedLevels.join(',')} count=$_count window=${_startController.text.trim()}~${_endController.text.trim()} runtime_path=${RuntimePathController.current.wireName}';
   }
 
-  _TemporalSummary _rebuildTemporalEvidence(PythonMultiLevelChanAnalysis analysis) {
-    final frames = analysis.frames.isNotEmpty ? analysis.frames : <MultiLevelChanSnapshot>[analysis.snapshot];
+  _TemporalSummary _rebuildTemporalEvidence(
+      PythonMultiLevelChanAnalysis analysis) {
+    final frames = analysis.frames.isNotEmpty
+        ? analysis.frames
+        : <MultiLevelChanSnapshot>[analysis.snapshot];
     final evidence = <String, _TemporalEvidence>{};
     for (var step = 0; step < frames.length; step++) {
       final frame = frames[step];
       for (final entry in frame.snapshots.entries) {
-        _collectSnapshotTemporalEvidence(target: evidence, level: entry.key, snapshot: entry.value, step: step);
+        _collectSnapshotTemporalEvidence(
+            target: evidence,
+            level: entry.key,
+            snapshot: entry.value,
+            step: step);
       }
     }
     final finalStep = frames.isEmpty ? 0 : frames.length - 1;
@@ -202,7 +264,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     }
     return _TemporalSummary.fromEvidence(
       evidence: evidence,
-      source: analysis.frames.isNotEmpty ? 'backend_step_frames' : 'once_snapshot',
+      source:
+          analysis.frames.isNotEmpty ? 'backend_step_frames' : 'once_snapshot',
       frameCount: frames.length,
     );
   }
@@ -214,28 +277,77 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     required int step,
   }) {
     for (final bsp in snapshot.bsps) {
-      _recordTemporalEvidence(target, id: 'BSP:$level:${bsp.rawIndex}:${bsp.type}:${bsp.index}', type: 'BSP', level: level, rawIndex: bsp.rawIndex, label: '${bsp.type}#${bsp.index}', isSure: bsp.confirmed, step: step);
+      _recordTemporalEvidence(target,
+          id: 'BSP:$level:${bsp.rawIndex}:${bsp.type}:${bsp.index}',
+          type: 'BSP',
+          level: level,
+          rawIndex: bsp.rawIndex,
+          label: '${bsp.type}#${bsp.index}',
+          isSure: bsp.confirmed,
+          step: step);
     }
     for (final fx in snapshot.fxs) {
-      _recordTemporalEvidence(target, id: 'FX:$level:${fx.rawIndex}:${fx.type}:${fx.index}', type: 'FX', level: level, rawIndex: fx.rawIndex, label: '${fx.type}#${fx.index}', isSure: fx.confirmed, step: step);
+      _recordTemporalEvidence(target,
+          id: 'FX:$level:${fx.rawIndex}:${fx.type}:${fx.index}',
+          type: 'FX',
+          level: level,
+          rawIndex: fx.rawIndex,
+          label: '${fx.type}#${fx.index}',
+          isSure: fx.confirmed,
+          step: step);
     }
     for (final bi in snapshot.bis) {
-      _recordTemporalEvidence(target, id: 'BI:$level:${bi.startRawIndex}-${bi.endRawIndex}:${bi.index}', type: 'BI', level: level, rawIndex: bi.endRawIndex, label: '${bi.direction}#${bi.index}', isSure: bi.isSure, step: step);
+      _recordTemporalEvidence(target,
+          id: 'BI:$level:${bi.startRawIndex}-${bi.endRawIndex}:${bi.index}',
+          type: 'BI',
+          level: level,
+          rawIndex: bi.endRawIndex,
+          label: '${bi.direction}#${bi.index}',
+          isSure: bi.isSure,
+          step: step);
     }
     for (final seg in snapshot.segs) {
-      _recordTemporalEvidence(target, id: 'SEG:$level:${seg.startRawIndex}-${seg.endRawIndex}:${seg.index}', type: 'SEG', level: level, rawIndex: seg.endRawIndex, label: '${seg.direction}#${seg.index}', isSure: seg.isSure, step: step);
+      _recordTemporalEvidence(target,
+          id: 'SEG:$level:${seg.startRawIndex}-${seg.endRawIndex}:${seg.index}',
+          type: 'SEG',
+          level: level,
+          rawIndex: seg.endRawIndex,
+          label: '${seg.direction}#${seg.index}',
+          isSure: seg.isSure,
+          step: step);
     }
     for (final layerEntry in snapshot.recursiveSegLayers.entries) {
       if (layerEntry.key <= 1) continue;
       for (final seg in layerEntry.value) {
-        _recordTemporalEvidence(target, id: 'SEG${layerEntry.key}:$level:${seg.startRawIndex}-${seg.endRawIndex}:${seg.index}', type: '${layerEntry.key}段', level: level, rawIndex: seg.endRawIndex, label: 'L${layerEntry.key}#${seg.index}', isSure: seg.isSure, step: step);
+        _recordTemporalEvidence(target,
+            id: 'SEG${layerEntry.key}:$level:${seg.startRawIndex}-${seg.endRawIndex}:${seg.index}',
+            type: '${layerEntry.key}段',
+            level: level,
+            rawIndex: seg.endRawIndex,
+            label: 'L${layerEntry.key}#${seg.index}',
+            isSure: seg.isSure,
+            step: step);
       }
     }
     for (final zs in snapshot.zss) {
-      _recordTemporalEvidence(target, id: 'ZS:$level:${zs.startRawIndex}-${zs.endRawIndex}:${zs.index}', type: 'ZS', level: level, rawIndex: zs.endRawIndex, label: 'ZS#${zs.index}', isSure: zs.confirmed, step: step);
+      _recordTemporalEvidence(target,
+          id: 'ZS:$level:${zs.startRawIndex}-${zs.endRawIndex}:${zs.index}',
+          type: 'ZS',
+          level: level,
+          rawIndex: zs.endRawIndex,
+          label: 'ZS#${zs.index}',
+          isSure: zs.confirmed,
+          step: step);
     }
     for (final zs in snapshot.segZss) {
-      _recordTemporalEvidence(target, id: 'SEGZS:$level:${zs.startRawIndex}-${zs.endRawIndex}:${zs.index}', type: 'segseg/二级线段/2段 ZS', level: level, rawIndex: zs.endRawIndex, label: 'SEGZS#${zs.index}', isSure: zs.confirmed, step: step);
+      _recordTemporalEvidence(target,
+          id: 'SEGZS:$level:${zs.startRawIndex}-${zs.endRawIndex}:${zs.index}',
+          type: 'segseg/二级线段/2段 ZS',
+          level: level,
+          rawIndex: zs.endRawIndex,
+          label: 'SEGZS#${zs.index}',
+          isSure: zs.confirmed,
+          step: step);
     }
   }
 
@@ -251,18 +363,27 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   }) {
     final item = target.putIfAbsent(
       id,
-      () => _TemporalEvidence(id: id, type: type, level: level, rawIndex: rawIndex, label: label, firstSeenStep: step),
+      () => _TemporalEvidence(
+          id: id,
+          type: type,
+          level: level,
+          rawIndex: rawIndex,
+          label: label,
+          firstSeenStep: step),
     );
     item.markSeen(step: step, isSure: isSure);
   }
 
-  _IntervalLinkSummary _buildIntervalLinks(PythonMultiLevelChanAnalysis analysis) {
+  _IntervalLinkSummary _buildIntervalLinks(
+      PythonMultiLevelChanAnalysis analysis) {
     final evidence = <String, _IntervalLinkEvidence>{};
     void collect(MultiLevelChanSnapshot snapshot) {
       for (final relation in snapshot.relations) {
-        if (relation.parentLevel.trim().isEmpty || relation.childLevel.trim().isEmpty) continue;
+        if (relation.parentLevel.trim().isEmpty ||
+            relation.childLevel.trim().isEmpty) continue;
         final id = _intervalLinkMarkerId(relation);
-        evidence.putIfAbsent(id, () => _IntervalLinkEvidence(id: id, relation: relation));
+        evidence.putIfAbsent(
+            id, () => _IntervalLinkEvidence(id: id, relation: relation));
       }
     }
 
@@ -272,7 +393,9 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     collect(analysis.snapshot);
     return _IntervalLinkSummary.fromEvidence(
       evidence: evidence,
-      source: analysis.frames.isNotEmpty ? 'backend_step_frames.relations + final_snapshot.relations' : 'backend_snapshot_relations',
+      source: analysis.frames.isNotEmpty
+          ? 'backend_step_frames.relations + final_snapshot.relations'
+          : 'backend_snapshot_relations',
     );
   }
 
@@ -283,7 +406,11 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   }
 
   String _safeMarkerToken(String value) {
-    final normalized = value.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+    final normalized = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
     return normalized.isEmpty ? 'unknown' : normalized;
   }
 
@@ -321,19 +448,25 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
                 spacing: 8,
                 runSpacing: 8,
                 children: <Widget>[
-                  _input(_backendUrlController, 'backend', width: 190, enabled: false),
+                  _input(_backendUrlController, 'backend',
+                      width: 190, enabled: false),
                   _input(_symbolController, 'symbol', width: 92),
                   _input(_marketController, 'market', width: 68),
                   _input(_startController, 'start', width: 108),
                   _input(_endController, 'end', width: 108),
-                  _dropdownInt('count', _count, _countOptions, (v) => setState(() => _count = v)),
-                  _dropdownInt('step frames', _maxStepFrames, _stepFrameOptions, (v) => setState(() => _maxStepFrames = v), width: 124),
+                  _dropdownInt('count', _count, _countOptions,
+                      (v) => setState(() => _count = v)),
+                  _dropdownInt('step frames', _maxStepFrames, _stepFrameOptions,
+                      (v) => setState(() => _maxStepFrames = v),
+                      width: 124),
                   _modeChip('once'),
                   _modeChip('step'),
                 ],
               ),
               const SizedBox(height: 8),
-              Wrap(spacing: 6, runSpacing: 6, children: [for (final level in _levelOptions) _levelChip(level)]),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final level in _levelOptions) _levelChip(level)
+              ]),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -341,11 +474,19 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
                 children: <Widget>[
                   FilledButton.icon(
                     onPressed: _loading ? null : _loadReplay,
-                    icon: _loading ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow, size: 16),
+                    icon: _loading
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.play_arrow, size: 16),
                     label: const Text('载入复盘'),
                   ),
                   OutlinedButton.icon(
-                    onPressed: _analysis == null ? null : () => _copyText('复制复盘证据', _buildReplayEvidenceText(_analysis!)),
+                    onPressed: _analysis == null
+                        ? null
+                        : () => _copyText(
+                            '复制复盘证据', _buildReplayEvidenceText(_analysis!)),
                     icon: const Icon(Icons.copy, size: 14),
                     label: const Text('复制复盘证据'),
                     style: _copyButtonStyle(),
@@ -355,19 +496,32 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
               const SizedBox(height: 8),
               if (_analysis?.hasFrames == true) _frameControls(),
               const SizedBox(height: 8),
-              _chip('level_validation', _lastLevelValidation, _lastLevelValidation.contains('有效') || _lastLevelValidation.contains('归一化')),
+              _chip(
+                  'level_validation',
+                  _lastLevelValidation,
+                  _lastLevelValidation.contains('有效') ||
+                      _lastLevelValidation.contains('归一化')),
               const SizedBox(height: 6),
-              _chip('runtime_path', RuntimePathController.current.wireName, RuntimePathController.current.isHighSpeed),
+              _chip('runtime_path', RuntimePathController.current.wireName,
+                  RuntimePathController.current.isHighSpeed),
               const SizedBox(height: 6),
-              _chip('temporal_state_counts', _temporalSummary.shortText, _temporalSummary.total > 0),
+              _chip('temporal_state_counts', _temporalSummary.shortText,
+                  _temporalSummary.total > 0),
               const SizedBox(height: 6),
-              _chip('interval_link_marker_ids', _intervalLinkSummary.shortText, _intervalLinkSummary.total > 0),
+              _chip('interval_link_marker_ids', _intervalLinkSummary.shortText,
+                  _intervalLinkSummary.total > 0),
               const SizedBox(height: 6),
-              _chip('recursive_seg_layers', _recursiveSegSummaryText(_activeSnapshot), _recursiveSegTotal(_activeSnapshot) > 0),
+              _chip(
+                  'recursive_seg_layers',
+                  _recursiveSegSummaryText(_activeSnapshot),
+                  _recursiveSegTotal(_activeSnapshot) > 0),
               const SizedBox(height: 6),
               _chip('marker_overlap_policy', _markerOverlapPolicy, true),
               const SizedBox(height: 6),
-              Text(_status, maxLines: 5, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              Text(_status,
+                  maxLines: 5,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ],
           ),
         ),
@@ -384,7 +538,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       children: <Widget>[
         IconButton(
           tooltip: '上一帧',
-          onPressed: _frameIndex <= 0 ? null : () => setState(() => _frameIndex--),
+          onPressed:
+              _frameIndex <= 0 ? null : () => setState(() => _frameIndex--),
           icon: const Icon(Icons.chevron_left, color: Colors.white70, size: 18),
           visualDensity: VisualDensity.compact,
         ),
@@ -395,13 +550,17 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
             max: (frames - 1).toDouble(),
             divisions: frames > 1 ? frames - 1 : null,
             label: '${_frameIndex + 1}/$frames',
-            onChanged: (v) => setState(() => _frameIndex = v.round().clamp(0, frames - 1).toInt()),
+            onChanged: (v) => setState(
+                () => _frameIndex = v.round().clamp(0, frames - 1).toInt()),
           ),
         ),
         IconButton(
           tooltip: '下一帧',
-          onPressed: _frameIndex + 1 >= frames ? null : () => setState(() => _frameIndex++),
-          icon: const Icon(Icons.chevron_right, color: Colors.white70, size: 18),
+          onPressed: _frameIndex + 1 >= frames
+              ? null
+              : () => setState(() => _frameIndex++),
+          icon:
+              const Icon(Icons.chevron_right, color: Colors.white70, size: 18),
           visualDensity: VisualDensity.compact,
         ),
       ],
@@ -413,14 +572,23 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     return _panel(
       title: 'S12 replay evidence preview',
       child: analysis == null
-          ? const Center(child: Text('载入后可复制 S12 复盘证据。', style: TextStyle(color: Colors.white54)))
-          : SingleChildScrollView(child: SelectableText(_buildReplayEvidenceText(analysis), style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35))),
+          ? const Center(
+              child: Text('载入后可复制 S12 复盘证据。',
+                  style: TextStyle(color: Colors.white54)))
+          : SingleChildScrollView(
+              child: SelectableText(_buildReplayEvidenceText(analysis),
+                  style: const TextStyle(
+                      color: Colors.white70, fontSize: 11, height: 1.35))),
     );
   }
 
   Widget _chartPanel(ChanSnapshot? snapshot) {
     if (snapshot == null || snapshot.rawBars.isEmpty) {
-      return _panel(title: 'Chart', child: const Center(child: Text('Load S12 replay to show chart.', style: TextStyle(color: Colors.white54))));
+      return _panel(
+          title: 'Chart',
+          child: const Center(
+              child: Text('Load S12 replay to show chart.',
+                  style: TextStyle(color: Colors.white54))));
     }
     return RecursiveSegOriginKlineChart(
       snapshot: snapshot,
@@ -482,15 +650,22 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
           ? null
           : (value) => setState(() {
                 if (value) {
-                  if (!_selectedLevels.contains(level)) _selectedLevels.add(level);
+                  if (!_selectedLevels.contains(level))
+                    _selectedLevels.add(level);
                 } else {
-                  _selectedLevels.remove(level);
+                  if (_selectedLevels.length > 1) {
+                    _selectedLevels.remove(level);
+                    if (_selectedLevels.length == 1 && _mode == 'step') {
+                      _mode = 'once';
+                    }
+                  }
                 }
                 _lastLevelValidation = _validateSelectedLevels().message;
               }),
       selectedColor: const Color(0xFFFFD54F),
       backgroundColor: const Color(0xFF20242E),
-      labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
+      labelStyle: TextStyle(
+          color: selected ? Colors.black : Colors.white70, fontSize: 12),
     );
   }
 
@@ -502,11 +677,14 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       onSelected: _loading ? null : (_) => setState(() => _mode = value),
       selectedColor: const Color(0xFFFFD54F),
       backgroundColor: const Color(0xFF20242E),
-      labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
+      labelStyle: TextStyle(
+          color: selected ? Colors.black : Colors.white70, fontSize: 12),
     );
   }
 
-  Widget _dropdownInt(String label, int value, List<int> options, ValueChanged<int> onChanged, {double width = 96}) {
+  Widget _dropdownInt(
+      String label, int value, List<int> options, ValueChanged<int> onChanged,
+      {double width = 96}) {
     return SizedBox(
       width: width,
       child: DropdownButtonFormField<int>(
@@ -514,7 +692,10 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
         dropdownColor: const Color(0xFF20242E),
         style: const TextStyle(color: Colors.white, fontSize: 12),
         decoration: _decoration(label),
-        items: [for (final option in options) DropdownMenuItem<int>(value: option, child: Text('$option'))],
+        items: [
+          for (final option in options)
+            DropdownMenuItem<int>(value: option, child: Text('$option'))
+        ],
         onChanged: _loading
             ? null
             : (v) {
@@ -524,22 +705,33 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     );
   }
 
-  Widget _input(TextEditingController controller, String label, {required double width, bool enabled = true}) {
+  Widget _input(TextEditingController controller, String label,
+      {required double width, bool enabled = true}) {
     return SizedBox(
       width: width,
-      child: TextField(controller: controller, enabled: enabled && !_loading, style: const TextStyle(color: Colors.white, fontSize: 12), decoration: _decoration(label)),
+      child: TextField(
+          controller: controller,
+          enabled: enabled && !_loading,
+          style: const TextStyle(color: Colors.white, fontSize: 12),
+          decoration: _decoration(label)),
     );
   }
 
-  Widget _panel({required String title, required Widget child, bool expandChild = true}) {
+  Widget _panel(
+      {required String title, required Widget child, bool expandChild = true}) {
     return DecoratedBox(
-      decoration: BoxDecoration(color: const Color(0xDD111722), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.14))),
+      decoration: BoxDecoration(
+          color: const Color(0xDD111722),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.14))),
       child: Padding(
         padding: const EdgeInsets.all(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            Text(title,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             if (expandChild) Expanded(child: child) else child,
           ],
@@ -552,8 +744,13 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     final color = ok ? const Color(0xFF66BB6A) : const Color(0xFFFFB74D);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(999), border: Border.all(color: color.withValues(alpha: 0.45))),
-      child: Text('$label: $value', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+      decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.45))),
+      child: Text('$label: $value',
+          style: TextStyle(
+              color: color, fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
 
@@ -565,8 +762,12 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       filled: true,
       fillColor: const Color(0xFF1C2330),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white24)),
-      disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white12)),
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.white24)),
+      disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.white12)),
     );
   }
 
@@ -579,11 +780,16 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
 
   String _buildStatus(PythonMultiLevelChanAnalysis analysis) {
     final meta = analysis.meta;
-    return 'S12 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} temporal:${_temporalSummary.shortText} interval_links:${_intervalLinkSummary.shortText} recursive_seg:${_recursiveSegSummaryText(_activeSnapshot)} marker_overlap_policy:$_markerOverlapPolicy';
+    final modeText = _loadedRequestMode.toUpperCase();
+    final levelMode =
+        analysis.snapshot.levels.length == 1 ? 'single_level' : 'multi_level';
+    return 'S12 analyze_multi $modeText $levelMode runtime_path:${_runtimePathText(analysis)} native:${meta['native_cchan_lv_list']} fallback:${meta['fallback_to_bridge'] ?? false} frames:${analysis.frames.length} levels:${analysis.snapshot.levels.join(',')} temporal:${_temporalSummary.shortText} interval_links:${_intervalLinkSummary.shortText} recursive_seg:${_recursiveSegSummaryText(_activeSnapshot)} recursive_seg_max_level:${meta['recursive_seg_max_level'] ?? 4} marker_overlap_policy:$_markerOverlapPolicy';
   }
 
   String _runtimePathText(PythonMultiLevelChanAnalysis analysis) {
-    final raw = '${analysis.meta['runtime_path'] ?? analysis.snapshot.meta['runtime_path'] ?? RuntimePathController.current.wireName}'.trim();
+    final raw =
+        '${analysis.meta['runtime_path'] ?? analysis.snapshot.meta['runtime_path'] ?? RuntimePathController.current.wireName}'
+            .trim();
     return raw == 'slow_path' ? 'slow_path' : 'high_speed';
   }
 
@@ -600,7 +806,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   String _recursiveSegSummaryText(ChanSnapshot? snapshot) {
     if (snapshot == null) return 'none';
     final parts = <String>[];
-    final entries = snapshot.recursiveSegLayers.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+    final entries = snapshot.recursiveSegLayers.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
     for (final entry in entries) {
       if (entry.key <= 1 || entry.value.isEmpty) continue;
       parts.add('L${entry.key}:${entry.value.length}');
@@ -617,14 +824,16 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     final meta = analysis.meta;
     return [
       'S12_SINGLE_STOCK_REPLAY_EVIDENCE',
-      'request symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_mode levels=${normalized.join(',')} count=$_count window=${_startController.text.trim()}~${_endController.text.trim()} runtime_path=${_runtimePathText(analysis)}',
+      'request symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_loadedRequestMode levels=${normalized.join(',')} count=$_count window=${_startController.text.trim()}~${_endController.text.trim()} runtime_path=${_runtimePathText(analysis)} recursive_seg_max_level=4',
       'backend engine=${meta['engine']} native=${meta['native_cchan_lv_list']} fallback=${meta['fallback_to_bridge'] ?? false} frames=${analysis.frames.length} current_frame=$_frameIndex',
       'snapshot main=${current?.mainLevel ?? analysis.snapshot.mainLevel} active=$_activeLevel levels=${analysis.snapshot.levels.join(',')}',
       'visible active bars=${active?.rawBars.length ?? 0} fx=${active?.fxs.length ?? 0} bi=${active?.bis.length ?? 0} seg=${active?.segs.length ?? 0} recursive_seg=${_recursiveSegSummaryText(active)} zs=${active?.zss.length ?? 0} bsp=${active?.bsps.length ?? 0}',
       'temporal source=${_temporalSummary.source} frames=${_temporalSummary.frameCount} ${_temporalSummary.stateLine}',
-      if (sampleTemporal != null) 'temporal_sample id=${sampleTemporal.id} state=${sampleTemporal.state} first_seen=${sampleTemporal.firstSeenStep} confirmed_step=${sampleTemporal.confirmedStep} last_seen=${sampleTemporal.lastSeenStep}',
+      if (sampleTemporal != null)
+        'temporal_sample id=${sampleTemporal.id} state=${sampleTemporal.state} first_seen=${sampleTemporal.firstSeenStep} confirmed_step=${sampleTemporal.confirmedStep} last_seen=${sampleTemporal.lastSeenStep}',
       'interval_links source=${_intervalLinkSummary.source} total=${_intervalLinkSummary.total} ids=${_intervalLinkSummary.idsText}',
-      if (sampleInterval != null) 'interval_link_sample id=${sampleInterval.id} ${sampleInterval.sampleText}',
+      if (sampleInterval != null)
+        'interval_link_sample id=${sampleInterval.id} ${sampleInterval.sampleText}',
       'marker_policy=$_markerOverlapPolicy detail=$_markerOverlapPolicyDetail',
       'interval_link_reason=${_intervalLinkSummary.reason}',
       'time_log=${meta['time_log'] ?? analysis.snapshot.meta['time_log'] ?? {}}',
@@ -638,7 +847,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
 
   void _showMessage(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text), duration: const Duration(milliseconds: 1600)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(text), duration: const Duration(milliseconds: 1600)));
   }
 }
 
@@ -661,7 +871,14 @@ class _TemporalEvidence {
   String state = 'provisional';
   bool confirmed = false;
 
-  _TemporalEvidence({required this.id, required this.type, required this.level, required this.rawIndex, required this.label, required this.firstSeenStep}) : lastSeenStep = firstSeenStep;
+  _TemporalEvidence(
+      {required this.id,
+      required this.type,
+      required this.level,
+      required this.rawIndex,
+      required this.label,
+      required this.firstSeenStep})
+      : lastSeenStep = firstSeenStep;
 
   void markSeen({required int step, required bool isSure}) {
     lastSeenStep = step;
@@ -717,23 +934,39 @@ class _TemporalSummary {
     required int frameCount,
   }) {
     final values = evidence.values.toList(growable: false);
-    final provisional = values.where((item) => item.state == 'provisional').length;
+    final provisional =
+        values.where((item) => item.state == 'provisional').length;
     final confirmed = values.where((item) => item.state == 'confirmed').length;
-    final historical = values.where((item) => item.state == 'historical_provisional').length;
+    final historical =
+        values.where((item) => item.state == 'historical_provisional').length;
     _TemporalEvidence? sample;
-    for (final state in const ['historical_provisional', 'provisional', 'confirmed']) {
-      final matches = values.where((item) => item.state == state).toList(growable: false);
+    for (final state in const [
+      'historical_provisional',
+      'provisional',
+      'confirmed'
+    ]) {
+      final matches =
+          values.where((item) => item.state == state).toList(growable: false);
       if (matches.isNotEmpty) {
         sample = matches.first;
         break;
       }
     }
-    return _TemporalSummary(evidence: evidence, source: source, frameCount: frameCount, provisionalCount: provisional, confirmedCount: confirmed, historicalProvisionalCount: historical, sample: sample);
+    return _TemporalSummary(
+        evidence: evidence,
+        source: source,
+        frameCount: frameCount,
+        provisionalCount: provisional,
+        confirmedCount: confirmed,
+        historicalProvisionalCount: historical,
+        sample: sample);
   }
 
-  int get total => provisionalCount + confirmedCount + historicalProvisionalCount;
+  int get total =>
+      provisionalCount + confirmedCount + historicalProvisionalCount;
 
-  String get stateLine => 'provisional=$provisionalCount confirmed=$confirmedCount historical_provisional=$historicalProvisionalCount';
+  String get stateLine =>
+      'provisional=$provisionalCount confirmed=$confirmedCount historical_provisional=$historicalProvisionalCount';
 
   String get shortText => 'source=$source frames=$frameCount $stateLine';
 }
@@ -744,7 +977,8 @@ class _IntervalLinkEvidence {
 
   const _IntervalLinkEvidence({required this.id, required this.relation});
 
-  String get sampleText => 'parent=${relation.parentLevel}@${relation.parentRawIndex} child=${relation.childLevel}:${relation.childStartRawIndex}-${relation.childEndRawIndex}';
+  String get sampleText =>
+      'parent=${relation.parentLevel}@${relation.parentRawIndex} child=${relation.childLevel}:${relation.childStartRawIndex}-${relation.childEndRawIndex}';
 }
 
 class _IntervalLinkSummary {
@@ -752,7 +986,8 @@ class _IntervalLinkSummary {
   final String source;
   final _IntervalLinkEvidence? sample;
 
-  const _IntervalLinkSummary({required this.evidence, required this.source, required this.sample});
+  const _IntervalLinkSummary(
+      {required this.evidence, required this.source, required this.sample});
 
   factory _IntervalLinkSummary.empty() => const _IntervalLinkSummary(
         evidence: <String, _IntervalLinkEvidence>{},
@@ -760,9 +995,12 @@ class _IntervalLinkSummary {
         sample: null,
       );
 
-  factory _IntervalLinkSummary.fromEvidence({required Map<String, _IntervalLinkEvidence> evidence, required String source}) {
+  factory _IntervalLinkSummary.fromEvidence(
+      {required Map<String, _IntervalLinkEvidence> evidence,
+      required String source}) {
     final sample = evidence.isEmpty ? null : evidence.values.first;
-    return _IntervalLinkSummary(evidence: evidence, source: source, sample: sample);
+    return _IntervalLinkSummary(
+        evidence: evidence, source: source, sample: sample);
   }
 
   int get total => evidence.length;
@@ -772,7 +1010,10 @@ class _IntervalLinkSummary {
     return evidence.keys.take(8).join(',');
   }
 
-  String get reason => evidence.isEmpty ? 'backend relation data is empty for this request' : 'backend relation data exists and was formatted as stable interval_link marker ids';
+  String get reason => evidence.isEmpty
+      ? 'backend relation data is empty for this request'
+      : 'backend relation data exists and was formatted as stable interval_link marker ids';
 
-  String get shortText => 'source=$source total=$total sample=${sample?.id ?? 'none'}';
+  String get shortText =>
+      'source=$source total=$total sample=${sample?.id ?? 'none'}';
 }
