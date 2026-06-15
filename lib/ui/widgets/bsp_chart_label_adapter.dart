@@ -34,7 +34,7 @@ class BspChartLabelAdapter {
 
   String labelText({required BspPoint bsp, required bool isSegLevel}) {
     final prefix = isSegLevel ? '段' : '笔';
-    const suffix = '';
+    final suffix = bsp.confirmed ? '' : '?';
     return '$prefix${_displayType(bsp.type)}$suffix';
   }
 

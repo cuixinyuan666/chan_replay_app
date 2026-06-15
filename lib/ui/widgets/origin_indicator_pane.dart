@@ -24,17 +24,21 @@ class OriginIndicatorPane extends StatelessWidget {
     this.crosshairIndex,
   });
 
-  bool get hasVisiblePane => showVol || showMacd;
+  bool get hasVisiblePane =>
+      (showVol && snapshot.indicators.vol.isNotEmpty) ||
+      (showMacd && snapshot.indicators.macd.isNotEmpty);
 
   @override
   Widget build(BuildContext context) {
-    if (snapshot.rawBars.isEmpty || !hasVisiblePane) return const SizedBox.shrink();
+    if (snapshot.rawBars.isEmpty || !hasVisiblePane) {
+      return const SizedBox.shrink();
+    }
     return SizedBox.expand(
       child: CustomPaint(
         painter: _OriginIndicatorPanePainter(
           snapshot: snapshot,
-          showVol: showVol,
-          showMacd: showMacd,
+          showVol: showVol && snapshot.indicators.vol.isNotEmpty,
+          showMacd: showMacd && snapshot.indicators.macd.isNotEmpty,
           windowSize: windowSize,
           viewEndIndex: viewEndIndex,
           crosshairIndex: crosshairIndex,
@@ -77,12 +81,14 @@ class _OriginIndicatorPanePainter extends CustomPainter {
     ];
     if (panes.isEmpty) return;
 
-    final end = (viewEndIndex ?? bars.length - 1).clamp(0, bars.length - 1).toInt();
+    final end =
+        (viewEndIndex ?? bars.length - 1).clamp(0, bars.length - 1).toInt();
     final start = math.max(0, end - windowSize + 1).toInt();
     final visible = bars.sublist(start, end + 1);
     if (visible.isEmpty) return;
     final chartWidth = math.max(0.0, size.width - _leftPad - _rightPad);
-    final availableHeight = math.max(0.0, size.height - _topPad - _bottomPad - _paneGap * (panes.length - 1));
+    final availableHeight = math.max(0.0,
+        size.height - _topPad - _bottomPad - _paneGap * (panes.length - 1));
     if (chartWidth <= 0 || availableHeight <= 0) return;
     final paneHeight = availableHeight / panes.length;
     final step = chartWidth / math.max(1, visible.length);
@@ -115,20 +121,26 @@ class _OriginIndicatorPanePainter extends CustomPainter {
       final paint = Paint()
         ..color = Colors.white.withValues(alpha: 0.42)
         ..strokeWidth = 0.8;
-      canvas.drawLine(Offset(x, _topPad), Offset(x, size.height - _bottomPad), paint);
+      canvas.drawLine(
+          Offset(x, _topPad), Offset(x, size.height - _bottomPad), paint);
       final vol = volByRaw[cross];
       final macd = macdByRaw[cross];
       final parts = <String>[
         if (showVol) 'VOL:${_fmt(vol)}',
-        if (showMacd) 'DIF:${_fmt(macd?.dif)} DEA:${_fmt(macd?.dea)} HIST:${_fmt(macd?.hist)}',
+        if (showMacd)
+          'DIF:${_fmt(macd?.dif)} DEA:${_fmt(macd?.dea)} HIST:${_fmt(macd?.hist)}',
       ];
-      _drawText(canvas, parts.join('  '), const Offset(_leftPad + 6, 2), 11, Colors.white70, maxWidth: size.width - 12);
+      _drawText(canvas, parts.join('  '), const Offset(_leftPad + 6, 2), 11,
+          Colors.white70,
+          maxWidth: size.width - 12);
     } else {
       final parts = <String>[
         if (showVol) 'VOL:${snapshot.indicators.vol.length}',
         if (showMacd) 'MACD:${snapshot.indicators.macd.length}',
       ];
-      _drawText(canvas, parts.join('  |  '), const Offset(_leftPad + 6, 2), 11, Colors.white54, maxWidth: size.width - 12);
+      _drawText(canvas, parts.join('  |  '), const Offset(_leftPad + 6, 2), 11,
+          Colors.white54,
+          maxWidth: size.width - 12);
     }
   }
 
@@ -141,8 +153,11 @@ class _OriginIndicatorPanePainter extends CustomPainter {
       ..color = Colors.white.withValues(alpha: 0.06)
       ..strokeWidth = 0.6;
     canvas.drawRect(rect, border);
-    canvas.drawLine(Offset(rect.left, rect.center.dy), Offset(rect.right, rect.center.dy), grid);
-    _drawText(canvas, label, Offset(rect.left + 4, rect.top + 3), 10, Colors.white54, maxWidth: 120);
+    canvas.drawLine(Offset(rect.left, rect.center.dy),
+        Offset(rect.right, rect.center.dy), grid);
+    _drawText(
+        canvas, label, Offset(rect.left + 4, rect.top + 3), 10, Colors.white54,
+        maxWidth: 120);
   }
 
   void _drawVol(
@@ -158,11 +173,14 @@ class _OriginIndicatorPanePainter extends CustomPainter {
     ].whereType<double>().toList(growable: false);
     final maxVol = values.isEmpty ? 0.0 : values.reduce(math.max);
     if (maxVol <= 0) {
-      _drawText(canvas, '无 VOL 指标数据', Offset(rect.left + 6, rect.center.dy - 7), 11, Colors.white38, maxWidth: rect.width);
+      _drawText(canvas, '无 VOL 指标数据', Offset(rect.left + 6, rect.center.dy - 7),
+          11, Colors.white38,
+          maxWidth: rect.width);
       return;
     }
     final up = Paint()..color = const Color(0xFF26A69A).withValues(alpha: 0.70);
-    final down = Paint()..color = const Color(0xFFEF5350).withValues(alpha: 0.70);
+    final down = Paint()
+      ..color = const Color(0xFFEF5350).withValues(alpha: 0.70);
     final barWidth = math.max(1.0, math.min(step * 0.66, step - 1));
     for (final bar in visible) {
       final vol = volByRaw[bar.index];
@@ -170,9 +188,13 @@ class _OriginIndicatorPanePainter extends CustomPainter {
       final x = rawToX(bar.index);
       final top = rect.bottom - (vol / maxVol).clamp(0.0, 1.0) * rect.height;
       final paint = bar.close >= bar.open ? up : down;
-      canvas.drawRect(Rect.fromLTRB(x - barWidth / 2, top, x + barWidth / 2, rect.bottom), paint);
+      canvas.drawRect(
+          Rect.fromLTRB(x - barWidth / 2, top, x + barWidth / 2, rect.bottom),
+          paint);
     }
-    _drawText(canvas, _fmt(maxVol), Offset(rect.right + 5, rect.top - 1), 10, Colors.white38, maxWidth: _rightPad - 8);
+    _drawText(canvas, _fmt(maxVol), Offset(rect.right + 5, rect.top - 1), 10,
+        Colors.white38,
+        maxWidth: _rightPad - 8);
   }
 
   void _drawMacd(
@@ -195,19 +217,25 @@ class _OriginIndicatorPanePainter extends CustomPainter {
       ],
     ];
     if (values.isEmpty) {
-      _drawText(canvas, '无 MACD 指标数据', Offset(rect.left + 6, rect.center.dy - 7), 11, Colors.white38, maxWidth: rect.width);
+      _drawText(canvas, '无 MACD 指标数据',
+          Offset(rect.left + 6, rect.center.dy - 7), 11, Colors.white38,
+          maxWidth: rect.width);
       return;
     }
     final maxAbs = values.map((e) => e.abs()).reduce(math.max);
     if (maxAbs <= 0) return;
-    double valueToY(double value) => rect.center.dy - value / maxAbs * rect.height * 0.46;
+    double valueToY(double value) =>
+        rect.center.dy - value / maxAbs * rect.height * 0.46;
     final zeroPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.16)
       ..strokeWidth = 0.8;
-    canvas.drawLine(Offset(rect.left, rect.center.dy), Offset(rect.right, rect.center.dy), zeroPaint);
+    canvas.drawLine(Offset(rect.left, rect.center.dy),
+        Offset(rect.right, rect.center.dy), zeroPaint);
 
-    final pos = Paint()..color = const Color(0xFF26A69A).withValues(alpha: 0.72);
-    final neg = Paint()..color = const Color(0xFFEF5350).withValues(alpha: 0.72);
+    final pos = Paint()
+      ..color = const Color(0xFF26A69A).withValues(alpha: 0.72);
+    final neg = Paint()
+      ..color = const Color(0xFFEF5350).withValues(alpha: 0.72);
     final histWidth = math.max(1.0, math.min(step * 0.56, step - 1));
     for (final row in rows) {
       final hist = row.hist;
@@ -215,13 +243,18 @@ class _OriginIndicatorPanePainter extends CustomPainter {
       final x = rawToX(row.rawIndex);
       final y = valueToY(hist);
       canvas.drawRect(
-        Rect.fromLTRB(x - histWidth / 2, math.min(y, rect.center.dy), x + histWidth / 2, math.max(y, rect.center.dy)),
+        Rect.fromLTRB(x - histWidth / 2, math.min(y, rect.center.dy),
+            x + histWidth / 2, math.max(y, rect.center.dy)),
         hist >= 0 ? pos : neg,
       );
     }
-    _drawLine(canvas, rows, rawToX, valueToY, (row) => row.dif, const Color(0xFFFFD54F));
-    _drawLine(canvas, rows, rawToX, valueToY, (row) => row.dea, const Color(0xFF90CAF9));
-    _drawText(canvas, '±${_fmt(maxAbs)}', Offset(rect.right + 5, rect.top - 1), 10, Colors.white38, maxWidth: _rightPad - 8);
+    _drawLine(canvas, rows, rawToX, valueToY, (row) => row.dif,
+        const Color(0xFFFFD54F));
+    _drawLine(canvas, rows, rawToX, valueToY, (row) => row.dea,
+        const Color(0xFF90CAF9));
+    _drawText(canvas, '±${_fmt(maxAbs)}', Offset(rect.right + 5, rect.top - 1),
+        10, Colors.white38,
+        maxWidth: _rightPad - 8);
   }
 
   void _drawLine(
@@ -257,9 +290,12 @@ class _OriginIndicatorPanePainter extends CustomPainter {
     );
   }
 
-  void _drawText(Canvas canvas, String text, Offset offset, double fontSize, Color color, {double maxWidth = 520}) {
+  void _drawText(
+      Canvas canvas, String text, Offset offset, double fontSize, Color color,
+      {double maxWidth = 520}) {
     final painter = TextPainter(
-      text: TextSpan(text: text, style: TextStyle(color: color, fontSize: fontSize)),
+      text: TextSpan(
+          text: text, style: TextStyle(color: color, fontSize: fontSize)),
       textDirection: TextDirection.ltr,
       maxLines: 1,
     )..layout(maxWidth: maxWidth);

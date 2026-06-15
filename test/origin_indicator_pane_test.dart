@@ -6,7 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('OriginIndicatorPane renders VOL and MACD panes from snapshot indicators',
+  testWidgets(
+      'OriginIndicatorPane renders VOL and MACD panes from snapshot indicators',
       (tester) async {
     final snapshot = _snapshotWithIndicators();
 
@@ -48,7 +49,13 @@ void main() {
       ),
     );
 
-    expect(find.byType(CustomPaint), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(OriginIndicatorPane),
+        matching: find.byType(CustomPaint),
+      ),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 }
