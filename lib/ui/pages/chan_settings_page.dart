@@ -190,9 +190,8 @@ class _ChanSettingsPageState extends State<ChanSettingsPage> {
     super.dispose();
   }
 
-  int get _changedCount => _defaults.keys
-      .where((key) => _values[key] != _defaults[key])
-      .length;
+  int get _changedCount =>
+      _defaults.keys.where((key) => _values[key] != _defaults[key]).length;
 
   @override
   Widget build(BuildContext context) {
@@ -293,7 +292,8 @@ class _ChanSettingsPageState extends State<ChanSettingsPage> {
           group.title,
           group.note,
           group.keys.where((key) {
-            final haystack = '${group.title} ${group.note} $key ${_defaults[key]} ${_options[key] ?? const <String>[]}'
+            final haystack = '${group.title} ${group.note} $key '
+                    '${_defaults[key]} ${_options[key] ?? const <String>[]}'
                 .toLowerCase();
             return haystack.contains(query);
           }).toList(growable: false),
@@ -481,11 +481,25 @@ class _ChanSettingsPageState extends State<ChanSettingsPage> {
       );
 
   String _hintFor(String key) {
-    if (key == 'max_kl_misalgin_cnt') return '历史字段保持原拼写，避免和 Python 配置键不一致。';
+    if (key == 'max_kl_misalgin_cnt') {
+      return '历史字段保持原拼写，避免和 Python 配置键不一致。';
+    }
     if (key == 'bs_type') return '逗号分隔：1,1p,2,2s,3a,3b。';
-    if (key == 'bsp_advanced') return '高级覆盖项，历史分支支持 buy/sell/segbuy/segsell/seg 后缀。';
-    if (key.startsWith('bsp') || key.startsWith('bs') || key.contains('divergence')) return '买卖点配置，直接对应历史复盘页 CChanConfig。';
-    if (key.startsWith('macd') || key.startsWith('cal_') || key.contains('cycle') || key.startsWith('demark') || key == 'boll_n') return '指标计算配置，沿用历史复盘页默认值。';
+    if (key == 'bsp_advanced') {
+      return '高级覆盖项，历史分支支持 buy/sell/segbuy/segsell/seg 后缀。';
+    }
+    if (key.startsWith('bsp') ||
+        key.startsWith('bs') ||
+        key.contains('divergence')) {
+      return '买卖点配置，直接对应历史复盘页 CChanConfig。';
+    }
+    if (key.startsWith('macd') ||
+        key.startsWith('cal_') ||
+        key.contains('cycle') ||
+        key.startsWith('demark') ||
+        key == 'boll_n') {
+      return '指标计算配置，沿用历史复盘页默认值。';
+    }
     return '历史复盘页 CChanConfig 设置项。';
   }
 
