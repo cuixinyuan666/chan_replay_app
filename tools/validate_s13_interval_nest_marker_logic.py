@@ -21,17 +21,46 @@ def _read(path: Path) -> str:
 
 
 def _extract_block(text: str, name: str) -> str:
-    pattern = re.compile(r'\b[\w<>?]+\s+' + re.escape(name) + r'\s*\([^)]*\)\s*\{')
-    m = pattern.search(text)
-    if not m:
+    """Extract a Dart method/getter block by name.
+
+    Supports both regular methods like `_relationDown(...) {` and getters like
+    `MultiLevelChanSnapshot? get _currentSnapshot {`.
+    """
+    patterns = [
+        re.compile(r'(?:[\w<>?,]+\s+)*(?:get\s+)?' + re.escape(name) + r'\s*(?:\([^)]*\))?\s*\{'),
+        re.compile(r'\b' + re.escape(name) + r'\s*(?:\([^)]*\))?\s*\{'),
+    ]
+    match = None
+    for pattern in patterns:
+        match = pattern.search(text)
+        if match:
+            break
+    if not match:
         return ''
-    start = m.start()
-    brace = text.find('{', m.end() - 1)
+    start = match.start()
+    brace = text.find('{', match.end() - 1)
     if brace < 0:
-        return text[start:m.end()]
+        return text[start:match.end()]
     depth = 0
+    in_single = False
+    in_double = False
+    escape = False
     for i in range(brace, len(text)):
         ch = text[i]
+        if escape:
+            escape = False
+            continue
+        if ch == '\\':
+            escape = True
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            continue
+        if in_single or in_double:
+            continue
         if ch == '{':
             depth += 1
         elif ch == '}':
@@ -51,12 +80,9 @@ def _contains_unconditional_first_child_range(relation_down: str) -> bool:
     ]
     if any(re.search(pattern, compact) for pattern in unsafe_patterns):
         return True
-    # Safe implementations should either reject ambiguity or select by a target child raw index/range.
     ambiguity_tokens = (
         'matches.length == 1',
         'matches.length <= 1',
-        'ambiguous',
-        'childRawIndex',
         'targetChildRawIndex',
         'containsChildRawIndex',
     )
@@ -64,38 +90,69 @@ def _contains_unconditional_first_child_range(relation_down: str) -> bool:
 
 
 def _child_start_can_impersonate_bsp(s13: str) -> bool:
-    # The known unsafe pattern stores childStartRawIndex in rawByLevel when no child BSP exists.
-    # That is a valid interval-region anchor only if the row model explicitly carries anchor kind / interval-only state.
     unsafe_assignment = 'rawByLevel[child] = down.childStartRawIndex' in s13
-    has_explicit_anchor_kind = any(
+    has_explicit_anchor_kind = all(
         token in s13
         for token in (
             'isIntervalAnchor',
-            'anchorKind',
-            'NestedAnchorKind',
-            'intervalOnly',
-            'isBspAnchor',
+            'intervalAnchorByLevel',
+            'raw == null || isIntervalAnchor ? null : _bspAt(level, raw)',
         )
     )
     return unsafe_assignment and not has_explicit_anchor_kind
 
 
 def _lower_level_bsp_collapse_risk(s13: str) -> bool:
-    # A Set<int> of active raw indexes collapses distinct lower-level BSP observations before marker construction.
     collapsed_anchor_set = re.search(r'final\s+activeAnchorRawIndexes\s*=\s*<int>\s*\{\s*\}\s*;', s13) is not None
     only_int_anchor_add = 'activeAnchorRawIndexes.add(activeRaw)' in s13
-    has_trigger_identity = any(
+    has_trigger_identity = all(
         token in s13
         for token in (
             'class _NestedBspTrigger',
-            'triggerLevel',
-            'triggerBspKey',
-            'triggerRawIndex',
-            'sourceBsp',
+            'final triggers = <_NestedBspTrigger>[];',
             'sourceLevel',
+            'sourceRawIndex',
+            'sourceBsp',
+            'activeRawIndex',
+            'totalByActiveRaw',
+            'sequenceByActiveRaw',
         )
     )
-    return collapsed_anchor_set and only_int_anchor_add and not has_trigger_identity
+    if collapsed_anchor_set or only_int_anchor_add:
+        return True
+    return not has_trigger_identity
+
+
+def _numbering_policy_ok(s13: str, numbering_policy: str) -> bool:
+    required_s13 = [
+        'import \'s13_nested_marker_numbering_policy.dart\';',
+        '_nestedNumberingPolicy.sequenceLabel',
+        'sequenceNumber: total > 1 ? sequence : null',
+        'sequenceTotal: total',
+        'sequenceLabel:',
+        'if (label != null)',
+        'visibleByRawIndex',
+    ]
+    required_policy = [
+        'class S13NestedMarkerNumberingPolicy',
+        'sequenceTotal <= 1) return null',
+        "return '$sequenceNumber'",
+    ]
+    return all(token in s13 for token in required_s13) and all(
+        token in numbering_policy for token in required_policy
+    )
+
+
+def _candidate_trail_equal_priority_ok(s13: str, numbering_policy: str, manual: str) -> bool:
+    required = [
+        'S13NestedMarkerTriggerState.candidateTrail',
+        'S13NestedMarkerTriggerState.current',
+        'state: _nestedTriggerState(bsp)',
+        'compareTriggerState',
+    ]
+    policy_equal = re.search(r'int\s+compareTriggerState\s*\([^)]*\)\s*\{\s*return\s+0\s*;\s*\}', numbering_policy, re.S) is not None
+    manual_equal = 'same interval-nest trigger priority' in manual and 'must not exclude or downgrade candidate trail triggers' in manual
+    return all(token in s13 or token in numbering_policy for token in required) and policy_equal and manual_equal
 
 
 def _historical_candidate_ui_only_ok(s13: str) -> bool:
@@ -140,11 +197,11 @@ def _backend_relations_only_ok(s13: str) -> bool:
 
 def _manual_records_task(manual: str) -> bool:
     required = [
-        'S13 interval-nest hidden logic review is selected',
+        'S13 interval-nest hidden logic hardening is selected',
         'tools/validate_s13_interval_nest_marker_logic.py',
-        'first child range',
-        'childStart',
-        'Historical candidate BSPs remain UI-only',
+        'candidate-trail and current/final BSP states compare at equal priority',
+        'trigger-list implementation committed',
+        'Verify count-one marker shows no number',
     ]
     return all(token in manual for token in required)
 
@@ -154,6 +211,8 @@ def _validate() -> dict[str, Any]:
     source = _read(MULTI_SOURCE)
     native = _read(NATIVE_TIMED)
     manual = _read(MANUAL)
+    numbering_policy_path = S13_PAGE.with_name('s13_nested_marker_numbering_policy.dart')
+    numbering_policy = _read(numbering_policy_path)
     relation_down = _extract_block(s13, '_relationDown')
 
     checks: dict[str, bool] = {
@@ -164,19 +223,24 @@ def _validate() -> dict[str, Any]:
         'relation_down_rejects_ambiguous_first_child_range': not _contains_unconditional_first_child_range(relation_down),
         'child_start_is_interval_anchor_not_bsp_anchor': not _child_start_can_impersonate_bsp(s13),
         'multiple_lower_level_bsps_preserved_as_distinct_triggers': not _lower_level_bsp_collapse_risk(s13),
+        'numbering_policy_hides_single_sequence_label': _numbering_policy_ok(s13, numbering_policy),
+        'candidate_trail_equal_priority': _candidate_trail_equal_priority_ok(s13, numbering_policy, manual),
         'historical_candidate_bsp_is_ui_only': _historical_candidate_ui_only_ok(s13),
         'manual_records_s13_validation_task': _manual_records_task(manual),
     }
 
-    required_order = list(checks.keys())
-    missing = [key for key in required_order if not checks[key]]
+    missing = [key for key, ok in checks.items() if not ok]
     review_notes: list[str] = []
+    if not checks['s13_step_uses_current_frame_not_final_snapshot']:
+        review_notes.append('_currentSnapshot must be a step-frame getter returning a.frames[_safeFrameIndex] when _isStepMode is true.')
     if not checks['relation_down_rejects_ambiguous_first_child_range']:
         review_notes.append('_relationDown still appears to select matches.first without an ambiguity/target-child guard.')
     if not checks['child_start_is_interval_anchor_not_bsp_anchor']:
         review_notes.append('childStartRawIndex can still be stored as a row raw index without an explicit interval-anchor/BSP-anchor distinction.')
     if not checks['multiple_lower_level_bsps_preserved_as_distinct_triggers']:
-        review_notes.append('activeAnchorRawIndexes is still a Set<int>, so multiple lower-level BSP observations can collapse onto one active rawIndex before marker construction.')
+        review_notes.append('Nested marker generation still appears to collapse lower-level BSP observations before marker construction.')
+    if not checks['candidate_trail_equal_priority']:
+        review_notes.append('Candidate-trail BSP observations must remain same-priority trigger sources while preserving candidate/current identity.')
 
     return {
         'ok': not missing,
@@ -187,7 +251,7 @@ def _validate() -> dict[str, Any]:
         'checks': checks,
         'missing_required': missing,
         'review_notes': review_notes,
-        'expected_current_status': 'This validator is expected to fail until S13 marker mapping is hardened if the known unsafe patterns remain present.',
+        'expected_current_status': 'Expected to pass after S13 trigger-list marker wiring is pulled and the updated validator is used.',
         'chan_recalculated': False,
         'dart_chan_calculation_authority': False,
     }
