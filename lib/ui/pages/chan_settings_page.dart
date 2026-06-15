@@ -423,7 +423,9 @@ class _ChanSettingsPageState extends State<ChanSettingsPage> {
         keyboardType: TextInputType.number,
         style: const TextStyle(color: Colors.white),
         decoration: _decoration('整数'),
-        onChanged: (raw) => _values[key] = int.tryParse(raw.trim()) ?? raw.trim(),
+        onChanged: (raw) {
+          _values[key] = int.tryParse(raw.trim()) ?? raw.trim();
+        },
         onEditingComplete: () => setState(() {}),
       );
     }
