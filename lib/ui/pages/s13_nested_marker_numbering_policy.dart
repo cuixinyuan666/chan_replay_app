@@ -1,3 +1,8 @@
+enum S13NestedMarkerTriggerState {
+  current,
+  candidateTrail,
+}
+
 class S13NestedMarkerNumberingPolicy {
   const S13NestedMarkerNumberingPolicy();
 
@@ -8,18 +13,29 @@ class S13NestedMarkerNumberingPolicy {
   }
 
   int compareTriggerRawIndex(int a, int b) => a.compareTo(b);
+
+  int compareTriggerState(
+    S13NestedMarkerTriggerState a,
+    S13NestedMarkerTriggerState b,
+  ) {
+    return 0;
+  }
 }
 
 class S13NestedMarkerTriggerIdentity {
   final String sourceLevel;
   final int sourceRawIndex;
   final int activeRawIndex;
+  final S13NestedMarkerTriggerState state;
 
   const S13NestedMarkerTriggerIdentity({
     required this.sourceLevel,
     required this.sourceRawIndex,
     required this.activeRawIndex,
+    this.state = S13NestedMarkerTriggerState.current,
   });
 
-  String get key => '$activeRawIndex|$sourceLevel|$sourceRawIndex';
+  bool get isCandidateTrail => state == S13NestedMarkerTriggerState.candidateTrail;
+
+  String get key => '$activeRawIndex|$sourceLevel|$sourceRawIndex|${state.name}';
 }
