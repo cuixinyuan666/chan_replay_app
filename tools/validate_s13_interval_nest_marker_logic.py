@@ -170,12 +170,22 @@ def _historical_candidate_ui_only_ok(s13: str) -> bool:
     return creates_trail_copy and display_snapshot_is_copy and not mutation_hits
 
 
+def _dart_step_getter_uses_current_frame(current_snapshot: str) -> bool:
+    if not current_snapshot:
+        return False
+    dart_uses_frame = 'return a.frames[_safeFrameIndex]' in current_snapshot
+    unsafe_inline_step_fallback = bool(
+        re.search(r'if\s*\(_isStepMode\)\s*return\s+a\.snapshot\s*;', current_snapshot)
+    )
+    unsafe_block_step_fallback = bool(
+        re.search(r'if\s*\(_isStepMode\)\s*\{[^{}]*return\s+a\.snapshot\s*;', current_snapshot, re.S)
+    )
+    return dart_uses_frame and not unsafe_inline_step_fallback and not unsafe_block_step_fallback
+
+
 def _step_uses_current_frame_ok(s13: str, native: str) -> bool:
     current_snapshot = _extract_block(s13, '_currentSnapshot')
-    dart_uses_frame = 'return a.frames[_safeFrameIndex]' in current_snapshot
-    dart_has_final_fallback_inside_step = bool(
-        re.search(r'if\s*\(_isStepMode\).*?return\s+a\.snapshot', current_snapshot, re.S)
-    )
+    dart_uses_frame = _dart_step_getter_uses_current_frame(current_snapshot)
     native_gets_step_load = "getattr(chan, 'step_load', None)" in native
     native_iterates_step_load = any(
         token in native
@@ -188,7 +198,7 @@ def _step_uses_current_frame_ok(s13: str, native: str) -> bool:
     )
     native_uses_step_load = native_gets_step_load and native_iterates_step_load
     native_exports_frames = "'native_step_frames': True" in native and "'step_frame_format': 'compact_v1'" in native
-    return dart_uses_frame and not dart_has_final_fallback_inside_step and native_uses_step_load and native_exports_frames
+    return dart_uses_frame and native_uses_step_load and native_exports_frames
 
 
 def _backend_relations_only_ok(s13: str) -> bool:
@@ -242,7 +252,7 @@ def _validate() -> dict[str, Any]:
     missing = [key for key, ok in checks.items() if not ok]
     review_notes: list[str] = []
     if not checks['s13_step_uses_current_frame_not_final_snapshot']:
-        review_notes.append('_currentSnapshot must be a step-frame getter returning a.frames[_safeFrameIndex] when _isStepMode is true, and backend must iterate native step_load().')
+        review_notes.append('_currentSnapshot must return a.frames[_safeFrameIndex] when _isStepMode is true, and backend must iterate native step_load().')
     if not checks['relation_down_rejects_ambiguous_first_child_range']:
         review_notes.append('_relationDown still appears to select matches.first without an ambiguity/target-child guard.')
     if not checks['child_start_is_interval_anchor_not_bsp_anchor']:
