@@ -14,6 +14,7 @@ DART_SNAPSHOT = ROOT / 'lib' / 'core' / 'models' / 'chan_snapshot.dart'
 DART_RECURSIVE_SEG = ROOT / 'lib' / 'core' / 'models' / 'recursive_seg.dart'
 DART_PARSER = ROOT / 'lib' / 'data' / 'chan_snapshot_json_parser.dart'
 DART_OVERLAY = ROOT / 'lib' / 'ui' / 'widgets' / 'recursive_seg_origin_kline_chart.dart'
+S12_PAGE = ROOT / 'lib' / 'ui' / 'pages' / 's12_single_stock_replay_page.dart'
 
 
 def _read(path: Path) -> str:
@@ -37,6 +38,7 @@ def main() -> None:
         'dart_recursive_seg_exists': DART_RECURSIVE_SEG,
         'dart_parser_exists': DART_PARSER,
         'dart_overlay_exists': DART_OVERLAY,
+        's12_page_exists': S12_PAGE,
     }.items():
         checks[label] = path.exists()
         if not path.exists():
@@ -53,8 +55,9 @@ def main() -> None:
     dart_recursive_seg = _read(DART_RECURSIVE_SEG)
     dart_parser = _read(DART_PARSER)
     dart_overlay = _read(DART_OVERLAY)
+    s12_page = _read(S12_PAGE)
     combined_backend = manager + wrapper + entry
-    combined_dart = dart_snapshot + dart_recursive_seg + dart_parser + dart_overlay
+    combined_dart = dart_snapshot + dart_recursive_seg + dart_parser + dart_overlay + s12_page
 
     checks.update({
         'manager_syntax_ok': _syntax_ok(MANAGER),
@@ -82,6 +85,10 @@ def main() -> None:
         'dart_overlay_skips_layer1_duplicate': 'if (layer == 1) continue' in dart_overlay,
         'dart_overlay_uses_locked_nonpersistent_drawing_objects': 'TradingViewDrawingTool.trendLine' in dart_overlay and 'locked: true' in dart_overlay,
         'dart_overlay_uses_raw_index_price_anchors': 'DrawingAnchor.chart(rawIndex: seg.startRawIndex, price: seg.startPrice)' in dart_overlay and 'DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice)' in dart_overlay,
+        's12_imports_recursive_chart': "../widgets/recursive_seg_origin_kline_chart.dart" in s12_page,
+        's12_uses_recursive_chart': 'return RecursiveSegOriginKlineChart(' in s12_page,
+        's12_no_direct_origin_chart_import': "../widgets/origin_kline_chart.dart" not in s12_page,
+        's12_retains_replay_entrypoints': 'class S12SingleStockReplayPage' in s12_page and 'Future<void> _loadReplay()' in s12_page and 'PythonMultiLevelChanAnalysisSource' in s12_page,
         'no_dart_chan_authority_added': 'CChan' not in combined_dart and 'check_fx' not in combined_dart and 'check_bi' not in combined_dart and 'cal_seg' not in combined_dart,
         'no_chanpy_source_write_path_added': 'python/chan.py' not in combined_backend and 'open(' not in manager,
     })
@@ -95,7 +102,7 @@ def main() -> None:
             'hichan2 adds export-only recursive segment layers under backend/app/a_* files.',
             'Layer 1 uses native seg; layer 2 uses native segseg; layers >=3 call chan.py segment-list update() on deepcopy input.',
             'Dart parses backend seg_layers into a raw-index/price DTO and can convert them into chart overlay lines.',
-            'Dart overlay uses locked drawing objects and still delegates rendering to OriginKlineChart.',
+            'S12 replay page imports RecursiveSegOriginKlineChart, so backend seg_layers can be shown on the replay chart.',
             'No seg3/seg4 BSP is generated; native bsp/segbsp remain authoritative.',
         ],
     }
