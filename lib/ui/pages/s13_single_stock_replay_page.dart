@@ -8,6 +8,7 @@ import '../../core/models/level_relation.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/runtime/runtime_path.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
+import 's13_nested_marker_numbering_policy.dart';
 import '../widgets/origin_kline_chart.dart';
 
 class S13SingleStockReplayPage extends StatefulWidget {
@@ -49,6 +50,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   final _selectedLevels = <String>['DAILY', 'MIN30', 'MIN5'];
   final _enabledEasyTdxIndicators = <String>{};
   final ValueNotifier<int> _toolboxOpenSignal = ValueNotifier<int>(0);
+  final _nestedNumberingPolicy = const S13NestedMarkerNumberingPolicy();
   PythonMultiLevelChanAnalysis? _analysis;
   String _mode = 'step',
       _activeLevel = 'DAILY',
@@ -198,6 +200,11 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         confirmed: p.confirmed);
   }
 
+  S13NestedMarkerTriggerState _nestedTriggerState(BspPoint p) =>
+      p.type.contains('候选轨迹')
+          ? S13NestedMarkerTriggerState.candidateTrail
+          : S13NestedMarkerTriggerState.current;
+
   List<BspPoint> _snapshotBspsWithTrail(String level) {
     final snap = _currentSnapshot?.of(level.trim().toUpperCase());
     if (snap == null) return const <BspPoint>[];
@@ -220,7 +227,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     return rows.isEmpty ? null : rows.first;
   }
 
-  LevelRelation? _relationDown(String parentLevel, int parentRawIndex) {
+  LevelRelation? _relationDown(String parentLevel, int parentRawIndex,
+      {int? targetChildRawIndex}) {
     final c = _currentSnapshot;
     if (c == null) return null;
     final levels = _loadedLevels;
@@ -236,7 +244,24 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             r.parentRawIndex == parentRawIndex)
         .toList(growable: false)
       ..sort((a, b) => a.childStartRawIndex.compareTo(b.childStartRawIndex));
-    return matches.isEmpty ? null : matches.first;
+    if (matches.isEmpty) return null;
+    if (targetChildRawIndex == null) {
+      return matches.length == 1 ? matches.first : null;
+    }
+    final containsChildRawIndex = matches
+        .where((r) =>
+            r.childStartRawIndex <= targetChildRawIndex &&
+            r.childEndRawIndex >= targetChildRawIndex)
+        .toList(growable: false)
+      ..sort((a, b) {
+        final aw = a.childEndRawIndex - a.childStartRawIndex;
+        final bw = b.childEndRawIndex - b.childStartRawIndex;
+        if (aw != bw) return aw.compareTo(bw);
+        return a.childStartRawIndex.compareTo(b.childStartRawIndex);
+      });
+    return containsChildRawIndex.length == 1
+        ? containsChildRawIndex.first
+        : null;
   }
 
   LevelRelation? _relationUp(String childLevel, int childRawIndex) {
@@ -288,19 +313,54 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     if (!_hasStepFrames || c == null || active == null || activeIndex < 0) {
       return const <_NestedBspMarker>[];
     }
-    final activeAnchorRawIndexes = <int>{};
+    final triggers = <_NestedBspTrigger>[];
     for (final level in levels) {
       for (final bsp in _snapshotBspsWithTrail(level)) {
         final activeRaw =
             _mapRawIndexToLevel(level, bsp.rawIndex, _activeLevel);
-        if (activeRaw != null) activeAnchorRawIndexes.add(activeRaw);
+        if (activeRaw == null) continue;
+        triggers.add(_NestedBspTrigger(
+            activeRawIndex: activeRaw,
+            sourceLevel: level,
+            sourceRawIndex: bsp.rawIndex,
+            sourceBsp: bsp,
+            state: _nestedTriggerState(bsp)));
       }
     }
+    triggers.sort((a, b) {
+      if (a.activeRawIndex != b.activeRawIndex) {
+        return a.activeRawIndex.compareTo(b.activeRawIndex);
+      }
+      final stateCompare = _nestedNumberingPolicy.compareTriggerState(
+          a.state, b.state);
+      if (stateCompare != 0) return stateCompare;
+      final ai = levels.indexOf(a.sourceLevel), bi = levels.indexOf(b.sourceLevel);
+      if (ai != bi) return ai.compareTo(bi);
+      final rawCompare = _nestedNumberingPolicy.compareTriggerRawIndex(
+          a.sourceRawIndex, b.sourceRawIndex);
+      if (rawCompare != 0) return rawCompare;
+      return _bspKey(a.sourceBsp).compareTo(_bspKey(b.sourceBsp));
+    });
+    final totalByActiveRaw = <int, int>{};
+    for (final trigger in triggers) {
+      totalByActiveRaw[trigger.activeRawIndex] =
+          (totalByActiveRaw[trigger.activeRawIndex] ?? 0) + 1;
+    }
+    final sequenceByActiveRaw = <int, int>{};
     final markers = <_NestedBspMarker>[];
     final seen = <String>{};
-    for (final activeRawIndex in activeAnchorRawIndexes.toList()..sort()) {
-      final rawByLevel = <String, int>{_activeLevel: activeRawIndex};
-      for (var i = activeIndex; i > 0; i--) {
+    for (final trigger in triggers) {
+      final total = totalByActiveRaw[trigger.activeRawIndex] ?? 1;
+      final sequence = (sequenceByActiveRaw[trigger.activeRawIndex] ?? 0) + 1;
+      sequenceByActiveRaw[trigger.activeRawIndex] = sequence;
+      final sourceIndex = levels.indexOf(trigger.sourceLevel);
+      if (sourceIndex < 0) continue;
+      final rawByLevel = <String, int>{
+        _activeLevel: trigger.activeRawIndex,
+        trigger.sourceLevel: trigger.sourceRawIndex,
+      };
+      final intervalAnchorByLevel = <String, bool>{};
+      for (var i = sourceIndex; i > 0; i--) {
         final child = levels[i];
         final childRaw = rawByLevel[child];
         if (childRaw == null) break;
@@ -308,50 +368,51 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         if (up == null) break;
         rawByLevel[levels[i - 1]] = up.parentRawIndex;
       }
-      for (var i = activeIndex; i < levels.length - 1; i++) {
+      for (var i = sourceIndex; i < levels.length - 1; i++) {
         final parent = levels[i];
         final parentRaw = rawByLevel[parent];
         if (parentRaw == null) break;
         final down = _relationDown(parent, parentRaw);
         if (down == null) break;
         final child = levels[i + 1];
-        final childBsp = _firstBspInRange(
-            child, down.childStartRawIndex, down.childEndRawIndex);
-        if (childBsp == null) {
-          rawByLevel[child] = down.childStartRawIndex;
-        } else {
-          rawByLevel[child] = childBsp.rawIndex;
-        }
+        rawByLevel[child] = down.childStartRawIndex;
+        intervalAnchorByLevel[child] = true;
       }
       final rows = <_NestedBspMarkerRow>[];
-      BspPoint? targetBsp;
-      String? targetLevel;
-      int? targetEndRawIndex;
       for (var i = 0; i < levels.length; i++) {
         final level = levels[i];
         final raw = rawByLevel[level];
-        final bsp = raw == null ? null : _bspAt(level, raw);
-        if (bsp != null && i > activeIndex && targetBsp == null) {
-          targetBsp = bsp;
-          targetLevel = level;
-          targetEndRawIndex = bsp.rawIndex;
-        }
+        final isIntervalAnchor = intervalAnchorByLevel[level] == true &&
+            !(level == trigger.sourceLevel && raw == trigger.sourceRawIndex);
+        final bsp = raw == null || isIntervalAnchor ? null : _bspAt(level, raw);
+        final isTriggerSource =
+            level == trigger.sourceLevel && raw == trigger.sourceRawIndex;
         rows.add(_NestedBspMarkerRow(
             level: level,
             rawIndex: raw,
             bsp: bsp,
             isActiveLevel: i == activeIndex,
-            directionDown: _nestedArrowDown(i, activeIndex)));
+            directionDown: _nestedArrowDown(i, activeIndex),
+            isIntervalAnchor: isIntervalAnchor,
+            isTriggerSource: isTriggerSource,
+            sequenceLabel: isTriggerSource
+                ? _nestedNumberingPolicy.sequenceLabel(
+                    sequenceNumber: sequence, sequenceTotal: total)
+                : null,
+            triggerState: isTriggerSource ? trigger.state : null));
       }
       final key =
-          '$activeRawIndex|${rows.map((r) => '${r.level}:${r.bsp?.rawIndex}:${r.bsp?.type ?? '-'}').join('|')}';
+          '${trigger.activeRawIndex}|${trigger.sourceLevel}:${trigger.sourceRawIndex}:${trigger.state.name}|$sequence/$total|${_bspKey(trigger.sourceBsp)}';
       if (!seen.add(key)) continue;
       markers.add(_NestedBspMarker(
-          rawIndex: activeRawIndex,
+          rawIndex: trigger.activeRawIndex,
           rows: rows,
-          targetLevel: targetLevel,
-          targetRawIndex: targetBsp?.rawIndex,
-          targetEndRawIndex: targetEndRawIndex));
+          targetLevel: trigger.sourceLevel,
+          targetRawIndex: trigger.sourceRawIndex,
+          targetEndRawIndex: trigger.sourceRawIndex,
+          sequenceNumber: total > 1 ? sequence : null,
+          sequenceTotal: total,
+          triggerState: trigger.state));
     }
     return markers;
   }
@@ -847,14 +908,22 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       final chartWidth = width - leftPad - rightPad;
       if (chartWidth <= 0 || visibleCount <= 0) return const SizedBox.shrink();
       final step = chartWidth / visibleCount;
+      final visibleByRawIndex = <int, List<_NestedBspMarker>>{};
+      for (final marker in markers) {
+        if (marker.rawIndex < start || marker.rawIndex > end) continue;
+        visibleByRawIndex
+            .putIfAbsent(marker.rawIndex, () => <_NestedBspMarker>[])
+            .add(marker);
+      }
       return Stack(children: <Widget>[
-        for (final marker in markers)
-          if (marker.rawIndex >= start && marker.rawIndex <= end)
-            Positioned(
-                left: (leftPad + (marker.rawIndex - start + 0.5) * step - 18)
-                    .clamp(0.0, width - 36),
-                top: topPad + 8,
-                child: _nestedBspMarkerButton(marker))
+        for (final entry in visibleByRawIndex.entries)
+          Positioned(
+              left: (leftPad + (entry.key - start + 0.5) * step - 18)
+                  .clamp(0.0, width - 44),
+              top: topPad + 8,
+              child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                for (final marker in entry.value) _nestedBspMarkerButton(marker)
+              ]))
       ]);
     }));
   }
@@ -864,7 +933,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         borderRadius: BorderRadius.circular(10),
         onTap: () => _jumpNestedMarker(marker),
         child: Container(
-            width: 36,
+            width: 44,
             padding: const EdgeInsets.symmetric(vertical: 3),
             decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.18),
@@ -879,8 +948,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     if (bsp == null) {
       return SizedBox(
           height: row.isActiveLevel ? 18 : 15,
-          child: const Text('-',
-              style: TextStyle(
+          child: Text(row.isIntervalAnchor ? '-' : '',
+              style: const TextStyle(
                   color: Colors.white38,
                   fontSize: 13,
                   fontWeight: FontWeight.w700)));
@@ -888,13 +957,24 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final color = _bspNestedColor(bsp);
     final icon =
         row.directionDown ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up;
+    final alpha = _nestedBspAlpha(bsp);
+    final glyph = Icon(icon,
+        size: row.isActiveLevel ? 24 : 18,
+        color: color.withValues(alpha: alpha),
+        weight: row.isActiveLevel ? 900 : 500);
+    final label = row.isTriggerSource ? row.sequenceLabel : null;
     return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => _jumpNestedMarkerRow(row),
-        child: Icon(icon,
-            size: row.isActiveLevel ? 24 : 18,
-            color: color.withValues(alpha: _nestedBspAlpha(bsp)),
-            weight: row.isActiveLevel ? 900 : 500));
+        child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+          glyph,
+          if (label != null)
+            Text(label,
+                style: TextStyle(
+                    color: color.withValues(alpha: alpha),
+                    fontSize: row.isActiveLevel ? 11 : 10,
+                    fontWeight: FontWeight.w900))
+        ]));
   }
 
   double _nestedBspAlpha(BspPoint bsp) {
@@ -1331,12 +1411,31 @@ class _LevelValidationResult {
   const _LevelValidationResult(this.ok, this.normalizedLevels, this.message);
 }
 
+class _NestedBspTrigger {
+  final int activeRawIndex;
+  final String sourceLevel;
+  final int sourceRawIndex;
+  final BspPoint sourceBsp;
+  final S13NestedMarkerTriggerState state;
+
+  const _NestedBspTrigger({
+    required this.activeRawIndex,
+    required this.sourceLevel,
+    required this.sourceRawIndex,
+    required this.sourceBsp,
+    required this.state,
+  });
+}
+
 class _NestedBspMarker {
   final int rawIndex;
   final List<_NestedBspMarkerRow> rows;
   final String? targetLevel;
   final int? targetRawIndex;
   final int? targetEndRawIndex;
+  final int? sequenceNumber;
+  final int sequenceTotal;
+  final S13NestedMarkerTriggerState triggerState;
 
   const _NestedBspMarker({
     required this.rawIndex,
@@ -1344,6 +1443,9 @@ class _NestedBspMarker {
     required this.targetLevel,
     required this.targetRawIndex,
     required this.targetEndRawIndex,
+    required this.sequenceNumber,
+    required this.sequenceTotal,
+    required this.triggerState,
   });
 }
 
@@ -1353,6 +1455,10 @@ class _NestedBspMarkerRow {
   final BspPoint? bsp;
   final bool isActiveLevel;
   final bool directionDown;
+  final bool isIntervalAnchor;
+  final bool isTriggerSource;
+  final String? sequenceLabel;
+  final S13NestedMarkerTriggerState? triggerState;
 
   const _NestedBspMarkerRow({
     required this.level,
@@ -1360,5 +1466,9 @@ class _NestedBspMarkerRow {
     required this.bsp,
     required this.isActiveLevel,
     required this.directionDown,
+    required this.isIntervalAnchor,
+    required this.isTriggerSource,
+    required this.sequenceLabel,
+    required this.triggerState,
   });
 }
