@@ -1,13 +1,20 @@
 # task checklist and contact
 
-Branch: origin_vespa_tdx
+Branch: hichan1
 
-Last supervisor update: 2026-06-14
+Base branch lineage:
+
+- `hichan` was created from latest `origin_vespa_tdx` commit `8fcd455a456a8c196e77ce7694d6ab5c6ed609bb`.
+- `hichan1` was created from the same baseline for S13 interval-nest validator work.
+- Tool limitation: the current GitHub toolset can create/move refs but does not expose a safe delete-ref operation, so old `origin_vespa_tdx` was not removed. Treat `hichan` as the renamed continuation branch and `hichan1` as the active task branch.
+
+Last supervisor update: 2026-06-15
 
 ## Open questions
 
 - S13 interval-nest / nested BSP marker implementation is code-complete but still needs logic-risk validation against real step frames.
 - Main review question: whether current interval nesting display has hidden logical errors, especially when one parent K maps to multiple child ranges or when a lower-level BSP maps upward without a same-bar higher-level BSP.
+- Presentation question remains open: if multiple lower-level BSPs map to the same higher-level K, the UI should choose between stacking, offsetting, numbering, or a debug popover. No UI presentation change is made in this validator-only stage.
 
 ## Hard rules
 
@@ -71,14 +78,16 @@ Required completion summary fields:
 
 ## Current selected task
 
-S13 interval-nest hidden logic review is selected.
+S13 interval-nest hidden logic validator is selected on branch `hichan1`.
 
 Current supervisor position:
 
 - S12 full evidence chain is complete.
 - S13 implementation work is recorded as code-complete but not fully accepted as logic-verified.
+- `hichan` is the renamed continuation branch created from latest `origin_vespa_tdx`.
+- `hichan1` is the active validation branch.
 - No new Chan algorithm authority is granted to Flutter/Dart.
-- Next required work is to add a dedicated S13 validator and/or receiver App evidence for nested marker correctness.
+- The newly added validator is intentionally allowed to fail until S13 marker mapping is hardened.
 
 Optional display-layout debt remains:
 
@@ -265,23 +274,51 @@ Required fix:
 - Validate every adjacent pair has relation rows before using it as a hierarchy edge.
 - If an edge lacks relations, disable nested mapping for that edge and report the missing pair.
 
+## hichan1 task record: S13 interval-nest validator
+
+completed_tasks:
+
+- Created branch `hichan` from latest `origin_vespa_tdx` commit `8fcd455a456a8c196e77ce7694d6ab5c6ed609bb`.
+- Created branch `hichan1` from the same baseline.
+- Added `tools/validate_s13_interval_nest_marker_logic.py` on `hichan1`.
+- The validator checks that step mode reads `analysis.frames[_safeFrameIndex]` instead of final snapshot slicing.
+- The validator checks that nested markers use backend `relations` and backend BSP rows only.
+- The validator rejects an unconditional first-child-range pattern in `_relationDown`.
+- The validator rejects `childStartRawIndex` acting as an implicit BSP anchor without explicit interval-anchor state.
+- The validator rejects collapsing multiple lower-level BSP triggers into a single `Set<int>` active raw index.
+- The validator checks historical candidate BSPs are UI-only copies and do not mutate backend frame or snapshot objects.
+- The manual was updated to record this branch/task process.
+
+validation_result:
+
+- Validator script added.
+- The validator is expected to fail on current S13 code until the known mapping risks are fixed.
+- No UI presentation change was made in this stage because multi-BSP presentation needs a choice: stacking, offsetting, numbering, or debug popover.
+
+remaining_risk:
+
+- True remote branch rename could not remove old `origin_vespa_tdx` because the available toolset has no delete-ref operation.
+- S13 marker rendering still needs the actual logic hardening step after this validator identifies failures.
+- Receiver should run `python tools/validate_s13_interval_nest_marker_logic.py` after pulling `hichan1`.
+
+next_task:
+
+- Fix S13 marker mapping to satisfy `tools/validate_s13_interval_nest_marker_logic.py`.
+- Before changing visual presentation for multiple markers under one parent K, confirm whether to use stacked rows, horizontal offsets, numbering, or a debug popover.
+
 ## Next task-party operation
 
-1. Receiver pulls latest `origin_vespa_tdx`.
+1. Receiver pulls latest `hichan1`.
 2. Run existing baseline checks:
    - `flutter analyze`
    - `python tools/audit_dart_algorithm_usage.py`
    - `python tools/check_chanpy_guardrails.py`
-3. Add a dedicated S13 validator, recommended name:
-   - `tools/validate_s13_interval_nest_marker_logic.py`
-4. The S13 validator should statically or fixture-test:
-   - S13 uses `analysis.frames[_safeFrameIndex]`, not final snapshot slicing.
-   - Nested markers use backend `relations` only.
-   - Downward mapping does not silently choose the first child range when multiple ranges exist.
-   - Placeholder childStart anchors are not styled as BSP signals.
-   - Lower-level BSPs can map upward without requiring same-bar higher-level BSP.
-   - Historical candidate BSPs remain UI-only and never mutate backend frame data.
-5. Receiver App validation:
+3. Run the new validator:
+   - `python tools/validate_s13_interval_nest_marker_logic.py`
+4. Expected current behavior:
+   - The validator should pass source-authority checks.
+   - The validator should fail known hidden mapping-risk checks until S13 marker logic is hardened.
+5. Receiver App validation after later logic hardening:
    - Step through `DAILY,MIN30,MIN5` real data.
    - Verify lower-level BSP appears on higher-level chart.
    - Verify click-through lands on the intended lower-level BSP or explicitly marked interval-only region.
