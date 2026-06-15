@@ -87,7 +87,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     return analysis.snapshot;
   }
 
-  dynamic get _activeSnapshot {
+  ChanSnapshot? get _activeSnapshot {
     final current = _currentSnapshot;
     if (current == null) return null;
     final level = current.snapshots.containsKey(_activeLevel) ? _activeLevel : current.safeActiveLevel;
@@ -418,7 +418,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     );
   }
 
-  Widget _chartPanel(dynamic snapshot) {
+  Widget _chartPanel(ChanSnapshot? snapshot) {
     if (snapshot == null || snapshot.rawBars.isEmpty) {
       return _panel(title: 'Chart', child: const Center(child: Text('Load S12 replay to show chart.', style: TextStyle(color: Colors.white54))));
     }
@@ -587,28 +587,23 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     return raw == 'slow_path' ? 'slow_path' : 'high_speed';
   }
 
-  int _recursiveSegTotal(dynamic snapshot) {
+  int _recursiveSegTotal(ChanSnapshot? snapshot) {
     if (snapshot == null) return 0;
-    final layers = snapshot.recursiveSegLayers;
-    if (layers is! Map<int, dynamic>) return 0;
     var total = 0;
-    for (final entry in layers.entries) {
+    for (final entry in snapshot.recursiveSegLayers.entries) {
       if (entry.key <= 1) continue;
-      final rows = entry.value;
-      if (rows is List) total += rows.length;
+      total += entry.value.length;
     }
     return total;
   }
 
-  String _recursiveSegSummaryText(dynamic snapshot) {
+  String _recursiveSegSummaryText(ChanSnapshot? snapshot) {
     if (snapshot == null) return 'none';
-    final layers = snapshot.recursiveSegLayers;
-    if (layers is! Map<int, dynamic>) return 'none';
     final parts = <String>[];
-    for (final entry in layers.entries.toList()..sort((a, b) => a.key.compareTo(b.key))) {
-      if (entry.key <= 1) continue;
-      final rows = entry.value;
-      if (rows is List && rows.isNotEmpty) parts.add('L${entry.key}:${rows.length}');
+    final entries = snapshot.recursiveSegLayers.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+    for (final entry in entries) {
+      if (entry.key <= 1 || entry.value.isEmpty) continue;
+      parts.add('L${entry.key}:${entry.value.length}');
     }
     return parts.isEmpty ? 'none' : parts.join(' ');
   }
