@@ -14,7 +14,8 @@ Last supervisor update: 2026-06-15
 
 - S13 interval-nest / nested BSP marker implementation is code-complete but still needs logic-risk validation against real step frames.
 - Main review question: whether current interval nesting display has hidden logical errors, especially when one parent K maps to multiple child ranges or when a lower-level BSP maps upward without a same-bar higher-level BSP.
-- Presentation question remains open: if multiple lower-level BSPs map to the same higher-level K, the UI should choose between stacking, offsetting, numbering, or a debug popover. No UI presentation change is made in this validator-only stage.
+- Presentation decision is now fixed: if multiple lower-level BSP observations map to the same higher-level K, keep the same horizontal K position and display numeric sequence labels beside the arrows. If the count is one, do not display a number.
+- BSP candidate trail decision is now fixed: BSP candidate trail is treated as an at-the-time observation and has the same interval-nest trigger priority as a current/final BSP. The UI may distinguish candidate/current state visually or in evidence, but must not exclude or downgrade candidate trail triggers.
 
 ## Hard rules
 
@@ -27,6 +28,7 @@ Last supervisor update: 2026-06-15
 - Prefer repository offline/sample data for validation when it can reproduce the task.
 - New files under `python/chan.py` must be in `a_*` folders or named `a_*.py`.
 - S13 UI-only marker, candidate-trail, and drawing behavior must not write back into `analysis.snapshot`, backend frames, or `python/chan.py` structure objects.
+- S13 candidate-trail BSP observations and current/final BSP observations have equal interval-nest trigger priority. Candidate trail is an at-the-time UI observation; identity must be preserved, but priority must not be downgraded.
 
 ## Receiver workload minimization rule
 
@@ -78,16 +80,18 @@ Required completion summary fields:
 
 ## Current selected task
 
-S13 interval-nest hidden logic validator is selected on branch `hichan1`.
+S13 interval-nest hidden logic hardening is selected on branch `hichan1`.
 
 Current supervisor position:
 
 - S12 full evidence chain is complete.
 - S13 implementation work is recorded as code-complete but not fully accepted as logic-verified.
 - `hichan` is the renamed continuation branch created from latest `origin_vespa_tdx`.
-- `hichan1` is the active validation branch.
+- `hichan1` is the active validation/hardening branch.
 - No new Chan algorithm authority is granted to Flutter/Dart.
-- The newly added validator is intentionally allowed to fail until S13 marker mapping is hardened.
+- The validator is intentionally allowed to fail until S13 marker mapping is hardened.
+- Multiple lower-level BSP observations mapped to one higher-level K must be preserved as distinct triggers and rendered with numeric labels only when count > 1.
+- BSP candidate-trail observations are at-the-time observations and have the same interval-nest trigger priority as current/final BSP observations.
 
 Optional display-layout debt remains:
 
@@ -212,6 +216,14 @@ remaining_risk:
 
 Current interval-nest implementation is not a Chan-calculation violation, because it reads backend-exported relations and backend-exported BSP rows. However, it is not yet logic-accepted as a correct interval-nest display. It has several hidden UI/model-mapping risks that can make the chart show a plausible but logically wrong nested marker chain.
 
+Important correction from supervisor philosophy:
+
+- BSP candidate trail is an at-the-time observation and is part of the replay's current-state evidence.
+- Candidate-trail BSP and current/final BSP have equal priority when generating interval-nest markers.
+- Candidate trail must not be excluded, downgraded, or treated as merely decorative.
+- Candidate/current identity must still be preserved for UI/evidence clarity.
+- Candidate trail remains UI-only and must not mutate backend frames, final snapshots, or `python/chan.py` structures.
+
 ### Risk 1: first-child-range selection can lose valid child mapping
 
 - Current mapping from parent to child effectively selects the first sorted child range for a parent rawIndex.
@@ -236,13 +248,18 @@ Required fix:
 
 ### Risk 3: active-level mapping can collapse many lower-level BSPs onto the same parent K
 
-- Mapping lower-level BSPs upward to the active higher level can collapse multiple lower-level BSPs into one higher-level rawIndex.
+- Mapping lower-level BSP observations upward to the active higher level can collapse multiple lower-level observations into one higher-level rawIndex.
+- This applies equally to current/final BSP observations and candidate-trail BSP observations.
 - The current dedupe key includes row information, so some duplicates are preserved, but visible x-position can still overlap and imply a single event cluster.
 
 Required fix:
 
-- Add deterministic intra-bar stacking or horizontal offsets for multiple nested markers anchored to the same active rawIndex.
-- Add marker count/sequence text in the debug/evidence layer.
+- Replace the `Set<int>` active-anchor model with a trigger identity list.
+- Each trigger must preserve `sourceLevel`, `sourceRawIndex`, `activeRawIndex`, and candidate/current state.
+- Group triggers by `activeRawIndex` only for display placement, not for data loss.
+- Within each `activeRawIndex`, sort by lower-level rawIndex and assign sequence labels.
+- If group count is one, do not display a number.
+- If group count is greater than one, display `1`, `2`, `3`, etc. beside the arrows.
 
 ### Risk 4: current-frame relation availability may be weaker than current-frame BSP availability
 
@@ -251,18 +268,20 @@ Required fix:
 
 Required fix:
 
-- In S13 evidence, record per-marker `frame_index`, `relation_source_frame`, `bsp_source_frame`, and whether mapping is `current_frame_exact` or `historical_candidate`.
-- Do not silently upgrade historical provisional observations into current confirmed interval chains.
+- In S13 evidence, record per-marker `frame_index`, `relation_source_frame`, `bsp_source_frame`, and whether mapping source is `current` or `candidate_trail`.
+- Candidate-trail observations must have equal trigger priority, but their identity must remain explicit.
 
-### Risk 5: candidate trail can be misread as current signal
+### Risk 5: candidate trail identity can be lost
 
-- Historical provisional BSPs are intentionally preserved as lighter UI observations.
-- This is useful for replay study, but it can be misread as a currently valid BSP if the alpha difference is not obvious or if labels were stripped.
+- Candidate trail is intentionally preserved as a same-priority at-the-time BSP observation.
+- The risk is not that candidate trail participates in interval-nest marker generation. It should participate.
+- The real risk is losing the identity of whether a trigger came from current/final BSP or candidate trail.
 
 Required fix:
 
-- Keep internal state explicit: current/deep, historical/light, provisional/alpha.
-- Add optional debug tooltip or copied evidence showing `historical_candidate=true/false`.
+- Keep internal state explicit: `current` versus `candidate_trail`.
+- Candidate-trail and current/final BSP observations must share the same numbering and trigger priority.
+- Add optional debug tooltip or copied evidence showing `candidate_trail=true/false`.
 
 ### Risk 6: loaded-level order must match backend semantic hierarchy
 
@@ -274,37 +293,45 @@ Required fix:
 - Validate every adjacent pair has relation rows before using it as a hierarchy edge.
 - If an edge lacks relations, disable nested mapping for that edge and report the missing pair.
 
-## hichan1 task record: S13 interval-nest validator
+## hichan1 task record: S13 interval-nest validator and numbering policy
 
 completed_tasks:
 
 - Created branch `hichan` from latest `origin_vespa_tdx` commit `8fcd455a456a8c196e77ce7694d6ab5c6ed609bb`.
 - Created branch `hichan1` from the same baseline.
 - Added `tools/validate_s13_interval_nest_marker_logic.py` on `hichan1`.
+- Added `lib/ui/pages/s13_nested_marker_numbering_policy.dart` to pin the confirmed numbering rule.
+- Updated `lib/ui/pages/s13_nested_marker_numbering_policy.dart` so candidate-trail and current/final BSP states compare at equal priority.
 - The validator checks that step mode reads `analysis.frames[_safeFrameIndex]` instead of final snapshot slicing.
 - The validator checks that nested markers use backend `relations` and backend BSP rows only.
 - The validator rejects an unconditional first-child-range pattern in `_relationDown`.
 - The validator rejects `childStartRawIndex` acting as an implicit BSP anchor without explicit interval-anchor state.
 - The validator rejects collapsing multiple lower-level BSP triggers into a single `Set<int>` active raw index.
 - The validator checks historical candidate BSPs are UI-only copies and do not mutate backend frame or snapshot objects.
-- The manual was updated to record this branch/task process.
+- The manual was updated to record this branch/task process and the equal-priority candidate-trail rule.
 
 validation_result:
 
 - Validator script added.
-- The validator is expected to fail on current S13 code until the known mapping risks are fixed.
-- No UI presentation change was made in this stage because multi-BSP presentation needs a choice: stacking, offsetting, numbering, or debug popover.
+- Numbering policy helper added.
+- Candidate-trail equal-priority policy added to code helper and manual.
+- The validator is expected to fail on current S13 page code until the known mapping risks are fixed.
+- Main S13 page wiring is not yet logic-accepted because `_nestedBspMarkers` still needs trigger-list hardening.
 
 remaining_risk:
 
 - True remote branch rename could not remove old `origin_vespa_tdx` because the available toolset has no delete-ref operation.
 - S13 marker rendering still needs the actual logic hardening step after this validator identifies failures.
 - Receiver should run `python tools/validate_s13_interval_nest_marker_logic.py` after pulling `hichan1`.
+- The main page must connect the numbering policy and preserve candidate/current trigger identity before App acceptance.
 
 next_task:
 
 - Fix S13 marker mapping to satisfy `tools/validate_s13_interval_nest_marker_logic.py`.
-- Before changing visual presentation for multiple markers under one parent K, confirm whether to use stacked rows, horizontal offsets, numbering, or a debug popover.
+- Replace active raw-index set dedupe with a trigger identity list.
+- Connect `S13NestedMarkerNumberingPolicy` to `_nestedBspMarkers` and `_nestedBspMarkerGlyph`.
+- Ensure candidate-trail BSP and current/final BSP are both included as equal-priority trigger sources.
+- Render sequence labels only when the same active rawIndex has more than one trigger.
 
 ## Next task-party operation
 
@@ -323,3 +350,5 @@ next_task:
    - Verify lower-level BSP appears on higher-level chart.
    - Verify click-through lands on the intended lower-level BSP or explicitly marked interval-only region.
    - Verify multiple lower-level BSPs under one parent K are not visually collapsed into one misleading signal.
+   - Verify candidate-trail BSP observations and current/final BSP observations both trigger interval-nest markers with equal priority.
+   - Verify count-one marker shows no number, while count-greater-than-one markers show `1`, `2`, `3`, etc.
