@@ -176,7 +176,17 @@ def _step_uses_current_frame_ok(s13: str, native: str) -> bool:
     dart_has_final_fallback_inside_step = bool(
         re.search(r'if\s*\(_isStepMode\).*?return\s+a\.snapshot', current_snapshot, re.S)
     )
-    native_uses_step_load = "getattr(chan, 'step_load', None)" in native and 'iterator = iter(step_iter())' in native
+    native_gets_step_load = "getattr(chan, 'step_load', None)" in native
+    native_iterates_step_load = any(
+        token in native
+        for token in (
+            'iterator = iter(step_iter())',
+            'enumerate(step_iter())',
+            'for cursor, cur_chan in enumerate(step_iter())',
+            'for cur_chan in step_iter()',
+        )
+    )
+    native_uses_step_load = native_gets_step_load and native_iterates_step_load
     native_exports_frames = "'native_step_frames': True" in native and "'step_frame_format': 'compact_v1'" in native
     return dart_uses_frame and not dart_has_final_fallback_inside_step and native_uses_step_load and native_exports_frames
 
@@ -232,7 +242,7 @@ def _validate() -> dict[str, Any]:
     missing = [key for key, ok in checks.items() if not ok]
     review_notes: list[str] = []
     if not checks['s13_step_uses_current_frame_not_final_snapshot']:
-        review_notes.append('_currentSnapshot must be a step-frame getter returning a.frames[_safeFrameIndex] when _isStepMode is true.')
+        review_notes.append('_currentSnapshot must be a step-frame getter returning a.frames[_safeFrameIndex] when _isStepMode is true, and backend must iterate native step_load().')
     if not checks['relation_down_rejects_ambiguous_first_child_range']:
         review_notes.append('_relationDown still appears to select matches.first without an ambiguity/target-child guard.')
     if not checks['child_start_is_interval_anchor_not_bsp_anchor']:
