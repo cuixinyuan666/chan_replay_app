@@ -13,6 +13,7 @@ ENTRY = ROOT / 'backend' / 'app' / 'a_multilevel_engine_timed.py'
 DART_SNAPSHOT = ROOT / 'lib' / 'core' / 'models' / 'chan_snapshot.dart'
 DART_RECURSIVE_SEG = ROOT / 'lib' / 'core' / 'models' / 'recursive_seg.dart'
 DART_PARSER = ROOT / 'lib' / 'data' / 'chan_snapshot_json_parser.dart'
+DART_OVERLAY = ROOT / 'lib' / 'ui' / 'widgets' / 'recursive_seg_origin_kline_chart.dart'
 
 
 def _read(path: Path) -> str:
@@ -35,6 +36,7 @@ def main() -> None:
         'dart_snapshot_exists': DART_SNAPSHOT,
         'dart_recursive_seg_exists': DART_RECURSIVE_SEG,
         'dart_parser_exists': DART_PARSER,
+        'dart_overlay_exists': DART_OVERLAY,
     }.items():
         checks[label] = path.exists()
         if not path.exists():
@@ -50,8 +52,9 @@ def main() -> None:
     dart_snapshot = _read(DART_SNAPSHOT)
     dart_recursive_seg = _read(DART_RECURSIVE_SEG)
     dart_parser = _read(DART_PARSER)
+    dart_overlay = _read(DART_OVERLAY)
     combined_backend = manager + wrapper + entry
-    combined_dart = dart_snapshot + dart_recursive_seg + dart_parser
+    combined_dart = dart_snapshot + dart_recursive_seg + dart_parser + dart_overlay
 
     checks.update({
         'manager_syntax_ok': _syntax_ok(MANAGER),
@@ -74,6 +77,11 @@ def main() -> None:
         'dart_parser_reads_backend_seg_layers': "data['seg_layers']" in dart_parser and '_parseRecursiveSegLayers' in dart_parser,
         'dart_parser_uses_raw_price_not_bi_links_for_recursive_layers': 'start_raw_index' in dart_parser and 'start_price' in dart_parser and 'startParentIndex' in dart_parser,
         'dart_frontend_parser_is_passive': 'must not synthesize or calculate Chan structures' in dart_parser,
+        'dart_overlay_wraps_origin_chart': 'class RecursiveSegOriginKlineChart' in dart_overlay and 'base.OriginKlineChart' in dart_overlay,
+        'dart_overlay_reads_recursive_layers': 'snapshot.recursiveSegLayers.entries' in dart_overlay,
+        'dart_overlay_skips_layer1_duplicate': 'if (layer == 1) continue' in dart_overlay,
+        'dart_overlay_uses_locked_nonpersistent_drawing_objects': 'TradingViewDrawingTool.trendLine' in dart_overlay and 'locked: true' in dart_overlay,
+        'dart_overlay_uses_raw_index_price_anchors': 'DrawingAnchor.chart(rawIndex: seg.startRawIndex, price: seg.startPrice)' in dart_overlay and 'DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice)' in dart_overlay,
         'no_dart_chan_authority_added': 'CChan' not in combined_dart and 'check_fx' not in combined_dart and 'check_bi' not in combined_dart and 'cal_seg' not in combined_dart,
         'no_chanpy_source_write_path_added': 'python/chan.py' not in combined_backend and 'open(' not in manager,
     })
@@ -86,7 +94,8 @@ def main() -> None:
         'notes': [
             'hichan2 adds export-only recursive segment layers under backend/app/a_* files.',
             'Layer 1 uses native seg; layer 2 uses native segseg; layers >=3 call chan.py segment-list update() on deepcopy input.',
-            'Dart only parses backend seg_layers into a raw-index/price DTO; it does not calculate Chan structures.',
+            'Dart parses backend seg_layers into a raw-index/price DTO and can convert them into chart overlay lines.',
+            'Dart overlay uses locked drawing objects and still delegates rendering to OriginKlineChart.',
             'No seg3/seg4 BSP is generated; native bsp/segbsp remain authoritative.',
         ],
     }
