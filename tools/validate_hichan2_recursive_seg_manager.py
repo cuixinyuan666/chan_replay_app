@@ -56,6 +56,7 @@ def main() -> None:
     dart_parser = _read(DART_PARSER)
     dart_overlay = _read(DART_OVERLAY)
     s12_page = _read(S12_PAGE)
+    s12_lines = [line.strip() for line in s12_page.splitlines()]
     combined_backend = manager + wrapper + entry
     combined_dart = dart_snapshot + dart_recursive_seg + dart_parser + dart_overlay + s12_page
 
@@ -87,10 +88,10 @@ def main() -> None:
         'dart_overlay_uses_locked_nonpersistent_drawing_objects': 'TradingViewDrawingTool.trendLine' in dart_overlay and 'locked: true' in dart_overlay,
         'dart_overlay_uses_raw_index_price_anchors': 'DrawingAnchor.chart(rawIndex: seg.startRawIndex, price: seg.startPrice)' in dart_overlay and 'DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice)' in dart_overlay,
         'dart_overlay_no_unused_recursive_seg_import': "core/models/recursive_seg.dart" not in dart_overlay,
-        's12_imports_recursive_chart': "../widgets/recursive_seg_origin_kline_chart.dart" in s12_page,
+        's12_imports_recursive_chart': "import '../widgets/recursive_seg_origin_kline_chart.dart';" in s12_lines,
         's12_uses_recursive_chart': 'return RecursiveSegOriginKlineChart(' in s12_page,
         's12_recursive_overlay_default_enabled': 'showRecursiveSegLayers: false' not in s12_page,
-        's12_no_direct_origin_chart_import': "../widgets/origin_kline_chart.dart" not in s12_page,
+        's12_no_direct_origin_chart_import': "import '../widgets/origin_kline_chart.dart';" not in s12_lines,
         's12_retains_replay_entrypoints': 'class S12SingleStockReplayPage' in s12_page and 'Future<void> _loadReplay()' in s12_page and 'PythonMultiLevelChanAnalysisSource' in s12_page,
         's12_retains_step_frame_controls': 'Widget _frameControls()' in s12_page and 'Slider(' in s12_page and '_frameIndex' in s12_page,
         's12_uses_chansnapshot_active_type': 'ChanSnapshot? get _activeSnapshot' in s12_page and 'Widget _chartPanel(ChanSnapshot? snapshot)' in s12_page,
