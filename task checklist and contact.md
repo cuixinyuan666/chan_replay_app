@@ -302,6 +302,10 @@ completed_tasks:
 - Added `tools/validate_s13_interval_nest_marker_logic.py` on `hichan1`.
 - Added `lib/ui/pages/s13_nested_marker_numbering_policy.dart` to pin the confirmed numbering rule.
 - Updated `lib/ui/pages/s13_nested_marker_numbering_policy.dart` so candidate-trail and current/final BSP states compare at equal priority.
+- Updated `lib/ui/pages/s13_single_stock_replay_page.dart` to import the numbering policy and replace the active raw-index `Set<int>` model with explicit `_NestedBspTrigger` identities.
+- S13 marker triggers now preserve `sourceLevel`, `sourceRawIndex`, `sourceBsp`, active raw index, and candidate/current state before grouping by active rawIndex for display.
+- Numeric sequence labels are generated per active rawIndex group and are hidden when group count is one.
+- Interval-only child anchors are explicitly separated from BSP trigger rows through `isIntervalAnchor`.
 - The validator checks that step mode reads `analysis.frames[_safeFrameIndex]` instead of final snapshot slicing.
 - The validator checks that nested markers use backend `relations` and backend BSP rows only.
 - The validator rejects an unconditional first-child-range pattern in `_relationDown`.
@@ -315,23 +319,22 @@ validation_result:
 - Validator script added.
 - Numbering policy helper added.
 - Candidate-trail equal-priority policy added to code helper and manual.
-- The validator is expected to fail on current S13 page code until the known mapping risks are fixed.
-- Main S13 page wiring is not yet logic-accepted because `_nestedBspMarkers` still needs trigger-list hardening.
+- Main page trigger-list implementation committed.
+- Connector-side file comparison confirms no `python/chan.py` or backend Chan calculation files were modified in this task.
+- Local `flutter analyze` and local validator execution are still required by receiver because the current environment cannot run the Flutter project build.
 
 remaining_risk:
 
 - True remote branch rename could not remove old `origin_vespa_tdx` because the available toolset has no delete-ref operation.
-- S13 marker rendering still needs the actual logic hardening step after this validator identifies failures.
-- Receiver should run `python tools/validate_s13_interval_nest_marker_logic.py` after pulling `hichan1`.
-- The main page must connect the numbering policy and preserve candidate/current trigger identity before App acceptance.
+- Receiver should run `flutter analyze`, `python tools/check_chanpy_guardrails.py`, and `python tools/validate_s13_interval_nest_marker_logic.py` after pulling `hichan1`.
+- The main page now preserves trigger identity, but App validation is still required to verify marker density, tap target ergonomics, and visual clarity when many triggers map to one active rawIndex.
 
 next_task:
 
-- Fix S13 marker mapping to satisfy `tools/validate_s13_interval_nest_marker_logic.py`.
-- Replace active raw-index set dedupe with a trigger identity list.
-- Connect `S13NestedMarkerNumberingPolicy` to `_nestedBspMarkers` and `_nestedBspMarkerGlyph`.
-- Ensure candidate-trail BSP and current/final BSP are both included as equal-priority trigger sources.
-- Render sequence labels only when the same active rawIndex has more than one trigger.
+- Run the receiver validation commands below.
+- If `flutter analyze` reports private unused-field/unused-method warnings, remove or wire the unused evidence fields before App acceptance.
+- Add copied evidence/debug tooltip for marker trigger state: current versus candidate_trail.
+- Verify on real `DAILY,MIN30,MIN5` step replay that candidate-trail BSP and current/final BSP both trigger markers with equal priority.
 
 ## Next task-party operation
 
@@ -344,7 +347,7 @@ next_task:
    - `python tools/validate_s13_interval_nest_marker_logic.py`
 4. Expected current behavior:
    - The validator should pass source-authority checks.
-   - The validator should fail known hidden mapping-risk checks until S13 marker logic is hardened.
+   - Marker identity checks should pass if the Dart parser accepts the new S13 trigger-list wiring.
 5. Receiver App validation after later logic hardening:
    - Step through `DAILY,MIN30,MIN5` real data.
    - Verify lower-level BSP appears on higher-level chart.
