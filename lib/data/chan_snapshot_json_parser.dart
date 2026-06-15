@@ -5,6 +5,7 @@ import '../core/models/easy_tdx_indicator.dart';
 import '../core/models/fx.dart';
 import '../core/models/merged_bar.dart';
 import '../core/models/raw_bar.dart';
+import '../core/models/recursive_seg.dart';
 import '../core/models/seg.dart';
 import '../core/models/zs.dart';
 
@@ -98,6 +99,16 @@ class ChanSnapshotJsonParser {
     }
     _addTiming(timing, '$timingPrefix.seg', segSw.elapsedMilliseconds);
 
+    final recursiveSegSw = Stopwatch()..start();
+    final recursiveSegLayers = _parseRecursiveSegLayers(
+      data['seg_layers'] ?? data['segLayers'],
+    );
+    _addTiming(
+      timing,
+      '$timingPrefix.recursive_seg_layers',
+      recursiveSegSw.elapsedMilliseconds,
+    );
+
     final zsSw = Stopwatch()..start();
     final zss = <ZS>[];
     final zsRows = data['zs'];
@@ -136,6 +147,7 @@ class ChanSnapshotJsonParser {
       fxs: fxs,
       bis: linkedBis,
       segs: segs,
+      recursiveSegLayers: recursiveSegLayers,
       zss: zss,
       bsps: bsps,
       indicators: indicators,
@@ -281,6 +293,64 @@ class ChanSnapshotJsonParser {
         biList: bis.sublist(start, end + 1));
   }
 
+  static Map<int, List<RecursiveSEG>> _parseRecursiveSegLayers(Object? raw) {
+    final result = <int, List<RecursiveSEG>>{};
+    if (raw is! Map) return result;
+    for (final entry in raw.entries) {
+      final layer = _int(entry.key);
+      if (layer == null) continue;
+      final rows = entry.value;
+      if (rows is! List) {
+        result[layer] = const <RecursiveSEG>[];
+        continue;
+      }
+      final parsed = <RecursiveSEG>[];
+      for (final row in rows) {
+        if (row is Map) {
+          final item = _parseRecursiveSeg(row, parsed.length, layer);
+          if (item != null) parsed.add(item);
+        }
+      }
+      result[layer] = parsed;
+    }
+    return result;
+  }
+
+  static RecursiveSEG? _parseRecursiveSeg(Map row, int index, int fallbackLayer) {
+    final startRaw = _int(row['start_raw_index'] ?? row['startRawIndex']);
+    final endRaw = _int(row['end_raw_index'] ?? row['endRawIndex']);
+    final startPrice = _num(row['start_price'] ?? row['startPrice']);
+    final endPrice = _num(row['end_price'] ?? row['endPrice']);
+    if (startRaw == null ||
+        endRaw == null ||
+        endRaw < startRaw ||
+        startPrice == null ||
+        endPrice == null) return null;
+    final directionText = '${row['direction'] ?? ''}'.toLowerCase();
+    final direction = directionText.contains('up')
+        ? RecursiveSegDirection.up
+        : directionText.contains('down')
+            ? RecursiveSegDirection.down
+            : RecursiveSegDirection.unknown;
+    return RecursiveSEG(
+      layer: _int(row['layer']) ?? fallbackLayer,
+      inputLayer: _int(row['input_layer'] ?? row['inputLayer']) ??
+          (fallbackLayer > 0 ? fallbackLayer - 1 : 0),
+      index: _int(row['index']) ?? index,
+      startParentIndex:
+          _int(row['start_parent_index'] ?? row['startParentIndex']),
+      endParentIndex: _int(row['end_parent_index'] ?? row['endParentIndex']),
+      startRawIndex: startRaw,
+      endRawIndex: endRaw,
+      startPrice: startPrice,
+      endPrice: endPrice,
+      startTimeText: _textOrNull(row['start_time'] ?? row['startTime']),
+      endTimeText: _textOrNull(row['end_time'] ?? row['endTime']),
+      direction: direction,
+      isSure: _bool(row['is_sure'] ?? row['confirmed'], fallback: true),
+    );
+  }
+
   static ZS? _parseZs(Map row, int index) {
     final startBi = _int(row['start_bi_index'] ?? row['startBiIndex']);
     final endBi = _int(row['end_bi_index'] ?? row['endBiIndex']);
@@ -343,6 +413,12 @@ class ChanSnapshotJsonParser {
         '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
     if (text.isEmpty || text == 'null') return null;
     return DateTime.tryParse(text);
+  }
+
+  static String? _textOrNull(Object? value) {
+    final text = '${value ?? ''}'.trim();
+    if (text.isEmpty || text.toLowerCase() == 'null') return null;
+    return text;
   }
 
   static double? _num(Object? value) {
