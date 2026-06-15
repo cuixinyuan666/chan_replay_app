@@ -49,11 +49,9 @@ Required completion summary fields:
 - R1 receiver burden code cleanup: accepted.
 - R1b CLI receiver-burden validation: accepted.
 - S4 CLI strategy diagnostics validator: accepted.
-- S5 CLI strategy rule matrix validation: accepted.
+- S5 CLI strategy rule matrix validation.
 - S6 strategy signal sample coverage: accepted.
 - S7 App strategy signal display loop: accepted.
-- S8a CLI scanner / batch candidate output: accepted.
-- S8b App scanner / batch candidate navigation: accepted.
 - S8 scanner / batch strategy output: accepted.
 - S9 local generated artifact hygiene and continuation baseline: accepted.
 - S10 analyze_multi long-history window count expansion: accepted by receiver CLI evidence.
@@ -69,10 +67,11 @@ Required completion summary fields:
 - S13 nested BSP marker overlay, lower-level BSP upward trigger, loaded-level switcher, and BSP candidate persistence: implementation completed in code; hidden logic review remains required.
 - S13 default publish prep: start date `2026-01-01`, end date `system current date - 2 days`, replay mode `step`; `flutter analyze` passed.
 - hichanhuancun stage-1 backend cache/lazy-layer/BSP-freeze/anti-future contracts: implementation completed in code; dedicated static validator added as `python tools/validate_hichanhuancun_contracts.py`.
+- hichanhuancun cache optimization page: implementation completed in code as a new same-level root page `缓存优化`; dedicated static validator updated.
 
 ## Current selected task
 
-hichanhuancun stage-1 backend replay contract validation is selected.
+hichanhuancun cache optimization page validation is selected.
 
 Current supervisor position:
 
@@ -80,6 +79,7 @@ Current supervisor position:
 - S13 implementation work is recorded as code-complete but not fully accepted as logic-verified.
 - No new Chan algorithm authority is granted to Flutter/Dart.
 - hichanhuancun adds backend-only cache, export-history fields, transport contracts, and anti-future metadata; it does not grant Flutter/Dart Chan calculation authority.
+- `缓存优化` is a root-level UI diagnostics page beside `复盘` and `单股多级别`; it reads existing replay JSON/meta and provides copyable evidence only.
 - Next required work is to run the dedicated validator and then receiver App evidence if UI-specific behavior needs confirmation.
 
 Optional display-layout debt remains:
@@ -88,11 +88,11 @@ Optional display-layout debt remains:
 
 ## hichanhuancun completion summary
 
-- completed_tasks: Added backend raw K-line session cache with key/TTL policy; added `chart_lazy_layers_v1` returned contract and layer manifest; added BSP `anchor/display/confirmed` frozen export fields; added `multi_level_anti_future_meta_v1` for final levels, returned step frames, and parent-child relations.
-- evidence_button: No App evidence button added in this stage; command-line receiver evidence is `python tools/validate_hichanhuancun_contracts.py`.
-- validation_result: Static validator added; full runtime validation still depends on receiver environment with easy-tdx / chan.py runtime available.
-- remaining_risk: Runtime cache hit/miss behavior and anti-future metadata should still be checked against real long-history step frames; `chart_lazy_layers` is a transport/rendering contract and does not imply reduced chan.py calculation.
-- next_task: Run validator, then validate one real S13 step replay case for cache stats, BSP frozen fields, and anti-future pass metadata.
+- completed_tasks: Added backend raw K-line session cache with key/TTL policy; added `chart_lazy_layers_v1` returned contract and layer manifest; added BSP `anchor/display/confirmed` frozen export fields; added `multi_level_anti_future_meta_v1` for final levels, returned step frames, and parent-child relations; added same-level App page `缓存优化` under root navigation.
+- evidence_button: App page `缓存优化` has `复制证据`; command-line receiver evidence is `python tools/validate_hichanhuancun_contracts.py`.
+- validation_result: Static validator updated for backend contracts and root UI route; full runtime validation still depends on receiver environment with easy-tdx / chan.py / Flutter available.
+- remaining_risk: Runtime cache hit/miss behavior and anti-future metadata should still be checked against real long-history step frames; `chart_lazy_layers` is a transport/rendering contract and does not imply reduced chan.py calculation; App page visual placement still needs receiver validation.
+- next_task: Run validator, then validate one real S13 step replay case and open `缓存优化` to copy evidence.
 
 ## Historical accepted summary
 
