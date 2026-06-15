@@ -86,6 +86,7 @@ def main() -> None:
         'dart_overlay_uses_safe_layer_bounds': 'minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer' in dart_overlay and 'maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer' in dart_overlay,
         'dart_overlay_uses_locked_nonpersistent_drawing_objects': 'TradingViewDrawingTool.trendLine' in dart_overlay and 'locked: true' in dart_overlay,
         'dart_overlay_uses_raw_index_price_anchors': 'DrawingAnchor.chart(rawIndex: seg.startRawIndex, price: seg.startPrice)' in dart_overlay and 'DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice)' in dart_overlay,
+        'dart_overlay_no_unused_recursive_seg_import': "core/models/recursive_seg.dart" not in dart_overlay,
         's12_imports_recursive_chart': "../widgets/recursive_seg_origin_kline_chart.dart" in s12_page,
         's12_uses_recursive_chart': 'return RecursiveSegOriginKlineChart(' in s12_page,
         's12_recursive_overlay_default_enabled': 'showRecursiveSegLayers: false' not in s12_page,
