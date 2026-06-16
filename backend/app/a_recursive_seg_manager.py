@@ -5,7 +5,6 @@ from typing import Any, Iterable
 
 
 DEFAULT_RECURSIVE_SEG_MAX_LEVEL = 4
-_MAX_RECURSIVE_SEG_LEVEL = 8
 
 
 def _attr(obj: Any, names: Iterable[str], default: Any = None) -> Any:
@@ -116,14 +115,17 @@ def _export_line_list(lines: Any, *, layer: int, input_layer: int) -> list[dict[
 
 
 def _max_level_from_config(config: dict[str, Any] | None) -> int:
-    raw = (config or {}).get('recursive_seg_max_level')
+    cfg = config or {}
+    raw = cfg.get('level_promoter_max_level')
     if raw is None:
-        raw = (config or {}).get('seg_recursive_max_level')
+        raw = cfg.get('recursive_seg_max_level')
+    if raw is None:
+        raw = cfg.get('seg_recursive_max_level')
     try:
         value = int(raw)
     except (TypeError, ValueError):
         value = DEFAULT_RECURSIVE_SEG_MAX_LEVEL
-    return max(2, min(_MAX_RECURSIVE_SEG_LEVEL, value))
+    return max(2, value)
 
 
 def _native_container(level_obj: Any, names: Iterable[str]) -> Any:
@@ -185,6 +187,120 @@ def _update_seg_list(dst: Any, src: Any) -> None:
     update(src)
 
 
+def _int_value(row: dict[str, Any], *keys: str) -> int | None:
+    for key in keys:
+        value = row.get(key)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _float_value(row: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = row.get(key)
+        if value is None:
+            continue
+        parsed = _to_float(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _text_value(row: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            return str(value)
+    return ''
+
+
+def _bool_value(row: dict[str, Any], *keys: str, default: bool = True) -> bool:
+    for key in keys:
+        value = row.get(key)
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            continue
+        text = str(value).strip().lower()
+        if text in {'true', '1', 'yes', 'y', 'on'}:
+            return True
+        if text in {'false', '0', 'no', 'n', 'off'}:
+            return False
+    return default
+
+
+def _bsp_type_for_seg(layer: int, direction: str) -> tuple[str, bool]:
+    normalized = (direction or '').strip().lower()
+    if 'down' in normalized:
+        return f'SEG{layer}_B', True
+    if 'up' in normalized:
+        return f'SEG{layer}_S', False
+    return f'SEG{layer}_BSP', True
+
+
+def _export_seg_layer_bsp(layer: int, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build independent segN_bsp fields from exported recursive segment endpoints.
+
+    These rows are endpoint-derived, traceable candidates for the App level
+    promoter. They are deliberately not mixed into native chan.py ``bsp`` output.
+    """
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[int, str, int]] = set()
+    for fallback_index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        raw_index = _int_value(row, 'end_raw_index', 'endRawIndex')
+        price = _float_value(row, 'end_price', 'endPrice')
+        if raw_index is None or price is None:
+            continue
+        segment_index = _int_value(row, 'index')
+        if segment_index is None:
+            segment_index = fallback_index
+        type_text, is_buy = _bsp_type_for_seg(layer, _text_value(row, 'direction'))
+        key = (raw_index, type_text, segment_index)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append({
+            'index': len(result),
+            'raw_index': raw_index,
+            'time': row.get('end_time') or row.get('endTime'),
+            'price': price,
+            'type': type_text,
+            'level': f'seg{layer}',
+            'bi_index': None,
+            'seg_index': segment_index,
+            'zs_index': None,
+            'confirmed': _bool_value(row, 'is_sure', 'confirmed', fallback=True),
+            'recursive_seg_layer': layer,
+            'recursive_seg_index': segment_index,
+            'source': 'recursive_seg_layer_endpoint',
+            'derived': True,
+            'direction': _text_value(row, 'direction'),
+            'is_buy': is_buy,
+            'evidence_key': f'seg{layer}#${segment_index}@raw={raw_index}',
+            'candidate_policy': 'segN_bsp is an independent recursive-segment endpoint candidate; native chan.py bsp remains unchanged',
+        })
+    return result
+
+
+def _export_all_seg_layer_bsp(layers: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    result: dict[str, list[dict[str, Any]]] = {}
+    for key, rows in layers.items():
+        try:
+            layer = int(key)
+        except (TypeError, ValueError):
+            continue
+        if layer < 2:
+            continue
+        result[str(layer)] = _export_seg_layer_bsp(layer, rows if isinstance(rows, list) else [])
+    return result
+
+
 class RecursiveSegManager:
     """Export recursive segment layers without modifying chan.py source code.
 
@@ -192,11 +308,23 @@ class RecursiveSegManager:
     ``segseg_list``. Layers >= 3 are best-effort recursive applications of the
     same chan.py segment-list class, using a deepcopy of the previous layer as
     the input so App export does not write parent/seg indexes back into the
-    native level object.
+    native level object. ``max_level`` is intentionally user-configurable and is
+    not capped at 4, so the App can request 3段、4段、...、N段.
     """
 
     def __init__(self, max_level: int = DEFAULT_RECURSIVE_SEG_MAX_LEVEL):
-        self.max_level = max(2, min(_MAX_RECURSIVE_SEG_LEVEL, int(max_level)))
+        self.max_level = max(2, int(max_level))
+
+    def _payload(self, layers: dict[str, list[dict[str, Any]]], status: dict[str, Any]) -> dict[str, Any]:
+        seg_bsp_layers = _export_all_seg_layer_bsp(layers)
+        result: dict[str, Any] = {
+            'seg_layers': layers,
+            'seg_bsp_layers': seg_bsp_layers,
+            'recursive_seg_meta': status,
+        }
+        for layer, rows in seg_bsp_layers.items():
+            result[f'seg{layer}_bsp'] = rows
+        return result
 
     def export(self, level_obj: Any, native_seg_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         native_seg_list = _native_container(level_obj, ('seg_list', 'seg_lst'))
@@ -207,21 +335,22 @@ class RecursiveSegManager:
             'native_layers': ['1'],
             'generated_layers': [],
             'errors': {},
-            'bsp_policy': 'recursive segment layers do not generate BSP; native bsp/segbsp stay authoritative',
-            'pollution_guard': 'layers >= 3 use deepcopy input before invoking chan.py segment update()',
+            'bsp_policy': 'seg2_bsp..segN_bsp are independent recursive segment endpoint candidates; native bsp/segbsp stay authoritative and unchanged',
+            'bsp_fields_policy': 'seg_bsp_layers plus dynamic seg{N}_bsp fields are exported for every layer N >= 2',
+            'pollution_guard': 'layers >= 3 use deepcopy input before invoking chan.py segment update(); chan.py source and native level objects are not written',
         }
 
         layers['1'] = list(native_seg_rows or _export_line_list(native_seg_list, layer=1, input_layer=0))
         if native_segseg_list is None:
             layers['2'] = []
             status['errors']['2'] = 'native segseg_list not available on level object'
-            return {'seg_layers': layers, 'recursive_seg_meta': status}
+            return self._payload(layers, status)
 
         layers['2'] = _export_line_list(native_segseg_list, layer=2, input_layer=1)
         status['native_layers'].append('2')
 
         if self.max_level <= 2:
-            return {'seg_layers': layers, 'recursive_seg_meta': status}
+            return self._payload(layers, status)
 
         template = native_segseg_list or native_seg_list
         seg_config = _seg_config(level_obj, template)
@@ -241,7 +370,7 @@ class RecursiveSegManager:
                     layers[str(rest)] = []
                     status['errors'][str(rest)] = 'skipped because previous recursive layer failed'
                 break
-        return {'seg_layers': layers, 'recursive_seg_meta': status}
+        return self._payload(layers, status)
 
 
 def build_recursive_seg_payload(
