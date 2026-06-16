@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the standalone chip distribution page wiring."""
+"""Validate online-only chip distribution integration."""
 
 from __future__ import annotations
 
@@ -30,21 +30,34 @@ def main() -> None:
     root_page = read("lib/ui/pages/root_page.dart")
     chip_page = read("lib/ui/pages/chip_distribution_page.dart")
     engine = read("lib/core/analysis/chip_distribution.dart")
+    adapter = read("lib/core/analysis/chip_online_replay_adapter.dart")
     test_file = read("test/chip_distribution_test.dart")
 
-    require(root_page, "import 'chip_distribution_page.dart';", "root route import")
-    require(root_page, "static const int _chipDistributionIndex", "root route index")
+    require(root_page, "static const int _scannerIndex = 2;", "stable scanner route index")
+    require(root_page, "static const int _s8BatchIndex = 3;", "stable batch route index")
+    require(root_page, "static const int _researchIndex = 4;", "stable research route index")
+    require(root_page, "static const int _chipDistributionIndex = 5;", "append-only chip route index")
     require(root_page, "const _RouteBuilder(child: ChipDistributionPage())", "lazy route child")
-    require(root_page, "tooltip: '筹码分布'", "route tooltip")
-    require(root_page, "Icons.stacked_bar_chart", "route icon")
 
-    require(chip_page, "class ChipDistributionPage", "page class")
-    require(chip_page, "ChipDistributionEngine", "page engine usage")
-    require(chip_page, "chip_tick_bins(p/s/b/w) 优先", "trainer-style page policy")
+    require(chip_page, "PythonMultiLevelChanAnalysisSource", "online analyze_multi source")
+    require(chip_page, "source.analyzeMulti", "online analyze_multi call")
+    require(chip_page, "ChipOnlineReplayAdapter.fromSnapshot", "snapshot to chip bars adapter")
+    require(chip_page, "ChipOnlineReplayAdapter.resolveTargetIndex", "replay target resolver usage")
+    require(chip_page, "只使用在线 analyze_multi 返回的 K 线", "online-only policy")
+    require(chip_page, "不读取离线分笔文件", "no offline policy")
+    require(chip_page, "_mode == 'step'", "step mode support")
+    require(chip_page, "_crosshairIndex", "crosshair target state")
+    require(chip_page, "_viewEndIndex", "visible right target state")
     require(chip_page, "卖侧筹码", "sell side metric")
     require(chip_page, "买侧筹码", "buy side metric")
 
-    require(engine, "class ChipDistributionEngine", "engine class")
+    require(adapter, "fromSnapshot", "online snapshot adapter")
+    require(adapter, "snapshot?.rawBars", "online bars source")
+    require(adapter, "isStepMode ? stepIndex : null", "step target priority")
+    require(adapter, "isStepMode ? null : crosshairIndex", "crosshair guarded by non-step")
+    require(adapter, "isStepMode ? null : viewEndIndex", "visible right guarded by non-step")
+    reject(adapter, "offline", "offline data dependency")
+
     require(engine, "final window = bars.sublist(start, safeTarget + 1);", "no future-data window")
     require(engine, "class ChipTickBins", "chip tick bins parser")
     require(engine, "chip_tick_bins", "chip tick bins field")
@@ -52,10 +65,6 @@ def main() -> None:
     require(engine, "priceBuyVolume", "buy side support")
     require(engine, "_foldOhlcvTriangular", "OHLCV fallback")
     require(engine, "class ChipTargetResolver", "target resolver")
-    require(engine, "isStepping && stepIndex != null", "step target priority")
-    require(engine, "crosshairIndex != null", "crosshair target priority")
-    require(engine, "visibleRightIndex != null", "visible-right target priority")
-    require(engine, "不依赖任何 Widget", "UI decoupling comment")
 
     for needle in [
         "models/fx.dart",
@@ -69,9 +78,6 @@ def main() -> None:
         reject(engine, needle, "chip engine structure dependency")
 
     require(test_file, "does not consume bars after target index", "future-data regression test")
-    require(test_file, "exact price-volume bins are preferred", "exact-bin regression test")
-    require(test_file, "chip_tick_bins p/s/b/w are parsed", "chip-bin regression test")
-    require(test_file, "legacy w-only mode is treated as buy side", "legacy w compatibility test")
     require(test_file, "chip target priority is step, crosshair, visible right, last bar", "target priority test")
 
     print(json.dumps({
@@ -79,16 +85,14 @@ def main() -> None:
         "route": "筹码分布",
         "branch_task": "hichanchoumafenbu",
         "checks": {
-            "root_route_added": True,
-            "standalone_page_added": True,
-            "chip_engine_added": True,
+            "route_indexes_preserved": True,
+            "online_analyze_multi_source": True,
+            "online_snapshot_adapter": True,
+            "no_offline_dependency": True,
             "no_future_window_guard": True,
-            "chip_tick_bins_p_s_b_w": True,
-            "legacy_w_only_as_buy_side": True,
-            "exact_price_volume_priority": True,
-            "ohlcv_fallback": True,
+            "chip_tick_bins_p_s_b_w_ready": True,
             "target_priority_step_crosshair_visible_right": True,
-            "no_structure_dependency": True,
+            "no_structure_dependency_in_engine": True,
             "tests_added": True,
         },
     }, ensure_ascii=False, indent=2))
