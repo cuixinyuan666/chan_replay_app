@@ -108,6 +108,12 @@ def main() -> int:
             'rhythm_price',
             'seg_layers',
         ]),
+        'backend_left_edge_connectors': contains('backend/app/a_rhythm_overlay.py', [
+            '_left_edge_connectors',
+            'rhythm_left_connector',
+            'same x1 rhythm lines are connected',
+            'rhythm_left_edge_connector_policy',
+        ]),
         'backend_route': contains('backend/app/main.py', [
             'from .a_rhythm_overlay import with_multilevel_rhythm_overlay',
             'with_multilevel_rhythm_overlay',
@@ -125,8 +131,9 @@ def main() -> int:
         'snapshot_model': contains('lib/core/models/chan_snapshot.dart', [
             'final List<RhythmLine> rhythmLines',
             'final List<RhythmHit> rhythmHits',
-            'rhythmLines = const []',
-            'rhythmHits = const []',
+            '_rhythmLineCache',
+            '_rhythmHitCache',
+            'ChanSnapshot.empty()',
         ]),
         'json_parser': contains('lib/data/chan_snapshot_json_parser.dart', [
             'rhythm_lines',
