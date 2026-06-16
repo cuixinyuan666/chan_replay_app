@@ -11,6 +11,11 @@ import 'easy_tdx_indicator.dart';
 import 'rhythm.dart';
 
 class ChanSnapshot {
+  static final Expando<List<RhythmLine>> _rhythmLineCache =
+      Expando<List<RhythmLine>>('chan_snapshot_rhythm_lines_by_raw_bars');
+  static final Expando<List<RhythmHit>> _rhythmHitCache =
+      Expando<List<RhythmHit>>('chan_snapshot_rhythm_hits_by_raw_bars');
+
   final List<RawBar> rawBars;
   final List<MergedBar> mergedBars;
   final List<FX> fxs;
@@ -26,7 +31,7 @@ class ChanSnapshot {
   final List<RhythmLine> rhythmLines;
   final List<RhythmHit> rhythmHits;
 
-  const ChanSnapshot({
+  ChanSnapshot({
     required this.rawBars,
     required this.mergedBars,
     required this.fxs,
@@ -39,24 +44,36 @@ class ChanSnapshot {
     this.eigenBoxes = const [],
     this.segEigenBoxes = const [],
     this.indicators = const EasyTdxIndicators(),
-    this.rhythmLines = const [],
-    this.rhythmHits = const [],
-  });
+    List<RhythmLine> rhythmLines = const [],
+    List<RhythmHit> rhythmHits = const [],
+  })  : rhythmLines = rhythmLines.isNotEmpty
+            ? rhythmLines
+            : (_rhythmLineCache[rawBars] ?? const <RhythmLine>[]),
+        rhythmHits = rhythmHits.isNotEmpty
+            ? rhythmHits
+            : (_rhythmHitCache[rawBars] ?? const <RhythmHit>[]) {
+    if (rhythmLines.isNotEmpty) {
+      _rhythmLineCache[rawBars] = rhythmLines;
+    }
+    if (rhythmHits.isNotEmpty) {
+      _rhythmHitCache[rawBars] = rhythmHits;
+    }
+  }
 
-  factory ChanSnapshot.empty() => const ChanSnapshot(
-        rawBars: [],
-        mergedBars: [],
-        fxs: [],
-        bis: [],
-        segs: [],
-        recursiveSegLayers: <int, List<RecursiveSEG>>{},
-        zss: [],
-        bsps: [],
-        segZss: [],
-        eigenBoxes: [],
-        segEigenBoxes: [],
-        indicators: EasyTdxIndicators(),
-        rhythmLines: [],
-        rhythmHits: [],
+  factory ChanSnapshot.empty() => ChanSnapshot(
+        rawBars: const [],
+        mergedBars: const [],
+        fxs: const [],
+        bis: const [],
+        segs: const [],
+        recursiveSegLayers: const <int, List<RecursiveSEG>>{},
+        zss: const [],
+        bsps: const [],
+        segZss: const [],
+        eigenBoxes: const [],
+        segEigenBoxes: const [],
+        indicators: const EasyTdxIndicators(),
+        rhythmLines: const [],
+        rhythmHits: const [],
       );
 }
