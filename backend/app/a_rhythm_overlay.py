@@ -73,6 +73,13 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _first(row: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in row and row[key] is not None:
+            return row[key]
+    return None
+
+
 def _normalize_calc_mode(config: dict[str, Any] | None) -> str:
     raw = str((config or {}).get('rhythm_calc_mode') or RHYTHM_CALC_MODE_NORMAL).strip()
     return raw if raw in RHYTHM_CALC_MODES else RHYTHM_CALC_MODE_NORMAL
@@ -141,8 +148,8 @@ def _line_rows(raw: Any, level: str) -> list[_Line]:
     for seq, row in enumerate(raw):
         if not isinstance(row, dict):
             continue
-        start_raw = _to_int(row.get('start_raw_index') or row.get('startRawIndex'), -1)
-        end_raw = _to_int(row.get('end_raw_index') or row.get('endRawIndex'), -1)
+        start_raw = _to_int(_first(row, 'start_raw_index', 'startRawIndex'), -1)
+        end_raw = _to_int(_first(row, 'end_raw_index', 'endRawIndex'), -1)
         start_price_raw = row.get('start_price') if 'start_price' in row else row.get('startPrice')
         end_price_raw = row.get('end_price') if 'end_price' in row else row.get('endPrice')
         if start_raw < 0 or end_raw < 0 or start_price_raw is None or end_price_raw is None:
@@ -208,7 +215,7 @@ def _fx_pivots(level_payload: dict[str, Any]) -> list[_Pivot]:
     for seq, row in enumerate(rows):
         if not isinstance(row, dict):
             continue
-        raw_index = _to_int(row.get('raw_index') or row.get('rawIndex'), -1)
+        raw_index = _to_int(_first(row, 'raw_index', 'rawIndex'), -1)
         price = row.get('price')
         if raw_index < 0 or price is None:
             continue
