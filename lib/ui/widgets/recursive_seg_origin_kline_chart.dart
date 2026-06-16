@@ -4,13 +4,14 @@ import 'package:flutter/material.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
-import 'origin_kline_chart.dart' as base;
+import 'origin_kline_chart_unlimited_interaction.dart' as base;
 
 /// Display-only adapter for hichan2 recursive segment layers.
 ///
 /// This widget does not calculate Chan structures. It converts backend-exported
 /// `snapshot.recursiveSegLayers` rows into non-persistent drawing overlays and
-/// delegates all actual K-line rendering to the original `OriginKlineChart`.
+/// delegates all actual K-line rendering to the original `OriginKlineChart` via
+/// the unlimited pan/zoom interaction adapter.
 class RecursiveSegOriginKlineChart extends StatelessWidget {
   final ChanSnapshot snapshot;
   final bool showFx;
