@@ -28,7 +28,6 @@ class UnifiedDraggableToolMenu extends StatefulWidget {
 class _UnifiedDraggableToolMenuState extends State<UnifiedDraggableToolMenu> {
   static const double _buttonSize = 46;
   static const double _panelWidth = 420;
-  static const double _panelMinHeight = 260;
   static const double _panelMaxHeight = 620;
 
   late Offset _offset = widget.initialOffset;
@@ -37,8 +36,12 @@ class _UnifiedDraggableToolMenuState extends State<UnifiedDraggableToolMenu> {
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
-    final left = _offset.dx.clamp(0.0, math.max(0.0, screen.width - 68));
-    final top = _offset.dy.clamp(0.0, math.max(0.0, screen.height - 68));
+    final left = _offset.dx
+        .clamp(0.0, math.max(0.0, screen.width - 68))
+        .toDouble();
+    final top = _offset.dy
+        .clamp(0.0, math.max(0.0, screen.height - 68))
+        .toDouble();
     final panelWidth = math.min(_panelWidth, math.max(260.0, screen.width - 16));
     final maxPanelHeight =
         math.max(180.0, math.min(_panelMaxHeight, screen.height - 24));
@@ -46,12 +49,14 @@ class _UnifiedDraggableToolMenuState extends State<UnifiedDraggableToolMenu> {
       maxPanelHeight,
       math.max(180.0, screen.height - top - 18),
     );
-    final panelLeft = left + _buttonSize + 10 + panelWidth <= screen.width
-        ? left + _buttonSize + 10
-        : math.max(8.0, screen.width - panelWidth - 8);
-    final panelTop = top + panelHeight <= screen.height
-        ? top
-        : math.max(8.0, screen.height - panelHeight - 8);
+    final panelLeft = (left + _buttonSize + 10 + panelWidth <= screen.width
+            ? left + _buttonSize + 10
+            : math.max(8.0, screen.width - panelWidth - 8))
+        .toDouble();
+    final panelTop = (top + panelHeight <= screen.height
+            ? top
+            : math.max(8.0, screen.height - panelHeight - 8))
+        .toDouble();
 
     return Stack(
       clipBehavior: Clip.none,
@@ -105,8 +110,8 @@ class _UnifiedDraggableToolMenuState extends State<UnifiedDraggableToolMenu> {
     setState(() {
       final next = _offset + details.delta;
       _offset = Offset(
-        next.dx.clamp(0.0, math.max(0.0, screen.width - 68)),
-        next.dy.clamp(0.0, math.max(0.0, screen.height - 68)),
+        next.dx.clamp(0.0, math.max(0.0, screen.width - 68)).toDouble(),
+        next.dy.clamp(0.0, math.max(0.0, screen.height - 68)).toDouble(),
       );
     });
   }
