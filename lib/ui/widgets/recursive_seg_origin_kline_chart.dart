@@ -5,12 +5,18 @@ import '../../core/models/chan_snapshot.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import 'origin_kline_chart.dart' as base;
+import 's13_chip_distribution_store.dart';
 
 /// Display-only adapter for hichan2 recursive segment layers.
 ///
 /// This widget does not calculate Chan structures. It converts backend-exported
 /// `snapshot.recursiveSegLayers` rows into non-persistent drawing overlays and
 /// delegates all actual K-line rendering to the original `OriginKlineChart`.
+///
+/// S13 chip distribution is also injected here as locked DrawingObject
+/// rectangles. They are then painted by OriginKlineChart's own
+/// `_OriginChartPainter -> DrawingObjectPainter.paintObjects(...)` path instead
+/// of by a sibling Stack overlay.
 class RecursiveSegOriginKlineChart extends StatelessWidget {
   final ChanSnapshot snapshot;
   final bool showFx;
@@ -91,43 +97,70 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return base.OriginKlineChart(
-      snapshot: snapshot,
-      showFx: showFx,
-      showFxLine: showFxLine,
-      showFxText: showFxText,
-      showBi: showBi,
-      showBiText: showBiText,
-      showSeg: showSeg,
-      showSegText: showSegText,
-      showZs: showZs,
-      showBiBsp: showBiBsp,
-      showSegBsp: showSegBsp,
-      showMergedBars: showMergedBars,
-      showEasyTdxIndicators: showEasyTdxIndicators,
-      easyTdxSubPanelCount: easyTdxSubPanelCount,
-      enabledEasyTdxIndicators: enabledEasyTdxIndicators,
-      drawingObjects: [
-        if (showRecursiveSegLayers) ..._recursiveSegDrawingObjects(snapshot),
-        ...drawingObjects,
-      ],
-      drawingStorageKey: drawingStorageKey,
-      symbolLabel: _symbolLabelWithRecursiveSegSummary(symbolLabel, snapshot),
-      isChanOverlayVisible: isChanOverlayVisible,
-      onChanOverlayToggled: onChanOverlayToggled,
-      toolboxOpenSignal: toolboxOpenSignal,
-      toolboxSelectedToolSignal: toolboxSelectedToolSignal,
-      onToolboxQuickToolAdded: onToolboxQuickToolAdded,
-      windowSize: windowSize,
-      priceScale: priceScale,
-      viewEndIndex: viewEndIndex,
-      crosshairIndex: crosshairIndex,
-      onCrosshairChanged: onCrosshairChanged,
-      onPanBars: onPanBars,
-      onWindowSizeChanged: onWindowSizeChanged,
-      onPriceScaleChanged: onPriceScaleChanged,
-      onEasyTdxSubPanelCountChanged: onEasyTdxSubPanelCountChanged,
-      onEasyTdxIndicatorToggled: onEasyTdxIndicatorToggled,
+    S13ChipDistributionStore.updateChartContext(
+      symbolLabel: symbolLabel,
+      rawBarCount: snapshot.rawBars.length,
+    );
+    final chipContext = S13ChipDistributionStore.context;
+    final recursiveObjects = <DrawingObject>[
+      if (showRecursiveSegLayers) ..._recursiveSegDrawingObjects(snapshot),
+      ...drawingObjects,
+    ];
+
+    return ValueListenableBuilder<S13ChipDistributionSpec?>(
+      valueListenable: S13ChipDistributionStore.listenable,
+      builder: (context, chipSpec, _) {
+        final activeChipSpec = chipSpec != null && chipSpec.matches(chipContext)
+            ? chipSpec
+            : null;
+        final chipObjects = activeChipSpec == null
+            ? const <DrawingObject>[]
+            : activeChipSpec.toDrawingObjects(
+                chartRawBarCount: snapshot.rawBars.length,
+              );
+        return base.OriginKlineChart(
+          snapshot: snapshot,
+          showFx: showFx,
+          showFxLine: showFxLine,
+          showFxText: showFxText,
+          showBi: showBi,
+          showBiText: showBiText,
+          showSeg: showSeg,
+          showSegText: showSegText,
+          showZs: showZs,
+          showBiBsp: showBiBsp,
+          showSegBsp: showSegBsp,
+          showMergedBars: showMergedBars,
+          showEasyTdxIndicators: showEasyTdxIndicators,
+          easyTdxSubPanelCount: easyTdxSubPanelCount,
+          enabledEasyTdxIndicators: enabledEasyTdxIndicators,
+          drawingObjects: [
+            ...chipObjects,
+            ...recursiveObjects,
+          ],
+          drawingStorageKey: drawingStorageKey,
+          symbolLabel: _symbolLabelWithSummaries(
+            symbolLabel,
+            snapshot,
+            activeChipSpec,
+          ),
+          isChanOverlayVisible: isChanOverlayVisible,
+          onChanOverlayToggled: onChanOverlayToggled,
+          toolboxOpenSignal: toolboxOpenSignal,
+          toolboxSelectedToolSignal: toolboxSelectedToolSignal,
+          onToolboxQuickToolAdded: onToolboxQuickToolAdded,
+          windowSize: windowSize,
+          priceScale: priceScale,
+          viewEndIndex: viewEndIndex,
+          crosshairIndex: crosshairIndex,
+          onCrosshairChanged: onCrosshairChanged,
+          onPanBars: onPanBars,
+          onWindowSizeChanged: onWindowSizeChanged,
+          onPriceScaleChanged: onPriceScaleChanged,
+          onEasyTdxSubPanelCountChanged: onEasyTdxSubPanelCountChanged,
+          onEasyTdxIndicatorToggled: onEasyTdxIndicatorToggled,
+        );
+      },
     );
   }
 
@@ -187,7 +220,15 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
     };
   }
 
-  String _symbolLabelWithRecursiveSegSummary(String baseLabel, ChanSnapshot snapshot) {
+  String _symbolLabelWithSummaries(
+    String baseLabel,
+    ChanSnapshot snapshot,
+    S13ChipDistributionSpec? chipSpec,
+  ) {
+    final parts = <String>[];
+    final prefix = baseLabel.trim();
+    if (prefix.isNotEmpty) parts.add(prefix);
+
     final layerCounts = <String>[];
     final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
     final maxLayer = maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
@@ -195,9 +236,14 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
       final count = snapshot.recursiveSegLayers[layer]?.length ?? 0;
       if (count > 0) layerCounts.add('L$layer:$count');
     }
-    if (layerCounts.isEmpty) return baseLabel;
-    final prefix = baseLabel.trim();
-    final suffix = '递归段 ${layerCounts.join(' ')}';
-    return prefix.isEmpty ? suffix : '$prefix | $suffix';
+    if (layerCounts.isNotEmpty) parts.add('递归段 ${layerCounts.join(' ')}');
+
+    if (chipSpec != null) {
+      parts.add('筹码 ${_fmtDate(chipSpec.startDate)}-${_fmtDate(chipSpec.endDate)}');
+    }
+    return parts.join(' | ');
   }
+
+  String _fmtDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
