@@ -380,7 +380,13 @@ class _ContentRectsClipper extends CustomClipper<Path> {
   const _ContentRectsClipper(this.rects);
 
   @override
-  Path getClip(Size size) => Path()..addRects(rects);
+  Path getClip(Size size) {
+    final path = Path();
+    for (final rect in rects) {
+      path.addRect(rect);
+    }
+    return path;
+  }
 
   @override
   bool shouldReclip(covariant _ContentRectsClipper oldClipper) => true;
