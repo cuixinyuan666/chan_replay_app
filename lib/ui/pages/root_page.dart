@@ -38,9 +38,13 @@ class _RootPageState extends State<RootPage> {
     });
   }
 
+  void _toggleChipDistributionWorkspace(bool enabled) {
+    _open(enabled ? _chipDistributionIndex : _multiLevelIndex);
+  }
+
   List<UnifiedToolMenuSection> get _unifiedToolSections =>
       <UnifiedToolMenuSection>[
-        const UnifiedToolMenuSection(
+        UnifiedToolMenuSection(
           title: '标的设置',
           icon: Icons.manage_search,
           description: '股票代码、市场、级别窗口与筹码入口',
@@ -51,19 +55,20 @@ class _RootPageState extends State<RootPage> {
               icon: Icons.account_tree,
               initiallyExpanded: true,
               items: <UnifiedToolMenuItem>[
-                UnifiedToolMenuItem(
+                const UnifiedToolMenuItem(
                   label: '单股多级别',
                   icon: Icons.account_tree,
                   routeIndex: _multiLevelIndex,
                   description: '主工作台：标的、周期、复盘、图层和图内筹码分布',
                 ),
                 UnifiedToolMenuItem(
-                  label: '筹码分布',
+                  label: '筹码分布工作台',
                   icon: Icons.stacked_bar_chart,
-                  routeIndex: _chipDistributionIndex,
-                  description: '独立筹码页面：在线 analyze_multi 数据与成本分布',
+                  switchValue: _index == _chipDistributionIndex,
+                  onSwitchChanged: _toggleChipDistributionWorkspace,
+                  description: '开：独立筹码分布页；关：回到单股多级别主图',
                 ),
-                UnifiedToolMenuItem(
+                const UnifiedToolMenuItem(
                   label: '原始复盘',
                   icon: Icons.candlestick_chart,
                   routeIndex: _replayIndex,
@@ -71,7 +76,7 @@ class _RootPageState extends State<RootPage> {
                 ),
               ],
             ),
-            UnifiedToolMenuGroup(
+            const UnifiedToolMenuGroup(
               title: '扫描与批量',
               icon: Icons.radar,
               items: <UnifiedToolMenuItem>[
@@ -146,10 +151,22 @@ class _RootPageState extends State<RootPage> {
                   description: '分型、笔、线段、中枢、BSP、候选轨迹和区间套 marker',
                 ),
                 UnifiedToolMenuItem(
-                  label: '筹码叠加',
+                  label: '图内筹码叠加',
                   icon: Icons.stacked_bar_chart,
-                  routeIndex: _multiLevelIndex,
-                  description: '进入单股多级别后在图内启用筹码分布叠加层',
+                  enabled: false,
+                  description: '根菜单未暴露直连接口；进入单股多级别后用图内工具栏开关',
+                ),
+                UnifiedToolMenuItem(
+                  label: 'BSP 候选轨迹层',
+                  icon: Icons.timeline,
+                  enabled: false,
+                  description: '当前仅在单股多级别图内工具栏提供真实开关',
+                ),
+                UnifiedToolMenuItem(
+                  label: '节奏线 / 1.382 命中',
+                  icon: Icons.show_chart,
+                  enabled: false,
+                  description: '当前仅在单股多级别图内工具栏提供真实开关',
                 ),
                 UnifiedToolMenuItem(
                   label: '批量候选',
@@ -172,10 +189,16 @@ class _RootPageState extends State<RootPage> {
               initiallyExpanded: true,
               items: <UnifiedToolMenuItem>[
                 UnifiedToolMenuItem(
-                  label: '打开单股画线环境',
+                  label: '进入单股画线环境',
                   icon: Icons.architecture,
                   routeIndex: _multiLevelIndex,
-                  description: '进入单股多级别，使用图内统一按钮打开画线工具箱',
+                  description: '进入单股多级别后，使用图内工具按钮打开画线工具箱',
+                ),
+                UnifiedToolMenuItem(
+                  label: '直接打开画线面板',
+                  icon: Icons.open_in_new,
+                  enabled: false,
+                  description: '根菜单到图内 openSignal 的直连控制器尚未接入，避免伪动作',
                 ),
                 UnifiedToolMenuItem(
                   label: '筹码分布适配',
