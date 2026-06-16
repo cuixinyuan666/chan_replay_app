@@ -16,6 +16,10 @@ DART_PARSER = ROOT / 'lib' / 'data' / 'chan_snapshot_json_parser.dart'
 DART_OVERLAY = ROOT / 'lib' / 'ui' / 'widgets' / 'recursive_seg_origin_kline_chart.dart'
 S12_PAGE = ROOT / 'lib' / 'ui' / 'pages' / 's12_single_stock_replay_page.dart'
 LEVEL_PROMOTER_PAGE = ROOT / 'lib' / 'ui' / 'pages' / 'level_promoter_page.dart'
+LEVEL_PROMOTER_SETTINGS = ROOT / 'lib' / 'core' / 'settings' / 'level_promoter_settings.dart'
+CHAN_CONFIG = ROOT / 'lib' / 'core' / 'settings' / 'chan_config_store.dart'
+SINGLE_SOURCE = ROOT / 'lib' / 'data' / 'python_chan_analysis_source.dart'
+SCANNER_CLIENT = ROOT / 'lib' / 'data' / 'scanner_backend_client.dart'
 ROOT_PAGE = ROOT / 'lib' / 'ui' / 'pages' / 'root_page.dart'
 
 
@@ -42,6 +46,10 @@ def main() -> None:
         'dart_overlay_exists': DART_OVERLAY,
         's12_page_exists': S12_PAGE,
         'level_promoter_page_exists': LEVEL_PROMOTER_PAGE,
+        'level_promoter_settings_exists': LEVEL_PROMOTER_SETTINGS,
+        'chan_config_exists': CHAN_CONFIG,
+        'single_source_exists': SINGLE_SOURCE,
+        'scanner_client_exists': SCANNER_CLIENT,
         'root_page_exists': ROOT_PAGE,
     }.items():
         checks[label] = path.exists()
@@ -61,6 +69,10 @@ def main() -> None:
     dart_overlay = _read(DART_OVERLAY)
     s12_page = _read(S12_PAGE)
     level_promoter_page = _read(LEVEL_PROMOTER_PAGE)
+    level_promoter_settings = _read(LEVEL_PROMOTER_SETTINGS)
+    chan_config = _read(CHAN_CONFIG)
+    single_source = _read(SINGLE_SOURCE)
+    scanner_client = _read(SCANNER_CLIENT)
     root_page = _read(ROOT_PAGE)
     s12_lines = [line.strip() for line in s12_page.splitlines()]
     combined_backend = manager + wrapper + entry
@@ -74,9 +86,9 @@ def main() -> None:
         'exports_seg_layers': "'seg_layers'" in manager,
         'exports_recursive_seg_meta': "'recursive_seg_meta'" in manager,
         'layer1_native_seg_rows': 'native_seg_rows' in manager and "layers['1']" in manager,
-        'layer2_native_segseg_list': 'segseg_list' in manager and "layers['2']" in manager,
-        'layers_3_plus_use_chanpy_update': '_update_seg_list(dst, src_copy)' in manager,
-        'layers_3_plus_use_deepcopy_guard': 'copy.deepcopy' in manager and 'pollution_guard' in manager,
+        'layer2_native_or_generated': 'segseg_list' in manager and 'generated from native seg_list' in manager and "layers['2']" in manager,
+        'layers_2_plus_use_chanpy_update': '_recursive_update_layer' in manager and '_update_seg_list(dst, src_copy)' in manager,
+        'layers_2_plus_use_deepcopy_guard': 'copy.deepcopy' in manager and 'pollution_guard' in manager,
         'max_level_customizable_without_4_or_8_cap': 'level_promoter_max_level' in manager and 'return max(2, value)' in manager and '_MAX_RECURSIVE_SEG_LEVEL' not in manager,
         'segN_bsp_exported_as_independent_fields': 'seg_bsp_layers' in manager and "result[f'seg{layer}_bsp']" in manager and 'native bsp' in manager,
         'wrapper_attaches_to_once_result': '_native_once_response' in wrapper and '_attach_recursive_seg_layers(' in wrapper,
@@ -91,7 +103,8 @@ def main() -> None:
         'dart_overlay_reads_recursive_layers': 'snapshot.recursiveSegLayers.entries' in dart_overlay,
         'dart_overlay_displays_segN_bsp': 'showRecursiveSegBsp' in dart_overlay and 'SEG${layer}_B' in dart_overlay,
         'dart_overlay_skips_layer1_duplicate': 'if (layer == 1) continue' in dart_overlay,
-        'dart_overlay_uses_safe_layer_bounds': 'minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer' in dart_overlay and 'maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer' in dart_overlay,
+        'dart_overlay_uses_safe_layer_bounds': 'minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer' in dart_overlay and '_effectiveMaxRecursiveSegLayer' in dart_overlay,
+        'dart_overlay_uses_global_level_promoter_default': 'LevelPromoterSettings.currentMaxLayer' in dart_overlay and 'int? maxRecursiveSegLayer' in dart_overlay,
         'dart_overlay_uses_locked_nonpersistent_drawing_objects': 'TradingViewDrawingTool.trendLine' in dart_overlay and 'locked: true' in dart_overlay,
         'dart_overlay_uses_raw_index_price_anchors': 'DrawingAnchor.chart(rawIndex: seg.startRawIndex, price: seg.startPrice)' in dart_overlay and 'DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice)' in dart_overlay,
         's12_imports_recursive_chart': "import '../widgets/recursive_seg_origin_kline_chart.dart';" in s12_lines,
@@ -101,8 +114,9 @@ def main() -> None:
         's12_retains_replay_entrypoints': 'class S12SingleStockReplayPage' in s12_page and 'Future<void> _loadReplay()' in s12_page and 'PythonMultiLevelChanAnalysisSource' in s12_page,
         's12_retains_step_frame_controls': 'Widget _frameControls()' in s12_page and 'Slider(' in s12_page and '_frameIndex' in s12_page,
         'level_promoter_route_entry': '级别推进器' in root_page and 'LevelPromoterPage' in root_page,
-        'level_promoter_requests_custom_n': 'level_promoter_max_level' in level_promoter_page and 'recursive_seg_max_level' in level_promoter_page,
-        'level_promoter_copies_evidence': '复制证据' in level_promoter_page and 'segN_bsp' in level_promoter_page,
+        'level_promoter_default_is_global_2': 'defaultMaxLayer = 2' in level_promoter_settings,
+        'level_promoter_page_is_quantity_only': 'N段数量' in level_promoter_page and '保存全局设置' in level_promoter_page and 'PythonMultiLevelChanAnalysisSource' not in level_promoter_page,
+        'level_promoter_global_config_injection': 'LevelPromoterSettings.configFields' in chan_config and 'LevelPromoterSettings.applyToConfig(config)' in single_source and 'LevelPromoterSettings.applyToConfig(config)' in scanner_client,
         'no_dart_chan_algorithm_added': 'check_fx' not in combined_dart and 'check_bi' not in combined_dart and 'cal_seg' not in combined_dart,
         'no_chanpy_source_write_path_added': 'python/chan.py' not in combined_backend and 'open(' not in manager,
     })
@@ -114,10 +128,10 @@ def main() -> None:
         'checks': checks,
         'notes': [
             'hichan2 keeps recursive segment export under backend/app/a_* files.',
-            'Layer 1 uses native seg; layer 2 uses native segseg; layers >=3 call chan.py segment-list update() on deepcopy input.',
-            'Max layer is custom N via level_promoter_max_level / recursive_seg_max_level / seg_recursive_max_level.',
+            'Layer 1 uses native seg; layer 2 prefers native segseg and can be generated from native seg_list when segseg is unavailable.',
+            '级别推进器 is now a global N setting page; default N=2 and only quantity is editable.',
+            'Global N is injected into analyze_multi, single analyze/analyze_bars, scanner payload, and recursive chart display bounds.',
             'seg2_bsp..segN_bsp are independent endpoint candidate fields and are not merged into native bsp.',
-            '级别推进器 route can display recursive segment lines and copy acceptance evidence.',
         ],
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
