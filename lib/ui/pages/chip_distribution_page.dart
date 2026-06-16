@@ -16,9 +16,9 @@ class _ChipDistributionPageState extends State<ChipDistributionPage> {
   final ChipDistributionEngine _engine = const ChipDistributionEngine();
 
   int _targetIndex = _demoBars.length - 1;
-  int _lookback = 120;
+  int _lookback = _demoBars.length;
   int _binCount = 80;
-  double _ageDecay = 0.006;
+  double _ageDecay = 0.0;
 
   ChipDistributionResult get _result => _engine.calculate(
         _demoBars,
@@ -86,7 +86,7 @@ class _ChipDistributionPageState extends State<ChipDistributionPage> {
         ),
         const Spacer(),
         const Tooltip(
-          message: '当前页面为独立筹码分布研究页，不改写复盘页和 chan.py 结构。',
+          message: '当前页面为独立筹码分布研究页，不改写复盘页和 chan.py 结构。目标K优先级：步进K线 > 十字线K线 > 视觉最右K线。',
           child: Icon(Icons.info_outline, color: Colors.white54),
         ),
       ],
@@ -114,6 +114,8 @@ class _ChipDistributionPageState extends State<ChipDistributionPage> {
                 _MetricChip(label: '平均成本', value: result.averageCost.toStringAsFixed(2)),
                 _MetricChip(label: '峰值价位', value: result.pocPrice.toStringAsFixed(2)),
                 _MetricChip(label: '获利筹码', value: '${(result.profitRatio * 100).toStringAsFixed(1)}%'),
+                _MetricChip(label: '卖侧筹码', value: result.sellWeight.toStringAsFixed(0)),
+                _MetricChip(label: '买侧筹码', value: result.buyWeight.toStringAsFixed(0)),
               ],
             ),
             const SizedBox(height: 8),
@@ -161,7 +163,7 @@ class _ChipDistributionPageState extends State<ChipDistributionPage> {
 
   Widget _buildPolicyText() {
     return const Text(
-      '计算口径：只使用目标K线及其以前数据；逐价成交量优先，缺失时以OHLCV三角分摊兜底；该页不提供交易建议。',
+      '计算口径：默认按“首根 -> 当前K”累计；逐价 chip_tick_bins(p/s/b/w) 优先，缺失时以OHLCV三角分摊兜底；该页不提供交易建议。',
       style: TextStyle(color: Colors.white54, fontSize: 12),
     );
   }
@@ -283,7 +285,8 @@ class _ChipDistributionPainter extends CustomPainter {
     canvas.drawLine(Offset(chartLeft, chartTop), Offset(chartLeft, chartBottom), axisPaint);
     canvas.drawLine(Offset(chartLeft, chartBottom), Offset(chartRight, chartBottom), axisPaint);
 
-    final barPaint = Paint()..color = const Color(0xFF42A5F5).withOpacity(0.70);
+    final sellPaint = Paint()..color = const Color(0xFF26A69A).withOpacity(0.62);
+    final buyPaint = Paint()..color = const Color(0xFFEF5350).withOpacity(0.62);
     final pocPaint = Paint()..color = const Color(0xFFFFB300).withOpacity(0.90);
     final currentPaint = Paint()
       ..color = const Color(0xFF66BB6A)
@@ -293,16 +296,19 @@ class _ChipDistributionPainter extends CustomPainter {
     for (var i = 0; i < result.bins.length; i++) {
       final bin = result.bins[i];
       final y = chartBottom - (i + 0.5) * barGap;
-      final w = maxRatio <= 0 ? 0.0 : chartWidth * (bin.ratio / maxRatio);
-      final paint = (bin.price - result.pocPrice).abs() <= (maxPrice - minPrice) / result.bins.length
-          ? pocPaint
-          : barPaint;
+      final totalWidth = maxRatio <= 0 ? 0.0 : chartWidth * (bin.ratio / maxRatio);
+      final sellWidth = bin.weight <= 0 ? 0.0 : totalWidth * (bin.sellWeight / bin.weight);
+      final buyWidth = math.max(0.0, totalWidth - sellWidth);
+      final h = math.max(1.0, barGap * 0.68);
+      final top = y - math.max(1.0, barGap * 0.34);
+      final isPoc = (bin.price - result.pocPrice).abs() <= (maxPrice - minPrice) / result.bins.length;
       canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(chartLeft, y - math.max(1.0, barGap * 0.34), w, math.max(1.0, barGap * 0.68)),
-          const Radius.circular(2),
-        ),
-        paint,
+        RRect.fromRectAndRadius(Rect.fromLTWH(chartLeft, top, sellWidth, h), const Radius.circular(2)),
+        isPoc ? pocPaint : sellPaint,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(chartLeft + sellWidth, top, buyWidth, h), const Radius.circular(2)),
+        isPoc ? pocPaint : buyPaint,
       );
     }
 
@@ -312,7 +318,7 @@ class _ChipDistributionPainter extends CustomPainter {
     _drawText(canvas, '价格', Offset(18, chartTop), Colors.white54);
     _drawText(canvas, maxPrice.toStringAsFixed(2), Offset(12, chartTop + 4), Colors.white70);
     _drawText(canvas, minPrice.toStringAsFixed(2), Offset(12, chartBottom - 18), Colors.white70);
-    _drawText(canvas, '筹码权重', Offset(chartLeft, size.height - 18), Colors.white54);
+    _drawText(canvas, '卖侧/买侧筹码权重', Offset(chartLeft, size.height - 18), Colors.white54);
   }
 
   double _priceToY(double price, double minPrice, double maxPrice, double top, double bottom) {
@@ -325,7 +331,7 @@ class _ChipDistributionPainter extends CustomPainter {
     final painter = TextPainter(
       text: TextSpan(text: text, style: TextStyle(color: color, fontSize: 11)),
       textDirection: TextDirection.ltr,
-    )..layout(maxWidth: 160);
+    )..layout(maxWidth: 180);
     painter.paint(canvas, offset);
   }
 
