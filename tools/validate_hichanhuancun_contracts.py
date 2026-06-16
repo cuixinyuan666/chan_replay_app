@@ -25,22 +25,24 @@ def main() -> int:
     adapter_path = ROOT / 'backend/app/a_multilevel_engine_timed.py'
     main_path = ROOT / 'backend/app/main.py'
     root_page_path = ROOT / 'lib/ui/pages/root_page.dart'
-    cache_page_path = ROOT / 'lib/ui/pages/cache_optimization_page.dart'
+    run_log_page_path = ROOT / 'lib/ui/pages/run_log_page.dart'
+    old_cache_page_path = ROOT / 'lib/ui/pages/cache_optimization_page.dart'
     chan_core_path = ROOT / 'python/chan.py'
 
     check('hardening module exists', hardening_path.exists(), str(hardening_path))
     check('backend package init exists', init_path.exists(), str(init_path))
     check('analyze_multi adapter exists', adapter_path.exists(), str(adapter_path))
     check('backend route file exists', main_path.exists(), str(main_path))
-    check('cache optimization page exists', cache_page_path.exists(), str(cache_page_path))
     check('root page exists', root_page_path.exists(), str(root_page_path))
+    check('runtime log page exists', run_log_page_path.exists(), str(run_log_page_path))
+    check('old cache optimization UI removed', not old_cache_page_path.exists(), str(old_cache_page_path))
 
     hardening = _read('backend/app/a_replay_contract_hardening.py') if hardening_path.exists() else ''
     init_text = _read('backend/app/__init__.py') if init_path.exists() else ''
     adapter = _read('backend/app/a_multilevel_engine_timed.py') if adapter_path.exists() else ''
     main_text = _read('backend/app/main.py') if main_path.exists() else ''
     root_page = _read('lib/ui/pages/root_page.dart') if root_page_path.exists() else ''
-    cache_page = _read('lib/ui/pages/cache_optimization_page.dart') if cache_page_path.exists() else ''
+    run_log_page = _read('lib/ui/pages/run_log_page.dart') if run_log_page_path.exists() else ''
 
     required_hardening_tokens = {
         'session cache install': 'install_backend_kline_session_cache',
@@ -64,12 +66,12 @@ def main() -> int:
         check(name, _has(hardening, token), token)
 
     check(
-        'package init installs kline cache',
+        'package init still installs kline cache',
         _has(init_text, 'install_backend_kline_session_cache()'),
         'backend/app/__init__.py',
     )
     check(
-        'package init installs bsp contract',
+        'package init still installs bsp contract',
         _has(init_text, 'install_bsp_history_contract()'),
         'backend/app/__init__.py',
     )
@@ -92,38 +94,68 @@ def main() -> int:
         'backend/app/main.py',
     )
     check(
-        'root imports cache page',
-        _has(root_page, "import 'cache_optimization_page.dart';"),
+        'root imports runtime log page',
+        _has(root_page, "import 'run_log_page.dart';"),
         'lib/ui/pages/root_page.dart',
     )
     check(
-        'root registers cache page route',
-        _has(root_page, 'const _RouteBuilder(child: CacheOptimizationPage())'),
+        'root removed cache page import',
+        not _has(root_page, "import 'cache_optimization_page.dart';")
+        and not _has(root_page, 'CacheOptimizationPage'),
+        'legacy cache UI must not remain in route tree',
+    )
+    check(
+        'root registers runtime log route',
+        _has(root_page, 'const _RouteBuilder(child: RunLogPage())'),
         'same-level lazy route stack',
     )
     check(
-        'root exposes cache optimization route button',
-        _has(root_page, "tooltip: '缓存优化'")
-        and _has(root_page, '_cacheOptimizationIndex'),
+        'root exposes runtime log route button',
+        _has(root_page, "tooltip: '运行日志'")
+        and _has(root_page, '_runLogIndex')
+        and _has(root_page, 'Icons.receipt_long'),
         'left route tool column',
     )
     check(
-        'cache page sends chart lazy request params',
-        _has(cache_page, "'chart_lazy_layers': true")
-        and _has(cache_page, "'chart_layers': layers"),
-        'Flutter request -> backend pruning loop',
+        'runtime log page class and title',
+        _has(run_log_page, 'class RunLogPage')
+        and _has(run_log_page, "title: const Text('运行日志')"),
+        'lib/ui/pages/run_log_page.dart',
     )
     check(
-        'cache page displays transport manifest fields',
-        _has(cache_page, 'chart_lazy_layers_transport_layers')
-        and _has(cache_page, 'chart_lazy_layers_pruned_counts')
-        and _has(cache_page, 'chart_lazy_layers_manifest'),
-        'Flutter renders returned manifest, not calculated structures',
+        'runtime log reads latest analysis evidence',
+        _has(run_log_page, 'ReplayAnalysisStore.latestAnalysis')
+        and _has(run_log_page, '_evidenceText'),
+        'page must read saved analyze_multi result instead of recalculating Chan structures',
     )
     check(
-        'cache page exposes evidence copy',
-        _has(cache_page, '复制证据') and _has(cache_page, '_evidenceJson'),
-        'App-side receiver evidence path',
+        'runtime log exposes one-click copy',
+        _has(run_log_page, '一键复制')
+        and _has(run_log_page, '复制全部调试证据')
+        and _has(run_log_page, 'Clipboard.setData'),
+        'copy evidence buttons',
+    )
+    check(
+        'runtime log exposes output box',
+        _has(run_log_page, '日志输出框')
+        and _has(run_log_page, 'SelectableText'),
+        'readable log output box',
+    )
+    check(
+        'runtime log captures method timings',
+        _has(run_log_page, 'backend_route_analyze_multi_ms')
+        and _has(run_log_page, 'backend_native_total_ms')
+        and _has(run_log_page, 'backend_route_contract_hardening_ms')
+        and _has(run_log_page, '_timingRows'),
+        'method flow and *_ms extraction',
+    )
+    check(
+        'runtime log captures cache and contract evidence',
+        _has(run_log_page, 'backend_session_kline_cache_hits')
+        and _has(run_log_page, 'chart_lazy_layers_contract')
+        and _has(run_log_page, 'anti_future_status')
+        and _has(run_log_page, 'bsp_rows_with_frozen_fields'),
+        'cache/lazy/BSP/anti-future evidence',
     )
     check(
         'hardening module does not edit python/chan.py',
@@ -140,7 +172,7 @@ def main() -> int:
     result = {
         'ok': not failed,
         'validator': 'validate_hichanhuancun_contracts.py',
-        'branch_task': 'hichanhuancun chart_lazy_layers transport pruning loop',
+        'branch_task': 'hichanhuancun runtime log UI replacement while preserving backend cache contracts',
         'checks': checks,
         'failed': failed,
     }
