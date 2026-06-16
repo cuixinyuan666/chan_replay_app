@@ -26,19 +26,12 @@ METHOD_INSERT = """  Future<void> _openRhythmDisplaySettings() async {
 
 """ + METHOD_ANCHOR
 
-BUTTON_ANCHOR = """               FilterChip(
-                   label: const Text('1.382命中'),
-                   selected: _show1382Hits,
-                   onSelected: _loading
-                       ? null
-                       : (v) => setState(() => _show1382Hits = v)),
-"""
-BUTTON_INSERT = BUTTON_ANCHOR + """              FilledButton.tonalIcon(
+SETTINGS_BUTTON = """
+              FilledButton.tonalIcon(
                 onPressed: _loading ? null : _openRhythmDisplaySettings,
                 icon: const Icon(Icons.tune, size: 16),
                 label: const Text('节奏线设置'),
-              ),
-"""
+              ),"""
 
 REPLACES = [
     ("for (final line in selection.lines) {", "for (final line in selection.lines.where(_rhythmSettings.lineVisible)) {"),
@@ -73,6 +66,36 @@ def apply_once(text: str, old: str, new: str, label: str) -> tuple[str, bool]:
     return text.replace(old, new, 1), True
 
 
+def insert_settings_button_after_hit_chip(text: str) -> tuple[str, bool]:
+    if "label: const Text('节奏线设置')" in text:
+        return text, False
+    label = "label: const Text('1.382命中')"
+    label_pos = text.find(label)
+    if label_pos < 0:
+        raise SystemExit('1.382 hit chip label not found')
+    start = text.rfind('FilterChip(', 0, label_pos)
+    if start < 0:
+        raise SystemExit('1.382 hit FilterChip start not found')
+    open_pos = text.find('(', start)
+    depth = 0
+    close_pos = -1
+    for pos in range(open_pos, len(text)):
+        ch = text[pos]
+        if ch == '(':
+            depth += 1
+        elif ch == ')':
+            depth -= 1
+            if depth == 0:
+                close_pos = pos
+                break
+    if close_pos < 0:
+        raise SystemExit('1.382 hit FilterChip close not found')
+    insert_pos = close_pos + 1
+    if insert_pos < len(text) and text[insert_pos] == ',':
+        insert_pos += 1
+    return text[:insert_pos] + SETTINGS_BUTTON + text[insert_pos:], True
+
+
 def main() -> None:
     text = PAGE.read_text(encoding='utf-8')
     changed = False
@@ -91,11 +114,8 @@ def main() -> None:
             raise SystemExit('settings panel anchor not found')
         text = text.replace(METHOD_ANCHOR, METHOD_INSERT, 1)
         changed = True
-    if "label: const Text('节奏线设置')" not in text:
-        if BUTTON_ANCHOR not in text:
-            raise SystemExit('rhythm hit chip anchor not found')
-        text = text.replace(BUTTON_ANCHOR, BUTTON_INSERT, 1)
-        changed = True
+    text, did = insert_settings_button_after_hit_chip(text)
+    changed = changed or did
     for old, new in REPLACES:
         text, did = apply_once(text, old, new, old.split('\n', 1)[0])
         changed = changed or did
