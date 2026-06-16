@@ -143,10 +143,11 @@ def main() -> int:
             'ChanSnapshot.empty()',
         ]),
         'snapshot_cache_contract_test': contains('test/validate_chan_snapshot_rhythm_cache.dart', [
+            "test('rewrapped snapshot keeps rhythm overlays for the same rawBars object'",
             'final rawBars = <RawBar>[]',
             'final rewrapped = ChanSnapshot',
-            'assert(rewrapped.rhythmLines.length == 1)',
-            'assert(rewrapped.rhythmHits.length == 1)',
+            'expect(rewrapped.rhythmLines, hasLength(1))',
+            'expect(rewrapped.rhythmHits, hasLength(1))',
         ]),
         'step_display_fix_doc': contains('docs/hichanjzx_rhythm_step_display_fix.md', [
             'step replay',
