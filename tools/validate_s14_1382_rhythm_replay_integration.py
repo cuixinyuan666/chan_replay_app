@@ -142,6 +142,15 @@ def main() -> int:
             '_rhythmHitCache',
             'ChanSnapshot.empty()',
         ]),
+        'rhythm_lazy_render_and_style': contains('lib/ui/widgets/recursive_seg_origin_kline_chart.dart', [
+            '_visibleStyledExternalDrawingObjects',
+            '_visibleRhythmRawIndexRange',
+            '_drawingObjectIntersectsRange',
+            '_styleRhythmOverlay',
+            '_rhythmStyleSlot',
+            '_styleRhythmLine',
+            '_rhythmStylePalette',
+        ]),
         'snapshot_cache_contract_test': contains('test/validate_chan_snapshot_rhythm_cache.dart', [
             "test('rewrapped snapshot keeps rhythm overlays for the same rawBars object'",
             'final rawBars = <RawBar>[]',
@@ -153,6 +162,9 @@ def main() -> int:
             'step replay',
             'rewraps the same `rawBars`',
             'rhythm_left_connector',
+            'viewport-level lazy render',
+            'same `x1`',
+            'style slot',
         ]),
         'json_parser': contains('lib/data/chan_snapshot_json_parser.dart', [
             'rhythm_lines',
