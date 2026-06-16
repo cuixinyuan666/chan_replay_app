@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/chan_snapshot.dart';
+import '../../core/settings/level_promoter_settings.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import 'origin_kline_chart_unlimited_interaction.dart' as base;
@@ -49,7 +50,7 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
   final bool showRecursiveSegLayers;
   final bool showRecursiveSegBsp;
   final int minRecursiveSegLayer;
-  final int maxRecursiveSegLayer;
+  final int? maxRecursiveSegLayer;
 
   const RecursiveSegOriginKlineChart({
     super.key,
@@ -89,8 +90,14 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
     this.showRecursiveSegLayers = true,
     this.showRecursiveSegBsp = true,
     this.minRecursiveSegLayer = 2,
-    this.maxRecursiveSegLayer = 4,
+    this.maxRecursiveSegLayer,
   });
+
+  int get _effectiveMaxRecursiveSegLayer {
+    final explicit = maxRecursiveSegLayer;
+    if (explicit != null && explicit >= 2) return explicit;
+    return LevelPromoterSettings.currentMaxLayer;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +146,7 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
     final rows = <DrawingObject>[];
     final now = DateTime.fromMillisecondsSinceEpoch(0);
     final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
-    final maxLayer = maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
+    final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer ? minLayer : _effectiveMaxRecursiveSegLayer;
     for (final entry in snapshot.recursiveSegLayers.entries) {
       final layer = entry.key;
       if (layer < minLayer || layer > maxLayer) continue;
@@ -170,7 +177,7 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
     final rows = <DrawingObject>[];
     final now = DateTime.fromMillisecondsSinceEpoch(0);
     final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
-    final maxLayer = maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
+    final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer ? minLayer : _effectiveMaxRecursiveSegLayer;
 
     if (snapshot.recursiveSegBsps.isNotEmpty) {
       for (final entry in snapshot.recursiveSegBsps.entries) {
@@ -250,7 +257,7 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
   String _symbolLabelWithRecursiveSegSummary(String baseLabel, ChanSnapshot snapshot) {
     final layerCounts = <String>[];
     final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
-    final maxLayer = maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
+    final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer ? minLayer : _effectiveMaxRecursiveSegLayer;
     for (var layer = minLayer; layer <= maxLayer; layer++) {
       final segCount = snapshot.recursiveSegLayers[layer]?.length ?? 0;
       final bspCount = snapshot.recursiveSegBsps[layer]?.length ?? segCount;
