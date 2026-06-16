@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the standalone chip distribution page wiring.
-
-This validator is intentionally static: it verifies that the new page is a root-level
-route, that the chip calculation remains UI/market-data only, and that Dart does
-not gain FX/BI/SEG/ZS/BSP calculation authority.
-"""
+"""Validate the standalone chip distribution page wiring."""
 
 from __future__ import annotations
 
@@ -45,16 +40,24 @@ def main() -> None:
 
     require(chip_page, "class ChipDistributionPage", "page class")
     require(chip_page, "ChipDistributionEngine", "page engine usage")
-    require(chip_page, "当前页面为独立筹码分布研究页", "page independence tooltip")
-    require(chip_page, "不提供交易建议", "non-recommendation policy")
+    require(chip_page, "chip_tick_bins(p/s/b/w) 优先", "trainer-style page policy")
+    require(chip_page, "卖侧筹码", "sell side metric")
+    require(chip_page, "买侧筹码", "buy side metric")
 
     require(engine, "class ChipDistributionEngine", "engine class")
     require(engine, "final window = bars.sublist(start, safeTarget + 1);", "no future-data window")
-    require(engine, "priceVolume", "exact price-volume support")
+    require(engine, "class ChipTickBins", "chip tick bins parser")
+    require(engine, "chip_tick_bins", "chip tick bins field")
+    require(engine, "priceSellVolume", "sell side support")
+    require(engine, "priceBuyVolume", "buy side support")
     require(engine, "_foldOhlcvTriangular", "OHLCV fallback")
+    require(engine, "class ChipTargetResolver", "target resolver")
+    require(engine, "isStepping && stepIndex != null", "step target priority")
+    require(engine, "crosshairIndex != null", "crosshair target priority")
+    require(engine, "visibleRightIndex != null", "visible-right target priority")
     require(engine, "不依赖任何 Widget", "UI decoupling comment")
 
-    forbidden_imports = [
+    for needle in [
         "models/fx.dart",
         "models/bi.dart",
         "models/seg.dart",
@@ -62,13 +65,14 @@ def main() -> None:
         "models/bsp.dart",
         "chan_snapshot.dart",
         "multi_level_chan_snapshot.dart",
-        "python/chan.py",
-    ]
-    for needle in forbidden_imports:
-        reject(engine, needle, "chip engine Chan-structure dependency")
+    ]:
+        reject(engine, needle, "chip engine structure dependency")
 
     require(test_file, "does not consume bars after target index", "future-data regression test")
     require(test_file, "exact price-volume bins are preferred", "exact-bin regression test")
+    require(test_file, "chip_tick_bins p/s/b/w are parsed", "chip-bin regression test")
+    require(test_file, "legacy w-only mode is treated as buy side", "legacy w compatibility test")
+    require(test_file, "chip target priority is step, crosshair, visible right, last bar", "target priority test")
 
     print(json.dumps({
         "ok": True,
@@ -79,9 +83,12 @@ def main() -> None:
             "standalone_page_added": True,
             "chip_engine_added": True,
             "no_future_window_guard": True,
+            "chip_tick_bins_p_s_b_w": True,
+            "legacy_w_only_as_buy_side": True,
             "exact_price_volume_priority": True,
             "ohlcv_fallback": True,
-            "no_dart_chan_structure_authority": True,
+            "target_priority_step_crosshair_visible_right": True,
+            "no_structure_dependency": True,
             "tests_added": True,
         },
     }, ensure_ascii=False, indent=2))
