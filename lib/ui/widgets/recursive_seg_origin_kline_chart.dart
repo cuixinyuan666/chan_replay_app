@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/chan_snapshot.dart';
+import '../controllers/s13_chart_tool_controller.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import 'origin_kline_chart.dart' as base;
@@ -11,7 +12,7 @@ import 'origin_kline_chart.dart' as base;
 /// This widget does not calculate Chan structures. It converts backend-exported
 /// `snapshot.recursiveSegLayers` rows into non-persistent drawing overlays and
 /// delegates all actual K-line rendering to the original `OriginKlineChart`.
-class RecursiveSegOriginKlineChart extends StatelessWidget {
+class RecursiveSegOriginKlineChart extends StatefulWidget {
   final ChanSnapshot snapshot;
   final bool showFx;
   final bool showFxLine;
@@ -90,52 +91,108 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
   });
 
   @override
+  State<RecursiveSegOriginKlineChart> createState() =>
+      _RecursiveSegOriginKlineChartState();
+}
+
+class _RecursiveSegOriginKlineChartState
+    extends State<RecursiveSegOriginKlineChart> {
+  final ValueNotifier<int> _mergedToolboxOpenSignal = ValueNotifier<int>(0);
+  final S13ChartToolController _toolController = S13ChartToolController.shared;
+  int _lastCommandSequence = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.toolboxOpenSignal?.addListener(_handleLocalToolboxOpenSignal);
+    _toolController.command.addListener(_handleToolCommand);
+    _toolController.setAvailability(drawingToolboxAvailable: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant RecursiveSegOriginKlineChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.toolboxOpenSignal != widget.toolboxOpenSignal) {
+      oldWidget.toolboxOpenSignal?.removeListener(_handleLocalToolboxOpenSignal);
+      widget.toolboxOpenSignal?.addListener(_handleLocalToolboxOpenSignal);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.toolboxOpenSignal?.removeListener(_handleLocalToolboxOpenSignal);
+    _toolController.command.removeListener(_handleToolCommand);
+    _toolController.setAvailability(drawingToolboxAvailable: false);
+    _mergedToolboxOpenSignal.dispose();
+    super.dispose();
+  }
+
+  void _handleLocalToolboxOpenSignal() {
+    _mergedToolboxOpenSignal.value++;
+  }
+
+  void _handleToolCommand() {
+    final command = _toolController.command.value;
+    if (command == null || command.sequence == _lastCommandSequence) return;
+    _lastCommandSequence = command.sequence;
+    if (command.type == S13ChartToolCommandType.openDrawingToolbox) {
+      _mergedToolboxOpenSignal.value++;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return base.OriginKlineChart(
-      snapshot: snapshot,
-      showFx: showFx,
-      showFxLine: showFxLine,
-      showFxText: showFxText,
-      showBi: showBi,
-      showBiText: showBiText,
-      showSeg: showSeg,
-      showSegText: showSegText,
-      showZs: showZs,
-      showBiBsp: showBiBsp,
-      showSegBsp: showSegBsp,
-      showMergedBars: showMergedBars,
-      showEasyTdxIndicators: showEasyTdxIndicators,
-      easyTdxSubPanelCount: easyTdxSubPanelCount,
-      enabledEasyTdxIndicators: enabledEasyTdxIndicators,
+      snapshot: widget.snapshot,
+      showFx: widget.showFx,
+      showFxLine: widget.showFxLine,
+      showFxText: widget.showFxText,
+      showBi: widget.showBi,
+      showBiText: widget.showBiText,
+      showSeg: widget.showSeg,
+      showSegText: widget.showSegText,
+      showZs: widget.showZs,
+      showBiBsp: widget.showBiBsp,
+      showSegBsp: widget.showSegBsp,
+      showMergedBars: widget.showMergedBars,
+      showEasyTdxIndicators: widget.showEasyTdxIndicators,
+      easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
+      enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
       drawingObjects: [
-        if (showRecursiveSegLayers) ..._recursiveSegDrawingObjects(snapshot),
-        ...drawingObjects,
+        if (widget.showRecursiveSegLayers)
+          ..._recursiveSegDrawingObjects(widget.snapshot),
+        ...widget.drawingObjects,
       ],
-      drawingStorageKey: drawingStorageKey,
-      symbolLabel: _symbolLabelWithRecursiveSegSummary(symbolLabel, snapshot),
-      isChanOverlayVisible: isChanOverlayVisible,
-      onChanOverlayToggled: onChanOverlayToggled,
-      toolboxOpenSignal: toolboxOpenSignal,
-      toolboxSelectedToolSignal: toolboxSelectedToolSignal,
-      onToolboxQuickToolAdded: onToolboxQuickToolAdded,
-      windowSize: windowSize,
-      priceScale: priceScale,
-      viewEndIndex: viewEndIndex,
-      crosshairIndex: crosshairIndex,
-      onCrosshairChanged: onCrosshairChanged,
-      onPanBars: onPanBars,
-      onWindowSizeChanged: onWindowSizeChanged,
-      onPriceScaleChanged: onPriceScaleChanged,
-      onEasyTdxSubPanelCountChanged: onEasyTdxSubPanelCountChanged,
-      onEasyTdxIndicatorToggled: onEasyTdxIndicatorToggled,
+      drawingStorageKey: widget.drawingStorageKey,
+      symbolLabel:
+          _symbolLabelWithRecursiveSegSummary(widget.symbolLabel, widget.snapshot),
+      isChanOverlayVisible: widget.isChanOverlayVisible,
+      onChanOverlayToggled: widget.onChanOverlayToggled,
+      toolboxOpenSignal: _mergedToolboxOpenSignal,
+      toolboxSelectedToolSignal: widget.toolboxSelectedToolSignal,
+      onToolboxQuickToolAdded: widget.onToolboxQuickToolAdded,
+      windowSize: widget.windowSize,
+      priceScale: widget.priceScale,
+      viewEndIndex: widget.viewEndIndex,
+      crosshairIndex: widget.crosshairIndex,
+      onCrosshairChanged: widget.onCrosshairChanged,
+      onPanBars: widget.onPanBars,
+      onWindowSizeChanged: widget.onWindowSizeChanged,
+      onPriceScaleChanged: widget.onPriceScaleChanged,
+      onEasyTdxSubPanelCountChanged: widget.onEasyTdxSubPanelCountChanged,
+      onEasyTdxIndicatorToggled: widget.onEasyTdxIndicatorToggled,
     );
   }
 
   List<DrawingObject> _recursiveSegDrawingObjects(ChanSnapshot snapshot) {
     final rows = <DrawingObject>[];
     final now = DateTime.fromMillisecondsSinceEpoch(0);
-    final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
-    final maxLayer = maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
+    final minLayer = widget.minRecursiveSegLayer < 1
+        ? 1
+        : widget.minRecursiveSegLayer;
+    final maxLayer = widget.maxRecursiveSegLayer < minLayer
+        ? minLayer
+        : widget.maxRecursiveSegLayer;
     for (final entry in snapshot.recursiveSegLayers.entries) {
       final layer = entry.key;
       if (layer < minLayer || layer > maxLayer) continue;
@@ -146,7 +203,8 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
           id: 'hichan2_recursive_seg_L${layer}_${seg.index}_${seg.startRawIndex}_${seg.endRawIndex}',
           tool: TradingViewDrawingTool.trendLine,
           anchors: [
-            DrawingAnchor.chart(rawIndex: seg.startRawIndex, price: seg.startPrice),
+            DrawingAnchor.chart(
+                rawIndex: seg.startRawIndex, price: seg.startPrice),
             DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice),
           ],
           style: _styleForLayer(layer: layer, isSure: seg.isSure),
@@ -187,10 +245,15 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
     };
   }
 
-  String _symbolLabelWithRecursiveSegSummary(String baseLabel, ChanSnapshot snapshot) {
+  String _symbolLabelWithRecursiveSegSummary(
+      String baseLabel, ChanSnapshot snapshot) {
     final layerCounts = <String>[];
-    final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
-    final maxLayer = maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
+    final minLayer = widget.minRecursiveSegLayer < 1
+        ? 1
+        : widget.minRecursiveSegLayer;
+    final maxLayer = widget.maxRecursiveSegLayer < minLayer
+        ? minLayer
+        : widget.maxRecursiveSegLayer;
     for (var layer = minLayer; layer <= maxLayer; layer++) {
       final count = snapshot.recursiveSegLayers[layer]?.length ?? 0;
       if (count > 0) layerCounts.add('L$layer:$count');
