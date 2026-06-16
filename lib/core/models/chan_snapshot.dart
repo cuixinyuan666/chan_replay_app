@@ -7,6 +7,7 @@ import 'zs.dart';
 import 'bsp.dart';
 import 'plot_layer_item.dart';
 import 'easy_tdx_indicator.dart';
+import 'rhythm.dart';
 
 class ChanSnapshot {
   final List<RawBar> rawBars;
@@ -20,6 +21,8 @@ class ChanSnapshot {
   final List<PlotLayerItem> eigenBoxes;
   final List<PlotLayerItem> segEigenBoxes;
   final EasyTdxIndicators indicators;
+  final List<RhythmLine> rhythmLines;
+  final List<RhythmHit> rhythmHits;
 
   const ChanSnapshot({
     required this.rawBars,
@@ -33,6 +36,8 @@ class ChanSnapshot {
     this.eigenBoxes = const [],
     this.segEigenBoxes = const [],
     this.indicators = const EasyTdxIndicators(),
+    this.rhythmLines = const [],
+    this.rhythmHits = const [],
   });
 
   factory ChanSnapshot.empty() => const ChanSnapshot(
@@ -47,5 +52,7 @@ class ChanSnapshot {
         eigenBoxes: [],
         segEigenBoxes: [],
         indicators: EasyTdxIndicators(),
+        rhythmLines: [],
+        rhythmHits: [],
       );
 }
