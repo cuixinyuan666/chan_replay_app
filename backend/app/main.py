@@ -14,6 +14,7 @@ from .a_bsp_scanner import scan_bsp, scan_bsp_events
 from .a_indicator_export import build_display_indicators, indicator_source_meta
 from .a_ml_bridge import score_bsp_features
 from .a_multilevel_engine_timed import analyze_multi
+from .a_rhythm_overlay import with_multilevel_rhythm_overlay
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
@@ -30,7 +31,7 @@ app.add_middleware(
 _CONTROL_QUERY_KEYS = {'mode', 'symbol', 'market', 'freq', 'period', 'adjust', 'count', 'start', 'end'}
 _BOOL_TRUE = {'1', 'true', 'yes', 'y', 'on'}
 _BOOL_FALSE = {'0', 'false', 'no', 'n', 'off'}
-_COMPACT_STRUCTURE_KEYS = ('merged_bars', 'fx', 'bi', 'seg', 'zs', 'bsp')
+_COMPACT_STRUCTURE_KEYS = ('merged_bars', 'fx', 'bi', 'seg', 'zs', 'bsp', 'rhythm_lines', 'rhythm_hits')
 
 
 def _elapsed_ms(start: float) -> int:
@@ -335,6 +336,22 @@ def root() -> dict[str, object]:
     }
 
 
+@app.get('/api/tdx/kline')
+def tdx_kline(
+    symbol: str = Query('000001'),
+    market: str | None = Query(None),
+    period: str = Query('DAILY'),
+    adjust: str = Query('QFQ'),
+    count: int = Query(50000, ge=10),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+) -> dict[str, object]:
+    code = normalize_symbol(symbol)
+    market_name = (market or infer_market(code)).upper()
+    bars = load_easy_tdx_bars(symbol=code, market=market_name, period=period, adjust=adjust, count=count, start=start, end=end)
+    return {'ok': True, 'symbol': f'{code}.{market_name}', 'period': period, 'bars': bars}
+
+
 @app.get('/api/chan/analyze')
 def chan_analyze(
     request: Request,
@@ -396,6 +413,10 @@ def chan_analyze_multi(payload: dict[str, Any] = Body(...)) -> dict[str, object]
     )
     analyze_ms = _elapsed_ms(analyze_start)
 
+    rhythm_start = perf_counter()
+    result = with_multilevel_rhythm_overlay(result, config)
+    rhythm_ms = _elapsed_ms(rhythm_start)
+
     compact_start = perf_counter()
     result = _compact_multilevel_step_result(result, payload, config)
     compact_ms = _elapsed_ms(compact_start)
@@ -406,6 +427,7 @@ def chan_analyze_multi(payload: dict[str, Any] = Body(...)) -> dict[str, object]
 
     result = _merge_meta(result, {
         'backend_route_analyze_multi_ms': analyze_ms,
+        'backend_route_rhythm_1382_overlay_ms': rhythm_ms,
         'backend_route_compact_transform_ms': compact_ms,
         'backend_route_json_serialize_probe_ms': json_probe_ms,
         'backend_route_response_bytes_probe': len(response_probe.encode('utf-8')),
