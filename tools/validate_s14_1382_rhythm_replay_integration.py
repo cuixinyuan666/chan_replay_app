@@ -142,6 +142,12 @@ def main() -> int:
             '_rhythmHitCache',
             'ChanSnapshot.empty()',
         ]),
+        'snapshot_cache_contract_test': contains('test/validate_chan_snapshot_rhythm_cache.dart', [
+            'final rawBars = []',
+            'final rewrapped = ChanSnapshot',
+            'assert(rewrapped.rhythmLines.length == 1)',
+            'assert(rewrapped.rhythmHits.length == 1)',
+        ]),
         'json_parser': contains('lib/data/chan_snapshot_json_parser.dart', [
             'rhythm_lines',
             'rhythmHits: rhythmHits',
