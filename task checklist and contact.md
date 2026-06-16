@@ -44,7 +44,7 @@ Required completion summary fields:
 - B1a runtime path dropdown and copy diagnostics: accepted.
 - B1b Dart-side Chan cleanup/search evidence: accepted.
 - S1 Strategy mode runtime acceptance: accepted.
-- S2 pinned offline fixture export for accepted S1 baseline: accepted.
+- S2 pinned fixture export for accepted S1 baseline: accepted.
 - S3 pinned S1 fixture offline validator: accepted.
 - R1 receiver burden code cleanup: accepted.
 - R1b CLI receiver-burden validation: accepted.
@@ -68,19 +68,20 @@ Required completion summary fields:
 - S13 default publish prep: start date `2026-01-01`, end date `system current date - 2 days`, replay mode `step`; `flutter analyze` passed.
 - hichanhuancun stage-1 backend cache/lazy-layer/BSP-freeze/anti-future contracts: implementation completed in code; dedicated static validator added as `python tools/validate_hichanhuancun_contracts.py`.
 - hichanhuancun cache optimization page: implementation completed in code as a new same-level root page `缓存优化`; dedicated static validator updated.
+- hichanhuancun chart_lazy_layers v2 transport pruning loop: implementation completed in code; backend prunes returned layer payload by request and App page can send layer requests and display returned manifest.
 
 ## Current selected task
 
-hichanhuancun cache optimization page validation is selected.
+hichanhuancun chart_lazy_layers v2 transport pruning validation is selected.
 
 Current supervisor position:
 
 - S12 full evidence chain is complete.
 - S13 implementation work is recorded as code-complete but not fully accepted as logic-verified.
 - No new Chan algorithm authority is granted to Flutter/Dart.
-- hichanhuancun adds backend-only cache, export-history fields, transport contracts, and anti-future metadata; it does not grant Flutter/Dart Chan calculation authority.
-- `缓存优化` is a root-level UI diagnostics page beside `复盘` and `单股多级别`; it reads existing replay JSON/meta and provides copyable evidence only.
-- Next required work is to run the dedicated validator and then receiver App evidence if UI-specific behavior needs confirmation.
+- hichanhuancun adds backend-only cache, export-history fields, transport contracts, anti-future metadata, and chart layer transport pruning; it does not grant Flutter/Dart Chan calculation authority.
+- `缓存优化` is a root-level UI diagnostics/request page beside `复盘` and `单股多级别`; it can send `chart_lazy_layers/chart_layers` to `/api/chan/analyze_multi` and render returned manifest/evidence.
+- Next required work is to run the dedicated validator and then receiver App evidence for real backend pruning behavior.
 
 Optional display-layout debt remains:
 
@@ -88,11 +89,11 @@ Optional display-layout debt remains:
 
 ## hichanhuancun completion summary
 
-- completed_tasks: Added backend raw K-line session cache with key/TTL policy; added `chart_lazy_layers_v1` returned contract and layer manifest; added BSP `anchor/display/confirmed` frozen export fields; added `multi_level_anti_future_meta_v1` for final levels, returned step frames, and parent-child relations; added same-level App page `缓存优化` under root navigation.
-- evidence_button: App page `缓存优化` has `复制证据`; command-line receiver evidence is `python tools/validate_hichanhuancun_contracts.py`.
-- validation_result: Static validator updated for backend contracts and root UI route; full runtime validation still depends on receiver environment with easy-tdx / chan.py / Flutter available.
-- remaining_risk: Runtime cache hit/miss behavior and anti-future metadata should still be checked against real long-history step frames; `chart_lazy_layers` is a transport/rendering contract and does not imply reduced chan.py calculation; App page visual placement still needs receiver validation.
-- next_task: Run validator, then validate one real S13 step replay case and open `缓存优化` to copy evidence.
+- completed_tasks: Added backend raw K-line session cache with key/TTL policy; added BSP `anchor/display/confirmed` frozen export fields; added `multi_level_anti_future_meta_v1`; added same-level App page `缓存优化`; upgraded `chart_lazy_layers` from v1 returned contract to `chart_lazy_layers_v2_transport_pruning`, where request `chart_layers` controls returned layer payload and meta reports display/transport/forced/omitted/pruned/manifest state.
+- evidence_button: App page `缓存优化` has `请求 analyze_multi` and `复制证据`; command-line receiver evidence is `python tools/validate_hichanhuancun_contracts.py`.
+- validation_result: Static validator updated for backend pruning loop and App request/manifest display loop; full runtime validation still depends on receiver environment with easy-tdx / chan.py / Flutter available.
+- remaining_risk: Runtime pruning must still be verified against real step frames; S13 chart page itself has not yet received per-layer chart toggles wired to this transport contract, so the complete visual chart-control integration remains a later UI stage.
+- next_task: Run validator, open `缓存优化`, deselect layers, request analyze_multi, and confirm `chart_lazy_layers_pruned_counts` and `chart_lazy_layers_manifest` change as expected.
 
 ## Historical accepted summary
 
@@ -113,18 +114,3 @@ Optional display-layout debt remains:
 - S5 accepted: CLI strategy rule matrix validation for `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, and `DAILY_3B_MIN30_2B`.
 - S6 accepted: strategy signal sample coverage, including matched-output metadata and no-output diagnostic path.
 - S7 accepted: App strategy signal display loop, selected-signal callback, raw-index jump, chart marker wiring, and copy evidence.
-
-### S8-S9
-
-- S8 accepted: scanner / batch strategy output, local generated candidate JSON, App candidate navigation, chart marker, and traceability evidence.
-- S9 accepted: local generated artifact hygiene and continuation baseline.
-- Generated `test/fixtures/derived/s8_strategy_batch_candidates_v1.json` is local validation output and should not be committed by default.
-
-### S10-S12
-
-- S10 accepted: analyze_multi long-history window count expansion based on request `start/end`, native `CChan(lv_list=[...])`, and no Dart-side Chan authority.
-- S11 accepted: post-S10 guardrail regression bundle, including S10 validation, S8 export/validation, global lazy-loading audit, and chan.py placement guardrail.
-- S12a accepted: App single-stock replay high-speed baseline static validation.
-- S12b accepted: replay evidence button, default-hidden indicators, and explicit level-validation feedback.
-- S12c accepted: backend step-frame temporal evidence state tracking for provisional/confirmed/historical provisional structures.
-- S12d accepted: interval-link marker ids from backend `MultiLevelChanSnapshot.relations`.
