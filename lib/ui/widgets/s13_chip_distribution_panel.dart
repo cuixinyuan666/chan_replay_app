@@ -14,6 +14,7 @@ import 's13_chip_distribution_store.dart';
 /// - lazily calls `/api/tdx/kline` after the user enables the chip layer;
 /// - requests a very large easy-tdx count ending at the current displayed K so
 ///   the effective range is first easy-tdx-available/listing bar -> cutoff bar;
+/// - uses the explicit S13 page request context: backendUrl/symbol/market/period;
 /// - publishes the calculated result to [S13ChipDistributionStore];
 /// - `RecursiveSegOriginKlineChart` converts the result into locked drawing
 ///   rectangles and feeds them into `OriginKlineChart`, where they are rendered
@@ -21,6 +22,10 @@ import 's13_chip_distribution_store.dart';
 class S13ChipDistributionPanel extends StatefulWidget {
   final ChanSnapshot? snapshot;
   final bool enabled;
+  final String backendBaseUrl;
+  final String symbol;
+  final String market;
+  final String period;
   final bool isStepMode;
   final int stepIndex;
   final int? crosshairIndex;
@@ -37,6 +42,10 @@ class S13ChipDistributionPanel extends StatefulWidget {
     super.key,
     required this.snapshot,
     required this.enabled,
+    required this.backendBaseUrl,
+    required this.symbol,
+    required this.market,
+    required this.period,
     required this.isStepMode,
     required this.stepIndex,
     required this.crosshairIndex,
@@ -162,18 +171,26 @@ class _S13ChipDistributionPanelState extends State<S13ChipDistributionPanel> {
     if (!mounted || !widget.enabled || _loading) return;
     final rawBars = widget.snapshot?.rawBars ?? const <RawBar>[];
     if (rawBars.isEmpty) return;
-    final chartContext = S13ChipDistributionStore.context;
-    if (chartContext == null || chartContext.symbol.trim().isEmpty) {
-      setState(() => _loadError = '缺少当前图表 symbol 上下文');
+
+    final symbol = _normalizeSymbol(widget.symbol);
+    final market = widget.market.trim().toUpperCase();
+    final period = widget.period.trim().toUpperCase();
+    if (symbol.isEmpty) {
+      setState(() => _loadError = '缺少当前图表 symbol');
+      return;
+    }
+    if (period.isEmpty) {
+      setState(() => _loadError = '缺少当前图表 period');
       return;
     }
 
     final targetIndex = _targetIndex(rawBars.length);
     final cutoff = rawBars[targetIndex].time;
     final key = <Object?>[
-      chartContext.symbol,
-      chartContext.market ?? '',
-      chartContext.period,
+      widget.backendBaseUrl.trim(),
+      symbol,
+      market,
+      period,
       cutoff.toIso8601String(),
       widget.binCount,
       widget.ageDecay,
@@ -187,12 +204,12 @@ class _S13ChipDistributionPanelState extends State<S13ChipDistributionPanel> {
       _loadInfo = null;
     });
 
-    final source = EasyTdxKlineSource();
+    final source = EasyTdxKlineSource(baseUrl: widget.backendBaseUrl.trim());
     try {
       final listingBars = await source.loadListingChipBars(
-        symbol: chartContext.symbol,
-        market: chartContext.market,
-        period: chartContext.period,
+        symbol: symbol,
+        market: market.isEmpty ? null : market,
+        period: period,
         endDate: cutoff,
         adjust: 'QFQ',
         count: 200000,
@@ -216,13 +233,13 @@ class _S13ChipDistributionPanelState extends State<S13ChipDistributionPanel> {
         startDate: usableBars.first.time!,
         endDate: usableBars.last.time!,
         rawBarCount: usableBars.length,
-        sourceText: 'easy-tdx ${chartContext.period} K线成交量 / 独立拉取首个可得K',
+        sourceText: 'easy-tdx $period K线成交量 / 独立拉取首个可得K',
       );
       if (!mounted || _loadedKey != key) return;
       S13ChipDistributionStore.publish(S13ChipDistributionSpec(
-        symbol: chartContext.symbol,
-        market: chartContext.market,
-        period: chartContext.period,
+        symbol: symbol,
+        market: market.isEmpty ? null : market,
+        period: period,
         result: result,
         exactBarCount: usableBars.where((bar) => bar.hasExactChipBins).length,
         targetPolicy: _targetPolicy(),
@@ -286,6 +303,12 @@ class _S13ChipDistributionPanelState extends State<S13ChipDistributionPanel> {
         ),
       );
     });
+  }
+
+  static String _normalizeSymbol(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return '';
+    return text.split('.').first.trim();
   }
 
   static String _fmtDate(DateTime value) => value.toIso8601String().split('T').first;
