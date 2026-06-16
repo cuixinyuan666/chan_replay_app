@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
@@ -9,6 +9,7 @@ import 'app_bundled_python_backend.dart';
 import '../core/models/interval_nest_signal.dart';
 import '../core/models/multi_level_chan_snapshot.dart';
 import '../core/runtime/runtime_path.dart';
+import '../core/settings/chan_config_store.dart';
 import 'chan_snapshot_json_parser.dart';
 import 'multi_level_chan_analysis_parser.dart';
 
@@ -144,13 +145,14 @@ class PythonMultiLevelChanAnalysisSource {
       for (final level in levels)
         if (level.trim().isNotEmpty) level.trim().toUpperCase(),
     ];
+    final effectiveConfig = ChanConfigStore.backendConfig(base: config);
     final payload = <String, dynamic>{
       'mode': mode,
       'symbol': code.trim(),
       'market': market.trim().toUpperCase(),
       'lv_list': normalizedLevels,
       'adjust': adjust.trim().toUpperCase(),
-      'config': config,
+      'config': effectiveConfig,
       'runtime_path': selectedRuntimePath.wireName,
       if (mainLevel != null && mainLevel.trim().isNotEmpty)
         'main_level': mainLevel.trim().toUpperCase(),
@@ -186,7 +188,9 @@ class PythonMultiLevelChanAnalysisSource {
         'market': market.trim().toUpperCase(),
         'levels': normalizedLevels,
         'count': count,
-        'max_step_frames': config['max_step_frames'],
+        'max_step_frames': effectiveConfig['max_step_frames'],
+        'chan_config_changed_count': ChanConfigStore.changedCount,
+        'chan_config_source': ChanConfigStore.sourceBranch,
         'start': startDate == null ? null : _fmtDate(startDate),
         'end': endDate == null ? null : _fmtDate(endDate),
         ...runtimeDiagnostics,
@@ -460,6 +464,8 @@ class PythonMultiLevelChanAnalysisSource {
       'levels': requestContext['levels'],
       'count': requestContext['count'],
       'max_step_frames': requestContext['max_step_frames'],
+      'chan_config_changed_count': requestContext['chan_config_changed_count'],
+      'chan_config_source': requestContext['chan_config_source'],
       'start': requestContext['start'],
       'end': requestContext['end'],
       ...runtimeDiagnostics,
@@ -632,4 +638,3 @@ class PythonMultiLevelChanAnalysisSource {
     // rebuilds during the app session so F1d warm backend reuse can work.
   }
 }
-
