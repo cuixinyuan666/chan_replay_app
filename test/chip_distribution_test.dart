@@ -232,4 +232,47 @@ void main() {
       0,
     );
   });
+
+  test('online replay adapter preserves backend chip_tick_bins from RawBar', () {
+    final chipBins = ChipTickBins.fromJson(<String, dynamic>{
+      'p': <double>[10, 11],
+      's': <double>[15, 25],
+      'b': <double>[35, 45],
+      'w': <double>[50, 70],
+    });
+    final snapshot = ChanSnapshot(
+      rawBars: <RawBar>[
+        RawBar(
+          index: 0,
+          time: DateTime(2026, 1, 1),
+          open: 9,
+          high: 12,
+          low: 8,
+          close: 11,
+          volume: 1,
+          chipTickBins: chipBins,
+        ),
+      ],
+      mergedBars: const [],
+      fxs: const [],
+      bis: const [],
+      segs: const [],
+      zss: const [],
+    );
+
+    final bars = ChipOnlineReplayAdapter.fromSnapshot(snapshot);
+    expect(bars.single.priceSellVolume[10], 15);
+    expect(bars.single.priceSellVolume[11], 25);
+    expect(bars.single.priceBuyVolume[10], 35);
+    expect(bars.single.priceBuyVolume[11], 45);
+
+    final result = const ChipDistributionEngine().calculate(
+      bars,
+      targetIndex: 0,
+      options: const ChipDistributionOptions(binCount: 20),
+    );
+    expect(result.totalWeight, 120);
+    expect(result.sellWeight, 40);
+    expect(result.buyWeight, 80);
+  });
 }
