@@ -8,7 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
-    for script in ['tools/apply_rhythm_viewport_selector_patch.py', 'tools/validate_rhythm_viewport_page_patch.py']:
+    scripts = [
+        'tools/apply_rhythm_viewport_selector_patch.py',
+        'tools/validate_rhythm_viewport_page_patch.py',
+        'tools/apply_rhythm_display_settings_patch.py',
+        'tools/validate_rhythm_display_settings_page_patch.py',
+    ]
+    for script in scripts:
         print('running', script)
         subprocess.run([sys.executable, script], cwd=ROOT, check=True)
     print('run_rhythm_viewport_patch: OK')
