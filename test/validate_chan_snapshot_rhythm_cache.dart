@@ -1,9 +1,10 @@
 import 'package:chan_replay_app/core/models/chan_snapshot.dart';
 import 'package:chan_replay_app/core/models/easy_tdx_indicator.dart';
+import 'package:chan_replay_app/core/models/raw_bar.dart';
 import 'package:chan_replay_app/core/models/rhythm.dart';
 
 void main() {
-  final rawBars = [];
+  final rawBars = <RawBar>[];
   final original = ChanSnapshot(
     rawBars: rawBars,
     mergedBars: const [],
