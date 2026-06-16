@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 
@@ -13,6 +14,76 @@ def read(path: str) -> str:
 def contains(path: str, needles: list[str]) -> dict[str, bool]:
     text = read(path)
     return {needle: needle in text for needle in needles}
+
+
+def functional_rhythm_sample() -> dict[str, bool | str | int | float]:
+    module_path = ROOT / 'backend/app/a_rhythm_overlay.py'
+    spec = importlib.util.spec_from_file_location('a_rhythm_overlay_validate', module_path)
+    if spec is None or spec.loader is None:
+        return {'ok': False, 'error': 'cannot load a_rhythm_overlay.py'}
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    bars = [
+        {'dt': '2024-01-01', 'high': 0.5, 'low': 0.0},
+        {'dt': '2024-01-02', 'high': 4.0, 'low': 3.6},
+        {'dt': '2024-01-03', 'high': 2.4, 'low': 2.0},
+        {'dt': '2024-01-04', 'high': 5.1, 'low': 4.8},
+        {'dt': '2024-01-05', 'high': 3.4, 'low': 3.0},
+        {'dt': '2024-01-06', 'high': 6.0, 'low': 5.7},
+    ]
+    payload = {
+        'bars': bars,
+        'fx': [
+            {'index': 0, 'raw_index': 0, 'type': 'BOTTOM', 'price': 0.0},
+            {'index': 1, 'raw_index': 1, 'type': 'TOP', 'price': 4.0},
+            {'index': 2, 'raw_index': 2, 'type': 'BOTTOM', 'price': 2.0},
+            {'index': 3, 'raw_index': 3, 'type': 'TOP', 'price': 5.0},
+            {'index': 4, 'raw_index': 4, 'type': 'BOTTOM', 'price': 3.0},
+            {'index': 5, 'raw_index': 5, 'type': 'TOP', 'price': 6.0},
+        ],
+        'bi': [
+            {
+                'index': 0,
+                'start_raw_index': 0,
+                'end_raw_index': 5,
+                'start_price': 0.0,
+                'end_price': 6.0,
+                'direction': 'UP',
+            },
+        ],
+        'seg': [],
+        'seg_layers': {'2': []},
+        'meta': {},
+    }
+    result = module.with_level_rhythm_overlay('DAILY', payload, {
+        'enable_rhythm_1382': True,
+        'rhythm_calc_mode': 'normal',
+        'rhythm_max_lines': 20,
+        'rhythm_max_hits_per_line': 3,
+    })
+    lines = result.get('rhythm_lines') or []
+    hits = result.get('rhythm_hits') or []
+    if not lines:
+        return {'ok': False, 'error': 'functional sample produced no rhythm lines'}
+    first_line = lines[0]
+    expected_price = 2.5
+    expected_threshold = 2.0 + (4.0 - 2.0) * 1.382
+    return {
+        'ok': (
+            first_line.get('level') == 'fract'
+            and first_line.get('parent_level') == 'bi'
+            and abs(float(first_line.get('y1')) - expected_price) < 1e-9
+            and abs(float(first_line.get('threshold')) - expected_threshold) < 1e-9
+            and bool(hits)
+            and int(hits[0].get('raw_index')) == 3
+        ),
+        'line_count': len(lines),
+        'hit_count': len(hits),
+        'first_line_y': float(first_line.get('y1')),
+        'first_line_threshold': float(first_line.get('threshold')),
+        'first_hit_raw_index': int(hits[0].get('raw_index')) if hits else -1,
+    }
 
 
 def main() -> int:
@@ -72,8 +143,14 @@ def main() -> int:
             'dart_chan_calculation_authority: false',
         ]),
     }
+    functional = functional_rhythm_sample()
     missing = {name: [key for key, ok in values.items() if not ok] for name, values in checks.items() if not all(values.values())}
-    result = {'ok': not missing, 'missing': missing, 'checks': checks}
+    result = {
+        'ok': not missing and bool(functional.get('ok')),
+        'missing': missing,
+        'checks': checks,
+        'functional_rhythm_sample': functional,
+    }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result['ok'] else 1
 
