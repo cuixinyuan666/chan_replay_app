@@ -2,10 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../core/runtime/xg_replay_jump.dart';
 import '../../data/stock_selection_backend_client.dart';
 
 class StockSelectionPage extends StatefulWidget {
-  const StockSelectionPage({super.key});
+  final VoidCallback? onOpenMultiLevel;
+
+  const StockSelectionPage({super.key, this.onOpenMultiLevel});
 
   @override
   State<StockSelectionPage> createState() => _StockSelectionPageState();
@@ -39,27 +42,11 @@ class _StockSelectionPageState extends State<StockSelectionPage> {
     super.dispose();
   }
 
-  List<String> get _levelList => _levels.text
-      .replaceAll('，', ',')
-      .split(',')
-      .map((v) => v.trim().toUpperCase())
-      .where((v) => v.isNotEmpty)
-      .toList(growable: false);
+  List<String> get _levelList => _levels.text.replaceAll('，', ',').split(',').map((v) => v.trim().toUpperCase()).where((v) => v.isNotEmpty).toList(growable: false);
 
-  Map<String, dynamic> _group() => <String, dynamic>{
-        'operator': 'all',
-        'conditions': [for (final condition in _conditions) condition.toJson()],
-      };
+  Map<String, dynamic> _group() => <String, dynamic>{'operator': 'all', 'conditions': [for (final condition in _conditions) condition.toJson()]};
 
-  Map<String, dynamic> _payload() => <String, dynamic>{
-        'symbol': _symbol.text.trim(),
-        'levels': _levelList,
-        'start': _start.text.trim(),
-        'end': _end.text.trim(),
-        'count': int.tryParse(_count.text.trim()) ?? 900,
-        'adjust': 'QFQ',
-        'condition_group': _group(),
-      };
+  Map<String, dynamic> _payload() => <String, dynamic>{'symbol': _symbol.text.trim(), 'levels': _levelList, 'start': _start.text.trim(), 'end': _end.text.trim(), 'count': int.tryParse(_count.text.trim()) ?? 900, 'adjust': 'QFQ', 'condition_group': _group()};
 
   Future<void> _run(String mode) async {
     if (_running) return;
@@ -79,19 +66,11 @@ class _StockSelectionPageState extends State<StockSelectionPage> {
           ...base,
           'horizon': int.tryParse(_horizon.text.trim()) ?? 5,
           'rules': [
-            {
-              'name': 'xg_rule_1',
-              'entry': _group(),
-              'exit': {'horizon': int.tryParse(_horizon.text.trim()) ?? 5},
-            },
+            {'name': 'xg_rule_1', 'entry': _group(), 'exit': {'horizon': int.tryParse(_horizon.text.trim()) ?? 5}},
           ],
         });
       } else {
-        result = await client.scan(<String, dynamic>{
-          ...base,
-          'symbols': _symbols.text.trim().isEmpty ? null : _symbols.text.trim(),
-          'limit': int.tryParse(_limit.text.trim()) ?? 300,
-        });
+        result = await client.scan(<String, dynamic>{...base, 'symbols': _symbols.text.trim().isEmpty ? null : _symbols.text.trim(), 'limit': int.tryParse(_limit.text.trim()) ?? 300});
       }
       if (!mounted) return;
       setState(() {
@@ -123,11 +102,7 @@ class _StockSelectionPageState extends State<StockSelectionPage> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(52, 10, 10, 10),
-          child: Row(children: [
-            SizedBox(width: 560, child: _left()),
-            const SizedBox(width: 10),
-            Expanded(child: _right()),
-          ]),
+          child: Row(children: [SizedBox(width: 560, child: _left()), const SizedBox(width: 10), Expanded(child: _right())]),
         ),
       ),
     );
@@ -159,44 +134,19 @@ class _StockSelectionPageState extends State<StockSelectionPage> {
         ]), expand: false),
       ]);
 
-  Widget _conditionsPanel() => _panel(
-        '通用条件组合器',
-        ListView.separated(
-          itemCount: _conditions.length,
-          separatorBuilder: (_, __) => const Divider(height: 10, color: Colors.white12),
-          itemBuilder: (context, index) => _conditionRow(index),
-        ),
-        trailing: TextButton.icon(
-          onPressed: _running ? null : () => setState(() => _conditions.add(_Condition(id: 'c${_conditions.length + 1}', level: 'DAILY', domain: 'bi', side: 'buy', type: '1', recentBars: 3, recentDays: 3))),
-          icon: const Icon(Icons.add, size: 16),
-          label: const Text('添加'),
-        ),
-      );
+  Widget _conditionsPanel() => _panel('通用条件组合器', ListView.separated(itemCount: _conditions.length, separatorBuilder: (_, __) => const Divider(height: 10, color: Colors.white12), itemBuilder: (context, index) => _conditionRow(index)), trailing: TextButton.icon(onPressed: _running ? null : () => setState(() => _conditions.add(_Condition(id: 'c${_conditions.length + 1}', level: 'DAILY', domain: 'bi', side: 'buy', type: '1', recentBars: 3, recentDays: 3))), icon: const Icon(Icons.add, size: 16), label: const Text('添加')));
 
   Widget _conditionRow(int index) {
     final c = _conditions[index];
     return Column(children: [
-      Row(children: [
-        Expanded(child: _drop('周期', c.level, _levelOptions(), (v) => setState(() => c.level = v))),
-        const SizedBox(width: 6),
-        Expanded(child: _drop('域', c.domain, const ['bi', 'seg', 'seg2', 'seg3', 'seg4', 'seg5', 'seg6', 'seg7', 'seg8', 'seg9'], (v) => setState(() => c.domain = v))),
-        const SizedBox(width: 6),
-        Expanded(child: _drop('方向', c.side, const ['buy', 'sell', 'any'], (v) => setState(() => c.side = v))),
-      ]),
+      Row(children: [Expanded(child: _drop('周期', c.level, _levelOptions(), (v) => setState(() => c.level = v))), const SizedBox(width: 6), Expanded(child: _drop('域', c.domain, const ['bi', 'seg', 'seg2', 'seg3', 'seg4', 'seg5', 'seg6', 'seg7', 'seg8', 'seg9'], (v) => setState(() => c.domain = v))), const SizedBox(width: 6), Expanded(child: _drop('方向', c.side, const ['buy', 'sell', 'any'], (v) => setState(() => c.side = v)))]),
       const SizedBox(height: 6),
-      Row(children: [
-        Expanded(child: _drop('类型', c.type, const ['1', '1p', '2', '2s', '3a', '3b', 'B1', 'B2', 'B3a', 'S1', 'S2', 'S3a'], (v) => setState(() => c.type = v))),
-        const SizedBox(width: 6),
-        SizedBox(width: 100, child: _intInput('近K', c.recentBars, (v) => c.recentBars = v)),
-        const SizedBox(width: 6),
-        SizedBox(width: 100, child: _intInput('近天', c.recentDays, (v) => c.recentDays = v)),
-        IconButton(onPressed: _conditions.length <= 1 ? null : () => setState(() => _conditions.removeAt(index)), icon: const Icon(Icons.delete_outline, color: Colors.white60, size: 18)),
-      ]),
+      Row(children: [Expanded(child: _drop('类型', c.type, const ['1', '1p', '2', '2s', '3a', '3b', 'B1', 'B2', 'B3a', 'S1', 'S2', 'S3a'], (v) => setState(() => c.type = v))), const SizedBox(width: 6), SizedBox(width: 100, child: _intInput('近K', c.recentBars, (v) => c.recentBars = v)), const SizedBox(width: 6), SizedBox(width: 100, child: _intInput('近天', c.recentDays, (v) => c.recentDays = v)), IconButton(onPressed: _conditions.length <= 1 ? null : () => setState(() => _conditions.removeAt(index)), icon: const Icon(Icons.delete_outline, color: Colors.white60, size: 18))]),
     ]);
   }
 
   Widget _right() => Column(children: [
-        _panel('跳转证据', SelectableText(_jump.isEmpty ? '点击扫描结果或交易记录后显示 symbol/market/raw_index。' : _jump, style: const TextStyle(color: Color(0xFFFFD54F), fontSize: 12)), expand: false),
+        _panel('跳转证据', SelectableText(_jump.isEmpty ? '点击扫描结果或交易记录后自动切到单股多级别并定位 raw_index。' : _jump, style: const TextStyle(color: Color(0xFFFFD54F), fontSize: 12)), expand: false),
         const SizedBox(height: 8),
         if (_running) const LinearProgressIndicator(),
         Expanded(child: _resultPanel()),
@@ -210,9 +160,7 @@ class _StockSelectionPageState extends State<StockSelectionPage> {
     return _panel('单标的分析 JSON', _jsonView(result));
   }
 
-  Widget _scanTable(List rows) => rows.isEmpty
-      ? const Center(child: Text('没有命中条件的股票。', style: TextStyle(color: Colors.white54)))
-      : SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(showCheckboxColumn: false, columns: const [DataColumn(label: Text('代码')), DataColumn(label: Text('名称')), DataColumn(label: Text('级别')), DataColumn(label: Text('域')), DataColumn(label: Text('类型')), DataColumn(label: Text('raw'))], rows: [for (final item in rows.whereType<Map>().take(300)) DataRow(onSelectChanged: (_) => _setJump(item['jump'] ?? item), cells: [DataCell(Text('${item['code'] ?? ''}')), DataCell(Text('${item['name'] ?? ''}')), DataCell(Text('${item['latest_level'] ?? ''}')), DataCell(Text('${item['latest_domain'] ?? ''}')), DataCell(Text('${item['latest_type'] ?? ''}')), DataCell(Text('${item['latest_raw_index'] ?? ''}'))])])));
+  Widget _scanTable(List rows) => rows.isEmpty ? const Center(child: Text('没有命中条件的股票。', style: TextStyle(color: Colors.white54))) : SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(showCheckboxColumn: false, columns: const [DataColumn(label: Text('代码')), DataColumn(label: Text('名称')), DataColumn(label: Text('级别')), DataColumn(label: Text('域')), DataColumn(label: Text('类型')), DataColumn(label: Text('raw'))], rows: [for (final item in rows.whereType<Map>().take(300)) DataRow(onSelectChanged: (_) => _setJump(item['jump'] ?? item), cells: [DataCell(Text('${item['code'] ?? ''}')), DataCell(Text('${item['name'] ?? ''}')), DataCell(Text('${item['latest_level'] ?? ''}')), DataCell(Text('${item['latest_domain'] ?? ''}')), DataCell(Text('${item['latest_type'] ?? ''}')), DataCell(Text('${item['latest_raw_index'] ?? ''}'))])])));
 
   Widget _backtestView(Map<String, dynamic> result) {
     final ranking = (result['ranking'] as List?) ?? const [];
@@ -225,7 +173,7 @@ class _StockSelectionPageState extends State<StockSelectionPage> {
       }
     }
     return SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columns: const [DataColumn(label: Text('规则')), DataColumn(label: Text('交易')), DataColumn(label: Text('胜率')), DataColumn(label: Text('盈亏比')), DataColumn(label: Text('分数'))], rows: [for (final item in ranking.whereType<Map>()) DataRow(cells: [DataCell(Text('${item['rule_name'] ?? ''}')), DataCell(Text('${item['trade_count'] ?? 0}')), DataCell(Text(_fmtPct(item['win_rate'])),), DataCell(Text(_fmtNum(item['profit_loss_ratio']))), DataCell(Text(_fmtNum(item['model_score'])))])])),
+      SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columns: const [DataColumn(label: Text('规则')), DataColumn(label: Text('交易')), DataColumn(label: Text('胜率')), DataColumn(label: Text('盈亏比')), DataColumn(label: Text('分数'))], rows: [for (final item in ranking.whereType<Map>()) DataRow(cells: [DataCell(Text('${item['rule_name'] ?? ''}')), DataCell(Text('${item['trade_count'] ?? 0}')), DataCell(Text(_fmtPct(item['win_rate']))), DataCell(Text(_fmtNum(item['profit_loss_ratio']))), DataCell(Text(_fmtNum(item['model_score'])))])])),
       const SizedBox(height: 12),
       const Text('交易记录', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
       SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(showCheckboxColumn: false, columns: const [DataColumn(label: Text('规则')), DataColumn(label: Text('入场raw')), DataColumn(label: Text('出场raw')), DataColumn(label: Text('收益%')), DataColumn(label: Text('原因'))], rows: [for (final item in trades.take(300)) DataRow(onSelectChanged: (_) => _setJump(item['jump'] ?? item), cells: [DataCell(Text('${item['rule_name'] ?? ''}')), DataCell(Text('${item['entry_raw_index'] ?? ''}')), DataCell(Text('${item['exit_raw_index'] ?? ''}')), DataCell(Text(_fmtNum(item['return_pct']))), DataCell(Text('${item['exit_reason'] ?? ''}'))])]))),
@@ -234,7 +182,32 @@ class _StockSelectionPageState extends State<StockSelectionPage> {
 
   Widget _jsonView(Map<String, dynamic> value) => SingleChildScrollView(child: SelectableText(const JsonEncoder.withIndent('  ').convert(value), style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35)));
 
-  void _setJump(Object? value) => setState(() => _jump = const JsonEncoder.withIndent('  ').convert(value ?? <String, dynamic>{}));
+  void _setJump(Object? value) {
+    final jsonText = const JsonEncoder.withIndent('  ').convert(value ?? <String, dynamic>{});
+    final req = _jumpRequest(value);
+    setState(() => _jump = jsonText);
+    if (req != null) {
+      XgReplayJumpBus.publish(req);
+      widget.onOpenMultiLevel?.call();
+    }
+  }
+
+  XgReplayJumpRequest? _jumpRequest(Object? value) {
+    if (value is! Map) return null;
+    final map = Map<String, dynamic>.from(value);
+    var symbol = '${map['symbol'] ?? map['code'] ?? _symbol.text}'.trim().toUpperCase();
+    var market = '${map['market'] ?? ''}'.trim().toUpperCase();
+    if (symbol.contains('.')) {
+      final parts = symbol.split('.');
+      symbol = parts.first;
+      if (market.isEmpty && parts.length > 1) market = parts[1];
+    }
+    market = market.isEmpty ? (symbol.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ') : market;
+    final level = '${map['level'] ?? map['latest_level'] ?? _levelList.first}'.trim().toUpperCase();
+    final raw = int.tryParse('${map['raw_index'] ?? map['latest_raw_index'] ?? map['entry_raw_index'] ?? map['exit_raw_index'] ?? ''}');
+    if (symbol.isEmpty || raw == null) return null;
+    return XgReplayJumpRequest(symbol: symbol, market: market, levels: _levelList, targetLevel: level.isEmpty ? _levelList.first : level, rawIndex: raw, startDate: DateTime.tryParse(_start.text.trim()), endDate: DateTime.tryParse(_end.text.trim()), source: 'stock_selection');
+  }
 
   List<String> _levelOptions() => <String>{..._levelList, 'DAILY', 'WEEKLY', 'MONTHLY', 'MIN60', 'MIN30', 'MIN15', 'MIN5', 'MIN1'}.toList(growable: false);
 
