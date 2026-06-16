@@ -30,6 +30,7 @@ Last supervisor update: 2026-06-15
 - New files under `python/chan.py` must be in `a_*` folders or named `a_*.py`.
 - S13 UI-only marker, candidate-trail, and drawing behavior must not write back into `analysis.snapshot`, backend frames, or `python/chan.py` structure objects.
 - S13 candidate-trail BSP observations and current/final BSP observations have equal interval-nest trigger priority. Candidate trail is an at-the-time UI observation; identity must be preserved, but priority must not be downgraded.
+- S13 区间套验收硬化 does not add a new top-level page; the evidence and marker logic must stay centralized inside the single-stock multi-level replay page.
 
 ## Receiver workload minimization rule
 
@@ -92,6 +93,7 @@ Current supervisor position:
 - Multiple lower-level BSP observations mapped to one higher-level K must be preserved as distinct triggers and rendered with numeric labels only when count > 1.
 - BSP candidate-trail observations are at-the-time observations and have the same interval-nest trigger priority as current/final BSP observations.
 - Copied marker evidence must use the fixed header `S13_INTERVAL_NEST_MARKER_EVIDENCE`.
+- Page integration rule: S13 evidence hardening stays inside the existing single-stock multi-level replay page and does not add a new top-level page.
 
 Optional display-layout debt remains:
 
@@ -211,6 +213,7 @@ Required hardening points:
 - Replace collapsed active raw-index sets with trigger identity rows that preserve `sourceLevel`, `sourceRawIndex`, `activeRawIndex`, and candidate/current state.
 - In copied S13 evidence, record `relation_source_frame`, `bsp_source_frame`, `trigger_state=current|candidate_trail`, and `anchor_kind=bsp|interval`.
 - Validate every adjacent loaded-level pair has relation rows before using it as a hierarchy edge; if an edge lacks relations, stop mapping for that edge and report the missing pair.
+- Page-level adaptation: keep S13 interval-nest evidence inside the single-stock multi-level replay page; do not add a separate 区间套/S13 top-level page.
 
 ## hichan1 task record: S13 interval-nest validator and numbering policy
 
@@ -270,6 +273,8 @@ completed_tasks:
 - Kept interval-only anchors explicit through `anchor_kind=interval` / `isIntervalAnchor`, so child interval placeholders cannot impersonate BSP anchors.
 - Added S13 marker evidence copy payload headed by `S13_INTERVAL_NEST_MARKER_EVIDENCE`.
 - Extended `tools/validate_s13_interval_nest_marker_logic.py` to check evidence button, evidence fields, candidate/current identity fields, frame provenance fields, missing-edge diagnostics, and interval-anchor/BSP-anchor separation.
+- Added page-integration checks to the validator: S13 evidence hardening does not add a new top-level page and remains centralized inside the single-stock multi-level replay page.
+- Removed the broad `unused_field: ignore` analyzer waiver that had been temporarily added, so this task does not weaken global analyzer policy.
 
 evidence_button:
 
@@ -283,13 +288,14 @@ validation_result:
 - Static validator updated: `python tools/validate_s13_interval_nest_marker_logic.py`.
 - The validator now treats copied evidence as the stable UI/receiver text interface.
 - The validator still enforces that Dart uses backend `MultiLevelChanSnapshot.relations` and backend BSP rows only.
+- The validator now also verifies that `root_page.dart` keeps `S13SingleStockReplayPage` in `_multiLevelIndex` and that S13 toolbar page navigation only targets existing pages rather than creating an interval-nest page.
 - Local command execution was not performed in this connector-only environment; receiver should run the commands in the next section after pulling `hichanqujiantao`.
 
 remaining_risk:
 
 - Real App validation is still required to verify marker density, tap ergonomics, and visual clarity on live step replay data.
 - Real receiver validation is still required to prove copied evidence contains non-empty marker samples on a representative multi-level replay.
-- `flutter analyze` may report style/format or private-unused warnings that the connector-only environment cannot execute locally.
+- `s13_single_stock_replay_page.dart` still has a large diff versus `hichan1` because the prior evidence pass rewrote substantial formatting while adding logic. This is a merge-risk note, not a runtime issue; future conflict resolution should prefer keeping hichan's page skeleton and reapplying only the evidence/trigger-model hunks if necessary.
 - No backend protocol change was made; evidence is a UI/acceptance text interface only.
 
 next_task:
@@ -297,6 +303,7 @@ next_task:
 - Receiver pulls `hichanqujiantao` and runs the baseline + S13 validator commands below.
 - In App, load a real `DAILY,MIN30,MIN5` step replay, click `复制 marker 证据`, and paste the evidence to verify trigger-state and frame-provenance samples.
 - If sample evidence reveals missing relation edges for expected adjacent pairs, inspect backend relation export for that frame before changing Dart display behavior.
+- If merging with a `hichan` branch that added new sibling pages, keep the new sibling page entries in `root_page.dart`; do not move S13 evidence out of the existing single-stock multi-level replay page.
 
 ## Next task-party operation
 
@@ -308,7 +315,7 @@ next_task:
    - `flutter analyze`
 3. Expected current behavior:
    - The validator should pass source-authority checks.
-   - The validator should pass evidence-button, evidence-field, candidate/current identity, frame provenance, missing-edge diagnostic, and interval-anchor/BSP-anchor separation checks.
+   - The validator should pass evidence-button, evidence-field, candidate/current identity, frame provenance, missing-edge diagnostic, interval-anchor/BSP-anchor separation, and page-integration checks.
 4. Receiver App validation:
    - Step through `DAILY,MIN30,MIN5` real data.
    - Verify lower-level BSP appears on higher-level chart.
