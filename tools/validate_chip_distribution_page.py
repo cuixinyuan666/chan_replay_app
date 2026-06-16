@@ -84,16 +84,24 @@ def main() -> None:
     require(adapter, "isStepMode ? null : viewEndIndex", "visible right guarded by non-step")
     reject(adapter, "offline", "offline data dependency")
 
+    require(panel, "State<S13ChipDistributionPanel>", "S13 chip panel is stateful for lazy loading")
+    require(panel, "_scheduleLazyLoad", "S13 chip lazy load scheduler")
+    require(panel, "筹码懒加载中", "S13 chip lazy loading hint")
+    require(panel, "showDialog<void>", "S13 chip load success popup")
+    require(panel, "筹码分布的获取区间为:", "required load range popup text")
+    require(panel, "easy-tdx", "easy-tdx chip source label")
+    require(panel, "rawBars.sublist(0, targetIndex + 1)", "first available/listing to target cutoff range")
     require(panel, "内嵌筹码 overlay", "S13 in-chart overlay doc")
     require(panel, "Positioned.fill", "S13 chip uses full chart overlay")
     require(panel, "IgnorePointer", "S13 chip overlay does not block chart gestures")
-    require(panel, "_InChartChipDistributionPainter", "S13 in-chart chip painter")
-    require(panel, "chip_tick_bins 优先", "S13 overlay exact-bin policy text")
+    require(panel, "_ChipOverlayPainter", "S13 in-chart chip painter")
+    require(panel, "chip_tick_bins", "S13 overlay exact-bin policy text")
     require(panel, "priceToY", "S13 chip aligns to chart price axis")
     require(panel, "exactBarCount", "S13 exact bucket coverage metric")
     require(panel, "精确桶", "S13 exact bucket coverage UI")
     reject(panel, "width: 286", "legacy floating card width")
     reject(panel, "height: 360", "legacy floating card height")
+    reject(panel, "const dynamic", "invalid dynamic const fallback")
 
     require(engine, "final window = bars.sublist(start, safeTarget + 1);", "no future-data window")
     require(engine, "class ChipTickBins", "chip tick bins parser")
@@ -128,6 +136,9 @@ def main() -> None:
             "raw_bar_chip_bins_preserved": True,
             "backend_json_parser_preserves_chip_bins": True,
             "online_snapshot_adapter_preserves_chip_bins": True,
+            "chip_lazy_load": True,
+            "range_popup_after_load": True,
+            "easy_tdx_level_volume_source": True,
             "in_chart_chip_overlay": True,
             "overlay_does_not_block_chart_gestures": True,
             "no_legacy_floating_card": True,
