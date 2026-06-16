@@ -273,7 +273,7 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
                   ]),
                   const SizedBox(height: 14),
                   _sectionTitle('边界原则'),
-                  _PolicyPanel(items: const <String>[
+                  const _PolicyPanel(items: <String>[
                     '请求参数 chart_layers 只影响后端返回 payload 裁剪，不改变 chan.py 计算。',
                     '后端会保留必要解析依赖，例如 seg 需要 bi，bi/fx 需要 merged_bars。',
                     'Flutter 只根据 manifest 决定展示哪些层，不计算 FX/BI/SEG/ZS/BSP。',

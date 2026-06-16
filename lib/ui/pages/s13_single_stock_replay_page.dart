@@ -542,21 +542,24 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   _LevelValidationResult _validateSelectedLevels() {
     final raw = [for (final l in _selectedLevels) l.trim().toUpperCase()];
     final n = _normalizedLevels;
-    if (raw.isEmpty) return _LevelValidationResult(false, n, '级别组合无效：至少选择一个级别');
+    if (raw.isEmpty) {
+      return _LevelValidationResult(false, n, '????????');
+    }
     final bad =
         raw.where((l) => !_levelOptionSet.contains(l)).toList(growable: false);
     if (bad.isNotEmpty) {
-      return _LevelValidationResult(false, n, '级别组合无效：不支持 ${bad.join(',')}');
+      return _LevelValidationResult(false, n, '??????: ${bad.join(',')}');
     }
     if (raw.toSet().length != raw.length) {
-      return _LevelValidationResult(false, n, '级别组合无效：存在重复级别');
-      if (n.length == 1)
-        return _LevelValidationResult(
-            true, n, '单周期模式：加载 ${n.first} K线并执行一次 3段/4段递归段检验');
-      if (n.length != raw.length)
-        return _LevelValidationResult(true, n, '级别组合已归一化：${n.join(',')}');
+      return _LevelValidationResult(false, n, '??????');
     }
-    return _LevelValidationResult(true, n, '级别组合有效：${n.join(',')}');
+    if (n.length == 1) {
+      return _LevelValidationResult(true, n, '?????: ${n.first}');
+    }
+    if (n.length != raw.length) {
+      return _LevelValidationResult(true, n, '????????: ${n.join(',')}');
+    }
+    return _LevelValidationResult(true, n, '??????: ${n.join(',')}');
   }
 
   String _requestModeFor(_LevelValidationResult lv) =>
@@ -638,7 +641,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     if (_mode == v) return;
     _stopPlay();
     setState(() {
-      _mode = value;
+      _mode = v;
       _frameIndex = 0;
       _viewEndIndex = null;
       _crosshairIndex = null;
@@ -1605,10 +1608,10 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final k = n.trim().toUpperCase();
     if (k.isEmpty) return;
     setState(() {
-      if (_enabledEasyTdxIndicators.contains(key)) {
-        _enabledEasyTdxIndicators.remove(key);
+      if (_enabledEasyTdxIndicators.contains(k)) {
+        _enabledEasyTdxIndicators.remove(k);
       } else {
-        _enabledEasyTdxIndicators.add(key);
+        _enabledEasyTdxIndicators.add(k);
       }
     });
   }

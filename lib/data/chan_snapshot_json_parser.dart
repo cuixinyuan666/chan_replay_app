@@ -6,6 +6,7 @@ import '../core/models/fx.dart';
 import '../core/models/merged_bar.dart';
 import '../core/models/raw_bar.dart';
 import '../core/models/recursive_seg.dart';
+import '../core/models/rhythm.dart';
 import '../core/models/seg.dart';
 import '../core/models/zs.dart';
 
