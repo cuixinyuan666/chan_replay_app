@@ -45,7 +45,7 @@ class _RootPageState extends State<RootPage> {
       const OriginReplayStrictPage(),
       S13SingleStockReplayPage(currentRouteIndex: _index, onOpenRoute: _open),
       const AshareBspScannerPage(),
-      const StockSelectionPage(),
+      StockSelectionPage(onOpenMultiLevel: () => _open(_multiLevelIndex)),
       const S8StrategyBatchPage(),
       const ResearchBacktestPage(),
       const ChanSettingsPage(),
