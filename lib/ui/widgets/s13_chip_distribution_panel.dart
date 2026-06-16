@@ -14,7 +14,8 @@ import 's13_chip_distribution_store.dart';
 /// - lazily calls `/api/tdx/kline` after the user enables the chip layer;
 /// - requests a very large easy-tdx count ending at the current displayed K so
 ///   the effective range is first easy-tdx-available/listing bar -> cutoff bar;
-/// - uses the explicit S13 page request context: backendUrl/symbol/market/period;
+/// - prefers explicit S13 request context when provided, and falls back to the
+///   current OriginKlineChart context for backward-compatible page calls;
 /// - publishes the calculated result to [S13ChipDistributionStore];
 /// - `RecursiveSegOriginKlineChart` converts the result into locked drawing
 ///   rectangles and feeds them into `OriginKlineChart`, where they are rendered
@@ -42,10 +43,10 @@ class S13ChipDistributionPanel extends StatefulWidget {
     super.key,
     required this.snapshot,
     required this.enabled,
-    required this.backendBaseUrl,
-    required this.symbol,
-    required this.market,
-    required this.period,
+    this.backendBaseUrl = 'app-managed bundled Python',
+    this.symbol = '',
+    this.market = '',
+    this.period = '',
     required this.isStepMode,
     required this.stepIndex,
     required this.crosshairIndex,
@@ -172,9 +173,13 @@ class _S13ChipDistributionPanelState extends State<S13ChipDistributionPanel> {
     final rawBars = widget.snapshot?.rawBars ?? const <RawBar>[];
     if (rawBars.isEmpty) return;
 
-    final symbol = _normalizeSymbol(widget.symbol);
-    final market = widget.market.trim().toUpperCase();
-    final period = widget.period.trim().toUpperCase();
+    final chartContext = S13ChipDistributionStore.context;
+    final explicitSymbol = _normalizeSymbol(widget.symbol);
+    final explicitMarket = widget.market.trim().toUpperCase();
+    final explicitPeriod = widget.period.trim().toUpperCase();
+    final symbol = explicitSymbol.isNotEmpty ? explicitSymbol : (chartContext?.symbol ?? '');
+    final market = explicitMarket.isNotEmpty ? explicitMarket : (chartContext?.normalizedMarket ?? '');
+    final period = explicitPeriod.isNotEmpty ? explicitPeriod : (chartContext?.period.toUpperCase() ?? '');
     if (symbol.isEmpty) {
       setState(() => _loadError = '缺少当前图表 symbol');
       return;
