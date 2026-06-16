@@ -14,6 +14,8 @@ import '../../data/python_multi_level_chan_analysis_source.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import 's13_nested_marker_numbering_policy.dart';
+import 's13_rhythm_display_settings.dart';
+import 's13_rhythm_viewport_selector.dart';
 import '../widgets/recursive_seg_origin_kline_chart.dart';
 import '../widgets/s13_chip_distribution_panel.dart';
 
@@ -81,6 +83,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   Timer? _playTimer;
   Offset _floatingToolbarOffset = const Offset(12, 54);
   final Map<String, Offset> _replayControlOffsets = <String, Offset>{};
+  S13RhythmDisplaySettings _rhythmSettings = const S13RhythmDisplaySettings();
 
   @override
   void dispose() {
@@ -989,6 +992,19 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     );
   }
 
+  Future<void> _openRhythmDisplaySettings() async {
+    final next = await showS13RhythmDisplaySettingsDialog(
+      context: context,
+      initial: _rhythmSettings,
+    );
+    if (next == null || !mounted) return;
+    setState(() {
+      _rhythmSettings = next;
+      _showRhythmLines = next.enabled;
+      _show1382Hits = next.hit.enabled;
+    });
+  }
+
   Widget _settingsPanel() => _panelBox('工具栏', _unifiedToolPanel());
 
   Widget _unifiedToolPanel() => ListView(
@@ -1072,6 +1088,11 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                   onSelected: _loading
                       ? null
                       : (v) => setState(() => _show1382Hits = v)),
+              FilledButton.tonalIcon(
+                onPressed: _loading ? null : _openRhythmDisplaySettings,
+                icon: const Icon(Icons.tune, size: 16),
+                label: const Text('节奏线设置'),
+              ),
               FilterChip(
                   label: const Text('筹码分布'),
                   selected: _showChipDistribution,
@@ -1546,8 +1567,15 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   List<DrawingObject> _rhythmDrawingObjects(ChanSnapshot snapshot) {
     final now = DateTime.fromMillisecondsSinceEpoch(0);
     final objects = <DrawingObject>[];
+    final selection = S13RhythmViewportSelector.select(
+      lines: snapshot.rhythmLines,
+      hits: snapshot.rhythmHits,
+      totalBars: snapshot.rawBars.length,
+      viewEndIndex: _viewEndIndex,
+      windowSize: _windowSize,
+    );
     if (_showRhythmLines) {
-      for (final line in snapshot.rhythmLines.take(120)) {
+      for (final line in selection.lines.where(_rhythmSettings.lineVisible)) {
         objects.add(DrawingObject(
           id: 'auto_${line.id}',
           tool: TradingViewDrawingTool.trendLine,
@@ -1555,13 +1583,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             DrawingAnchor.chart(rawIndex: line.x1, price: line.y1),
             DrawingAnchor.chart(rawIndex: line.x2, price: line.y2),
           ],
-          style: DrawingStyle(
-            colorValue: line.dir == 'UP' ? 0xFF66BB6A : 0xFFEF5350,
-            strokeWidth: 1.2 + line.layer.clamp(0, 3) * 0.35,
-            opacity: 0.88,
-            dashed: true,
-            fontSize: 11,
-          ),
+          style: _rhythmSettings.lineStyle(line),
           text: line.displayLabel,
           locked: true,
           createdAt: now,
@@ -1570,7 +1592,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       }
     }
     if (_show1382Hits) {
-      for (final hit in snapshot.rhythmHits.take(80)) {
+      for (final hit in selection.hits.where(_rhythmSettings.hitVisible)) {
         objects.add(DrawingObject(
           id: 'auto_${hit.id}',
           tool: TradingViewDrawingTool.priceLabel,
@@ -1580,13 +1602,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               price: hit.price == 0 ? hit.threshold : hit.price,
             ),
           ],
-          style: const DrawingStyle(
-            colorValue: 0xFF8AB4FF,
-            strokeWidth: 1.0,
-            opacity: 0.95,
-            fontSize: 10,
-          ),
-          text: '1.382 ${hit.displayLabel}',
+          style: _rhythmSettings.hitStyle(hit),
+          text: _rhythmSettings.hitText(hit),
           locked: true,
           createdAt: now,
           updatedAt: now,
