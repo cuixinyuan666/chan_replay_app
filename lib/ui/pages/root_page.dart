@@ -16,22 +16,24 @@ class RootPage extends StatefulWidget {
 }
 
 class _RootPageState extends State<RootPage> {
-  static const int _multiLevelIndex = 0;
-  static const int _scannerIndex = 1;
-  static const int _s8BatchIndex = 2;
-  static const int _researchIndex = 3;
-  static const int _settingsIndex = 4;
-  static const int _cacheOptimizationIndex = 5;
-  static const int _chipDistributionIndex = 6;
+  static const int _removedLegacyReplayIndex = 0;
+  static const int _multiLevelIndex = 1;
+  static const int _scannerIndex = 2;
+  static const int _s8BatchIndex = 3;
+  static const int _researchIndex = 4;
+  static const int _settingsIndex = 5;
+  static const int _cacheOptimizationIndex = 6;
+  static const int _chipDistributionIndex = 7;
 
   int _index = _multiLevelIndex;
   final Set<int> _visited = <int>{_multiLevelIndex};
 
   void _open(int index) {
-    if (_index == index) return;
+    final target = index == _removedLegacyReplayIndex ? _multiLevelIndex : index;
+    if (_index == target) return;
     setState(() {
-      _index = index;
-      _visited.add(index);
+      _index = target;
+      _visited.add(target);
     });
   }
 
@@ -44,6 +46,7 @@ class _RootPageState extends State<RootPage> {
             index: _index,
             visited: _visited,
             builders: <_RouteBuilder>[
+              const _RouteBuilder(child: SizedBox.shrink()),
               _RouteBuilder(
                 child: S13SingleStockReplayPage(
                   currentRouteIndex: _index,
