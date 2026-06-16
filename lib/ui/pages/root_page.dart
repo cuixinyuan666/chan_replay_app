@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../controllers/s13_chart_tool_controller.dart';
 import '../widgets/unified_draggable_tool_menu.dart';
 import 'ashare_bsp_scanner_page.dart';
 import 'cache_optimization_page.dart';
@@ -27,8 +28,16 @@ class _RootPageState extends State<RootPage> {
   static const int _cacheOptimizationIndex = 6;
   static const int _chipDistributionIndex = 7;
 
+  final S13ChartToolController _s13ToolController = S13ChartToolController();
+
   int _index = _multiLevelIndex;
   final Set<int> _visited = <int>{_multiLevelIndex};
+
+  @override
+  void dispose() {
+    _s13ToolController.dispose();
+    super.dispose();
+  }
 
   void _open(int index) {
     if (_index == index) return;
@@ -42,7 +51,47 @@ class _RootPageState extends State<RootPage> {
     _open(enabled ? _chipDistributionIndex : _multiLevelIndex);
   }
 
-  List<UnifiedToolMenuSection> get _unifiedToolSections =>
+  void _openS13UnifiedPanel() {
+    _open(_multiLevelIndex);
+    _s13ToolController.openUnifiedPanel();
+  }
+
+  void _openS13DrawingToolbox() {
+    _open(_multiLevelIndex);
+    _s13ToolController.openDrawingToolbox();
+  }
+
+  void _setS13ChipDistribution(bool enabled) {
+    _open(_multiLevelIndex);
+    _s13ToolController.setChipDistribution(enabled);
+  }
+
+  void _setS13BspCandidateTrail(bool enabled) {
+    _open(_multiLevelIndex);
+    _s13ToolController.setBspCandidateTrail(enabled);
+  }
+
+  void _setS13RhythmLines(bool enabled) {
+    _open(_multiLevelIndex);
+    _s13ToolController.setRhythmLines(enabled);
+  }
+
+  void _setS13Hits1382(bool enabled) {
+    _open(_multiLevelIndex);
+    _s13ToolController.setHits1382(enabled);
+  }
+
+  String _s13ToolDescription(
+    S13ChartToolState state,
+    String readyText,
+    String waitingText,
+  ) {
+    return state.attached ? readyText : waitingText;
+  }
+
+  List<UnifiedToolMenuSection> _unifiedToolSections(
+    S13ChartToolState s13ToolState,
+  ) =>
       <UnifiedToolMenuSection>[
         UnifiedToolMenuSection(
           title: '标的设置',
@@ -134,7 +183,7 @@ class _RootPageState extends State<RootPage> {
             ),
           ],
         ),
-        const UnifiedToolMenuSection(
+        UnifiedToolMenuSection(
           title: '缠论元素设置',
           icon: Icons.layers,
           description: '分型、笔、线段、中枢、买卖点和区间套证据',
@@ -144,7 +193,7 @@ class _RootPageState extends State<RootPage> {
               icon: Icons.hub,
               initiallyExpanded: true,
               items: <UnifiedToolMenuItem>[
-                UnifiedToolMenuItem(
+                const UnifiedToolMenuItem(
                   label: '多级别元素',
                   icon: Icons.account_tree,
                   routeIndex: _multiLevelIndex,
@@ -153,22 +202,52 @@ class _RootPageState extends State<RootPage> {
                 UnifiedToolMenuItem(
                   label: '图内筹码叠加',
                   icon: Icons.stacked_bar_chart,
-                  enabled: false,
-                  description: '根菜单未暴露直连接口；进入单股多级别后用图内工具栏开关',
+                  enabled: s13ToolState.attached,
+                  switchValue: s13ToolState.chipDistribution,
+                  onSwitchChanged: _setS13ChipDistribution,
+                  description: _s13ToolDescription(
+                    s13ToolState,
+                    '根菜单直控单股多级别图内筹码分布叠加层',
+                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
+                  ),
                 ),
                 UnifiedToolMenuItem(
                   label: 'BSP 候选轨迹层',
                   icon: Icons.timeline,
-                  enabled: false,
-                  description: '当前仅在单股多级别图内工具栏提供真实开关',
+                  enabled: s13ToolState.attached,
+                  switchValue: s13ToolState.bspCandidateTrail,
+                  onSwitchChanged: _setS13BspCandidateTrail,
+                  description: _s13ToolDescription(
+                    s13ToolState,
+                    '根菜单直控单股多级别候选轨迹显示',
+                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
+                  ),
                 ),
                 UnifiedToolMenuItem(
-                  label: '节奏线 / 1.382 命中',
+                  label: '节奏线',
                   icon: Icons.show_chart,
-                  enabled: false,
-                  description: '当前仅在单股多级别图内工具栏提供真实开关',
+                  enabled: s13ToolState.attached,
+                  switchValue: s13ToolState.rhythmLines,
+                  onSwitchChanged: _setS13RhythmLines,
+                  description: _s13ToolDescription(
+                    s13ToolState,
+                    '根菜单直控后端导出的 rhythm_lines 绘制层',
+                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
+                  ),
                 ),
                 UnifiedToolMenuItem(
+                  label: '1.382 命中',
+                  icon: Icons.control_point_duplicate,
+                  enabled: s13ToolState.attached,
+                  switchValue: s13ToolState.hits1382,
+                  onSwitchChanged: _setS13Hits1382,
+                  description: _s13ToolDescription(
+                    s13ToolState,
+                    '根菜单直控 1.382 命中对象绘制层',
+                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
+                  ),
+                ),
+                const UnifiedToolMenuItem(
                   label: '批量候选',
                   icon: Icons.view_list,
                   routeIndex: _s8BatchIndex,
@@ -178,7 +257,7 @@ class _RootPageState extends State<RootPage> {
             ),
           ],
         ),
-        const UnifiedToolMenuSection(
+        UnifiedToolMenuSection(
           title: '画线 / 图形工具',
           icon: Icons.architecture,
           description: '画线工具、图层开关与对象导入导出',
@@ -188,19 +267,35 @@ class _RootPageState extends State<RootPage> {
               icon: Icons.edit_note,
               initiallyExpanded: true,
               items: <UnifiedToolMenuItem>[
-                UnifiedToolMenuItem(
+                const UnifiedToolMenuItem(
                   label: '进入单股画线环境',
                   icon: Icons.architecture,
                   routeIndex: _multiLevelIndex,
                   description: '进入单股多级别后，使用图内工具按钮打开画线工具箱',
                 ),
                 UnifiedToolMenuItem(
-                  label: '直接打开画线面板',
-                  icon: Icons.open_in_new,
-                  enabled: false,
-                  description: '根菜单到图内 openSignal 的直连控制器尚未接入，避免伪动作',
+                  label: '打开单股工具栏面板',
+                  icon: Icons.tune,
+                  enabled: s13ToolState.attached,
+                  onPressed: _openS13UnifiedPanel,
+                  description: _s13ToolDescription(
+                    s13ToolState,
+                    '根菜单直控 S13 图内统一工具面板',
+                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
+                  ),
                 ),
                 UnifiedToolMenuItem(
+                  label: '直接打开画线面板',
+                  icon: Icons.open_in_new,
+                  enabled: s13ToolState.attached,
+                  onPressed: _openS13DrawingToolbox,
+                  description: _s13ToolDescription(
+                    s13ToolState,
+                    '根菜单直控图内 TradingView 画线工具箱',
+                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
+                  ),
+                ),
+                const UnifiedToolMenuItem(
                   label: '筹码分布适配',
                   icon: Icons.stacked_bar_chart,
                   routeIndex: _chipDistributionIndex,
@@ -236,11 +331,14 @@ class _RootPageState extends State<RootPage> {
               const _RouteBuilder(child: ChipDistributionPage()),
             ],
           ),
-          UnifiedDraggableToolMenu(
-            currentIndex: _index,
-            onOpen: _open,
-            sections: _unifiedToolSections,
-            initialOffset: const Offset(18, 118),
+          ValueListenableBuilder<S13ChartToolState>(
+            valueListenable: _s13ToolController.state,
+            builder: (context, s13ToolState, _) => UnifiedDraggableToolMenu(
+              currentIndex: _index,
+              onOpen: _open,
+              sections: _unifiedToolSections(s13ToolState),
+              initialOffset: const Offset(18, 118),
+            ),
           ),
         ],
       ),
