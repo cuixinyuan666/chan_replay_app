@@ -70,8 +70,108 @@ void main() {
     );
 
     expect(result.totalWeight, 400);
+    expect(result.buyWeight, 400);
+    expect(result.sellWeight, 0);
     expect(result.averageCost, closeTo(10.75, 0.08));
     expect(result.pocPrice, closeTo(11, 0.12));
     expect(result.profitRatio, closeTo(1, 1e-9));
+  });
+
+  test('a_replay_trainer chip_tick_bins p/s/b/w are parsed and preserved', () {
+    final bar = ChipDistributionBar.fromJson(
+      <String, dynamic>{
+        'x': 3,
+        't': '2026-01-05',
+        'o': 10,
+        'h': 11,
+        'l': 9,
+        'c': 10.5,
+        'v': 999,
+        'chip_tick_bins': <String, dynamic>{
+          'p': <double>[10, 10.5, 11],
+          's': <double>[20, 30, 40],
+          'b': <double>[80, 70, 60],
+          'w': <double>[100, 100, 100],
+        },
+      },
+      0,
+    );
+
+    final result = const ChipDistributionEngine().calculate(
+      <ChipDistributionBar>[bar],
+      targetIndex: 0,
+      options: const ChipDistributionOptions(binCount: 40),
+    );
+
+    expect(result.totalWeight, 300);
+    expect(result.sellWeight, 90);
+    expect(result.buyWeight, 210);
+    expect(result.averageCost, closeTo(10.5, 0.08));
+    expect(result.pocPrice, closeTo(10, 0.08));
+  });
+
+  test('chip_tick_bins legacy w-only mode is treated as buy side', () {
+    final bar = ChipDistributionBar.fromJson(
+      <String, dynamic>{
+        't': '2026-01-05',
+        'o': 10,
+        'h': 11,
+        'l': 9,
+        'c': 10.5,
+        'v': 1,
+        'chip_tick_bins': <String, dynamic>{
+          'p': <double>[10, 11],
+          'w': <double>[40, 60],
+        },
+      },
+      0,
+    );
+
+    final result = const ChipDistributionEngine().calculate(
+      <ChipDistributionBar>[bar],
+      targetIndex: 0,
+      options: const ChipDistributionOptions(binCount: 20),
+    );
+
+    expect(result.totalWeight, 100);
+    expect(result.sellWeight, 0);
+    expect(result.buyWeight, 100);
+  });
+
+  test('chip target priority is step, crosshair, visible right, last bar', () {
+    const resolver = ChipTargetResolver();
+
+    expect(
+      resolver.resolve(
+        total: 100,
+        isStepping: true,
+        stepIndex: 12,
+        crosshairIndex: 50,
+        visibleRightIndex: 80,
+      ),
+      12,
+    );
+    expect(
+      resolver.resolve(
+        total: 100,
+        isStepping: false,
+        stepIndex: 12,
+        crosshairIndex: 50,
+        visibleRightIndex: 80,
+      ),
+      50,
+    );
+    expect(
+      resolver.resolve(
+        total: 100,
+        isStepping: false,
+        visibleRightIndex: 80,
+      ),
+      80,
+    );
+    expect(
+      resolver.resolve(total: 100, isStepping: false),
+      99,
+    );
   });
 }
