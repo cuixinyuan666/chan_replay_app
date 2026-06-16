@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'ashare_bsp_scanner_page.dart';
 import 'cache_optimization_page.dart';
 import 'chan_settings_page.dart';
+import 'chip_distribution_page.dart';
 import 'origin_replay_strict_page.dart';
 import 'research_backtest_page.dart';
 import 's8_strategy_batch_page.dart';
@@ -23,6 +24,7 @@ class _RootPageState extends State<RootPage> {
   static const int _researchIndex = 4;
   static const int _settingsIndex = 5;
   static const int _cacheOptimizationIndex = 6;
+  static const int _chipDistributionIndex = 7;
 
   int _index = _multiLevelIndex;
   final Set<int> _visited = <int>{_multiLevelIndex};
@@ -56,6 +58,7 @@ class _RootPageState extends State<RootPage> {
               const _RouteBuilder(child: ResearchBacktestPage()),
               const _RouteBuilder(child: ChanSettingsPage()),
               const _RouteBuilder(child: CacheOptimizationPage()),
+              const _RouteBuilder(child: ChipDistributionPage()),
             ],
           ),
           Positioned(
@@ -170,6 +173,13 @@ class _RouteToolColumn extends StatelessWidget {
             icon: Icons.speed,
             selected: currentIndex == _RootPageState._cacheOptimizationIndex,
             onPressed: () => onOpen(_RootPageState._cacheOptimizationIndex),
+          ),
+          const SizedBox(height: 6),
+          _RouteToolButton(
+            tooltip: '筹码分布',
+            icon: Icons.stacked_bar_chart,
+            selected: currentIndex == _RootPageState._chipDistributionIndex,
+            onPressed: () => onOpen(_RootPageState._chipDistributionIndex),
           ),
         ],
       ),

@@ -75,7 +75,8 @@ def main() -> int:
     )
     check(
         'analyze_multi adapter keeps native source',
-        _has(adapter, 'analyze_multi_native_timed('),
+        _has(adapter, 'analyze_multi_native_timed(')
+        or _has(adapter, 'analyze_multi_native_timed_recursive('),
         'backend/app/a_multilevel_engine_timed.py',
     )
     check(

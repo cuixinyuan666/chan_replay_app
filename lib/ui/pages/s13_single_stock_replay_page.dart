@@ -15,6 +15,7 @@ import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import 's13_nested_marker_numbering_policy.dart';
 import '../widgets/recursive_seg_origin_kline_chart.dart';
+import '../widgets/s13_chip_distribution_panel.dart';
 
 class S13SingleStockReplayPage extends StatefulWidget {
   final int currentRouteIndex;
@@ -70,6 +71,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _showBspCandidateTrail = true,
       _showRhythmLines = true,
       _show1382Hits = true,
+      _showChipDistribution = false,
       _panelOpen = false,
       _playing = false;
   int _frameIndex = 0, _windowSize = 90;
@@ -187,7 +189,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final level = rawLevel.trim().toUpperCase();
     final live = current.bsps.map((p) => _bspKeyForLevel(level, p)).toSet();
     final trail = <String, _BspObservation>{};
-    for (var frame = 0; frame <= _safeFrameIndex && frame < a.frames.length; frame++) {
+    for (var frame = 0;
+        frame <= _safeFrameIndex && frame < a.frames.length;
+        frame++) {
       final s = a.frames[frame].of(level);
       if (s == null) continue;
       for (final p in s.bsps) {
@@ -546,11 +550,11 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     }
     if (raw.toSet().length != raw.length) {
       return _LevelValidationResult(false, n, '级别组合无效：存在重复级别');
-    if (n.length == 1)
-      return _LevelValidationResult(
-          true, n, '单周期模式：加载 ${n.first} K线并执行一次 3段/4段递归段检验');
-    if (n.length != raw.length)
-      return _LevelValidationResult(true, n, '级别组合已归一化：${n.join(',')}');
+      if (n.length == 1)
+        return _LevelValidationResult(
+            true, n, '单周期模式：加载 ${n.first} K线并执行一次 3段/4段递归段检验');
+      if (n.length != raw.length)
+        return _LevelValidationResult(true, n, '级别组合已归一化：${n.join(',')}');
     }
     return _LevelValidationResult(true, n, '级别组合有效：${n.join(',')}');
   }
@@ -766,7 +770,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final missingEdges = _missingAdjacentRelationEdges();
     final buffer = StringBuffer()
       ..writeln(_evidenceHeader)
-      ..writeln('request_params: symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_mode adjust=QFQ levels=${_normalizedLevels.join(',')} window=$_effectiveWindowText')
+      ..writeln(
+          'request_params: symbol=${_symbolController.text.trim()} market=${_marketController.text.trim().toUpperCase()} mode=$_mode adjust=QFQ levels=${_normalizedLevels.join(',')} window=$_effectiveWindowText')
       ..writeln('runtime_path=${RuntimePathController.current.wireName}')
       ..writeln('current_frame=${_hasStepFrames ? _safeFrameIndex + 1 : 0}')
       ..writeln('frame_total=$_frameCount')
@@ -775,8 +780,10 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       ..writeln('relation_count=${c?.relations.length ?? 0}')
       ..writeln('nested_marker_count=${markers.length}')
       ..writeln('candidate_trail_count=$_bspCandidateTrailCount')
-      ..writeln('missing_relation_edges=${missingEdges.isEmpty ? 'none' : missingEdges.join(',')}')
-      ..writeln('missing relation edge diagnostic=${missingEdges.isEmpty ? 'none' : missingEdges.join(',')}');
+      ..writeln(
+          'missing_relation_edges=${missingEdges.isEmpty ? 'none' : missingEdges.join(',')}')
+      ..writeln(
+          'missing relation edge diagnostic=${missingEdges.isEmpty ? 'none' : missingEdges.join(',')}');
     final sampleCount = math.min(12, markers.length);
     if (sampleCount == 0) {
       buffer.writeln('marker_trigger_samples=none');
@@ -792,14 +799,12 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   }
 
   String _markerRowsEvidence(List<_NestedBspMarkerRow> rows) {
-    return rows
-        .map((row) {
-          final kind = row.isIntervalAnchor
-              ? 'interval'
-              : (row.bsp == null ? 'missing' : 'bsp');
-          return '${row.level}:raw=${row.rawIndex ?? 'null'}:anchor_kind=$kind';
-        })
-        .join('|');
+    return rows.map((row) {
+      final kind = row.isIntervalAnchor
+          ? 'interval'
+          : (row.bsp == null ? 'missing' : 'bsp');
+      return '${row.level}:raw=${row.rawIndex ?? 'null'}:anchor_kind=$kind';
+    }).join('|');
   }
 
   String _triggerStateText(S13NestedMarkerTriggerState state) {
@@ -858,6 +863,13 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                         '画线工具',
                         () => _toolboxOpenSignal.value++,
                       ),
+                      const SizedBox(width: 6),
+                      _floatingIcon(
+                        Icons.stacked_bar_chart,
+                        _showChipDistribution ? '关闭筹码分布' : '筹码分布',
+                        () => setState(() =>
+                            _showChipDistribution = !_showChipDistribution),
+                      ),
                       const SizedBox(width: 4),
                       const Icon(Icons.drag_indicator,
                           size: 18, color: Colors.white54),
@@ -869,7 +881,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                     padding: const EdgeInsets.only(top: 8),
                     child: SizedBox(
                       width: 390,
-                      height: math.min(600, MediaQuery.sizeOf(context).height - 120),
+                      height: math.min(
+                          600, MediaQuery.sizeOf(context).height - 120),
                       child: _settingsPanel(),
                     ),
                   ),
@@ -883,8 +896,10 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final size = MediaQuery.sizeOf(context);
     setState(() {
       _floatingToolbarOffset = Offset(
-        (_floatingToolbarOffset.dx + details.delta.dx).clamp(0.0, size.width - 400),
-        (_floatingToolbarOffset.dy + details.delta.dy).clamp(0.0, size.height - 80),
+        (_floatingToolbarOffset.dx + details.delta.dx)
+            .clamp(0.0, size.width - 400),
+        (_floatingToolbarOffset.dy + details.delta.dy)
+            .clamp(0.0, size.height - 80),
       );
     });
   }
@@ -899,7 +914,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           style: IconButton.styleFrom(
             backgroundColor: const Color(0x99111722),
             side: const BorderSide(color: Colors.white24),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
           ),
         ),
       );
@@ -916,7 +932,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               child: Material(
                 color: Colors.transparent,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.28),
                     borderRadius: BorderRadius.circular(999),
@@ -925,7 +942,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                   child: Wrap(
                     spacing: 4,
                     children: <Widget>[
-                      for (final level in _loadedLevels) _titleLevelButton(level),
+                      for (final level in _loadedLevels)
+                        _titleLevelButton(level),
                     ],
                   ),
                 ),
@@ -971,44 +989,43 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   Widget _settingsPanel() => _panelBox('工具栏', _unifiedToolPanel());
 
   Widget _unifiedToolPanel() => ListView(
-        padding: EdgeInsets.zero,
-        physics: const ClampingScrollPhysics(),
-        children: <Widget>[
-          _sectionTitle('股票'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              _input(_backendUrlController, 'backend', width: 210, enabled: false),
-              _input(_symbolController, 'symbol', width: 104),
-              _input(_marketController, 'market', width: 78),
-              _dateButton('start', _startDate, () => _pickDate(isStart: true)),
-              _dateButton('end', _endDate, () => _pickDate(isStart: false)),
-              _runtimePathButton(),
-              _infoButton('窗口', _effectiveWindowText),
-              _infoButton('状态', _status),
-            ],
-          ),
-          _sectionGap(),
-          _sectionTitle('级别'),
-          Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
-            for (final level in _levelOptions) _levelChip(level),
-          ]),
-          const SizedBox(height: 8),
-          Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
-            for (final level in _loadedLevels) _activeLevelChip(level),
-          ]),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
-            _infoButton('校验', _lastLevelValidation),
-            _infoButton('当前', _loadedLevels.join(',')),
-          ]),
-          _sectionGap(),
-          _sectionTitle('复盘 / marker'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
+          padding: EdgeInsets.zero,
+          physics: const ClampingScrollPhysics(),
+          children: <Widget>[
+            _sectionTitle('股票'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                _input(_backendUrlController, 'backend',
+                    width: 210, enabled: false),
+                _input(_symbolController, 'symbol', width: 104),
+                _input(_marketController, 'market', width: 78),
+                _dateButton(
+                    'start', _startDate, () => _pickDate(isStart: true)),
+                _dateButton('end', _endDate, () => _pickDate(isStart: false)),
+                _runtimePathButton(),
+                _infoButton('窗口', _effectiveWindowText),
+                _infoButton('状态', _status),
+              ],
+            ),
+            _sectionGap(),
+            _sectionTitle('级别'),
+            Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
+              for (final level in _levelOptions) _levelChip(level),
+            ]),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
+              for (final level in _loadedLevels) _activeLevelChip(level),
+            ]),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
+              _infoButton('校验', _lastLevelValidation),
+              _infoButton('当前', _loadedLevels.join(',')),
+            ]),
+            _sectionGap(),
+            _sectionTitle('复盘 / marker'),
+            Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
               _modeChip('once'),
               _modeChip('step'),
               FilledButton.icon(
@@ -1029,7 +1046,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               ),
               _infoButton('step', _stepFrameLabel),
               _infoButton('marker', '${_nestedBspMarkers.length}'),
-              _infoButton('1.382', _rhythmSummaryFor(_activeSnapshot).shortText),
+              _infoButton(
+                  '1.382', _rhythmSummaryFor(_activeSnapshot).shortText),
             ]),
             _sectionGap(),
             _sectionTitle('图层'),
@@ -1051,6 +1069,12 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                   onSelected: _loading
                       ? null
                       : (v) => setState(() => _show1382Hits = v)),
+              FilterChip(
+                  label: const Text('筹码分布'),
+                  selected: _showChipDistribution,
+                  onSelected: _loading
+                      ? null
+                      : (v) => setState(() => _showChipDistribution = v)),
             ]),
             SwitchListTile(
                 value: _showBspCandidateTrail,
@@ -1121,6 +1145,18 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               onPanBars: _panChartByBars,
               onWindowSizeChanged: (v) => setState(() => _windowSize = v),
               onPriceScaleChanged: (v) => setState(() => _priceScale = v))),
+      S13ChipDistributionPanel(
+        snapshot: _activeSnapshot,
+        enabled: _showChipDistribution,
+        isStepMode: _isStepMode,
+        stepIndex:
+            (s.rawBars.length - 1).clamp(0, s.rawBars.length - 1).toInt(),
+        crosshairIndex: _crosshairIndex,
+        visibleRightIndex: (_viewEndIndex ?? s.rawBars.length - 1)
+            .clamp(0, s.rawBars.length - 1)
+            .toInt(),
+        onClose: () => setState(() => _showChipDistribution = false),
+      ),
       _nestedBspMarkerOverlay(),
       _replayControlOverlay()
     ]);
@@ -1215,7 +1251,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       );
     }
     final color = _bspNestedColor(bsp);
-    final icon = row.directionDown ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up;
+    final icon =
+        row.directionDown ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up;
     final alpha = _nestedBspAlpha(bsp);
     final label = row.isTriggerSource ? row.sequenceLabel : null;
     return GestureDetector(
@@ -1408,7 +1445,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         child: IconButton(
           onPressed: onPressed,
           icon: Icon(icon, size: 22),
-          color: Colors.white.withValues(alpha: onPressed == null ? 0.22 : alpha),
+          color:
+              Colors.white.withValues(alpha: onPressed == null ? 0.22 : alpha),
           style: IconButton.styleFrom(
             backgroundColor: Colors.black.withValues(alpha: 0.28),
             minimumSize: const Size(42, 42),
@@ -1420,21 +1458,22 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   Widget _levelChip(String level) {
     final selected = _selectedLevels.contains(level);
     return FilterChip(
-        label: Text(l),
-        selected: selected,
-        onSelected: _loading
-            ? null
-            : (v) => setState(() {
-                  if (v) {
-                    if (!_selectedLevels.contains(l)) _selectedLevels.add(l);
-                  } else {
-                    if (_selectedLevels.length > 1) {
-                      _selectedLevels.remove(l);
-                      if (_selectedLevels.length == 1 && _mode == 'step')
-                        _mode = 'once';
-                      if (_activeLevel == l && _selectedLevels.isNotEmpty)
-                        _activeLevel = _normalizedLevels.first;
-                    }
+      label: Text(level),
+      selected: selected,
+      onSelected: _loading
+          ? null
+          : (value) => setState(() {
+                if (value) {
+                  if (!_selectedLevels.contains(level)) {
+                    _selectedLevels.add(level);
+                  }
+                } else if (_selectedLevels.length > 1) {
+                  _selectedLevels.remove(level);
+                  if (_selectedLevels.length == 1 && _mode == 'step') {
+                    _mode = 'once';
+                  }
+                  if (_activeLevel == level && _selectedLevels.isNotEmpty) {
+                    _activeLevel = _normalizedLevels.first;
                   }
                 }
                 _lastLevelValidation = _validateSelectedLevels().message;
@@ -1654,7 +1693,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
 
   Future<void> _pickDate({required bool isStart}) async {
     final now = DateTime.now();
-    final current = isStart ? (_startDate ?? _defaultStartDate) : (_endDate ?? now);
+    final current =
+        isStart ? (_startDate ?? _defaultStartDate) : (_endDate ?? now);
     final picked = await showDatePicker(
       context: context,
       initialDate: current,
@@ -1773,17 +1813,17 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       );
 
   InputDecoration _decoration(String label) => InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.white54, fontSize: 11),
-        isDense: true,
-        filled: true,
-        fillColor: const Color(0xFF1C2330),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.white24),
-        ),
-        disabledBorder: OutlineInputBorder(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white54, fontSize: 11),
+      isDense: true,
+      filled: true,
+      fillColor: const Color(0xFF1C2330),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: Colors.white24),
+      ),
+      disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Colors.white12)));
   String _buildStatus(PythonMultiLevelChanAnalysis a, DateTime s, DateTime e) {
@@ -1793,7 +1833,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   }
 
   String _runtimePathText(PythonMultiLevelChanAnalysis analysis) {
-    final raw = '${analysis.meta['runtime_path'] ?? analysis.snapshot.meta['runtime_path'] ?? RuntimePathController.current.wireName}'.trim();
+    final raw =
+        '${analysis.meta['runtime_path'] ?? analysis.snapshot.meta['runtime_path'] ?? RuntimePathController.current.wireName}'
+            .trim();
     return raw == 'slow_path' ? 'slow_path' : 'high_speed';
   }
 

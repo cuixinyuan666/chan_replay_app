@@ -51,7 +51,8 @@ class RhythmLine {
       calcMode: '${json['calc_mode'] ?? json['calcMode'] ?? 'normal'}',
       dir: '${json['dir'] ?? ''}',
       displayLabel: '${json['display_label'] ?? json['displayLabel'] ?? '节奏线'}',
-      labelLeft: '${json['label_left'] ?? json['labelLeft'] ?? json['display_label'] ?? '节奏线'}',
+      labelLeft:
+          '${json['label_left'] ?? json['labelLeft'] ?? json['display_label'] ?? '节奏线'}',
       labelRight: '${json['label_right'] ?? json['labelRight'] ?? ''}',
       x1: _int(json['x1'] ?? json['start_raw_index'] ?? json['startRawIndex']),
       y1: _num(json['y1'] ?? threshold),
@@ -59,7 +60,8 @@ class RhythmLine {
       y2: _num(json['y2'] ?? threshold),
       threshold: threshold,
       ratio: _num(json['ratio']),
-      thresholdRatio: _num(json['threshold_ratio'] ?? json['thresholdRatio'] ?? 1.382),
+      thresholdRatio:
+          _num(json['threshold_ratio'] ?? json['thresholdRatio'] ?? 1.382),
       roundCurrent: _int(json['round_current'] ?? json['roundCurrent']),
       roundRef: _int(json['round_ref'] ?? json['roundRef']),
       layer: _int(json['layer'], fallback: 1),
@@ -107,7 +109,8 @@ class RhythmHit {
       price: _num(json['price']),
       threshold: _num(json['threshold']),
       dir: '${json['dir'] ?? ''}',
-      displayLabel: '${json['display_label'] ?? json['displayLabel'] ?? '1382'}',
+      displayLabel:
+          '${json['display_label'] ?? json['displayLabel'] ?? '1382'}',
       detail: '${json['detail'] ?? ''}',
     );
   }
@@ -151,7 +154,8 @@ double _num(Object? value, {double fallback = 0}) {
 }
 
 DateTime? _time(Object? value) {
-  final text = '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
+  final text =
+      '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
   if (text.isEmpty || text == 'null') return null;
   return DateTime.tryParse(text);
 }

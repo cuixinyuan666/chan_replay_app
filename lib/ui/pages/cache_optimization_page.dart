@@ -30,7 +30,8 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
     _LayerOption('indicators', '指标'),
   ];
 
-  final _backendUrlController = TextEditingController(text: 'http://127.0.0.1:8000');
+  final _backendUrlController =
+      TextEditingController(text: 'http://127.0.0.1:8000');
   final _symbolController = TextEditingController(text: '600340');
   final _marketController = TextEditingController(text: 'SH');
   final _levelsController = TextEditingController(text: 'DAILY,MIN30,MIN5');
@@ -74,7 +75,8 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
     });
     try {
       final payload = _buildPayload();
-      final base = _backendUrlController.text.trim().replaceFirst(RegExp(r'/+$'), '');
+      final base =
+          _backendUrlController.text.trim().replaceFirst(RegExp(r'/+$'), '');
       final uri = Uri.parse('$base/api/chan/analyze_multi');
       final response = await http
           .post(
@@ -106,7 +108,8 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
 
   Map<String, dynamic> _buildPayload() {
     final levels = [
-      for (final level in _levelsController.text.replaceAll('，', ',').split(','))
+      for (final level
+          in _levelsController.text.replaceAll('，', ',').split(','))
         if (level.trim().isNotEmpty) level.trim().toUpperCase(),
     ];
     final layers = [
@@ -137,7 +140,8 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
   }
 
   String _summary(Map<String, dynamic> result) {
-    if (result['ok'] == false) return '接口返回失败：${result['error'] ?? 'unknown error'}';
+    if (result['ok'] == false)
+      return '接口返回失败：${result['error'] ?? 'unknown error'}';
     final meta = _metaOf(result);
     return '完成：contract=${_text(meta['chart_lazy_layers_contract'])} display=${_listText(meta['chart_lazy_layers_display_layers'])} transport=${_listText(meta['chart_lazy_layers_transport_layers'])} pruned=${_text(meta['chart_lazy_layers_pruned_counts'])}';
   }
@@ -155,7 +159,8 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
     return ValueListenableBuilder<LatestAnalysisJson?>(
       valueListenable: ReplayAnalysisStore.latestAnalysis,
       builder: (context, latest, _) {
-        final analysis = _lastResult ?? latest?.analysis ?? const <String, dynamic>{};
+        final analysis =
+            _lastResult ?? latest?.analysis ?? const <String, dynamic>{};
         final meta = _metaOf(analysis);
         final bspTotal = _countBspRows(analysis);
         final bspFrozen = _countFrozenBspRows(analysis);
@@ -186,31 +191,37 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
                   _sectionTitle('chart_lazy_layers 请求控制'),
                   _requestPanel(),
                   const SizedBox(height: 12),
-                  Text(_status, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  Text(_status,
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12)),
                   const SizedBox(height: 14),
                   _sectionTitle('运行时缓存指标'),
                   _metricWrap(<Widget>[
                     _MetricCard(
                       title: 'K线缓存命中',
-                      value: _text(_metaOrTimeLog(meta, 'backend_session_kline_cache_hits')),
+                      value: _text(_metaOrTimeLog(
+                          meta, 'backend_session_kline_cache_hits')),
                       subtitle: 'raw K-line session cache hits',
                       icon: Icons.memory,
                     ),
                     _MetricCard(
                       title: 'K线缓存未命中',
-                      value: _text(_metaOrTimeLog(meta, 'backend_session_kline_cache_misses')),
+                      value: _text(_metaOrTimeLog(
+                          meta, 'backend_session_kline_cache_misses')),
                       subtitle: 'first request or key changed',
                       icon: Icons.cloud_download,
                     ),
                     _MetricCard(
                       title: '缓存 key 数',
-                      value: _text(_metaOrTimeLog(meta, 'backend_session_kline_cache_key_count')),
+                      value: _text(_metaOrTimeLog(
+                          meta, 'backend_session_kline_cache_key_count')),
                       subtitle: 'symbol/market/period/adjust/count/start/end',
                       icon: Icons.key,
                     ),
                     _MetricCard(
                       title: 'TTL 秒数',
-                      value: _text(_metaOrTimeLog(meta, 'backend_session_kline_cache_ttl_seconds')),
+                      value: _text(_metaOrTimeLog(
+                          meta, 'backend_session_kline_cache_ttl_seconds')),
                       subtitle: '默认 900，可由环境变量调整',
                       icon: Icons.timer,
                     ),
@@ -221,18 +232,22 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
                     _MetricCard(
                       title: 'Lazy contract',
                       value: _text(meta['chart_lazy_layers_contract']),
-                      subtitle: manifestLevels.isEmpty ? '等待返回 layer manifest' : 'levels: ${manifestLevels.join(',')}',
+                      subtitle: manifestLevels.isEmpty
+                          ? '等待返回 layer manifest'
+                          : 'levels: ${manifestLevels.join(',')}',
                       icon: Icons.layers,
                     ),
                     _MetricCard(
                       title: 'Display layers',
-                      value: _listText(meta['chart_lazy_layers_display_layers']),
+                      value:
+                          _listText(meta['chart_lazy_layers_display_layers']),
                       subtitle: 'Flutter 展示层',
                       icon: Icons.visibility,
                     ),
                     _MetricCard(
                       title: 'Transport layers',
-                      value: _listText(meta['chart_lazy_layers_transport_layers']),
+                      value:
+                          _listText(meta['chart_lazy_layers_transport_layers']),
                       subtitle: '后端实际返回层，含解析依赖',
                       icon: Icons.sync_alt,
                     ),
@@ -245,7 +260,8 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
                     _MetricCard(
                       title: '防未来状态',
                       value: _text(meta['anti_future_status']),
-                      subtitle: 'violations: ${_text(meta['anti_future_violation_count'])}',
+                      subtitle:
+                          'violations: ${_text(meta['anti_future_violation_count'])}',
                       icon: Icons.verified_user,
                     ),
                     _MetricCard(
@@ -319,7 +335,10 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
               FilledButton.icon(
                 onPressed: _running ? null : _requestAnalyzeMulti,
                 icon: _running
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.send, size: 18),
                 label: const Text('请求 analyze_multi'),
               ),
@@ -369,11 +388,13 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
               }),
       selectedColor: const Color(0xFFFFD54F),
       backgroundColor: const Color(0xFF20242E),
-      labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12),
+      labelStyle: TextStyle(
+          color: selected ? Colors.black : Colors.white70, fontSize: 12),
     );
   }
 
-  Widget _input(TextEditingController controller, String label, {required double width}) {
+  Widget _input(TextEditingController controller, String label,
+      {required double width}) {
     return SizedBox(
       width: width,
       child: TextField(
@@ -385,14 +406,17 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
           labelStyle: const TextStyle(color: Colors.white54, fontSize: 11),
           border: const OutlineInputBorder(),
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         ),
       ),
     );
   }
 
   Widget _header(LatestAnalysisJson? latest) {
-    final title = latest == null ? '暂无已保存复盘数据' : '${latest.displaySymbol} ${latest.period} ${latest.adjust}';
+    final title = latest == null
+        ? '暂无已保存复盘数据'
+        : '${latest.displaySymbol} ${latest.period} ${latest.adjust}';
     final subtitle = latest == null
         ? '可直接用本页请求 analyze_multi，也可先在“复盘/单股多级别”页加载后回来查看 meta。'
         : '最近保存：${_fmtTime(latest.savedAt)}；本页只请求/读取 JSON，不参与缠论计算。';
@@ -416,9 +440,15 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                Text(title,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                Text(subtitle, style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                Text(subtitle,
+                    style:
+                        const TextStyle(color: Colors.white60, fontSize: 12)),
               ],
             ),
           ),
@@ -435,10 +465,15 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
 
   Widget _sectionTitle(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800)),
+        child: Text(text,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w800)),
       );
 
-  Widget _metricWrap(List<Widget> children) => Wrap(spacing: 12, runSpacing: 12, children: children);
+  Widget _metricWrap(List<Widget> children) =>
+      Wrap(spacing: 12, runSpacing: 12, children: children);
 
   Map<String, dynamic> _metaOf(Map<String, dynamic> analysis) {
     final meta = analysis['meta'];
@@ -447,7 +482,9 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
 
   Map<String, dynamic> _timeLogOf(Map<String, dynamic> meta) {
     final timeLog = meta['time_log'];
-    return timeLog is Map ? Map<String, dynamic>.from(timeLog) : <String, dynamic>{};
+    return timeLog is Map
+        ? Map<String, dynamic>.from(timeLog)
+        : <String, dynamic>{};
   }
 
   Object? _metaOrTimeLog(Map<String, dynamic> meta, String key) {
@@ -473,7 +510,8 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
       }
       return count;
     }
-    if (node is List) return node.fold<int>(0, (sum, item) => sum + _countBspRows(item));
+    if (node is List)
+      return node.fold<int>(0, (sum, item) => sum + _countBspRows(item));
     return 0;
   }
 
@@ -494,12 +532,14 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
       }
       return count;
     }
-    if (node is List) return node.fold<int>(0, (sum, item) => sum + _countFrozenBspRows(item));
+    if (node is List)
+      return node.fold<int>(0, (sum, item) => sum + _countFrozenBspRows(item));
     return 0;
   }
 
   String _evidenceJson(LatestAnalysisJson? latest) {
-    final analysis = _lastResult ?? latest?.analysis ?? const <String, dynamic>{};
+    final analysis =
+        _lastResult ?? latest?.analysis ?? const <String, dynamic>{};
     final meta = _metaOf(analysis);
     return const JsonEncoder.withIndent('  ').convert(<String, dynamic>{
       'page': '缓存优化',
@@ -517,17 +557,25 @@ class _CacheOptimizationPageState extends State<CacheOptimizationPage> {
       'cache': <String, dynamic>{
         'hits': _metaOrTimeLog(meta, 'backend_session_kline_cache_hits'),
         'misses': _metaOrTimeLog(meta, 'backend_session_kline_cache_misses'),
-        'key_count': _metaOrTimeLog(meta, 'backend_session_kline_cache_key_count'),
-        'ttl_seconds': _metaOrTimeLog(meta, 'backend_session_kline_cache_ttl_seconds'),
-        'policy': _metaOrTimeLog(meta, 'backend_session_kline_cache_key_policy'),
+        'key_count':
+            _metaOrTimeLog(meta, 'backend_session_kline_cache_key_count'),
+        'ttl_seconds':
+            _metaOrTimeLog(meta, 'backend_session_kline_cache_ttl_seconds'),
+        'policy':
+            _metaOrTimeLog(meta, 'backend_session_kline_cache_key_policy'),
       },
       'contracts': <String, dynamic>{
         'chart_lazy_layers_contract': meta['chart_lazy_layers_contract'],
-        'chart_lazy_layers_display_layers': meta['chart_lazy_layers_display_layers'],
-        'chart_lazy_layers_transport_layers': meta['chart_lazy_layers_transport_layers'],
-        'chart_lazy_layers_forced_transport_layers': meta['chart_lazy_layers_forced_transport_layers'],
-        'chart_lazy_layers_omitted_layers': meta['chart_lazy_layers_omitted_layers'],
-        'chart_lazy_layers_pruned_counts': meta['chart_lazy_layers_pruned_counts'],
+        'chart_lazy_layers_display_layers':
+            meta['chart_lazy_layers_display_layers'],
+        'chart_lazy_layers_transport_layers':
+            meta['chart_lazy_layers_transport_layers'],
+        'chart_lazy_layers_forced_transport_layers':
+            meta['chart_lazy_layers_forced_transport_layers'],
+        'chart_lazy_layers_omitted_layers':
+            meta['chart_lazy_layers_omitted_layers'],
+        'chart_lazy_layers_pruned_counts':
+            meta['chart_lazy_layers_pruned_counts'],
         'anti_future_contract': meta['anti_future_contract'],
         'anti_future_status': meta['anti_future_status'],
         'anti_future_violation_count': meta['anti_future_violation_count'],
@@ -611,17 +659,23 @@ class _MetricCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(title, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  Text(title,
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12)),
                   const SizedBox(height: 4),
                   Text(value,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800)),
                   const SizedBox(height: 4),
                   Text(subtitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                      style:
+                          const TextStyle(color: Colors.white38, fontSize: 11)),
                 ],
               ),
             ),
@@ -656,9 +710,13 @@ class _PolicyPanel extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Icon(Icons.check_circle, color: Color(0xFF00C853), size: 16),
+                  const Icon(Icons.check_circle,
+                      color: Color(0xFF00C853), size: 16),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(item, style: const TextStyle(color: Colors.white70, fontSize: 12))),
+                  Expanded(
+                      child: Text(item,
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12))),
                 ],
               ),
             ),
@@ -687,7 +745,8 @@ class _CodePanel extends StatelessWidget {
       child: SingleChildScrollView(
         child: SelectableText(
           text,
-          style: const TextStyle(color: Colors.white70, fontFamily: 'monospace', fontSize: 12),
+          style: const TextStyle(
+              color: Colors.white70, fontFamily: 'monospace', fontSize: 12),
         ),
       ),
     );
