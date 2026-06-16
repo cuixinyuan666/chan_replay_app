@@ -1,12 +1,13 @@
 # task checklist and contact
 
-Branch: hichan1
+Branch: hichanqujiantao
 
 Base branch lineage:
 
 - `hichan` was created from latest `origin_vespa_tdx` commit `8fcd455a456a8c196e77ce7694d6ab5c6ed609bb`.
-- `hichan1` was created from the same baseline for S13 interval-nest validator work.
-- Tool limitation: the current GitHub toolset can create/move refs but does not expose a safe delete-ref operation, so old `origin_vespa_tdx` was not removed. Treat `hichan` as the renamed continuation branch and `hichan1` as the active task branch.
+- `hichan1` was created from the same baseline for the previous S13 interval-nest validator and numbering-policy work.
+- `hichanqujiantao` was created from current `hichan` and fast-forwarded through the accepted `hichan1` S13 context before this evidence-hardening pass.
+- Tool limitation: the current GitHub toolset can create/move refs but does not expose a safe delete-ref operation, so historical branches were not removed.
 
 Last supervisor update: 2026-06-15
 
@@ -14,8 +15,8 @@ Last supervisor update: 2026-06-15
 
 - S13 interval-nest / nested BSP marker implementation is code-complete but still needs logic-risk validation against real step frames.
 - Main review question: whether current interval nesting display has hidden logical errors, especially when one parent K maps to multiple child ranges or when a lower-level BSP maps upward without a same-bar higher-level BSP.
-- Presentation decision is now fixed: if multiple lower-level BSP observations map to the same higher-level K, keep the same horizontal K position and display numeric sequence labels beside the arrows. If the count is one, do not display a number.
-- BSP candidate trail decision is now fixed: BSP candidate trail is treated as an at-the-time observation and has the same interval-nest trigger priority as a current/final BSP. The UI may distinguish candidate/current state visually or in evidence, but must not exclude or downgrade candidate trail triggers.
+- Presentation decision is fixed: if multiple lower-level BSP observations map to the same higher-level K, keep the same horizontal K position and display numeric sequence labels beside the arrows. If the count is one, do not display a number.
+- BSP candidate trail decision is fixed: BSP candidate trail is treated as an at-the-time observation and has the same interval-nest trigger priority as a current/final BSP. The UI may distinguish candidate/current state visually or in evidence, but must not exclude or downgrade candidate trail triggers.
 
 ## Hard rules
 
@@ -29,6 +30,7 @@ Last supervisor update: 2026-06-15
 - New files under `python/chan.py` must be in `a_*` folders or named `a_*.py`.
 - S13 UI-only marker, candidate-trail, and drawing behavior must not write back into `analysis.snapshot`, backend frames, or `python/chan.py` structure objects.
 - S13 candidate-trail BSP observations and current/final BSP observations have equal interval-nest trigger priority. Candidate trail is an at-the-time UI observation; identity must be preserved, but priority must not be downgraded.
+- S13 区间套验收硬化 does not add a new top-level page; the evidence and marker logic must stay centralized inside the single-stock multi-level replay page.
 
 ## Receiver workload minimization rule
 
@@ -69,9 +71,9 @@ Required completion summary fields:
 - S12b replay evidence button, indicator default-hidden state, and explicit level-validation feedback: accepted by receiver CLI + App evidence.
 - S12c step-load temporal evidence state tracking: accepted by receiver CLI + App evidence.
 - S12d interval-link marker ids for parent-child replay navigation evidence: accepted by receiver CLI + App evidence.
-- S12e shared marker-overlap policy for S12 chart and evidence markers: accepted by receiver CLI + App evidence.
-- S13 single-stock multi-level replay workspace UI optimizations: implementation completed; `flutter analyze` passed; App visual validation remains required.
-- S13 touch-friendly unified toolbar, date picker, full-step replay controls, draggable controls, and clean BSP labels: implementation completed; `flutter analyze` passed; App visual validation remains required.
+- S12e shared marker-overlap policy evidence and full S12 evidence-chain closure.
+- S13 single-stock multi-level replay workspace UI optimizations: implementation completed; `flutter analyze` passed in the recorded stage; App visual validation remains required.
+- S13 touch-friendly unified toolbar, date picker, full-step replay controls, draggable controls, and clean BSP labels: implementation completed; `flutter analyze` passed in the recorded stage; App visual validation remains required.
 - S13 native multi-level step frames through `CChan(lv_list=[...]).step_load()` and compact frame transport: implementation completed in code; dedicated S13 CLI/native validator remains required.
 - S13 nested BSP marker overlay, lower-level BSP upward trigger, loaded-level switcher, and BSP candidate persistence: implementation completed in code; hidden logic review remains required.
 - S13 default publish prep: start date `2026-01-01`, end date `system current date - 2 days`, replay mode `step`; `flutter analyze` passed.
@@ -88,9 +90,9 @@ Current supervisor position:
 - S12 full evidence chain is complete.
 - S13 implementation work is recorded as code-complete but not fully accepted as logic-verified.
 - `hichan` is the renamed continuation branch created from latest `origin_vespa_tdx`.
-- `hichan1` is the active validation/hardening branch.
+- `hichan1` is historical context for S13 trigger-list and numbering-policy work.
+- `hichanqujiantao` is the current S13 区间套复盘验收硬化 branch.
 - No new Chan algorithm authority is granted to Flutter/Dart.
-- The validator is intentionally allowed to fail until S13 marker mapping is hardened.
 - Multiple lower-level BSP observations mapped to one higher-level K must be preserved as distinct triggers and rendered with numeric labels only when count > 1.
 - BSP candidate-trail observations are at-the-time observations and have the same interval-nest trigger priority as current/final BSP observations.
 - hichanhuancun adds backend-only cache, export-history fields, transport contracts, anti-future metadata, and chart layer transport pruning; it does not grant Flutter/Dart Chan calculation authority.
@@ -122,15 +124,12 @@ Optional display-layout debt remains:
 - R1 accepted by App evidence. It made `rule mode = strategy` and `strategy rule = DAILY_2B_MIN30_1B` the S1-like defaults, kept `S1一键复制`, and de-emphasized low-level debug copy buttons.
 - R1b accepted by CLI validation: `python tools/validate_r1_receiver_burden.py`.
 
-### S4-S7
+### S4-S9
 
 - S4 accepted: CLI strategy diagnostics validator.
 - S5 accepted: CLI strategy rule matrix validation for `DAILY_2B_MIN30_1B`, `DAILY_3B_MIN30_1B`, and `DAILY_3B_MIN30_2B`.
 - S6 accepted: strategy signal sample coverage, including matched-output metadata and no-output diagnostic path.
 - S7 accepted: App strategy signal display loop, selected-signal callback, raw-index jump, chart marker wiring, and copy evidence.
-
-### S8-S9
-
 - S8 accepted: scanner / batch strategy output, local generated candidate JSON, App candidate navigation, chart marker, and traceability evidence.
 - S9 accepted: local generated artifact hygiene and continuation baseline.
 - Generated `test/fixtures/derived/s8_strategy_batch_candidates_v1.json` is local validation output and should not be committed by default.
@@ -164,23 +163,6 @@ validation_result:
 remaining_risk:
 
 - Receiver still needs visual App validation on Windows and Android, especially toolbar scrolling, drag ergonomics, chart edge usage, and short-window overlap.
-
-### S13 time-window and replay defaults
-
-completed_tasks:
-
-- Changed S13 default start date to `2026-01-01`.
-- Changed S13 default end date to system current date minus two days.
-- Changed S13 default replay mode to `step`.
-- S13 page sends `startDate` and `endDate` to `analyzeMulti` and validates `start <= end`.
-
-validation_result:
-
-- `flutter analyze` passed.
-
-remaining_risk:
-
-- Need confirm backend S13 path does not effectively reintroduce `count` as a hidden truncation condition when `start/end` are provided.
 
 ### S13 native step frames and compact transport
 
@@ -220,90 +202,30 @@ validation_result:
 
 remaining_risk:
 
-- Current implementation can still have hidden logical display errors. See review section below.
+- Current implementation required hidden logic hardening, now addressed by the `hichanqujiantao` evidence task record below.
 
 ## S13 interval-nest logic review
 
 ### Supervisor conclusion
 
-Current interval-nest implementation is not a Chan-calculation violation, because it reads backend-exported relations and backend-exported BSP rows. However, it is not yet logic-accepted as a correct interval-nest display. It has several hidden UI/model-mapping risks that can make the chart show a plausible but logically wrong nested marker chain.
+Current interval-nest implementation is not a Chan-calculation violation, because it reads backend-exported relations and backend-exported BSP rows. However, correctness still needs explicit evidence because a plausible UI marker can be logically wrong if trigger identity, candidate/current state, relation provenance, or interval-only anchors are lost.
 
 Important correction from supervisor philosophy:
 
-- BSP candidate trail is an at-the-time observation and is part of the replay's current-state evidence.
+- BSP candidate trail is an at-the-time observation and is part of the replay current-state evidence.
 - Candidate-trail BSP and current/final BSP have equal priority when generating interval-nest markers.
 - Candidate trail must not be excluded, downgraded, or treated as merely decorative.
 - Candidate/current identity must still be preserved for UI/evidence clarity.
 - Candidate trail remains UI-only and must not mutate backend frames, final snapshots, or `python/chan.py` structures.
 
-### Risk 1: first-child-range selection can lose valid child mapping
+Required hardening points:
 
-- Current mapping from parent to child effectively selects the first sorted child range for a parent rawIndex.
-- If backend relations contain multiple child ranges for one parent rawIndex, selecting the first range can map to the wrong child segment for a BSP that actually belongs to a later child range.
-- This is a display-level logical error risk, not a chan.py computation error.
-
-Required fix:
-
-- When mapping downward, choose the child relation that contains the target lower-level BSP or target child raw index.
-- If only a parent rawIndex is available, expose multiple child candidates or mark ambiguity instead of silently taking the first range.
-
-### Risk 2: downward chain anchors to childStart when no child BSP exists
-
-- When no BSP exists inside the child range, the code can use `childStartRawIndex` as a placeholder anchor.
-- This is acceptable for navigation to a region, but not equivalent to a child-level buy/sell point.
-- If rendered as a nested BSP marker row, it can visually imply a child signal where only a child interval exists.
-
-Required fix:
-
-- Separate `interval anchor` from `BSP anchor` in the row model.
-- Render missing BSP rows as `-` or interval-only, and never style a childStart placeholder as a BSP signal.
-
-### Risk 3: active-level mapping can collapse many lower-level BSPs onto the same parent K
-
-- Mapping lower-level BSP observations upward to the active higher level can collapse multiple lower-level observations into one higher-level rawIndex.
-- This applies equally to current/final BSP observations and candidate-trail BSP observations.
-- The current dedupe key includes row information, so some duplicates are preserved, but visible x-position can still overlap and imply a single event cluster.
-
-Required fix:
-
-- Replace the `Set<int>` active-anchor model with a trigger identity list.
-- Each trigger must preserve `sourceLevel`, `sourceRawIndex`, `activeRawIndex`, and candidate/current state.
-- Group triggers by `activeRawIndex` only for display placement, not for data loss.
-- Within each `activeRawIndex`, sort by lower-level rawIndex and assign sequence labels.
-- If group count is one, do not display a number.
-- If group count is greater than one, display `1`, `2`, `3`, etc. beside the arrows.
-
-### Risk 4: current-frame relation availability may be weaker than current-frame BSP availability
-
-- Strict step mode correctly reads `analysis.frames[_safeFrameIndex]`.
-- But if a frame contains a lower-level BSP before the corresponding parent-child relation is fully exported or stable, upward/downward mapping can fail or later change.
-
-Required fix:
-
-- In S13 evidence, record per-marker `frame_index`, `relation_source_frame`, `bsp_source_frame`, and whether mapping source is `current` or `candidate_trail`.
-- Candidate-trail observations must have equal trigger priority, but their identity must remain explicit.
-
-### Risk 5: candidate trail identity can be lost
-
-- Candidate trail is intentionally preserved as a same-priority at-the-time BSP observation.
-- The risk is not that candidate trail participates in interval-nest marker generation. It should participate.
-- The real risk is losing the identity of whether a trigger came from current/final BSP or candidate trail.
-
-Required fix:
-
-- Keep internal state explicit: `current` versus `candidate_trail`.
-- Candidate-trail and current/final BSP observations must share the same numbering and trigger priority.
-- Add optional debug tooltip or copied evidence showing `candidate_trail=true/false`.
-
-### Risk 6: loaded-level order must match backend semantic hierarchy
-
-- S13 now uses backend-loaded levels instead of default selected levels, which is better.
-- But if backend returns levels in a different order or missing an intermediate level, the chain `levels[i] -> levels[i+1]` can produce wrong parent/child assumptions.
-
-Required fix:
-
-- Validate every adjacent pair has relation rows before using it as a hierarchy edge.
-- If an edge lacks relations, disable nested mapping for that edge and report the missing pair.
+- When mapping downward, choose a non-ambiguous child relation, and stop mapping instead of silently taking the first child range.
+- Separate `interval anchor` from `BSP anchor`; never style childStart placeholder as a BSP signal.
+- Replace collapsed active raw-index sets with trigger identity rows that preserve `sourceLevel`, `sourceRawIndex`, `activeRawIndex`, and candidate/current state.
+- In copied S13 evidence, record `relation_source_frame`, `bsp_source_frame`, `trigger_state=current|candidate_trail`, and `anchor_kind=bsp|interval`.
+- Validate every adjacent loaded-level pair has relation rows before using it as a hierarchy edge; if an edge lacks relations, stop mapping for that edge and report the missing pair.
+- Page-level adaptation: keep S13 interval-nest evidence inside the single-stock multi-level replay page; do not add a separate 区间套/S13 top-level page.
 
 ## hichan1 task record: S13 interval-nest validator and numbering policy
 
@@ -315,7 +237,7 @@ completed_tasks:
 - Added `lib/ui/pages/s13_nested_marker_numbering_policy.dart` to pin the confirmed numbering rule.
 - Updated `lib/ui/pages/s13_nested_marker_numbering_policy.dart` so candidate-trail and current/final BSP states compare at equal priority.
 - Updated `lib/ui/pages/s13_single_stock_replay_page.dart` to import the numbering policy and replace the active raw-index `Set<int>` model with explicit `_NestedBspTrigger` identities.
-- S13 marker triggers now preserve `sourceLevel`, `sourceRawIndex`, `sourceBsp`, active raw index, and candidate/current state before grouping by active rawIndex for display.
+- S13 marker triggers preserve `sourceLevel`, `sourceRawIndex`, `sourceBsp`, active raw index, and candidate/current state before grouping by active rawIndex for display.
 - Numeric sequence labels are generated per active rawIndex group and are hidden when group count is one.
 - Interval-only child anchors are explicitly separated from BSP trigger rows through `isIntervalAnchor`.
 - The validator checks that step mode reads `analysis.frames[_safeFrameIndex]` instead of final snapshot slicing.
@@ -326,6 +248,10 @@ completed_tasks:
 - The validator checks historical candidate BSPs are UI-only copies and do not mutate backend frame or snapshot objects.
 - The manual was updated to record this branch/task process and the equal-priority candidate-trail rule.
 
+evidence_button:
+
+- Not present in `hichan1`; evidence copying was selected as the follow-up hardening task.
+
 validation_result:
 
 - Validator script added.
@@ -333,37 +259,80 @@ validation_result:
 - Candidate-trail equal-priority policy added to code helper and manual.
 - Main page trigger-list implementation committed.
 - Connector-side file comparison confirms no `python/chan.py` or backend Chan calculation files were modified in this task.
-- Local `flutter analyze` and local validator execution are still required by receiver because the current environment cannot run the Flutter project build.
+- Local `flutter analyze` and local validator execution are still required by receiver because the task environment cannot run the Flutter project build.
 
 remaining_risk:
 
-- True remote branch rename could not remove old `origin_vespa_tdx` because the available toolset has no delete-ref operation.
-- Receiver should run `flutter analyze`, `python tools/check_chanpy_guardrails.py`, and `python tools/validate_s13_interval_nest_marker_logic.py` after pulling `hichan1`.
-- The main page now preserves trigger identity, but App validation is still required to verify marker density, tap target ergonomics, and visual clarity when many triggers map to one active rawIndex.
+- Receiver should run `flutter analyze`, `python tools/check_chanpy_guardrails.py`, and `python tools/validate_s13_interval_nest_marker_logic.py` after pulling `hichan1` if reviewing history.
+- The main page preserved trigger identity, but App validation was still required to verify marker density, tap target ergonomics, and visual clarity when many triggers map to one active rawIndex.
 
 next_task:
 
-- Run the receiver validation commands below.
-- If `flutter analyze` reports private unused-field/unused-method warnings, remove or wire the unused evidence fields before App acceptance.
-- Add copied evidence/debug tooltip for marker trigger state: current versus candidate_trail.
+- Add copied evidence/debug output for marker trigger state: current versus candidate_trail.
 - Verify on real `DAILY,MIN30,MIN5` step replay that candidate-trail BSP and current/final BSP both trigger markers with equal priority.
+
+## hichanqujiantao task record: S13 interval-nest replay acceptance evidence hardening
+
+completed_tasks:
+
+- Created branch `hichanqujiantao` from current `hichan`, then fast-forwarded it through the historical `hichan1` S13 trigger-list baseline.
+- Updated `lib/ui/pages/s13_single_stock_replay_page.dart` so S13 marker handling uses private observation/trigger models rather than naked `BspPoint` lists for acceptance evidence.
+- Added `_BspObservation` with explicit `current` versus `candidate_trail` state, `bspKey`, and `bspSourceFrame`.
+- Extended `_NestedBspTrigger` and `_NestedBspMarker` with `sourceLevel`, `sourceRawIndex`, `activeRawIndex`, `sequenceNumber`, `sequenceTotal`, `relationSourceFrame`, `bspSourceFrame`, `bspKey`, and `anchorKind`.
+- Preserved the existing numbering policy: one trigger at an active raw index shows no number, while multiple triggers show `1..n` in trigger identity order.
+- Kept candidate-trail and current/final BSP triggers at equal priority through `S13NestedMarkerNumberingPolicy.compareTriggerState` returning `0`.
+- Added adjacent relation edge diagnostics: every loaded-level adjacent pair must have backend relation rows before marker mapping can use that edge; missing pairs are reported as `missing_relation_edges`.
+- Kept interval-only anchors explicit through `anchor_kind=interval` / `isIntervalAnchor`, so child interval placeholders cannot impersonate BSP anchors.
+- Added S13 marker evidence copy payload headed by `S13_INTERVAL_NEST_MARKER_EVIDENCE`.
+- Extended `tools/validate_s13_interval_nest_marker_logic.py` to check evidence button, evidence fields, candidate/current identity fields, frame provenance fields, missing-edge diagnostics, and interval-anchor/BSP-anchor separation.
+- Added page-integration checks to the validator: S13 evidence hardening does not add a new top-level page and remains centralized inside the single-stock multi-level replay page.
+- Removed the broad `unused_field: ignore` analyzer waiver that had been temporarily added, so this task does not weaken global analyzer policy.
+
+evidence_button:
+
+- Added `复制 marker 证据` in the S13 unified toolbar `复盘 / marker` area.
+- The copied payload header is fixed as `S13_INTERVAL_NEST_MARKER_EVIDENCE`.
+- The payload includes request parameters, runtime path, current frame, frame total, active level, loaded levels, relation count, nested marker count, candidate trail count, missing relation edges, and marker trigger samples.
+- Marker trigger samples include `activeRawIndex`, `sourceLevel`, `sourceRawIndex`, `trigger_state=current|candidate_trail`, `sequenceNumber`, `sequenceTotal`, `bsp_key`, `relation_source_frame`, `bsp_source_frame`, and `anchor_kind=bsp|interval`.
+
+validation_result:
+
+- Static validator updated: `python tools/validate_s13_interval_nest_marker_logic.py`.
+- The validator now treats copied evidence as the stable UI/receiver text interface.
+- The validator still enforces that Dart uses backend `MultiLevelChanSnapshot.relations` and backend BSP rows only.
+- The validator now also verifies that `root_page.dart` keeps `S13SingleStockReplayPage` in `_multiLevelIndex` and that S13 toolbar page navigation only targets existing pages rather than creating an interval-nest page.
+- Local command execution was not performed in this connector-only environment; receiver should run the commands in the next section after pulling `hichanqujiantao`.
+
+remaining_risk:
+
+- Real App validation is still required to verify marker density, tap ergonomics, and visual clarity on live step replay data.
+- Real receiver validation is still required to prove copied evidence contains non-empty marker samples on a representative multi-level replay.
+- `s13_single_stock_replay_page.dart` still has a large diff versus `hichan1` because the prior evidence pass rewrote substantial formatting while adding logic. This is a merge-risk note, not a runtime issue; future conflict resolution should prefer keeping hichan's page skeleton and reapplying only the evidence/trigger-model hunks if necessary.
+- No backend protocol change was made; evidence is a UI/acceptance text interface only.
+
+next_task:
+
+- Receiver pulls `hichanqujiantao` and runs the baseline + S13 validator commands below.
+- In App, load a real `DAILY,MIN30,MIN5` step replay, click `复制 marker 证据`, and paste the evidence to verify trigger-state and frame-provenance samples.
+- If sample evidence reveals missing relation edges for expected adjacent pairs, inspect backend relation export for that frame before changing Dart display behavior.
+- If merging with a `hichan` branch that added new sibling pages, keep the new sibling page entries in `root_page.dart`; do not move S13 evidence out of the existing single-stock multi-level replay page.
 
 ## Next task-party operation
 
-1. Receiver pulls latest `hichan1`.
-2. Run existing baseline checks:
-   - `flutter analyze`
-   - `python tools/audit_dart_algorithm_usage.py`
-   - `python tools/check_chanpy_guardrails.py`
-3. Run the new validator:
+1. Receiver pulls latest `hichanqujiantao`.
+2. Run baseline checks:
    - `python tools/validate_s13_interval_nest_marker_logic.py`
-4. Expected current behavior:
+   - `python tools/check_chanpy_guardrails.py`
+   - `python tools/audit_dart_algorithm_usage.py`
+   - `flutter analyze`
+3. Expected current behavior:
    - The validator should pass source-authority checks.
-   - Marker identity checks should pass if the Dart parser accepts the new S13 trigger-list wiring.
-5. Receiver App validation after later logic hardening:
+   - The validator should pass evidence-button, evidence-field, candidate/current identity, frame provenance, missing-edge diagnostic, interval-anchor/BSP-anchor separation, and page-integration checks.
+4. Receiver App validation:
    - Step through `DAILY,MIN30,MIN5` real data.
    - Verify lower-level BSP appears on higher-level chart.
    - Verify click-through lands on the intended lower-level BSP or explicitly marked interval-only region.
    - Verify multiple lower-level BSPs under one parent K are not visually collapsed into one misleading signal.
    - Verify candidate-trail BSP observations and current/final BSP observations both trigger interval-nest markers with equal priority.
    - Verify count-one marker shows no number, while count-greater-than-one markers show `1`, `2`, `3`, etc.
+   - Copy marker evidence and confirm pasted text starts with `S13_INTERVAL_NEST_MARKER_EVIDENCE`.
