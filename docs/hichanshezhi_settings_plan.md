@@ -2,13 +2,15 @@
 
 ## 目标
 
-基于 `hichan` 创建 `hichanshezhi`，从历史分支 `zhibiao` 的 `复盘` 页提取缠论 `CChanConfig` 设置，新增与 `复盘`、`单股多级别复盘` 同级的 `设置` 页面。
+基于 `hichan` 创建 `hichanshezhi`，从 `origin_vespa_tdx`（后来改名为 `hichan`）这条历史演进线中重新定位 `zhibiao` 旧实现，提取其中 `复盘` 页的缠论 `CChanConfig` 设置，新增与 `复盘`、`单股多级别复盘` 同级的 `设置` 页面。
 
-## 历史来源
+## 重新搜索结论
 
-- 分支：`zhibiao`
-- 文件：`lib/ui/pages/origin_replay_page_v2.dart`
-- 来源内容：`_settingDefaults`、下拉枚举、设置分组与控件语义。
+- 实际仓库：`cuixinyuan666/chan_replay_app`。
+- 基线分支：`origin_vespa_tdx` 与 `hichan` 当前为同一提交 `8fcd455a456a8c196e77ce7694d6ab5c6ed609bb`。
+- 历史参考：`zhibiao` 是 `origin_vespa_tdx / hichan` 演进线上的旧实现参考，不是 `chan_month5` 下的来源。
+- 参考文件：`lib/ui/pages/origin_replay_page_v2.dart`。
+- 来源内容：`_settingDefaults`、`_bspTypes`、`_macdAlgoValues`、BSP 高级覆盖后缀、设置分组与控件语义。
 
 ## 合并原则
 
