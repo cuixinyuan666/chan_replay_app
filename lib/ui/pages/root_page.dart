@@ -17,10 +17,10 @@ class RootPage extends StatefulWidget {
 class _RootPageState extends State<RootPage> {
   static const int _replayIndex = 0;
   static const int _multiLevelIndex = 1;
-  static const int _chipDistributionIndex = 2;
-  static const int _scannerIndex = 3;
-  static const int _s8BatchIndex = 4;
-  static const int _researchIndex = 5;
+  static const int _scannerIndex = 2;
+  static const int _s8BatchIndex = 3;
+  static const int _researchIndex = 4;
+  static const int _chipDistributionIndex = 5;
 
   int _index = _multiLevelIndex;
   final Set<int> _visited = <int>{_multiLevelIndex};
@@ -48,10 +48,10 @@ class _RootPageState extends State<RootPage> {
                 currentRouteIndex: _index,
                 onOpenRoute: _open,
               )),
-              const _RouteBuilder(child: ChipDistributionPage()),
               const _RouteBuilder(child: AshareBspScannerPage()),
               const _RouteBuilder(child: S8StrategyBatchPage()),
               const _RouteBuilder(child: ResearchBacktestPage()),
+              const _RouteBuilder(child: ChipDistributionPage()),
             ],
           ),
           if (_index != _multiLevelIndex)
@@ -133,13 +133,6 @@ class _RouteToolColumn extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             _RouteToolButton(
-              tooltip: '筹码分布',
-              icon: Icons.stacked_bar_chart,
-              selected: currentIndex == _RootPageState._chipDistributionIndex,
-              onPressed: () => onOpen(_RootPageState._chipDistributionIndex),
-            ),
-            const SizedBox(height: 6),
-            _RouteToolButton(
               tooltip: '扫描器',
               icon: Icons.radar,
               selected: currentIndex == _RootPageState._scannerIndex,
@@ -158,6 +151,13 @@ class _RouteToolColumn extends StatelessWidget {
               icon: Icons.science,
               selected: currentIndex == _RootPageState._researchIndex,
               onPressed: () => onOpen(_RootPageState._researchIndex),
+            ),
+            const SizedBox(height: 6),
+            _RouteToolButton(
+              tooltip: '筹码分布',
+              icon: Icons.stacked_bar_chart,
+              selected: currentIndex == _RootPageState._chipDistributionIndex,
+              onPressed: () => onOpen(_RootPageState._chipDistributionIndex),
             ),
           ],
         ),
