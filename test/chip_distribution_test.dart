@@ -1,4 +1,7 @@
 import 'package:chan_replay_app/core/analysis/chip_distribution.dart';
+import 'package:chan_replay_app/core/analysis/chip_online_replay_adapter.dart';
+import 'package:chan_replay_app/core/models/chan_snapshot.dart';
+import 'package:chan_replay_app/core/models/raw_bar.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -172,6 +175,60 @@ void main() {
     expect(
       resolver.resolve(total: 100, isStepping: false),
       99,
+    );
+  });
+
+  test('online replay adapter maps snapshot bars and guards non-step targets', () {
+    final snapshot = ChanSnapshot(
+      rawBars: <RawBar>[
+        RawBar(
+          index: 0,
+          time: DateTime(2026, 1, 1),
+          open: 10,
+          high: 11,
+          low: 9,
+          close: 10.5,
+          volume: 100,
+        ),
+        RawBar(
+          index: 1,
+          time: DateTime(2026, 1, 2),
+          open: 10.5,
+          high: 12,
+          low: 10,
+          close: 11.5,
+          volume: 120,
+        ),
+      ],
+      mergedBars: const [],
+      fxs: const [],
+      bis: const [],
+      segs: const [],
+      zss: const [],
+    );
+
+    final bars = ChipOnlineReplayAdapter.fromSnapshot(snapshot);
+    expect(bars.length, 2);
+    expect(bars.last.close, 11.5);
+    expect(
+      ChipOnlineReplayAdapter.resolveTargetIndex(
+        total: bars.length,
+        isStepMode: true,
+        stepIndex: 1,
+        crosshairIndex: 0,
+        viewEndIndex: 0,
+      ),
+      1,
+    );
+    expect(
+      ChipOnlineReplayAdapter.resolveTargetIndex(
+        total: bars.length,
+        isStepMode: false,
+        stepIndex: 1,
+        crosshairIndex: null,
+        viewEndIndex: 0,
+      ),
+      0,
     );
   });
 }
