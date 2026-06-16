@@ -12,6 +12,21 @@ import 'origin_kline_chart.dart' as base;
 /// `snapshot.recursiveSegLayers` rows into non-persistent drawing overlays and
 /// delegates all actual K-line rendering to the original `OriginKlineChart`.
 class RecursiveSegOriginKlineChart extends StatelessWidget {
+  static const _rhythmStylePalette = <int>[
+    0xFF66BB6A,
+    0xFFEF5350,
+    0xFF42A5F5,
+    0xFFFFD54F,
+    0xFFAB47BC,
+    0xFF26C6DA,
+    0xFFFF8A65,
+    0xFF9CCC65,
+    0xFF5C6BC0,
+    0xFFFF7043,
+    0xFF26A69A,
+    0xFFD4E157,
+  ];
+
   final ChanSnapshot snapshot;
   final bool showFx;
   final bool showFxLine;
@@ -91,6 +106,8 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visibleStyledDrawingObjects =
+        _visibleStyledExternalDrawingObjects(snapshot, drawingObjects);
     return base.OriginKlineChart(
       snapshot: snapshot,
       showFx: showFx,
@@ -109,7 +126,7 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
       enabledEasyTdxIndicators: enabledEasyTdxIndicators,
       drawingObjects: [
         if (showRecursiveSegLayers) ..._recursiveSegDrawingObjects(snapshot),
-        ...drawingObjects,
+        ...visibleStyledDrawingObjects,
       ],
       drawingStorageKey: drawingStorageKey,
       symbolLabel: _symbolLabelWithRecursiveSegSummary(symbolLabel, snapshot),
@@ -131,11 +148,111 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
     );
   }
 
+  List<DrawingObject> _visibleStyledExternalDrawingObjects(
+    ChanSnapshot snapshot,
+    List<DrawingObject> objects,
+  ) {
+    if (objects.isEmpty) return const <DrawingObject>[];
+    final range = _visibleRhythmRawIndexRange(snapshot);
+    final visible = <DrawingObject>[];
+    for (final object in objects) {
+      if (!_isAutoRhythmOverlay(object)) {
+        visible.add(object);
+        continue;
+      }
+      if (!_drawingObjectIntersectsRange(object, range)) continue;
+      visible.add(_styleRhythmOverlay(object));
+    }
+    return visible;
+  }
+
+  bool _isAutoRhythmOverlay(DrawingObject object) {
+    return object.id.startsWith('auto_') &&
+        (object.tool == TradingViewDrawingTool.trendLine ||
+            object.tool == TradingViewDrawingTool.priceLabel);
+  }
+
+  _RhythmViewportRange _visibleRhythmRawIndexRange(ChanSnapshot snapshot) {
+    if (snapshot.rawBars.isEmpty) {
+      return const _RhythmViewportRange(0, 0x3fffffff);
+    }
+    final maxRaw = snapshot.rawBars.length - 1;
+    final safeWindow = windowSize < 1 ? 1 : windowSize;
+    final end = viewEndIndex == null
+        ? maxRaw
+        : _clampInt(viewEndIndex!, 0, maxRaw);
+    final start = _clampInt(end - safeWindow + 1, 0, maxRaw);
+    final margin = _clampInt((safeWindow / 3).ceil(), 8, 80);
+    return _RhythmViewportRange(
+      _clampInt(start - margin, 0, maxRaw),
+      _clampInt(end + margin, 0, maxRaw),
+    );
+  }
+
+  bool _drawingObjectIntersectsRange(
+    DrawingObject object,
+    _RhythmViewportRange range,
+  ) {
+    final rawIndexes = <int>[
+      for (final anchor in object.anchors)
+        if (anchor.isChart && anchor.rawIndex != null) anchor.rawIndex!,
+    ];
+    if (rawIndexes.isEmpty) return true;
+    var minRaw = rawIndexes.first;
+    var maxRaw = rawIndexes.first;
+    for (final raw in rawIndexes.skip(1)) {
+      if (raw < minRaw) minRaw = raw;
+      if (raw > maxRaw) maxRaw = raw;
+    }
+    return minRaw <= range.endRawIndex && maxRaw >= range.startRawIndex;
+  }
+
+  DrawingObject _styleRhythmOverlay(DrawingObject object) {
+    if (object.tool != TradingViewDrawingTool.trendLine) return object;
+    final leftRawIndex = _leftAnchorRawIndex(object);
+    if (leftRawIndex == null) return object;
+    final slot = _rhythmStyleSlot(leftRawIndex);
+    return object.copyWith(style: _styleRhythmLine(slot, object.style));
+  }
+
+  int? _leftAnchorRawIndex(DrawingObject object) {
+    for (final anchor in object.anchors) {
+      if (anchor.isChart && anchor.rawIndex != null) return anchor.rawIndex;
+    }
+    return null;
+  }
+
+  int _rhythmStyleSlot(int leftRawIndex) {
+    final size = _rhythmStylePalette.length * 2;
+    return leftRawIndex.abs() % size;
+  }
+
+  DrawingStyle _styleRhythmLine(int slot, DrawingStyle baseStyle) {
+    final color = _rhythmStylePalette[slot % _rhythmStylePalette.length];
+    final dashed = slot >= _rhythmStylePalette.length;
+    final strokeWidth = 1.25 + (slot % 3) * 0.25;
+    return baseStyle.copyWith(
+      colorValue: color,
+      strokeWidth: strokeWidth,
+      opacity: 0.88,
+      dashed: dashed,
+      fontSize: 11,
+    );
+  }
+
+  int _clampInt(int value, int min, int max) {
+    if (max < min) return min;
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
+  }
+
   List<DrawingObject> _recursiveSegDrawingObjects(ChanSnapshot snapshot) {
     final rows = <DrawingObject>[];
     final now = DateTime.fromMillisecondsSinceEpoch(0);
     final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
-    final maxLayer = maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
+    final maxLayer =
+        maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
     for (final entry in snapshot.recursiveSegLayers.entries) {
       final layer = entry.key;
       if (layer < minLayer || layer > maxLayer) continue;
@@ -146,7 +263,10 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
           id: 'hichan2_recursive_seg_L${layer}_${seg.index}_${seg.startRawIndex}_${seg.endRawIndex}',
           tool: TradingViewDrawingTool.trendLine,
           anchors: [
-            DrawingAnchor.chart(rawIndex: seg.startRawIndex, price: seg.startPrice),
+            DrawingAnchor.chart(
+              rawIndex: seg.startRawIndex,
+              price: seg.startPrice,
+            ),
             DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice),
           ],
           style: _styleForLayer(layer: layer, isSure: seg.isSure),
@@ -187,10 +307,14 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
     };
   }
 
-  String _symbolLabelWithRecursiveSegSummary(String baseLabel, ChanSnapshot snapshot) {
+  String _symbolLabelWithRecursiveSegSummary(
+    String baseLabel,
+    ChanSnapshot snapshot,
+  ) {
     final layerCounts = <String>[];
     final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
-    final maxLayer = maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
+    final maxLayer =
+        maxRecursiveSegLayer < minLayer ? minLayer : maxRecursiveSegLayer;
     for (var layer = minLayer; layer <= maxLayer; layer++) {
       final count = snapshot.recursiveSegLayers[layer]?.length ?? 0;
       if (count > 0) layerCounts.add('L$layer:$count');
@@ -200,4 +324,11 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
     final suffix = '递归段 ${layerCounts.join(' ')}';
     return prefix.isEmpty ? suffix : '$prefix | $suffix';
   }
+}
+
+class _RhythmViewportRange {
+  final int startRawIndex;
+  final int endRawIndex;
+
+  const _RhythmViewportRange(this.startRawIndex, this.endRawIndex);
 }
