@@ -11,7 +11,7 @@ class ChanSettingsPage extends StatefulWidget {
 }
 
 class _ChanSettingsPageState extends State<ChanSettingsPage> {
-  static const String _sourceBranch = 'zhibiao';
+  static const String _sourceBranch = 'origin_vespa_tdx/hichan → zhibiao';
   static const String _sourceFile = 'lib/ui/pages/origin_replay_page_v2.dart';
 
   static const Map<String, Object?> _defaults = <String, Object?>{
@@ -259,7 +259,7 @@ class _ChanSettingsPageState extends State<ChanSettingsPage> {
             ),
             const SizedBox(height: 8),
             const Text(
-              '从历史 zhibiao 分支“复盘”页抽取 CChanConfig 默认值和控件语义，先独立落到同级“设置”页，减少与 hichan 及同级功能分支的复盘核心逻辑冲突。',
+              '从 origin_vespa_tdx（后续 hichan）历史演进线的 zhibiao 复盘页抽取 CChanConfig 默认值和控件语义，先独立落到同级“设置”页，减少与 hichan 及同级功能分支的复盘核心逻辑冲突。',
               style: TextStyle(color: Colors.white60, fontSize: 12, height: 1.35),
             ),
             const SizedBox(height: 10),
