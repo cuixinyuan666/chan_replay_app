@@ -526,6 +526,55 @@ def _build_parent_rhythm_entries(
     return lines, hits
 
 
+def _left_edge_connectors(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, int], list[dict[str, Any]]] = {}
+    for line in lines:
+        if str(line.get('source_kind') or '') == 'rhythm_left_connector':
+            continue
+        x1 = _to_int(line.get('x1'), -1)
+        if x1 < 0:
+            continue
+        chart_level = str(line.get('chart_level') or line.get('level') or '')
+        grouped.setdefault((chart_level, x1), []).append(line)
+
+    connectors: list[dict[str, Any]] = []
+    for (chart_level, x1), rows in sorted(grouped.items(), key=lambda item: (item[0][0], item[0][1])):
+        prices = [_to_float(row.get('y1')) for row in rows if row.get('y1') is not None]
+        unique_prices = sorted({round(price, 10): price for price in prices}.values())
+        if len(unique_prices) < 2:
+            continue
+        y1 = min(unique_prices)
+        y2 = max(unique_prices)
+        connector_key = f'{chart_level}|rhythm_left_connector|{x1}|{y1:.10f}|{y2:.10f}'
+        connectors.append({
+            'id': _json_id(connector_key),
+            'key': connector_key,
+            'chart_level': chart_level,
+            'level': 'rhythm_left_connector',
+            'source_kind': 'rhythm_left_connector',
+            'source_label': '节奏线左端连接',
+            'display_label': '',
+            'round_current': 0,
+            'round_ref': 0,
+            'layer': 0,
+            'calc_mode': '',
+            'color_group': 'rhythm_left_connector',
+            'dir': 'UP',
+            'ratio': 0.0,
+            'threshold_ratio': RHYTHM_RATIO,
+            'label_left': '',
+            'label_right': '',
+            'x1': x1,
+            'y1': y1,
+            'x2': x1,
+            'y2': y2,
+            'price': y1,
+            'threshold': y2,
+            'backend_authority': 'python_backend_rhythm_left_edge_connector',
+        })
+    return connectors
+
+
 def _build_level_rhythm_structures(
     *,
     chart_level: str,
@@ -579,6 +628,10 @@ def _build_level_rhythm_structures(
         int(item.get('round_current', 0)),
         str(item.get('display_label', '')),
     ))
+    visible_lines = all_lines[:max_lines]
+    connectors = _left_edge_connectors(visible_lines)
+    if connectors:
+        parent_counts['left_edge_connector_count'] = len(connectors)
     dedup_hits: dict[str, dict[str, Any]] = {}
     for item in sorted(all_hits, key=lambda entry: (
         int(entry.get('x', entry.get('raw_index', 0))),
@@ -586,7 +639,7 @@ def _build_level_rhythm_structures(
         str(entry.get('level', '')),
     )):
         dedup_hits[str(item.get('key') or item.get('id'))] = item
-    return all_lines[:max_lines], list(dedup_hits.values()), parent_counts
+    return visible_lines + connectors, list(dedup_hits.values()), parent_counts
 
 
 def with_level_rhythm_overlay(level: str, level_payload: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -615,6 +668,7 @@ def with_level_rhythm_overlay(level: str, level_payload: dict[str, Any], config:
         'rhythm_replica_mode': 'parent_child_fract_bi_seg_segseg',
         'rhythm_parent_child_levels': ['fract->bi', 'bi->seg', 'seg->segseg'],
         'rhythm_formula_policy': 'trainer: gate threshold uses 1.382; rendered line price uses historical retrace ratio projected from parent start and current D',
+        'rhythm_left_edge_connector_policy': 'same x1 rhythm lines are connected by a vertical rhythm_left_connector line',
         **{f'rhythm_{key}': value for key, value in parent_counts.items()},
     })
     patched['meta'] = meta
