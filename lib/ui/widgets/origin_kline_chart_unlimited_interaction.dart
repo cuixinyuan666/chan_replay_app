@@ -12,16 +12,15 @@ import 'origin_kline_chart.dart' as origin;
 
 /// Mouse/trackpad interaction adapter for [origin.OriginKlineChart].
 ///
-/// The original chart renderer is intentionally kept unchanged. This adapter
-/// owns only viewport interaction state and delegates painting, drawing tools,
-/// indicators, and crosshair behavior to the existing chart.
+/// The original renderer is kept unchanged. This adapter owns viewport gestures
+/// and clips the moved chart to the plot area, then paints a fixed axis/chrome
+/// copy above it. Dragging therefore moves only chart content, not x/y axes.
 ///
 /// Interaction policy:
 /// - wheel: horizontal + vertical zoom, without artificial upper bounds;
 /// - ctrl + wheel: vertical zoom only, without artificial upper bounds;
 /// - ctrl + alt + wheel: horizontal zoom only, without artificial upper bounds;
-/// - primary-button drag: visual x/y chart translation without boundary clamp;
-/// - horizontal drag also forwards bar panning to the caller when possible.
+/// - primary-button drag: moves only plot content in x/y, without boundary clamp.
 class OriginKlineChart extends StatefulWidget {
   final ChanSnapshot snapshot;
   final bool showFx;
@@ -103,14 +102,16 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   static const double _minPriceScale = 0.000001;
   static const double _originMinPriceScale = 0.35;
   static const double _originMaxPriceScale = 5.0;
+  static const double _topPad = 32.0;
+  static const double _bottomPad = 28.0;
   static const double _leftPad = 4.0;
   static const double _rightPad = 58.0;
+  static const double _subPanelHeight = 74.0;
+  static const double _panelGap = 6.0;
 
   late double _windowSize;
   late double _priceScale;
   Offset _chartOffset = Offset.zero;
-  double _panRemainder = 0.0;
-  Size _lastSize = Size.zero;
 
   @override
   void initState() {
@@ -126,7 +127,6 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       _windowSize = _safeWindowSize(widget.windowSize.toDouble());
       _priceScale = _safePriceScale(widget.priceScale);
       _chartOffset = Offset.zero;
-      _panRemainder = 0.0;
       return;
     }
     if (oldWidget.windowSize != widget.windowSize &&
@@ -165,6 +165,13 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     if (_windowSize < 1.0) return _safeVisualScale(1.0 / _windowSize);
     if (_windowSize > bars) return _safeVisualScale(bars / _windowSize);
     return 1.0;
+  }
+
+  int get _activeSubPanelCount {
+    if (!widget.showEasyTdxIndicators || widget.snapshot.indicators.isEmpty) {
+      return 0;
+    }
+    return widget.easyTdxSubPanelCount.clamp(0, 4).toInt();
   }
 
   double _safeVisualScale(double value) {
@@ -231,91 +238,170 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
 
   void _handlePointerMove(PointerMoveEvent event) {
     if ((event.buttons & kPrimaryMouseButton) == 0) return;
-    final delta = event.delta;
-    if (delta == Offset.zero) return;
-    setState(() => _chartOffset += delta);
-    _forwardHorizontalPan(delta.dx);
+    if (event.delta == Offset.zero) return;
+    setState(() => _chartOffset += event.delta);
   }
 
-  void _handlePointerUp(PointerEvent event) => _panRemainder = 0.0;
-
-  void _forwardHorizontalPan(double dx) {
-    final step = _estimatedBarStep;
-    if (step <= 0 || dx.abs() <= 0.2) return;
-    _panRemainder += -dx / step;
-    final bars = _panRemainder.truncate();
-    if (bars == 0) return;
-    widget.onPanBars?.call(bars);
-    _panRemainder -= bars;
-  }
-
-  double get _estimatedBarStep {
-    final visibleCount = math.min(
-      math.max(1.0, widget.snapshot.rawBars.length.toDouble()),
-      math.max(1.0, _paintWindowSize.toDouble()),
+  List<Rect> _contentRectsFor(Size size) {
+    final safeSubPanelCount = _activeSubPanelCount;
+    final totalSubHeight = safeSubPanelCount == 0
+        ? 0.0
+        : safeSubPanelCount * _subPanelHeight +
+            (safeSubPanelCount - 1) * _panelGap;
+    final contentWidth = math.max(0.0, size.width - _leftPad - _rightPad);
+    final mainHeight = math.max(
+      0.0,
+      size.height -
+          _topPad -
+          _bottomPad -
+          totalSubHeight -
+          (safeSubPanelCount > 0 ? _panelGap : 0),
     );
-    final chartWidth = math.max(1.0, _lastSize.width - _leftPad - _rightPad);
-    return chartWidth / visibleCount;
+    final rects = <Rect>[
+      Rect.fromLTWH(_leftPad, _topPad, contentWidth, mainHeight),
+    ];
+    var top = rects.first.bottom + _panelGap;
+    for (var i = 0; i < safeSubPanelCount; i++) {
+      rects.add(Rect.fromLTWH(_leftPad, top, contentWidth, _subPanelHeight));
+      top += _subPanelHeight + _panelGap;
+    }
+    return rects.where((rect) => rect.width > 0 && rect.height > 0).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
-      _lastSize = Size(constraints.maxWidth, constraints.maxHeight);
+      final size = Size(constraints.maxWidth, constraints.maxHeight);
+      final contentRects = _contentRectsFor(size);
       return Listener(
         behavior: HitTestBehavior.translucent,
         onPointerSignal: (event) {
           if (event is PointerScrollEvent) _handleWheel(event);
         },
         onPointerMove: _handlePointerMove,
-        onPointerUp: _handlePointerUp,
-        onPointerCancel: _handlePointerUp,
-        child: ClipRect(
-          child: Transform.translate(
-            offset: _chartOffset,
-            child: Transform(
-              alignment: Alignment.center,
-              transform: Matrix4.diagonal3Values(_extraScaleX, _extraScaleY, 1),
-              child: origin.OriginKlineChart(
-                snapshot: widget.snapshot,
-                showFx: widget.showFx,
-                showFxLine: widget.showFxLine,
-                showFxText: widget.showFxText,
-                showBi: widget.showBi,
-                showBiText: widget.showBiText,
-                showSeg: widget.showSeg,
-                showSegText: widget.showSegText,
-                showZs: widget.showZs,
-                showBiBsp: widget.showBiBsp,
-                showSegBsp: widget.showSegBsp,
-                showMergedBars: widget.showMergedBars,
-                showEasyTdxIndicators: widget.showEasyTdxIndicators,
-                easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
-                enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
-                drawingObjects: widget.drawingObjects,
-                drawingStorageKey: widget.drawingStorageKey,
-                symbolLabel: widget.symbolLabel,
-                isChanOverlayVisible: widget.isChanOverlayVisible,
-                onChanOverlayToggled: widget.onChanOverlayToggled,
-                toolboxOpenSignal: widget.toolboxOpenSignal,
-                toolboxSelectedToolSignal: widget.toolboxSelectedToolSignal,
-                onToolboxQuickToolAdded: widget.onToolboxQuickToolAdded,
-                windowSize: _paintWindowSize,
-                priceScale: _originPriceScale,
-                viewEndIndex: widget.viewEndIndex,
-                crosshairIndex: widget.crosshairIndex,
-                onCrosshairChanged: widget.onCrosshairChanged,
-                onPanBars: (_) {},
-                onWindowSizeChanged: (_) {},
-                onPriceScaleChanged: (_) {},
-                onEasyTdxSubPanelCountChanged:
-                    widget.onEasyTdxSubPanelCountChanged,
-                onEasyTdxIndicatorToggled: widget.onEasyTdxIndicatorToggled,
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            ClipPath(
+              clipper: _ContentRectsClipper(contentRects),
+              child: Transform.translate(
+                offset: _chartOffset,
+                child: Transform(
+                  alignment: Alignment.center,
+                  transform:
+                      Matrix4.diagonal3Values(_extraScaleX, _extraScaleY, 1),
+                  child: _originChart(
+                    drawingStorageKey: widget.drawingStorageKey,
+                    drawingObjects: widget.drawingObjects,
+                    toolboxOpenSignal: widget.toolboxOpenSignal,
+                    toolboxSelectedToolSignal: widget.toolboxSelectedToolSignal,
+                    onToolboxQuickToolAdded: widget.onToolboxQuickToolAdded,
+                    onCrosshairChanged: widget.onCrosshairChanged,
+                    onEasyTdxSubPanelCountChanged:
+                        widget.onEasyTdxSubPanelCountChanged,
+                    onEasyTdxIndicatorToggled: widget.onEasyTdxIndicatorToggled,
+                  ),
+                ),
               ),
             ),
-          ),
+            IgnorePointer(
+              child: ClipPath(
+                clipper: _AxisChromeClipper(contentRects),
+                child: _originChart(
+                  drawingStorageKey:
+                      '${widget.drawingStorageKey}__fixed_axis_chrome',
+                  drawingObjects: const <DrawingObject>[],
+                  toolboxOpenSignal: null,
+                  toolboxSelectedToolSignal: null,
+                  onToolboxQuickToolAdded: null,
+                  onCrosshairChanged: null,
+                  onEasyTdxSubPanelCountChanged: null,
+                  onEasyTdxIndicatorToggled: null,
+                ),
+              ),
+            ),
+          ],
         ),
       );
     });
   }
+
+  Widget _originChart({
+    required String drawingStorageKey,
+    required List<DrawingObject> drawingObjects,
+    required ValueListenable<int>? toolboxOpenSignal,
+    required ValueListenable<TradingViewDrawingTool?>? toolboxSelectedToolSignal,
+    required ValueChanged<TradingViewDrawingTool>? onToolboxQuickToolAdded,
+    required ValueChanged<int>? onCrosshairChanged,
+    required ValueChanged<int>? onEasyTdxSubPanelCountChanged,
+    required ValueChanged<String>? onEasyTdxIndicatorToggled,
+  }) {
+    return origin.OriginKlineChart(
+      snapshot: widget.snapshot,
+      showFx: widget.showFx,
+      showFxLine: widget.showFxLine,
+      showFxText: widget.showFxText,
+      showBi: widget.showBi,
+      showBiText: widget.showBiText,
+      showSeg: widget.showSeg,
+      showSegText: widget.showSegText,
+      showZs: widget.showZs,
+      showBiBsp: widget.showBiBsp,
+      showSegBsp: widget.showSegBsp,
+      showMergedBars: widget.showMergedBars,
+      showEasyTdxIndicators: widget.showEasyTdxIndicators,
+      easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
+      enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
+      drawingObjects: drawingObjects,
+      drawingStorageKey: drawingStorageKey,
+      symbolLabel: widget.symbolLabel,
+      isChanOverlayVisible: widget.isChanOverlayVisible,
+      onChanOverlayToggled: widget.onChanOverlayToggled,
+      toolboxOpenSignal: toolboxOpenSignal,
+      toolboxSelectedToolSignal: toolboxSelectedToolSignal,
+      onToolboxQuickToolAdded: onToolboxQuickToolAdded,
+      windowSize: _paintWindowSize,
+      priceScale: _originPriceScale,
+      viewEndIndex: widget.viewEndIndex,
+      crosshairIndex: widget.crosshairIndex,
+      onCrosshairChanged: onCrosshairChanged,
+      onPanBars: (_) {},
+      onWindowSizeChanged: (_) {},
+      onPriceScaleChanged: (_) {},
+      onEasyTdxSubPanelCountChanged: onEasyTdxSubPanelCountChanged,
+      onEasyTdxIndicatorToggled: onEasyTdxIndicatorToggled,
+    );
+  }
+}
+
+class _ContentRectsClipper extends CustomClipper<Path> {
+  final List<Rect> rects;
+
+  const _ContentRectsClipper(this.rects);
+
+  @override
+  Path getClip(Size size) => Path()..addRects(rects);
+
+  @override
+  bool shouldReclip(covariant _ContentRectsClipper oldClipper) => true;
+}
+
+class _AxisChromeClipper extends CustomClipper<Path> {
+  final List<Rect> contentRects;
+
+  const _AxisChromeClipper(this.contentRects);
+
+  @override
+  Path getClip(Size size) {
+    final path = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(Offset.zero & size);
+    for (final rect in contentRects) {
+      path.addRect(rect);
+    }
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant _AxisChromeClipper oldClipper) => true;
 }
