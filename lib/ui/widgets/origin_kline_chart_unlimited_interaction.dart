@@ -13,14 +13,16 @@ import 'origin_kline_chart.dart' as origin;
 /// Mouse/trackpad interaction adapter for [origin.OriginKlineChart].
 ///
 /// The original renderer is kept unchanged. This adapter owns viewport gestures
-/// and clips the moved chart to the plot area, then paints a fixed axis/chrome
-/// copy above it. Dragging therefore moves only chart content, not x/y axes.
+/// and clips the moved chart to the plot area. Fixed chart chrome is painted
+/// above it, while `symbolLabel` is drawn by this adapter so it never enters the
+/// movable layer.
 ///
 /// Interaction policy:
 /// - wheel: horizontal + vertical zoom, without artificial upper bounds;
 /// - ctrl + wheel: vertical zoom only, without artificial upper bounds;
 /// - ctrl + alt + wheel: horizontal zoom only, without artificial upper bounds;
-/// - primary-button drag: moves only plot content in x/y, without boundary clamp.
+/// - primary-button drag: locks to the dominant axis for the current drag and
+///   moves only plot content, without boundary clamp.
 class OriginKlineChart extends StatefulWidget {
   final ChanSnapshot snapshot;
   final bool showFx;
@@ -97,6 +99,8 @@ class OriginKlineChart extends StatefulWidget {
   State<OriginKlineChart> createState() => _OriginKlineChartState();
 }
 
+enum _DragAxis { horizontal, vertical }
+
 class _OriginKlineChartState extends State<OriginKlineChart> {
   static const double _minWindowSize = 0.05;
   static const double _minPriceScale = 0.000001;
@@ -108,10 +112,13 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   static const double _rightPad = 58.0;
   static const double _subPanelHeight = 74.0;
   static const double _panelGap = 6.0;
+  static const double _fixedMainLabelBand = 28.0;
+  static const double _dragAxisLockThreshold = 2.0;
 
   late double _windowSize;
   late double _priceScale;
   Offset _chartOffset = Offset.zero;
+  _DragAxis? _dragAxis;
 
   @override
   void initState() {
@@ -127,6 +134,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       _windowSize = _safeWindowSize(widget.windowSize.toDouble());
       _priceScale = _safePriceScale(widget.priceScale);
       _chartOffset = Offset.zero;
+      _dragAxis = null;
       return;
     }
     if (oldWidget.windowSize != widget.windowSize &&
@@ -236,13 +244,37 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     widget.onPriceScaleChanged?.call(next);
   }
 
-  void _handlePointerMove(PointerMoveEvent event) {
-    if ((event.buttons & kPrimaryMouseButton) == 0) return;
-    if (event.delta == Offset.zero) return;
-    setState(() => _chartOffset += event.delta);
+  void _handlePointerDown(PointerDownEvent event) {
+    if ((event.buttons & kPrimaryMouseButton) != 0) _dragAxis = null;
   }
 
-  List<Rect> _contentRectsFor(Size size) {
+  void _handlePointerMove(PointerMoveEvent event) {
+    if ((event.buttons & kPrimaryMouseButton) == 0) return;
+    final delta = event.delta;
+    if (delta == Offset.zero) return;
+    final axis = _dragAxis ?? _resolveDragAxis(delta);
+    if (axis == null) return;
+    _dragAxis = axis;
+    final lockedDelta = switch (axis) {
+      _DragAxis.horizontal => Offset(delta.dx, 0),
+      _DragAxis.vertical => Offset(0, delta.dy),
+    };
+    if (lockedDelta == Offset.zero) return;
+    setState(() => _chartOffset += lockedDelta);
+  }
+
+  void _handlePointerEnd(PointerEvent event) {
+    _dragAxis = null;
+  }
+
+  _DragAxis? _resolveDragAxis(Offset delta) {
+    if (delta.distance < _dragAxisLockThreshold) return null;
+    return delta.dx.abs() >= delta.dy.abs()
+        ? _DragAxis.horizontal
+        : _DragAxis.vertical;
+  }
+
+  _ChartRects _chartRectsFor(Size size) {
     final safeSubPanelCount = _activeSubPanelCount;
     final totalSubHeight = safeSubPanelCount == 0
         ? 0.0
@@ -257,57 +289,83 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
           totalSubHeight -
           (safeSubPanelCount > 0 ? _panelGap : 0),
     );
-    final rects = <Rect>[
-      Rect.fromLTWH(_leftPad, _topPad, contentWidth, mainHeight),
-    ];
-    var top = rects.first.bottom + _panelGap;
+    final mainRect = Rect.fromLTWH(_leftPad, _topPad, contentWidth, mainHeight);
+    final fullPlotRects = <Rect>[mainRect];
+    final movableSourceRects = <Rect>[];
+    final movableMainTop = mainRect.top + _fixedMainLabelBand;
+    if (mainRect.width > 0 && mainRect.bottom > movableMainTop) {
+      movableSourceRects.add(Rect.fromLTRB(
+        mainRect.left,
+        movableMainTop,
+        mainRect.right,
+        mainRect.bottom,
+      ));
+    }
+    var top = mainRect.bottom + _panelGap;
     for (var i = 0; i < safeSubPanelCount; i++) {
-      rects.add(Rect.fromLTWH(_leftPad, top, contentWidth, _subPanelHeight));
+      final rect = Rect.fromLTWH(_leftPad, top, contentWidth, _subPanelHeight);
+      fullPlotRects.add(rect);
+      movableSourceRects.add(rect);
       top += _subPanelHeight + _panelGap;
     }
-    return rects.where((rect) => rect.width > 0 && rect.height > 0).toList();
+    return _ChartRects(
+      fullPlotRects:
+          fullPlotRects.where((r) => r.width > 0 && r.height > 0).toList(),
+      movableSourceRects: movableSourceRects
+          .where((r) => r.width > 0 && r.height > 0)
+          .toList(),
+      mainRect: mainRect,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
       final size = Size(constraints.maxWidth, constraints.maxHeight);
-      final contentRects = _contentRectsFor(size);
+      final rects = _chartRectsFor(size);
       return Listener(
         behavior: HitTestBehavior.translucent,
         onPointerSignal: (event) {
           if (event is PointerScrollEvent) _handleWheel(event);
         },
+        onPointerDown: _handlePointerDown,
         onPointerMove: _handlePointerMove,
+        onPointerUp: _handlePointerEnd,
+        onPointerCancel: _handlePointerEnd,
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
             ClipPath(
-              clipper: _ContentRectsClipper(contentRects),
+              clipper: _RectListClipper(rects.fullPlotRects),
               child: Transform.translate(
                 offset: _chartOffset,
                 child: Transform(
                   alignment: Alignment.center,
                   transform:
                       Matrix4.diagonal3Values(_extraScaleX, _extraScaleY, 1),
-                  child: _originChart(
-                    drawingStorageKey: widget.drawingStorageKey,
-                    drawingObjects: widget.drawingObjects,
-                    toolboxOpenSignal: widget.toolboxOpenSignal,
-                    toolboxSelectedToolSignal: widget.toolboxSelectedToolSignal,
-                    onToolboxQuickToolAdded: widget.onToolboxQuickToolAdded,
-                    onCrosshairChanged: widget.onCrosshairChanged,
-                    onEasyTdxSubPanelCountChanged:
-                        widget.onEasyTdxSubPanelCountChanged,
-                    onEasyTdxIndicatorToggled: widget.onEasyTdxIndicatorToggled,
+                  child: ClipPath(
+                    clipper: _RectListClipper(rects.movableSourceRects),
+                    child: _originChart(
+                      symbolLabel: '',
+                      drawingStorageKey: widget.drawingStorageKey,
+                      drawingObjects: widget.drawingObjects,
+                      toolboxOpenSignal: widget.toolboxOpenSignal,
+                      toolboxSelectedToolSignal: widget.toolboxSelectedToolSignal,
+                      onToolboxQuickToolAdded: widget.onToolboxQuickToolAdded,
+                      onCrosshairChanged: widget.onCrosshairChanged,
+                      onEasyTdxSubPanelCountChanged:
+                          widget.onEasyTdxSubPanelCountChanged,
+                      onEasyTdxIndicatorToggled: widget.onEasyTdxIndicatorToggled,
+                    ),
                   ),
                 ),
               ),
             ),
             IgnorePointer(
               child: ClipPath(
-                clipper: _AxisChromeClipper(contentRects),
+                clipper: _AxisChromeClipper(rects.fullPlotRects),
                 child: _originChart(
+                  symbolLabel: '',
                   drawingStorageKey:
                       '${widget.drawingStorageKey}__fixed_axis_chrome',
                   drawingObjects: const <DrawingObject>[],
@@ -320,13 +378,36 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
                 ),
               ),
             ),
+            _fixedSymbolLabel(rects.mainRect),
           ],
         ),
       );
     });
   }
 
+  Widget _fixedSymbolLabel(Rect mainRect) {
+    final label = widget.symbolLabel.trim();
+    if (label.isEmpty || mainRect.width <= 0 || mainRect.height <= 0) {
+      return const SizedBox.shrink();
+    }
+    return Positioned(
+      left: mainRect.left + 12,
+      top: mainRect.top + 10,
+      child: IgnorePointer(
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _originChart({
+    required String symbolLabel,
     required String drawingStorageKey,
     required List<DrawingObject> drawingObjects,
     required ValueListenable<int>? toolboxOpenSignal,
@@ -354,7 +435,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
       drawingObjects: drawingObjects,
       drawingStorageKey: drawingStorageKey,
-      symbolLabel: widget.symbolLabel,
+      symbolLabel: symbolLabel,
       isChanOverlayVisible: widget.isChanOverlayVisible,
       onChanOverlayToggled: widget.onChanOverlayToggled,
       toolboxOpenSignal: toolboxOpenSignal,
@@ -374,10 +455,22 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   }
 }
 
-class _ContentRectsClipper extends CustomClipper<Path> {
+class _ChartRects {
+  final List<Rect> fullPlotRects;
+  final List<Rect> movableSourceRects;
+  final Rect mainRect;
+
+  const _ChartRects({
+    required this.fullPlotRects,
+    required this.movableSourceRects,
+    required this.mainRect,
+  });
+}
+
+class _RectListClipper extends CustomClipper<Path> {
   final List<Rect> rects;
 
-  const _ContentRectsClipper(this.rects);
+  const _RectListClipper(this.rects);
 
   @override
   Path getClip(Size size) {
@@ -389,20 +482,20 @@ class _ContentRectsClipper extends CustomClipper<Path> {
   }
 
   @override
-  bool shouldReclip(covariant _ContentRectsClipper oldClipper) => true;
+  bool shouldReclip(covariant _RectListClipper oldClipper) => true;
 }
 
 class _AxisChromeClipper extends CustomClipper<Path> {
-  final List<Rect> contentRects;
+  final List<Rect> plotRects;
 
-  const _AxisChromeClipper(this.contentRects);
+  const _AxisChromeClipper(this.plotRects);
 
   @override
   Path getClip(Size size) {
     final path = Path()
       ..fillType = PathFillType.evenOdd
       ..addRect(Offset.zero & size);
-    for (final rect in contentRects) {
+    for (final rect in plotRects) {
       path.addRect(rect);
     }
     return path;
