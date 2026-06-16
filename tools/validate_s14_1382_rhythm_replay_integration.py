@@ -148,6 +148,11 @@ def main() -> int:
             'assert(rewrapped.rhythmLines.length == 1)',
             'assert(rewrapped.rhythmHits.length == 1)',
         ]),
+        'step_display_fix_doc': contains('docs/hichanjzx_rhythm_step_display_fix.md', [
+            'step replay',
+            'rewraps the same `rawBars`',
+            'rhythm_left_connector',
+        ]),
         'json_parser': contains('lib/data/chan_snapshot_json_parser.dart', [
             'rhythm_lines',
             'rhythmHits: rhythmHits',
