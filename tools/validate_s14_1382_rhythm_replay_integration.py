@@ -143,7 +143,7 @@ def main() -> int:
             'ChanSnapshot.empty()',
         ]),
         'snapshot_cache_contract_test': contains('test/validate_chan_snapshot_rhythm_cache.dart', [
-            'final rawBars = []',
+            'final rawBars = <RawBar>[]',
             'final rewrapped = ChanSnapshot',
             'assert(rewrapped.rhythmLines.length == 1)',
             'assert(rewrapped.rhythmHits.length == 1)',
