@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import '../core/models/chan_snapshot.dart';
 import '../core/models/raw_bar.dart';
 import '../core/services/replay_analysis_store.dart';
+import '../core/settings/level_promoter_settings.dart';
 import 'chan_snapshot_json_parser.dart';
 
 class PythonChanAnalysis {
@@ -44,13 +45,14 @@ class PythonChanAnalysisSource {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
+    final effectiveConfig = LevelPromoterSettings.applyToConfig(config);
     final payload = <String, dynamic>{
       'mode': mode,
       'symbol': code.trim(),
       'market': market.trim().toUpperCase(),
       'freq': period.trim().toUpperCase(),
       'adjust': adjust.trim().toUpperCase(),
-      'config': config,
+      'config': effectiveConfig,
       if (count != null) 'count': count,
       if (startDate != null) 'start': _fmtDate(startDate),
       if (endDate != null) 'end': _fmtDate(endDate),
@@ -61,7 +63,7 @@ class PythonChanAnalysisSource {
     final query = <String, String>{
       for (final entry in payload.entries)
         if (entry.key != 'config') entry.key: '${entry.value}',
-      for (final entry in config.entries) entry.key: '${entry.value}',
+      for (final entry in effectiveConfig.entries) entry.key: '${entry.value}',
     };
     try {
       return await _loadFromBase(baseUrl, query);
@@ -92,7 +94,7 @@ class PythonChanAnalysisSource {
       'market': market,
       'freq': period,
       'adjust': adjust,
-      'config': config,
+      'config': LevelPromoterSettings.applyToConfig(config),
       'bars': [for (final bar in bars) _barToJson(bar)],
     };
     if (Platform.isAndroid) return _loadViaAndroid(payload);
@@ -344,15 +346,17 @@ class _LocalPythonChanProcess {
 
   static List<_PythonCandidate> _pythonCandidates(File appEngine) {
     final sep = Platform.pathSeparator;
+    final result = <_PythonCandidate>[];
     final bundledPython = File('${appEngine.parent.path}${sep}python.exe');
     if (!bundledPython.existsSync()) {
       throw Exception('找不到内置 Python：${bundledPython.path}');
     }
-    return [_PythonCandidate(bundledPython.path)];
+    result.add(_PythonCandidate(bundledPython.path));
+    return result;
   }
 
   Future<void> _waitUntilReady() async {
-    final deadline = DateTime.now().add(const Duration(seconds: 25));
+    final deadline = DateTime.now().add(const Duration(seconds: 20));
     Object? lastError;
     while (DateTime.now().isBefore(deadline)) {
       final exitCode = await process.exitCode.timeout(
@@ -360,32 +364,23 @@ class _LocalPythonChanProcess {
         onTimeout: () => -999999,
       );
       if (exitCode != -999999) {
-        throw Exception(
-            'Python chan.py 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
+        throw Exception('Python 后端进程提前退出 code=$exitCode stderr=$_stderr');
       }
       try {
-        final client = HttpClient();
-        final request = await client
-            .getUrl(Uri.parse('$baseUrl/health'))
-            .timeout(const Duration(milliseconds: 700));
-        final response =
-            await request.close().timeout(const Duration(milliseconds: 700));
-        client.close(force: true);
-        if (response.statusCode >= 200 && response.statusCode < 300) return;
+        final uri = Uri.parse('$baseUrl/health');
+        final response = await http.get(uri).timeout(const Duration(milliseconds: 700));
+        if (response.statusCode == 200) return;
+        lastError = 'health ${response.statusCode} ${response.body}';
       } catch (e) {
         lastError = e;
       }
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
-    dispose();
-    throw Exception(
-        'Python chan.py 本地服务启动超时：$lastError，stderr=${_stderr.toString()}');
+    throw Exception('等待 Python 后端启动超时: $lastError stderr=$_stderr');
   }
 
   void dispose() {
-    try {
-      process.kill(ProcessSignal.sigterm);
-    } catch (_) {}
+    process.kill();
   }
 }
 
