@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'ashare_bsp_scanner_page.dart';
 import 'chan_settings_page.dart';
 import 'chip_distribution_page.dart';
+import 'level_promoter_page.dart';
 import 'research_backtest_page.dart';
 import 'run_log_page.dart';
 import 's8_strategy_batch_page.dart';
@@ -19,19 +20,18 @@ class _RootPageState extends State<RootPage> {
   static const int _removedLegacyReplayIndex = 0;
   static const int _multiLevelIndex = 1;
   static const int _scannerIndex = 2;
-  static const int _s8BatchIndex = 3;
-  static const int _researchIndex = 4;
-  static const int _settingsIndex = 5;
-  static const int _runLogIndex = 6;
-  static const int _chipDistributionIndex = 7;
+  static const int _levelPromoterIndex = 3;
+  static const int _s8BatchIndex = 4;
+  static const int _researchIndex = 5;
+  static const int _settingsIndex = 6;
+  static const int _runLogIndex = 7;
+  static const int _chipDistributionIndex = 8;
 
   int _index = _multiLevelIndex;
   final Set<int> _visited = <int>{_multiLevelIndex};
 
   void _open(int index) {
-    final target = index == _removedLegacyReplayIndex
-        ? _multiLevelIndex
-        : index;
+    final target = index == _removedLegacyReplayIndex ? _multiLevelIndex : index;
     if (_index == target) return;
     setState(() {
       _index = target;
@@ -56,6 +56,7 @@ class _RootPageState extends State<RootPage> {
                 ),
               ),
               const _RouteBuilder(child: AshareBspScannerPage()),
+              const _RouteBuilder(child: LevelPromoterPage()),
               const _RouteBuilder(child: S8StrategyBatchPage()),
               const _RouteBuilder(child: ResearchBacktestPage()),
               const _RouteBuilder(child: ChanSettingsPage()),
@@ -143,6 +144,13 @@ class _RouteToolColumn extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           _RouteToolButton(
+            tooltip: '级别推进器',
+            icon: Icons.double_arrow,
+            selected: currentIndex == _RootPageState._levelPromoterIndex,
+            onPressed: () => onOpen(_RootPageState._levelPromoterIndex),
+          ),
+          const SizedBox(height: 6),
+          _RouteToolButton(
             tooltip: 'S8批量候选',
             icon: Icons.view_list,
             selected: currentIndex == _RootPageState._s8BatchIndex,
@@ -208,13 +216,9 @@ class _RouteToolButton extends StatelessWidget {
           color: selected ? Colors.white : Colors.white70,
           disabledColor: Colors.white,
           style: IconButton.styleFrom(
-            backgroundColor:
-                selected ? const Color(0xFF2962FF) : const Color(0xEE131722),
-            side: BorderSide(
-              color: selected ? const Color(0xFF8AB4FF) : Colors.white24,
-            ),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            backgroundColor: selected ? const Color(0xFF2962FF) : const Color(0xEE131722),
+            side: BorderSide(color: selected ? const Color(0xFF8AB4FF) : Colors.white24),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
       ),
