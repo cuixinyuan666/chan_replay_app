@@ -97,10 +97,6 @@ def _enabled(config: dict[str, Any] | None) -> bool:
     return str(raw).strip().lower() not in {'0', 'false', 'no', 'off'}
 
 
-def _config_int(config: dict[str, Any] | None, key: str, default: int) -> int:
-    return _to_int((config or {}).get(key), default)
-
-
 def _bar_high(row: Any) -> float | None:
     if not isinstance(row, dict):
         return None
@@ -596,9 +592,10 @@ def with_level_rhythm_overlay(level: str, level_payload: dict[str, Any], config:
     if not _enabled(config):
         return level_payload
     calc_mode = _normalize_calc_mode(config)
-    # 0 or negative = a_replay_trainer parity: no artificial transport cap.
-    max_lines = _config_int(config, 'rhythm_max_lines', 0)
-    max_hits_per_line = _config_int(config, 'rhythm_max_hits_per_line', 0)
+    # a_replay_trainer.py does not cap rhythm lines or 1.382 hits here.
+    # Keep exported data authoritative; any UI-side take()/virtualization is display-only.
+    max_lines = 0
+    max_hits_per_line = 0
 
     all_lines, all_hits = _build_rhythm_structures(
         level_payload=level_payload,
@@ -618,7 +615,7 @@ def with_level_rhythm_overlay(level: str, level_payload: dict[str, Any], config:
         'rhythm_hit_count': len(all_hits),
         'rhythm_policy': 'backend parent-child rhythm overlay ported from chan_month5 full-optimization a_replay_trainer.py; Dart only parses/renders',
         'rhythm_mapping_policy': 'fx->bi, bi->seg, seg->segseg when exported seg_layers[2] is available',
-        'rhythm_1382_cap_policy': 'rhythm_max_lines/max_hits_per_line <= 0 means no cap; positive values are transport safety caps',
+        'rhythm_1382_cap_policy': 'trainer parity: backend rhythm export is uncapped; Flutter may still display a subset for performance',
     })
     patched['meta'] = meta
     return patched
