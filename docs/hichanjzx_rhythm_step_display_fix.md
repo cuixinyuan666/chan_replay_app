@@ -14,7 +14,13 @@ This avoids changing the large S13 page and keeps the fix local to the model bou
 
 The backend rhythm overlay now appends `rhythm_left_connector` rows into `rhythm_lines`. Each connector is a vertical line at the shared `x1` of rhythm lines that begin at the same time position. Existing Dart `DrawingObject` rendering consumes them as locked trend lines, so no additional drawing-path wiring is needed.
 
+## Viewport-level lazy render and shared left-edge style
+
+`RecursiveSegOriginKlineChart` now applies viewport-level lazy render to auto rhythm drawing objects before they are passed to `OriginKlineChart`. Rhythm trend lines and 1.382 hit labels outside the current raw-index viewport plus a bounded margin are skipped, so panning and step replay do not render every rhythm overlay in the frame.
+
+Auto rhythm trend lines are styled by the first chart anchor raw index, which is the rhythm line's left edge `x1`. Normal rhythm lines and `rhythm_left_connector` rows that share the same `x1` therefore receive the same color, dashed/solid style and stroke width. Different `x1` groups rotate through a deterministic style slot palette so separate left-edge positions are visually distinguishable without changing backend calculation semantics.
+
 ## Validation
 
-- `tools/validate_s14_1382_rhythm_replay_integration.py` now checks the connector output and the snapshot cache contract.
+- `tools/validate_s14_1382_rhythm_replay_integration.py` now checks the connector output, the snapshot cache contract, and the viewport lazy-render/style adapter.
 - `test/validate_chan_snapshot_rhythm_cache.dart` documents the rewrap behavior: rewrapped snapshots with the same `rawBars` retain rhythm overlays.
