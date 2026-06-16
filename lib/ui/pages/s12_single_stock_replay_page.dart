@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../core/models/level_relation.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
+import '../../core/models/rhythm.dart';
 import '../../core/runtime/runtime_path.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
 import '../widgets/recursive_seg_origin_kline_chart.dart';
@@ -65,6 +66,8 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       'S12 single-stock replay not loaded; default uses proven S8/S11 once window';
   String _lastLevelValidation = '级别组合待校验';
   bool _loading = false;
+  bool _showRhythmLines = true;
+  bool _show1382Hits = true;
   int _count = 900;
   int _maxStepFrames = 60;
   int _frameIndex = 0;
@@ -270,12 +273,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     );
   }
 
-  void _collectSnapshotTemporalEvidence({
-    required Map<String, _TemporalEvidence> target,
-    required String level,
-    required ChanSnapshot snapshot,
-    required int step,
-  }) {
+  void _collectSnapshotTemporalEvidence({required Map<String, _TemporalEvidence> target, required String level, required ChanSnapshot snapshot, required int step}) {
     for (final bsp in snapshot.bsps) {
       _recordTemporalEvidence(target,
           id: 'BSP:$level:${bsp.rawIndex}:${bsp.type}:${bsp.index}',
@@ -386,7 +384,6 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
             id, () => _IntervalLinkEvidence(id: id, relation: relation));
       }
     }
-
     for (final frame in analysis.frames) {
       collect(frame);
     }
@@ -435,6 +432,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
   }
 
   Widget _controlPanel() {
+    final rhythm = _rhythmSummaryFor(_activeSnapshot);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -492,7 +490,12 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
                     style: _copyButtonStyle(),
                   ),
                 ],
-              ),
+              ]),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 6, children: <Widget>[
+                FilterChip(label: const Text('节奏线'), selected: _showRhythmLines, onSelected: (v) => setState(() => _showRhythmLines = v)),
+                FilterChip(label: const Text('1.382命中'), selected: _show1382Hits, onSelected: (v) => setState(() => _show1382Hits = v)),
+              ]),
               const SizedBox(height: 8),
               if (_analysis?.hasFrames == true) _frameControls(),
               const SizedBox(height: 8),
@@ -607,6 +610,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       easyTdxSubPanelCount: 2,
       enabledEasyTdxIndicators: _enabledEasyTdxIndicators,
       onEasyTdxIndicatorToggled: _toggleEasyTdxIndicator,
+      drawingObjects: _rhythmDrawingObjects(snapshot),
       drawingStorageKey: 's12_${_symbolController.text}_$_activeLevel',
       symbolLabel: '${_symbolController.text.trim()} $_activeLevel',
       windowSize: _windowSize,
@@ -618,6 +622,55 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       onWindowSizeChanged: (v) => setState(() => _windowSize = v),
       onPriceScaleChanged: (v) => setState(() => _priceScale = v),
     );
+  }
+
+  List<DrawingObject> _rhythmDrawingObjects(ChanSnapshot snapshot) {
+    final now = DateTime.fromMillisecondsSinceEpoch(0);
+    final objects = <DrawingObject>[];
+    if (_showRhythmLines) {
+      for (final line in snapshot.rhythmLines.take(120)) {
+        objects.add(DrawingObject(
+          id: 'auto_${line.id}',
+          tool: TradingViewDrawingTool.trendLine,
+          anchors: [DrawingAnchor.chart(rawIndex: line.x1, price: line.y1), DrawingAnchor.chart(rawIndex: line.x2, price: line.y2)],
+          style: DrawingStyle(colorValue: line.dir == 'UP' ? 0xFF66BB6A : 0xFFEF5350, strokeWidth: 1.2 + line.layer.clamp(0, 3) * 0.35, opacity: 0.88, dashed: true, fontSize: 11),
+          text: line.displayLabel,
+          locked: true,
+          createdAt: now,
+          updatedAt: now,
+        ));
+        objects.add(DrawingObject(
+          id: 'auto_${line.id}_label',
+          tool: TradingViewDrawingTool.text,
+          anchors: [DrawingAnchor.chart(rawIndex: line.x2, price: line.y2)],
+          style: DrawingStyle(colorValue: 0xFFFFD54F, strokeWidth: 1.0, opacity: 0.95, fontSize: 10),
+          text: '${line.displayLabel} ${line.labelRight}',
+          locked: true,
+          createdAt: now,
+          updatedAt: now,
+        ));
+      }
+    }
+    if (_show1382Hits) {
+      for (final hit in snapshot.rhythmHits.take(80)) {
+        objects.add(DrawingObject(
+          id: 'auto_${hit.id}',
+          tool: TradingViewDrawingTool.priceLabel,
+          anchors: [DrawingAnchor.chart(rawIndex: hit.rawIndex, price: hit.price == 0 ? hit.threshold : hit.price)],
+          style: const DrawingStyle(colorValue: 0xFF8AB4FF, strokeWidth: 1.0, opacity: 0.95, fontSize: 10),
+          text: '1.382 ${hit.displayLabel}',
+          locked: true,
+          createdAt: now,
+          updatedAt: now,
+        ));
+      }
+    }
+    return objects;
+  }
+
+  _RhythmSummary _rhythmSummaryFor(ChanSnapshot? snapshot) {
+    if (snapshot == null) return const _RhythmSummary.empty();
+    return _RhythmSummary(lines: snapshot.rhythmLines, hits: snapshot.rhythmHits);
   }
 
   void _toggleEasyTdxIndicator(String name) {
@@ -667,6 +720,11 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
       labelStyle: TextStyle(
           color: selected ? Colors.black : Colors.white70, fontSize: 12),
     );
+  }
+
+  Widget _activeLevelChip(String level) {
+    final selected = _activeLevel == level;
+    return ChoiceChip(label: Text('看$level'), selected: selected, onSelected: (_) => setState(() => _activeLevel = level), selectedColor: const Color(0xFF8AB4FF), backgroundColor: const Color(0xFF20242E), labelStyle: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12));
   }
 
   Widget _modeChip(String value) {
@@ -771,12 +829,7 @@ class _S12SingleStockReplayPageState extends State<S12SingleStockReplayPage> {
     );
   }
 
-  ButtonStyle _copyButtonStyle() => OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xFF8AB4FF),
-        side: const BorderSide(color: Color(0x668AB4FF)),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-      );
+  ButtonStyle _copyButtonStyle() => OutlinedButton.styleFrom(foregroundColor: const Color(0xFF8AB4FF), side: const BorderSide(color: Color(0x668AB4FF)), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700));
 
   String _buildStatus(PythonMultiLevelChanAnalysis analysis) {
     final meta = analysis.meta;
@@ -908,31 +961,11 @@ class _TemporalSummary {
   final int historicalProvisionalCount;
   final _TemporalEvidence? sample;
 
-  const _TemporalSummary({
-    required this.evidence,
-    required this.source,
-    required this.frameCount,
-    required this.provisionalCount,
-    required this.confirmedCount,
-    required this.historicalProvisionalCount,
-    required this.sample,
-  });
+  const _TemporalSummary({required this.evidence, required this.source, required this.frameCount, required this.provisionalCount, required this.confirmedCount, required this.historicalProvisionalCount, required this.sample});
 
-  factory _TemporalSummary.empty() => const _TemporalSummary(
-        evidence: <String, _TemporalEvidence>{},
-        source: 'not_loaded',
-        frameCount: 0,
-        provisionalCount: 0,
-        confirmedCount: 0,
-        historicalProvisionalCount: 0,
-        sample: null,
-      );
+  factory _TemporalSummary.empty() => const _TemporalSummary(evidence: <String, _TemporalEvidence>{}, source: 'not_loaded', frameCount: 0, provisionalCount: 0, confirmedCount: 0, historicalProvisionalCount: 0, sample: null);
 
-  factory _TemporalSummary.fromEvidence({
-    required Map<String, _TemporalEvidence> evidence,
-    required String source,
-    required int frameCount,
-  }) {
+  factory _TemporalSummary.fromEvidence({required Map<String, _TemporalEvidence> evidence, required String source, required int frameCount}) {
     final values = evidence.values.toList(growable: false);
     final provisional =
         values.where((item) => item.state == 'provisional').length;
@@ -971,10 +1004,23 @@ class _TemporalSummary {
   String get shortText => 'source=$source frames=$frameCount $stateLine';
 }
 
+class _RhythmSummary {
+  final List<RhythmLine> lines;
+  final List<RhythmHit> hits;
+
+  const _RhythmSummary({required this.lines, required this.hits});
+  const _RhythmSummary.empty() : lines = const <RhythmLine>[], hits = const <RhythmHit>[];
+
+  int get lineCount => lines.length;
+  int get hitCount => hits.length;
+  RhythmLine? get sampleLine => lines.isEmpty ? null : lines.first;
+  RhythmHit? get sampleHit => hits.isEmpty ? null : hits.first;
+  String get shortText => 'lines=$lineCount hits=$hitCount sample=${sampleLine?.displayLabel ?? 'none'}';
+}
+
 class _IntervalLinkEvidence {
   final String id;
   final LevelRelation relation;
-
   const _IntervalLinkEvidence({required this.id, required this.relation});
 
   String get sampleText =>

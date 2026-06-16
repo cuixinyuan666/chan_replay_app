@@ -6,8 +6,11 @@ import '../../core/models/bsp.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../core/models/level_relation.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
+import '../../core/models/rhythm.dart';
 import '../../core/runtime/runtime_path.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
+import '../drawing/drawing_object.dart';
+import '../drawing/tradingview_drawing_tool.dart';
 import 's13_nested_marker_numbering_policy.dart';
 import '../widgets/recursive_seg_origin_kline_chart.dart';
 
@@ -43,6 +46,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     'MIN1'
   };
   static final _defaultStartDate = DateTime(2026, 1, 1);
+  static const String _rhythmPolicy =
+      'backend exports rhythm_lines/rhythm_hits; Dart only parses and renders DrawingObject overlays';
   final _backendUrlController =
           TextEditingController(text: 'app-managed bundled Python'),
       _symbolController = TextEditingController(text: '600340'),
@@ -58,6 +63,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _lastLevelValidation = '级别组合待校验';
   bool _loading = false,
       _showBspCandidateTrail = true,
+      _showRhythmLines = true,
+      _show1382Hits = true,
       _panelOpen = false,
       _playing = false;
   int _frameIndex = 0, _windowSize = 90;
@@ -492,6 +499,10 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             'seg_algo': 'chan',
             'zs_algo': 'normal',
             'recursive_seg_max_level': 4,
+            'enable_rhythm_1382': true,
+            'rhythm_calc_mode': 'normal',
+            'rhythm_max_lines': 160,
+            'rhythm_max_hits_per_line': 3,
           });
       if (!mounted) return;
       setState(() {
@@ -814,12 +825,28 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                   label: const Text('载入复盘')),
               _infoButton('step', _stepFrameLabel),
               _infoButton('marker', '${_nestedBspMarkers.length}'),
+              _infoButton('1.382', _rhythmSummaryFor(_activeSnapshot).shortText),
             ]),
             _sectionGap(),
             _sectionTitle('图层'),
             Wrap(spacing: 6, runSpacing: 6, children: [
               for (final n in const <String>['MA', 'BOLL', 'VOL', 'MACD'])
                 _indicatorChip(n)
+            ]),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
+              FilterChip(
+                  label: const Text('节奏线'),
+                  selected: _showRhythmLines,
+                  onSelected: _loading
+                      ? null
+                      : (v) => setState(() => _showRhythmLines = v)),
+              FilterChip(
+                  label: const Text('1.382命中'),
+                  selected: _show1382Hits,
+                  onSelected: _loading
+                      ? null
+                      : (v) => setState(() => _show1382Hits = v)),
             ]),
             SwitchListTile(
                 value: _showBspCandidateTrail,
@@ -879,6 +906,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               onEasyTdxIndicatorToggled: _toggleEasyTdxIndicator,
               toolboxOpenSignal: _toolboxOpenSignal,
               onToolboxQuickToolAdded: (_) {},
+              drawingObjects: _rhythmDrawingObjects(s),
               drawingStorageKey: 's13_${_symbolController.text}_$_activeLevel',
               symbolLabel: '${_symbolController.text.trim()} $_activeLevel',
               windowSize: _windowSize,
@@ -1198,6 +1226,67 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             color: selected ? Colors.black : Colors.white70, fontSize: 12));
   }
 
+  List<DrawingObject> _rhythmDrawingObjects(ChanSnapshot snapshot) {
+    final now = DateTime.fromMillisecondsSinceEpoch(0);
+    final objects = <DrawingObject>[];
+    if (_showRhythmLines) {
+      for (final line in snapshot.rhythmLines.take(120)) {
+        objects.add(DrawingObject(
+          id: 'auto_${line.id}',
+          tool: TradingViewDrawingTool.trendLine,
+          anchors: <DrawingAnchor>[
+            DrawingAnchor.chart(rawIndex: line.x1, price: line.y1),
+            DrawingAnchor.chart(rawIndex: line.x2, price: line.y2),
+          ],
+          style: DrawingStyle(
+            colorValue: line.dir == 'UP' ? 0xFF66BB6A : 0xFFEF5350,
+            strokeWidth: 1.2 + line.layer.clamp(0, 3) * 0.35,
+            opacity: 0.88,
+            dashed: true,
+            fontSize: 11,
+          ),
+          text: line.displayLabel,
+          locked: true,
+          createdAt: now,
+          updatedAt: now,
+        ));
+      }
+    }
+    if (_show1382Hits) {
+      for (final hit in snapshot.rhythmHits.take(80)) {
+        objects.add(DrawingObject(
+          id: 'auto_${hit.id}',
+          tool: TradingViewDrawingTool.priceLabel,
+          anchors: <DrawingAnchor>[
+            DrawingAnchor.chart(
+              rawIndex: hit.rawIndex,
+              price: hit.price == 0 ? hit.threshold : hit.price,
+            ),
+          ],
+          style: const DrawingStyle(
+            colorValue: 0xFF8AB4FF,
+            strokeWidth: 1.0,
+            opacity: 0.95,
+            fontSize: 10,
+          ),
+          text: '1.382 ${hit.displayLabel}',
+          locked: true,
+          createdAt: now,
+          updatedAt: now,
+        ));
+      }
+    }
+    return objects;
+  }
+
+  _RhythmSummary _rhythmSummaryFor(ChanSnapshot? snapshot) {
+    if (snapshot == null) return const _RhythmSummary.empty();
+    return _RhythmSummary(
+      lines: snapshot.rhythmLines,
+      hits: snapshot.rhythmHits,
+    );
+  }
+
   void _toggleEasyTdxIndicator(String n) {
     final k = n.trim().toUpperCase();
     if (k.isEmpty) return;
@@ -1379,7 +1468,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           borderSide: const BorderSide(color: Colors.white12)));
   String _buildStatus(PythonMultiLevelChanAnalysis a, DateTime s, DateTime e) {
     final m = a.meta;
-    return 'S13 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(a)} native:${m['native_cchan_lv_list']} fallback:${m['fallback_to_bridge'] ?? false} frames:${a.frames.length} active_frame:$_stepFrameLabel levels:${a.snapshot.levels.join(',')} window:${_fmtDate(s)}~${_fmtDate(e)} nested_markers:${_nestedBspMarkers.length} candidate_trail:$_bspCandidateTrailCount';
+    final rhythm = _rhythmSummaryFor(_activeSnapshot);
+    return 'S13 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(a)} native:${m['native_cchan_lv_list']} fallback:${m['fallback_to_bridge'] ?? false} frames:${a.frames.length} active_frame:$_stepFrameLabel levels:${a.snapshot.levels.join(',')} window:${_fmtDate(s)}~${_fmtDate(e)} nested_markers:${_nestedBspMarkers.length} candidate_trail:$_bspCandidateTrailCount rhythm_1382_line_count:${rhythm.lineCount} rhythm_1382_hit_count:${rhythm.hitCount} rhythm_1382_visible_lines:$_showRhythmLines rhythm_1382_visible_hits:$_show1382Hits rhythm_1382_backend_route_ms:${m['backend_route_rhythm_1382_overlay_ms'] ?? 'unknown'} rhythm_1382_overlay_policy:$_rhythmPolicy dart_chan_calculation_authority: false';
   }
 
   String _runtimePathText(PythonMultiLevelChanAnalysis a) {
@@ -1414,6 +1504,23 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               ],
             ));
   }
+}
+
+class _RhythmSummary {
+  final List<RhythmLine> lines;
+  final List<RhythmHit> hits;
+
+  const _RhythmSummary({required this.lines, required this.hits});
+  const _RhythmSummary.empty()
+      : lines = const <RhythmLine>[],
+        hits = const <RhythmHit>[];
+
+  int get lineCount => lines.length;
+  int get hitCount => hits.length;
+  RhythmLine? get sampleLine => lines.isEmpty ? null : lines.first;
+  RhythmHit? get sampleHit => hits.isEmpty ? null : hits.first;
+  String get shortText =>
+      'lines=$lineCount hits=$hitCount sample=${sampleLine?.displayLabel ?? sampleHit?.displayLabel ?? 'none'}';
 }
 
 class _LevelValidationResult {
