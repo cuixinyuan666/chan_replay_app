@@ -21,6 +21,8 @@ class StockSelectionBackendClient {
 
   Future<Map<String, dynamic>> scan(Map<String, dynamic> payload) => _post('/api/xg/scan', payload);
 
+  Future<Map<String, dynamic>> scanS8(Map<String, dynamic> payload) => _post('/api/xg/s8/scan', payload);
+
   Future<Map<String, dynamic>> _get(String path) async {
     final uri = Uri.parse('${_trim(baseUrl)}$path');
     final response = await _client.get(uri).timeout(const Duration(seconds: 60));
@@ -35,7 +37,7 @@ class StockSelectionBackendClient {
           headers: const {'content-type': 'application/json'},
           body: jsonEncode(payload),
         )
-        .timeout(const Duration(minutes: 10));
+        .timeout(const Duration(minutes: 20));
     return _decode(response);
   }
 
