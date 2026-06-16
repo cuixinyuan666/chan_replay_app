@@ -28,16 +28,11 @@ class _RootPageState extends State<RootPage> {
   static const int _cacheOptimizationIndex = 6;
   static const int _chipDistributionIndex = 7;
 
-  final S13ChartToolController _s13ToolController = S13ChartToolController();
+  final S13ChartToolController _s13ToolController =
+      S13ChartToolController.shared;
 
   int _index = _multiLevelIndex;
   final Set<int> _visited = <int>{_multiLevelIndex};
-
-  @override
-  void dispose() {
-    _s13ToolController.dispose();
-    super.dispose();
-  }
 
   void _open(int index) {
     if (_index == index) return;
@@ -81,12 +76,8 @@ class _RootPageState extends State<RootPage> {
     _s13ToolController.setHits1382(enabled);
   }
 
-  String _s13ToolDescription(
-    S13ChartToolState state,
-    String readyText,
-    String waitingText,
-  ) {
-    return state.attached ? readyText : waitingText;
+  String _availableText(bool available, String readyText) {
+    return available ? readyText : '等待单股多级别图表加载后可用';
   }
 
   List<UnifiedToolMenuSection> _unifiedToolSections(
@@ -202,50 +193,37 @@ class _RootPageState extends State<RootPage> {
                 UnifiedToolMenuItem(
                   label: '图内筹码叠加',
                   icon: Icons.stacked_bar_chart,
-                  enabled: s13ToolState.attached,
+                  enabled: s13ToolState.chipDistributionAvailable,
                   switchValue: s13ToolState.chipDistribution,
                   onSwitchChanged: _setS13ChipDistribution,
-                  description: _s13ToolDescription(
-                    s13ToolState,
-                    '根菜单直控单股多级别图内筹码分布叠加层',
-                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
+                  description: _availableText(
+                    s13ToolState.chipDistributionAvailable,
+                    '根菜单控制单股多级别图内筹码分布叠加层',
                   ),
                 ),
                 UnifiedToolMenuItem(
                   label: 'BSP 候选轨迹层',
                   icon: Icons.timeline,
-                  enabled: s13ToolState.attached,
+                  enabled: s13ToolState.bspCandidateTrailAvailable,
                   switchValue: s13ToolState.bspCandidateTrail,
                   onSwitchChanged: _setS13BspCandidateTrail,
-                  description: _s13ToolDescription(
-                    s13ToolState,
-                    '根菜单直控单股多级别候选轨迹显示',
-                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
-                  ),
+                  description: '等待 S13 主页面安全接入',
                 ),
                 UnifiedToolMenuItem(
                   label: '节奏线',
                   icon: Icons.show_chart,
-                  enabled: s13ToolState.attached,
+                  enabled: s13ToolState.rhythmLinesAvailable,
                   switchValue: s13ToolState.rhythmLines,
                   onSwitchChanged: _setS13RhythmLines,
-                  description: _s13ToolDescription(
-                    s13ToolState,
-                    '根菜单直控后端导出的 rhythm_lines 绘制层',
-                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
-                  ),
+                  description: '等待 S13 主页面安全接入',
                 ),
                 UnifiedToolMenuItem(
                   label: '1.382 命中',
                   icon: Icons.control_point_duplicate,
-                  enabled: s13ToolState.attached,
+                  enabled: s13ToolState.hits1382Available,
                   switchValue: s13ToolState.hits1382,
                   onSwitchChanged: _setS13Hits1382,
-                  description: _s13ToolDescription(
-                    s13ToolState,
-                    '根菜单直控 1.382 命中对象绘制层',
-                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
-                  ),
+                  description: '等待 S13 主页面安全接入',
                 ),
                 const UnifiedToolMenuItem(
                   label: '批量候选',
@@ -276,23 +254,18 @@ class _RootPageState extends State<RootPage> {
                 UnifiedToolMenuItem(
                   label: '打开单股工具栏面板',
                   icon: Icons.tune,
-                  enabled: s13ToolState.attached,
+                  enabled: false,
                   onPressed: _openS13UnifiedPanel,
-                  description: _s13ToolDescription(
-                    s13ToolState,
-                    '根菜单直控 S13 图内统一工具面板',
-                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
-                  ),
+                  description: '等待 S13 主页面安全接入',
                 ),
                 UnifiedToolMenuItem(
                   label: '直接打开画线面板',
                   icon: Icons.open_in_new,
-                  enabled: s13ToolState.attached,
+                  enabled: s13ToolState.drawingToolboxAvailable,
                   onPressed: _openS13DrawingToolbox,
-                  description: _s13ToolDescription(
-                    s13ToolState,
-                    '根菜单直控图内 TradingView 画线工具箱',
-                    '已定义根菜单 controller；等待 S13 页面挂载消费端',
+                  description: _availableText(
+                    s13ToolState.drawingToolboxAvailable,
+                    '根菜单控制图内 TradingView 画线工具箱',
                   ),
                 ),
                 const UnifiedToolMenuItem(
