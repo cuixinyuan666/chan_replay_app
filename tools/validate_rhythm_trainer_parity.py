@@ -83,8 +83,12 @@ def validate_rhythm_price_not_threshold() -> None:
     _assert_close(line['y2'], rhythm_price, label='y2')
     if math.isclose(float(line['price']), float(line['threshold'])):
         raise AssertionError('rhythm line price must not be the 1.382 threshold')
+    if line.get('level') != 'DAILY':
+        raise AssertionError(f'line.level must remain chart timeframe, got {line.get("level")}')
     if line.get('source_kind') != 'fx' or line.get('parent_level') != 'bi':
         raise AssertionError(f'unexpected mapping: {line.get("source_kind")}->{line.get("parent_level")}')
+    if hits[0].get('level') != 'DAILY':
+        raise AssertionError(f'hit.level must remain chart timeframe, got {hits[0].get("level")}')
     if hits[0].get('raw_index') != 3:
         raise AssertionError(f'first hit must start after C and land on raw 3, got {hits[0].get("raw_index")}')
 
