@@ -45,13 +45,13 @@ def main() -> None:
     require(root_page, "static const int _chipDistributionIndex = 7;", "append-only chip route index")
     require(root_page, "const _RouteBuilder(child: ChipDistributionPage())", "lazy route child")
 
-    require(s13_page, "s13_chip_distribution_panel.dart", "S13 chip panel import")
-    require(s13_page, "_showChipDistribution", "S13 chip panel toggle state")
+    require(s13_page, "s13_chip_distribution_panel.dart", "S13 chip overlay import")
+    require(s13_page, "_showChipDistribution", "S13 chip overlay toggle state")
     require(s13_page, "Icons.stacked_bar_chart", "S13 chip toolbar button")
-    require(s13_page, "S13ChipDistributionPanel(", "S13 chart stack chip panel")
-    require(s13_page, "snapshot: _activeSnapshot", "S13 panel uses active snapshot")
-    require(s13_page, "crosshairIndex: _crosshairIndex", "S13 panel crosshair target")
-    require(s13_page, "visibleRightIndex:", "S13 panel visible-right target")
+    require(s13_page, "S13ChipDistributionPanel(", "S13 chart stack chip overlay")
+    require(s13_page, "snapshot: _activeSnapshot", "S13 overlay uses active snapshot")
+    require(s13_page, "crosshairIndex: _crosshairIndex", "S13 overlay crosshair target")
+    require(s13_page, "visibleRightIndex:", "S13 overlay visible-right target")
 
     require(chip_page, "PythonMultiLevelChanAnalysisSource", "online analyze_multi source")
     require(chip_page, "source.analyzeMulti", "online analyze_multi call")
@@ -84,9 +84,16 @@ def main() -> None:
     require(adapter, "isStepMode ? null : viewEndIndex", "visible right guarded by non-step")
     reject(adapter, "offline", "offline data dependency")
 
-    require(panel, "chip_tick_bins 优先", "S13 panel exact-bin policy text")
+    require(panel, "内嵌筹码 overlay", "S13 in-chart overlay doc")
+    require(panel, "Positioned.fill", "S13 chip uses full chart overlay")
+    require(panel, "IgnorePointer", "S13 chip overlay does not block chart gestures")
+    require(panel, "_InChartChipDistributionPainter", "S13 in-chart chip painter")
+    require(panel, "chip_tick_bins 优先", "S13 overlay exact-bin policy text")
+    require(panel, "priceToY", "S13 chip aligns to chart price axis")
     require(panel, "exactBarCount", "S13 exact bucket coverage metric")
     require(panel, "精确桶", "S13 exact bucket coverage UI")
+    reject(panel, "width: 286", "legacy floating card width")
+    reject(panel, "height: 360", "legacy floating card height")
 
     require(engine, "final window = bars.sublist(start, safeTarget + 1);", "no future-data window")
     require(engine, "class ChipTickBins", "chip tick bins parser")
@@ -113,7 +120,7 @@ def main() -> None:
 
     print(json.dumps({
         "ok": True,
-        "route": "单股多级别/筹码分布",
+        "route": "单股多级别/K线图内筹码分布",
         "branch_task": "hichancmfb",
         "checks": {
             "route_indexes_preserved": True,
@@ -121,11 +128,13 @@ def main() -> None:
             "raw_bar_chip_bins_preserved": True,
             "backend_json_parser_preserves_chip_bins": True,
             "online_snapshot_adapter_preserves_chip_bins": True,
+            "in_chart_chip_overlay": True,
+            "overlay_does_not_block_chart_gestures": True,
+            "no_legacy_floating_card": True,
             "no_offline_dependency": True,
             "no_future_window_guard": True,
             "chip_tick_bins_p_s_b_w_ready": True,
             "target_priority_step_crosshair_visible_right": True,
-            "s13_panel_embedded": True,
             "s13_exact_bucket_coverage_display": True,
             "no_structure_dependency_in_engine": True,
             "tests_added": True,
