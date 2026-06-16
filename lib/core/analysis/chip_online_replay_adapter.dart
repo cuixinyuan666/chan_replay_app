@@ -4,9 +4,9 @@ import 'chip_distribution.dart';
 
 /// 在线 analyze_multi -> 筹码分布输入的轻量适配层。
 ///
-/// 当前阶段只接入在线 K 线，不读取离线分笔文件；如果后端后续把
-/// chip_tick_bins 放入 kline_all JSON，可继续通过 ChipDistributionBar.fromJson
-/// 进入同一计算引擎。
+/// 该层只搬运后端已经返回到 ChanSnapshot.rawBars 的行情字段：
+/// - 有 chip_tick_bins / chipTickBins 时，保留 a_replay_trainer.py 风格 p/s/b/w；
+/// - 没有逐价桶时，交给 ChipDistributionEngine 使用 OHLCV 兜底。
 class ChipOnlineReplayAdapter {
   const ChipOnlineReplayAdapter._();
 
@@ -22,6 +22,9 @@ class ChipOnlineReplayAdapter {
           low: bar.low,
           close: bar.close,
           volume: bar.volume,
+          priceVolume: bar.chipTickBins.totalByPrice,
+          priceSellVolume: bar.chipTickBins.sellByPrice,
+          priceBuyVolume: bar.chipTickBins.buyByPrice,
         ),
     ];
   }
