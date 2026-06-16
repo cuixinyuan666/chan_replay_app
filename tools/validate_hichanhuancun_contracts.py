@@ -50,7 +50,12 @@ def main() -> int:
         'bsp anchor field': 'anchor_raw_index',
         'bsp display field': 'display_raw_index',
         'bsp confirmed field': 'confirmed',
-        'chart lazy contract': 'chart_lazy_layers_contract',
+        'chart lazy v2 contract': 'chart_lazy_layers_v2_transport_pruning',
+        'chart lazy display layers': 'chart_lazy_layers_display_layers',
+        'chart lazy transport layers': 'chart_lazy_layers_transport_layers',
+        'chart lazy forced dependencies': 'chart_lazy_layers_forced_transport_layers',
+        'chart lazy pruned counts': 'chart_lazy_layers_pruned_counts',
+        'chart lazy prune function': '_prune_result_chart_layers',
         'anti future contract': 'anti_future_contract',
         'flutter no chan calculation': 'flutter_chan_calculation_allowed',
         'chan core unchanged meta': 'chan_py_core_unchanged',
@@ -102,10 +107,17 @@ def main() -> int:
         'left route tool column',
     )
     check(
-        'cache page reads replay meta only',
-        _has(cache_page, 'ReplayAnalysisStore.latestAnalysis')
-        and _has(cache_page, '本页只读取 JSON/meta，不参与缠论计算'),
-        'no Flutter Chan calculation authority',
+        'cache page sends chart lazy request params',
+        _has(cache_page, "'chart_lazy_layers': true")
+        and _has(cache_page, "'chart_layers': layers"),
+        'Flutter request -> backend pruning loop',
+    )
+    check(
+        'cache page displays transport manifest fields',
+        _has(cache_page, 'chart_lazy_layers_transport_layers')
+        and _has(cache_page, 'chart_lazy_layers_pruned_counts')
+        and _has(cache_page, 'chart_lazy_layers_manifest'),
+        'Flutter renders returned manifest, not calculated structures',
     )
     check(
         'cache page exposes evidence copy',
@@ -127,7 +139,7 @@ def main() -> int:
     result = {
         'ok': not failed,
         'validator': 'validate_hichanhuancun_contracts.py',
-        'branch_task': 'hichanhuancun backend contracts + cache optimization page',
+        'branch_task': 'hichanhuancun chart_lazy_layers transport pruning loop',
         'checks': checks,
         'failed': failed,
     }
