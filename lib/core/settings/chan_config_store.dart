@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import 'level_promoter_settings.dart';
+
 class ChanSettingGroup {
   final String title;
   final String note;
@@ -255,6 +257,8 @@ class ChanConfigStore {
   ///
   /// The UI-only `bsp_advanced` text is intentionally not sent as a raw key;
   /// it is expanded to the historical `key-suffix=value` override map first.
+  /// Level promoter fields are appended last so the global N setting wins over
+  /// older hard-coded page configs such as recursive_seg_max_level=4.
   static Map<String, dynamic> backendConfig({Map<String, dynamic> base = const <String, dynamic>{}}) {
     final invalid = invalidKeys();
     if (invalid.isNotEmpty) {
@@ -267,6 +271,7 @@ class ChanConfigStore {
       result[key] = current[key];
     }
     result.addAll(parseBspAdvancedText('${current['bsp_advanced'] ?? ''}'));
+    result.addAll(LevelPromoterSettings.configFields);
     return result;
   }
 
