@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+ROOT_PAGE = ROOT / 'lib' / 'ui' / 'pages' / 'root_page.dart'
 S13_PAGE = ROOT / 'lib' / 'ui' / 'pages' / 's13_single_stock_replay_page.dart'
 NUMBERING_POLICY = S13_PAGE.with_name('s13_nested_marker_numbering_policy.dart')
 MULTI_SOURCE = ROOT / 'lib' / 'data' / 'python_multi_level_chan_analysis_source.dart'
@@ -263,6 +264,54 @@ def _trigger_list_not_collapsed_ok(s13: str) -> bool:
     return not collapsed_anchor_set and not only_int_anchor_add and all(token in s13 for token in required)
 
 
+def _root_keeps_s13_inside_single_stock_multi_level(root_page: str) -> bool:
+    """S13 hardening must not create a new top-level page.
+
+    This intentionally does not assert the total route count, because sibling work on
+    `hichan` may add pages such as Settings. It only protects the integration
+    boundary: S13 stays in the existing multi-level slot, while single-level replay
+    remains route 0.
+    """
+    required = [
+        'static const int _replayIndex = 0;',
+        'static const int _multiLevelIndex = 1;',
+        'int _index = _multiLevelIndex;',
+        'const _RouteBuilder(child: OriginReplayStrictPage())',
+        'S13SingleStockReplayPage(',
+        'currentRouteIndex: _index',
+        'onOpenRoute: _open',
+        "tooltip: '复盘'",
+        "tooltip: '单股多级别复盘'",
+    ]
+    if not all(token in root_page for token in required):
+        return False
+    if root_page.count('S13SingleStockReplayPage(') != 1:
+        return False
+    if 'S13_INTERVAL_NEST_MARKER_EVIDENCE' in root_page:
+        return False
+    replay_pos = root_page.find('const _RouteBuilder(child: OriginReplayStrictPage())')
+    s13_pos = root_page.find('S13SingleStockReplayPage(')
+    return 0 <= replay_pos < s13_pos
+
+
+def _s13_toolbar_page_navigation_is_integrated(s13: str) -> bool:
+    required = [
+        "_sectionTitle('页面')",
+        "_routeButton('复盘', Icons.candlestick_chart, 0)",
+        "_routeButton('单股多级别', Icons.account_tree, 1)",
+        "_routeButton('扫描器', Icons.radar, 2)",
+        "_routeButton('批量候选', Icons.view_list, 3)",
+        "_routeButton('研究', Icons.science, 4)",
+        'widget.onOpenRoute?.call(routeIndex)',
+    ]
+    forbidden = [
+        "_routeButton('区间套'",
+        "_routeButton('S13'",
+        "_routeButton('hichanqujiantao'",
+    ]
+    return all(token in s13 for token in required) and not any(token in s13 for token in forbidden)
+
+
 def _manual_records_task(manual: str) -> bool:
     required = [
         'hichan',
@@ -273,11 +322,14 @@ def _manual_records_task(manual: str) -> bool:
         'validation_result',
         'remaining_risk',
         'next_task',
+        'does not add a new top-level page',
+        'single-stock multi-level replay page',
     ]
     return all(token in manual for token in required)
 
 
 def _validate() -> dict[str, Any]:
+    root_page = _read(ROOT_PAGE)
     s13 = _read(S13_PAGE)
     source = _read(MULTI_SOURCE)
     native = _read(NATIVE_TIMED)
@@ -287,6 +339,8 @@ def _validate() -> dict[str, Any]:
 
     checks: dict[str, bool] = {
         'validator_file_exists': Path(__file__).name == 'validate_s13_interval_nest_marker_logic.py',
+        's13_route_stays_inside_single_stock_multi_level_page': _root_keeps_s13_inside_single_stock_multi_level(root_page),
+        's13_toolbar_page_navigation_does_not_add_interval_nest_page': _s13_toolbar_page_navigation_is_integrated(s13),
         's13_step_uses_current_frame_not_final_snapshot': _step_uses_current_frame_ok(s13, native),
         'frontend_sends_start_end_to_analyze_multi': "if (startDate != null) 'start': _fmtDate(startDate)" in source and "if (endDate != null) 'end': _fmtDate(endDate)" in source,
         'nested_markers_use_backend_relations_only': _backend_relations_only_ok(s13),
@@ -303,6 +357,10 @@ def _validate() -> dict[str, Any]:
 
     missing = [key for key, ok in checks.items() if not ok]
     review_notes: list[str] = []
+    if not checks['s13_route_stays_inside_single_stock_multi_level_page']:
+        review_notes.append('S13 evidence hardening must stay in the existing single-stock multi-level route and must not create or occupy a new top-level page.')
+    if not checks['s13_toolbar_page_navigation_does_not_add_interval_nest_page']:
+        review_notes.append('S13 toolbar page navigation should only route to existing pages; 区间套 evidence belongs inside 单股多级别复盘.')
     if not checks['evidence_button_and_payload_fields_exist']:
         review_notes.append('S13 evidence copy must expose header, request/runtime/frame/level/count fields, missing edges, and marker trigger samples.')
     if not checks['candidate_current_identity_fields_preserved']:
@@ -316,8 +374,9 @@ def _validate() -> dict[str, Any]:
         'ok': not missing,
         'command': f'python {VALIDATOR}',
         'validator': VALIDATOR,
-        'stage': 'S13 interval-nest marker evidence hardening validation',
+        'stage': 'S13 interval-nest marker evidence and page-integration hardening validation',
         'source_policy': 'backend MultiLevelChanSnapshot.relations + backend BSP rows only; Dart parses/displays/numbers/copies evidence only',
+        'page_integration_policy': 'No new top-level interval-nest page; S13 evidence is centralized inside the single-stock multi-level replay page.',
         'checks': checks,
         'missing_required': missing,
         'review_notes': review_notes,
