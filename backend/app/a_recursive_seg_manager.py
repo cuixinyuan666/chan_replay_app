@@ -4,7 +4,7 @@ import copy
 from typing import Any, Iterable
 
 
-DEFAULT_RECURSIVE_SEG_MAX_LEVEL = 4
+DEFAULT_RECURSIVE_SEG_MAX_LEVEL = 2
 
 
 def _attr(obj: Any, names: Iterable[str], default: Any = None) -> Any:
