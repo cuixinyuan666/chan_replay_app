@@ -2,9 +2,9 @@ import 'package:flutter/foundation.dart';
 
 /// Commands that can be sent from the root unified tool menu into the S13 chart.
 ///
-/// The controller is intentionally UI-agnostic.  It only describes user intent
-/// and the latest switch state, so S13 can consume commands without importing
-/// root page widgets or menu widgets.
+/// The controller is intentionally UI-agnostic. It only describes user intent,
+/// feature availability, and the latest switch state, so S13 descendants can
+/// consume commands without importing root page widgets or menu widgets.
 enum S13ChartToolCommandType {
   openUnifiedPanel,
   openDrawingToolbox,
@@ -29,14 +29,22 @@ class S13ChartToolCommand {
 
 @immutable
 class S13ChartToolState {
-  final bool attached;
+  final bool chipDistributionAvailable;
+  final bool drawingToolboxAvailable;
+  final bool bspCandidateTrailAvailable;
+  final bool rhythmLinesAvailable;
+  final bool hits1382Available;
   final bool chipDistribution;
   final bool bspCandidateTrail;
   final bool rhythmLines;
   final bool hits1382;
 
   const S13ChartToolState({
-    required this.attached,
+    required this.chipDistributionAvailable,
+    required this.drawingToolboxAvailable,
+    required this.bspCandidateTrailAvailable,
+    required this.rhythmLinesAvailable,
+    required this.hits1382Available,
     required this.chipDistribution,
     required this.bspCandidateTrail,
     required this.rhythmLines,
@@ -44,22 +52,44 @@ class S13ChartToolState {
   });
 
   static const initial = S13ChartToolState(
-    attached: false,
+    chipDistributionAvailable: false,
+    drawingToolboxAvailable: false,
+    bspCandidateTrailAvailable: false,
+    rhythmLinesAvailable: false,
+    hits1382Available: false,
     chipDistribution: false,
     bspCandidateTrail: true,
     rhythmLines: true,
     hits1382: true,
   );
 
+  bool get anyAttached =>
+      chipDistributionAvailable ||
+      drawingToolboxAvailable ||
+      bspCandidateTrailAvailable ||
+      rhythmLinesAvailable ||
+      hits1382Available;
+
   S13ChartToolState copyWith({
-    bool? attached,
+    bool? chipDistributionAvailable,
+    bool? drawingToolboxAvailable,
+    bool? bspCandidateTrailAvailable,
+    bool? rhythmLinesAvailable,
+    bool? hits1382Available,
     bool? chipDistribution,
     bool? bspCandidateTrail,
     bool? rhythmLines,
     bool? hits1382,
   }) {
     return S13ChartToolState(
-      attached: attached ?? this.attached,
+      chipDistributionAvailable:
+          chipDistributionAvailable ?? this.chipDistributionAvailable,
+      drawingToolboxAvailable:
+          drawingToolboxAvailable ?? this.drawingToolboxAvailable,
+      bspCandidateTrailAvailable:
+          bspCandidateTrailAvailable ?? this.bspCandidateTrailAvailable,
+      rhythmLinesAvailable: rhythmLinesAvailable ?? this.rhythmLinesAvailable,
+      hits1382Available: hits1382Available ?? this.hits1382Available,
       chipDistribution: chipDistribution ?? this.chipDistribution,
       bspCandidateTrail: bspCandidateTrail ?? this.bspCandidateTrail,
       rhythmLines: rhythmLines ?? this.rhythmLines,
@@ -69,6 +99,10 @@ class S13ChartToolState {
 }
 
 class S13ChartToolController {
+  static final S13ChartToolController shared = S13ChartToolController._();
+
+  S13ChartToolController._();
+
   final ValueNotifier<S13ChartToolState> state =
       ValueNotifier<S13ChartToolState>(S13ChartToolState.initial);
   final ValueNotifier<S13ChartToolCommand?> command =
@@ -76,25 +110,36 @@ class S13ChartToolController {
 
   int _sequence = 0;
 
-  bool get attached => state.value.attached;
+  bool get attached => state.value.anyAttached;
 
-  void sync({
-    required bool chipDistribution,
-    required bool bspCandidateTrail,
-    required bool rhythmLines,
-    required bool hits1382,
+  void setAvailability({
+    bool? chipDistributionAvailable,
+    bool? drawingToolboxAvailable,
+    bool? bspCandidateTrailAvailable,
+    bool? rhythmLinesAvailable,
+    bool? hits1382Available,
   }) {
     state.value = state.value.copyWith(
-      attached: true,
+      chipDistributionAvailable: chipDistributionAvailable,
+      drawingToolboxAvailable: drawingToolboxAvailable,
+      bspCandidateTrailAvailable: bspCandidateTrailAvailable,
+      rhythmLinesAvailable: rhythmLinesAvailable,
+      hits1382Available: hits1382Available,
+    );
+  }
+
+  void sync({
+    bool? chipDistribution,
+    bool? bspCandidateTrail,
+    bool? rhythmLines,
+    bool? hits1382,
+  }) {
+    state.value = state.value.copyWith(
       chipDistribution: chipDistribution,
       bspCandidateTrail: bspCandidateTrail,
       rhythmLines: rhythmLines,
       hits1382: hits1382,
     );
-  }
-
-  void detach() {
-    state.value = state.value.copyWith(attached: false);
   }
 
   void openUnifiedPanel() => _emit(S13ChartToolCommandType.openUnifiedPanel);
@@ -127,10 +172,5 @@ class S13ChartToolController {
       type: type,
       enabled: enabled,
     );
-  }
-
-  void dispose() {
-    state.dispose();
-    command.dispose();
   }
 }
