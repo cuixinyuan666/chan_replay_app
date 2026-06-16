@@ -43,14 +43,16 @@ def functional_rhythm_sample() -> dict[str, bool | str | int | float]:
             {'index': 3, 'raw_index': 3, 'type': 'TOP', 'price': 5.0},
             {'index': 4, 'raw_index': 4, 'type': 'BOTTOM', 'price': 3.0},
             {'index': 5, 'raw_index': 5, 'type': 'TOP', 'price': 6.0},
+            {'index': 6, 'raw_index': 6, 'type': 'BOTTOM', 'price': 2.0},
+            {'index': 7, 'raw_index': 7, 'type': 'TOP', 'price': 7.0},
         ],
         'bi': [
             {
                 'index': 0,
                 'start_raw_index': 0,
-                'end_raw_index': 5,
+                'end_raw_index': 7,
                 'start_price': 0.0,
-                'end_price': 6.0,
+                'end_price': 7.0,
                 'direction': 'UP',
             },
         ],
@@ -66,9 +68,11 @@ def functional_rhythm_sample() -> dict[str, bool | str | int | float]:
     })
     lines = result.get('rhythm_lines') or []
     hits = result.get('rhythm_hits') or []
-    if not lines:
+    rhythm_lines = [line for line in lines if line.get('source_kind') != 'rhythm_left_connector']
+    connectors = [line for line in lines if line.get('source_kind') == 'rhythm_left_connector']
+    if not rhythm_lines:
         return {'ok': False, 'error': 'functional sample produced no rhythm lines'}
-    first_line = lines[0]
+    first_line = rhythm_lines[0]
     expected_price = 2.5
     expected_threshold = 2.0 + (4.0 - 2.0) * 1.382
     return {
@@ -79,8 +83,11 @@ def functional_rhythm_sample() -> dict[str, bool | str | int | float]:
             and abs(float(first_line.get('threshold')) - expected_threshold) < 1e-9
             and bool(hits)
             and int(hits[0].get('raw_index')) == 3
+            and bool(connectors)
         ),
         'line_count': len(lines),
+        'rhythm_line_count_without_connectors': len(rhythm_lines),
+        'left_edge_connector_count': len(connectors),
         'hit_count': len(hits),
         'first_line_y': float(first_line.get('y1')),
         'first_line_threshold': float(first_line.get('threshold')),
