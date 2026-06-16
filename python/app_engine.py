@@ -70,7 +70,8 @@ def _run_http(host: str, port: int) -> int:
     _bootstrap()
     import uvicorn
 
-    uvicorn.run('app.main:app', host=host, port=port)
+    # a_xg_main imports app.main:app and attaches /api/xg/* without changing the original main.py body.
+    uvicorn.run('app.a_xg_main:app', host=host, port=port)
     return 0
 
 
