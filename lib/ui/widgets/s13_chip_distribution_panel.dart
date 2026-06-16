@@ -5,12 +5,13 @@ import 'package:flutter/material.dart';
 import '../../core/analysis/chip_distribution.dart';
 import '../../core/analysis/chip_online_replay_adapter.dart';
 import '../../core/models/chan_snapshot.dart';
+import '../controllers/s13_chart_tool_controller.dart';
 
 /// S13 单股多级别复盘内嵌筹码面板。
 ///
 /// 当前阶段只使用在线 analyze_multi 已经返回到前端的 ChanSnapshot.rawBars，
 /// 不读取离线分笔文件；若后端在线返回 chip_tick_bins，可继续通过同一引擎消费。
-class S13ChipDistributionPanel extends StatelessWidget {
+class S13ChipDistributionPanel extends StatefulWidget {
   final ChanSnapshot? snapshot;
   final bool enabled;
   final bool isStepMode;
@@ -35,29 +36,68 @@ class S13ChipDistributionPanel extends StatelessWidget {
   });
 
   @override
+  State<S13ChipDistributionPanel> createState() =>
+      _S13ChipDistributionPanelState();
+}
+
+class _S13ChipDistributionPanelState extends State<S13ChipDistributionPanel> {
+  final S13ChartToolController _toolController = S13ChartToolController.shared;
+
+  @override
+  void initState() {
+    super.initState();
+    _toolController.setAvailability(chipDistributionAvailable: true);
+    _toolController.sync(chipDistribution: widget.enabled);
+  }
+
+  @override
+  void didUpdateWidget(covariant S13ChipDistributionPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.enabled != widget.enabled) {
+      _toolController.sync(chipDistribution: widget.enabled);
+    }
+  }
+
+  @override
+  void dispose() {
+    _toolController.setAvailability(chipDistributionAvailable: false);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!enabled) return const SizedBox.shrink();
-    final bars = ChipOnlineReplayAdapter.fromSnapshot(snapshot);
+    return ValueListenableBuilder<S13ChartToolState>(
+      valueListenable: _toolController.state,
+      builder: (context, toolState, _) {
+        final effectiveEnabled = widget.enabled || toolState.chipDistribution;
+        if (!effectiveEnabled) return const SizedBox.shrink();
+        return _buildPanel(context);
+      },
+    );
+  }
+
+  Widget _buildPanel(BuildContext context) {
+    final bars = ChipOnlineReplayAdapter.fromSnapshot(widget.snapshot);
     final targetIndex = ChipOnlineReplayAdapter.resolveTargetIndex(
       total: bars.length,
-      isStepMode: isStepMode,
-      stepIndex: stepIndex,
-      crosshairIndex: crosshairIndex,
-      viewEndIndex: visibleRightIndex,
+      isStepMode: widget.isStepMode,
+      stepIndex: widget.stepIndex,
+      crosshairIndex: widget.crosshairIndex,
+      viewEndIndex: widget.visibleRightIndex,
     );
     final result = const ChipDistributionEngine().calculate(
       bars,
       targetIndex: targetIndex,
       options: ChipDistributionOptions(
-        binCount: binCount,
+        binCount: widget.binCount,
         lookback: 1000000,
-        ageDecay: ageDecay,
+        ageDecay: widget.ageDecay,
       ),
     );
     final targetPolicy = _targetPolicy(
-      isStepMode: isStepMode,
-      crosshairIndex: crosshairIndex,
-      visibleRightIndex: visibleRightIndex,
+      isStepMode: widget.isStepMode,
+      crosshairIndex: widget.crosshairIndex,
+      visibleRightIndex: widget.visibleRightIndex,
     );
 
     return Positioned(
@@ -100,10 +140,10 @@ class S13ChipDistributionPanel extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (onClose != null)
+                    if (widget.onClose != null)
                       IconButton(
                         tooltip: '关闭筹码面板',
-                        onPressed: onClose,
+                        onPressed: _closePanel,
                         icon: const Icon(Icons.close, size: 16),
                         color: Colors.white54,
                         padding: EdgeInsets.zero,
@@ -158,6 +198,11 @@ class S13ChipDistributionPanel extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _closePanel() {
+    _toolController.setChipDistribution(false);
+    widget.onClose?.call();
   }
 
   static String _targetPolicy({
