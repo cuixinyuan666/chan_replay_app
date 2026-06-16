@@ -34,7 +34,11 @@ def main() -> None:
     parser = read("lib/data/chan_snapshot_json_parser.dart")
     engine = read("lib/core/analysis/chip_distribution.dart")
     adapter = read("lib/core/analysis/chip_online_replay_adapter.dart")
+    easy_tdx_source = read("lib/data/easy_tdx_kline_source.dart")
     panel = read("lib/ui/widgets/s13_chip_distribution_panel.dart")
+    store = read("lib/ui/widgets/s13_chip_distribution_store.dart")
+    recursive_chart = read("lib/ui/widgets/recursive_seg_origin_kline_chart.dart")
+    origin_chart = read("lib/ui/widgets/origin_kline_chart.dart")
     test_file = read("test/chip_distribution_test.dart")
 
     require(root_page, "static const int _scannerIndex = 2;", "stable scanner route index")
@@ -45,13 +49,14 @@ def main() -> None:
     require(root_page, "static const int _chipDistributionIndex = 7;", "append-only chip route index")
     require(root_page, "const _RouteBuilder(child: ChipDistributionPage())", "lazy route child")
 
-    require(s13_page, "s13_chip_distribution_panel.dart", "S13 chip overlay import")
-    require(s13_page, "_showChipDistribution", "S13 chip overlay toggle state")
+    require(s13_page, "s13_chip_distribution_panel.dart", "S13 chip controller import")
+    require(s13_page, "recursive_seg_origin_kline_chart.dart", "S13 origin chart adapter import")
+    require(s13_page, "_showChipDistribution", "S13 chip toggle state")
     require(s13_page, "Icons.stacked_bar_chart", "S13 chip toolbar button")
-    require(s13_page, "S13ChipDistributionPanel(", "S13 chart stack chip overlay")
-    require(s13_page, "snapshot: _activeSnapshot", "S13 overlay uses active snapshot")
-    require(s13_page, "crosshairIndex: _crosshairIndex", "S13 overlay crosshair target")
-    require(s13_page, "visibleRightIndex:", "S13 overlay visible-right target")
+    require(s13_page, "S13ChipDistributionPanel(", "S13 chart stack chip controller")
+    require(s13_page, "RecursiveSegOriginKlineChart(", "S13 chart uses origin chart adapter")
+    require(s13_page, "crosshairIndex: _crosshairIndex", "S13 chip crosshair target")
+    require(s13_page, "visibleRightIndex:", "S13 chip visible-right target")
 
     require(chip_page, "PythonMultiLevelChanAnalysisSource", "online analyze_multi source")
     require(chip_page, "source.analyzeMulti", "online analyze_multi call")
@@ -84,24 +89,47 @@ def main() -> None:
     require(adapter, "isStepMode ? null : viewEndIndex", "visible right guarded by non-step")
     reject(adapter, "offline", "offline data dependency")
 
-    require(panel, "State<S13ChipDistributionPanel>", "S13 chip panel is stateful for lazy loading")
+    require(easy_tdx_source, "loadListingChipBars", "listing-range chip K loader")
+    require(easy_tdx_source, "/api/tdx/kline", "easy-tdx kline endpoint")
+    require(easy_tdx_source, "'period': period.trim().toUpperCase()", "period query parameter")
+    require(easy_tdx_source, "count = 200000", "large default listing count")
+    require(easy_tdx_source, "ChipDistributionBar.fromJson", "easy-tdx rows parsed as chip bars")
+    require(easy_tdx_source, "chipTickBins: ChipTickBins(", "RawBar preserves exact bins from kline source")
+    reject(easy_tdx_source, "'freq': period", "legacy freq query parameter")
+
+    require(panel, "State<S13ChipDistributionPanel>", "S13 chip controller is stateful for lazy loading")
     require(panel, "_scheduleLazyLoad", "S13 chip lazy load scheduler")
-    require(panel, "筹码懒加载中", "S13 chip lazy loading hint")
+    require(panel, "EasyTdxKlineSource", "S13 chip independent easy-tdx source")
+    require(panel, "loadListingChipBars", "S13 chip independent listing-range load")
+    require(panel, "endDate: cutoff", "S13 chip request ends at displayed cutoff")
+    require(panel, "count: 200000", "S13 chip large count request")
+    require(panel, "S13ChipDistributionStore.publish", "S13 chip publishes painter spec")
+    require(panel, "lookback: 1000000", "S13 chip uses full loaded listing range")
     require(panel, "showDialog<void>", "S13 chip load success popup")
     require(panel, "筹码分布的获取区间为:", "required load range popup text")
-    require(panel, "easy-tdx", "easy-tdx chip source label")
-    require(panel, "rawBars.sublist(0, targetIndex + 1)", "first available/listing to target cutoff range")
-    require(panel, "内嵌筹码 overlay", "S13 in-chart overlay doc")
-    require(panel, "Positioned.fill", "S13 chip uses full chart overlay")
-    require(panel, "IgnorePointer", "S13 chip overlay does not block chart gestures")
-    require(panel, "_ChipOverlayPainter", "S13 in-chart chip painter")
-    require(panel, "chip_tick_bins", "S13 overlay exact-bin policy text")
-    require(panel, "priceToY", "S13 chip aligns to chart price axis")
-    require(panel, "exactBarCount", "S13 exact bucket coverage metric")
-    require(panel, "精确桶", "S13 exact bucket coverage UI")
-    reject(panel, "width: 286", "legacy floating card width")
-    reject(panel, "height: 360", "legacy floating card height")
+    require(panel, "独立拉取首个可得K", "listing/first-available range label")
+    require(panel, "targetRawIndex: rawBars[targetIndex].index", "display cutoff raw index bridge")
+    reject(panel, "rawBars.sublist(0, targetIndex + 1)", "old replay-window-only chip source")
+    reject(panel, "_ChipOverlayPainter", "old sibling custom painter overlay")
+    reject(panel, "Positioned.fill", "old full chart chip overlay")
     reject(panel, "const dynamic", "invalid dynamic const fallback")
+
+    require(store, "ValueNotifier<S13ChipDistributionSpec?>", "chip store notifier")
+    require(store, "S13ChipDistributionSpec", "chip painter spec")
+    require(store, "toDrawingObjects", "chip bins converted to drawing objects")
+    require(store, "TradingViewDrawingTool.rectangle", "chip bins rendered as rectangles")
+    require(store, "DrawingObject(", "chip bins become origin drawing objects")
+    require(store, "locked: true", "chip objects are non-interactive locked objects")
+    require(store, "updateChartContext", "origin chart publishes symbol/period context")
+
+    require(recursive_chart, "s13_chip_distribution_store.dart", "recursive chart imports chip store")
+    require(recursive_chart, "S13ChipDistributionStore.updateChartContext", "origin adapter updates chip context")
+    require(recursive_chart, "ValueListenableBuilder<S13ChipDistributionSpec?>", "origin adapter listens to chip result")
+    require(recursive_chart, "...chipObjects", "chip objects fed into OriginKlineChart")
+    require(recursive_chart, "base.OriginKlineChart", "chip is passed to origin chart")
+    require(recursive_chart, "_OriginChartPainter -> DrawingObjectPainter.paintObjects", "main painter chain policy text")
+
+    require(origin_chart, "DrawingObjectPainter.paintObjects", "OriginKlineChart main painter object path")
 
     require(engine, "final window = bars.sublist(start, safeTarget + 1);", "no future-data window")
     require(engine, "class ChipTickBins", "chip tick bins parser")
@@ -128,7 +156,7 @@ def main() -> None:
 
     print(json.dumps({
         "ok": True,
-        "route": "单股多级别/K线图内筹码分布",
+        "route": "单股多级别/OriginKlineChart主绘制链筹码分布",
         "branch_task": "hichancmfb",
         "checks": {
             "route_indexes_preserved": True,
@@ -138,15 +166,17 @@ def main() -> None:
             "online_snapshot_adapter_preserves_chip_bins": True,
             "chip_lazy_load": True,
             "range_popup_after_load": True,
-            "easy_tdx_level_volume_source": True,
-            "in_chart_chip_overlay": True,
-            "overlay_does_not_block_chart_gestures": True,
-            "no_legacy_floating_card": True,
+            "easy_tdx_listing_range_request": True,
+            "uses_tdx_kline_period_param": True,
+            "first_available_to_cutoff_policy": True,
+            "origin_main_painter_chain": True,
+            "chip_bins_as_locked_origin_drawing_objects": True,
+            "no_legacy_sibling_chip_painter": True,
+            "no_replay_window_only_source": True,
             "no_offline_dependency": True,
             "no_future_window_guard": True,
             "chip_tick_bins_p_s_b_w_ready": True,
             "target_priority_step_crosshair_visible_right": True,
-            "s13_exact_bucket_coverage_display": True,
             "no_structure_dependency_in_engine": True,
             "tests_added": True,
         },
