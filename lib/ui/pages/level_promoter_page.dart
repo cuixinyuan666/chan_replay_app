@@ -30,6 +30,7 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
   double _priceScale = 1.0;
   int? _viewEndIndex;
   int? _crosshairIndex;
+  String _effectiveMarket = 'SZ';
 
   @override
   void dispose() {
@@ -44,19 +45,26 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
     final code = _code.text.trim();
     final levelList = _levels.text.replaceAll('，', ',').split(',').map((e) => e.trim().toUpperCase()).where((e) => e.isNotEmpty).toList();
     final n = int.tryParse(_maxLayer.text.trim()) ?? 4;
+    final requestedMarket = _market.text.trim().toUpperCase();
+    final market = _normalizeMarketForCode(code, requestedMarket);
+    final marketNote = requestedMarket.isNotEmpty && requestedMarket != market ? '市场已按代码前缀从 $requestedMarket 自动纠正为 $market。' : '';
+    if (market.isNotEmpty && _market.text.trim().toUpperCase() != market) {
+      _market.text = market;
+    }
     if (code.isEmpty || levelList.isEmpty || n < 2) {
       _show('代码、级别不能为空，N 必须 >= 2');
       return;
     }
     setState(() {
       _loading = true;
-      _status = '正在推进到 $n 段...';
+      _effectiveMarket = market;
+      _status = '$marketNote 正在推进 $code.$market 到 $n 段...'.trim();
     });
     final source = PythonMultiLevelChanAnalysisSource(baseUrl: 'app-managed bundled Python');
     try {
       final result = await source.analyzeMulti(
         mode: 'once',
-        market: _market.text.trim().toUpperCase().isEmpty ? _inferMarket(code) : _market.text.trim().toUpperCase(),
+        market: market,
         code: code,
         levels: levelList,
         adjust: 'QFQ',
@@ -81,10 +89,10 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
         _activeLevel = result.snapshot.safeActiveLevel;
         _viewEndIndex = null;
         _crosshairIndex = null;
-        _status = _summary(result.snapshot.of(_activeLevel));
+        _status = [if (marketNote.isNotEmpty) marketNote, _summary(result.snapshot.of(_activeLevel))].join(' ');
       });
     } catch (e) {
-      if (mounted) setState(() => _status = '级别推进失败: $e');
+      if (mounted) setState(() => _status = '级别推进失败: $e。当前请求市场=$market，代码=$code。');
     } finally {
       source.close();
       if (mounted) setState(() => _loading = false);
@@ -157,7 +165,7 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
                   showSegBsp: true,
                   showEasyTdxIndicators: true,
                   drawingStorageKey: 'level_promoter_${_code.text}_$_activeLevel',
-                  symbolLabel: '${_code.text} $_activeLevel',
+                  symbolLabel: '${_code.text}.$_effectiveMarket $_activeLevel',
                   minRecursiveSegLayer: 2,
                   maxRecursiveSegLayer: int.tryParse(_maxLayer.text.trim()) ?? 4,
                   showRecursiveSegLayers: true,
@@ -208,6 +216,7 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
       'manual level promoter evidence',
       'entry_name: 级别推进器',
       'code: ${_code.text.trim()}',
+      'market: $_effectiveMarket',
       'active_level: $_activeLevel',
       'max_requested_layer: $n',
       'source_policy: backend a_* adapter only; no chan.py source pollution',
@@ -222,6 +231,20 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
   }
 
   DateTime? _date(String text) => DateTime.tryParse(text.trim().replaceAll('/', '-'));
-  static String _inferMarket(String code) => code.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ';
+
+  static String _normalizeMarketForCode(String code, String requestedMarket) {
+    final inferred = _inferMarket(code);
+    final trimmed = code.trim();
+    final hasKnownPrefix = trimmed.startsWith('0') || trimmed.startsWith('2') || trimmed.startsWith('3') || trimmed.startsWith('5') || trimmed.startsWith('6') || trimmed.startsWith('9');
+    if (hasKnownPrefix) return inferred;
+    return requestedMarket.isEmpty ? inferred : requestedMarket;
+  }
+
+  static String _inferMarket(String code) {
+    final trimmed = code.trim();
+    if (trimmed.startsWith('5') || trimmed.startsWith('6') || trimmed.startsWith('9')) return 'SH';
+    return 'SZ';
+  }
+
   void _show(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }
