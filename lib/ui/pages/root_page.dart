@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/unified_draggable_tool_menu.dart';
 import 'ashare_bsp_scanner_page.dart';
 import 'cache_optimization_page.dart';
 import 'chan_settings_page.dart';
@@ -37,6 +38,157 @@ class _RootPageState extends State<RootPage> {
     });
   }
 
+  List<UnifiedToolMenuSection> get _unifiedToolSections =>
+      <UnifiedToolMenuSection>[
+        const UnifiedToolMenuSection(
+          title: '标的设置',
+          icon: Icons.manage_search,
+          description: '股票代码、市场、级别窗口与筹码入口',
+          initiallyExpanded: true,
+          groups: <UnifiedToolMenuGroup>[
+            UnifiedToolMenuGroup(
+              title: '单股工作台',
+              icon: Icons.account_tree,
+              initiallyExpanded: true,
+              items: <UnifiedToolMenuItem>[
+                UnifiedToolMenuItem(
+                  label: '单股多级别',
+                  icon: Icons.account_tree,
+                  routeIndex: _multiLevelIndex,
+                  description: '主工作台：标的、周期、复盘、图层和图内筹码分布',
+                ),
+                UnifiedToolMenuItem(
+                  label: '筹码分布',
+                  icon: Icons.stacked_bar_chart,
+                  routeIndex: _chipDistributionIndex,
+                  description: '独立筹码页面：在线 analyze_multi 数据与成本分布',
+                ),
+                UnifiedToolMenuItem(
+                  label: '原始复盘',
+                  icon: Icons.candlestick_chart,
+                  routeIndex: _replayIndex,
+                  description: '基础 K 线复盘入口，保留原始验收路径',
+                ),
+              ],
+            ),
+            UnifiedToolMenuGroup(
+              title: '扫描与批量',
+              icon: Icons.radar,
+              items: <UnifiedToolMenuItem>[
+                UnifiedToolMenuItem(
+                  label: '扫描器',
+                  icon: Icons.radar,
+                  routeIndex: _scannerIndex,
+                  description: 'A 股买卖点扫描与候选定位',
+                ),
+                UnifiedToolMenuItem(
+                  label: 'S8 批量候选',
+                  icon: Icons.view_list,
+                  routeIndex: _s8BatchIndex,
+                  description: '批量候选与阶段性策略检查',
+                ),
+              ],
+            ),
+          ],
+        ),
+        const UnifiedToolMenuSection(
+          title: '缠论设置',
+          icon: Icons.tune,
+          description: '算法参数、运行路径、缓存与全局配置',
+          groups: <UnifiedToolMenuGroup>[
+            UnifiedToolMenuGroup(
+              title: '配置中心',
+              icon: Icons.settings,
+              initiallyExpanded: true,
+              items: <UnifiedToolMenuItem>[
+                UnifiedToolMenuItem(
+                  label: '缠论设置',
+                  icon: Icons.settings,
+                  routeIndex: _settingsIndex,
+                  description: '全局缠论参数与页面设置',
+                ),
+                UnifiedToolMenuItem(
+                  label: '缓存优化',
+                  icon: Icons.speed,
+                  routeIndex: _cacheOptimizationIndex,
+                  description: '会话缓存、payload 与性能诊断入口',
+                ),
+              ],
+            ),
+            UnifiedToolMenuGroup(
+              title: '研究验证',
+              icon: Icons.science,
+              items: <UnifiedToolMenuItem>[
+                UnifiedToolMenuItem(
+                  label: '研究',
+                  icon: Icons.science,
+                  routeIndex: _researchIndex,
+                  description: '回测、诊断与研究型验收入口',
+                ),
+              ],
+            ),
+          ],
+        ),
+        const UnifiedToolMenuSection(
+          title: '缠论元素设置',
+          icon: Icons.layers,
+          description: '分型、笔、线段、中枢、买卖点和区间套证据',
+          groups: <UnifiedToolMenuGroup>[
+            UnifiedToolMenuGroup(
+              title: '图层与证据',
+              icon: Icons.hub,
+              initiallyExpanded: true,
+              items: <UnifiedToolMenuItem>[
+                UnifiedToolMenuItem(
+                  label: '多级别元素',
+                  icon: Icons.account_tree,
+                  routeIndex: _multiLevelIndex,
+                  description: '分型、笔、线段、中枢、BSP、候选轨迹和区间套 marker',
+                ),
+                UnifiedToolMenuItem(
+                  label: '筹码叠加',
+                  icon: Icons.stacked_bar_chart,
+                  routeIndex: _multiLevelIndex,
+                  description: '进入单股多级别后在图内启用筹码分布叠加层',
+                ),
+                UnifiedToolMenuItem(
+                  label: '批量候选',
+                  icon: Icons.view_list,
+                  routeIndex: _s8BatchIndex,
+                  description: '批量查看候选买卖点与策略候选池',
+                ),
+              ],
+            ),
+          ],
+        ),
+        const UnifiedToolMenuSection(
+          title: '画线 / 图形工具',
+          icon: Icons.architecture,
+          description: '画线工具、图层开关与对象导入导出',
+          groups: <UnifiedToolMenuGroup>[
+            UnifiedToolMenuGroup(
+              title: '画线工作流',
+              icon: Icons.edit_note,
+              initiallyExpanded: true,
+              items: <UnifiedToolMenuItem>[
+                UnifiedToolMenuItem(
+                  label: '打开单股画线环境',
+                  icon: Icons.architecture,
+                  routeIndex: _multiLevelIndex,
+                  description: '进入单股多级别，使用图内统一按钮打开画线工具箱',
+                ),
+                UnifiedToolMenuItem(
+                  label: '筹码分布适配',
+                  icon: Icons.stacked_bar_chart,
+                  routeIndex: _chipDistributionIndex,
+                  description: '独立筹码页可用于核对成本峰、获利盘和目标 K 优先级',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -61,13 +213,11 @@ class _RootPageState extends State<RootPage> {
               const _RouteBuilder(child: ChipDistributionPage()),
             ],
           ),
-          Positioned(
-            left: 3,
-            bottom: 18,
-            child: Opacity(
-              opacity: 0.18,
-              child: _RouteToolColumn(currentIndex: _index, onOpen: _open),
-            ),
+          UnifiedDraggableToolMenu(
+            currentIndex: _index,
+            onOpen: _open,
+            sections: _unifiedToolSections,
+            initialOffset: const Offset(18, 118),
           ),
         ],
       ),
@@ -109,120 +259,6 @@ class _LazyRouteStack extends StatelessWidget {
             ),
           ),
       ],
-    );
-  }
-}
-
-class _RouteToolColumn extends StatelessWidget {
-  final int currentIndex;
-  final ValueChanged<int> onOpen;
-
-  const _RouteToolColumn({required this.currentIndex, required this.onOpen});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _RouteToolButton(
-            tooltip: '复盘',
-            icon: Icons.candlestick_chart,
-            selected: currentIndex == _RootPageState._replayIndex,
-            onPressed: () => onOpen(_RootPageState._replayIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '单股多级别复盘',
-            icon: Icons.account_tree,
-            selected: currentIndex == _RootPageState._multiLevelIndex,
-            onPressed: () => onOpen(_RootPageState._multiLevelIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '扫描器',
-            icon: Icons.radar,
-            selected: currentIndex == _RootPageState._scannerIndex,
-            onPressed: () => onOpen(_RootPageState._scannerIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: 'S8批量候选',
-            icon: Icons.view_list,
-            selected: currentIndex == _RootPageState._s8BatchIndex,
-            onPressed: () => onOpen(_RootPageState._s8BatchIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '研究',
-            icon: Icons.science,
-            selected: currentIndex == _RootPageState._researchIndex,
-            onPressed: () => onOpen(_RootPageState._researchIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '设置',
-            icon: Icons.settings,
-            selected: currentIndex == _RootPageState._settingsIndex,
-            onPressed: () => onOpen(_RootPageState._settingsIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '缓存优化',
-            icon: Icons.speed,
-            selected: currentIndex == _RootPageState._cacheOptimizationIndex,
-            onPressed: () => onOpen(_RootPageState._cacheOptimizationIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '筹码分布',
-            icon: Icons.stacked_bar_chart,
-            selected: currentIndex == _RootPageState._chipDistributionIndex,
-            onPressed: () => onOpen(_RootPageState._chipDistributionIndex),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RouteToolButton extends StatelessWidget {
-  final String tooltip;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  const _RouteToolButton({
-    required this.tooltip,
-    required this.icon,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: SizedBox(
-        width: 42,
-        height: 38,
-        child: IconButton(
-          onPressed: selected ? null : onPressed,
-          icon: Icon(icon, size: 19),
-          color: selected ? Colors.white : Colors.white70,
-          disabledColor: Colors.white,
-          style: IconButton.styleFrom(
-            backgroundColor:
-                selected ? const Color(0xFF2962FF) : const Color(0xEE131722),
-            side: BorderSide(
-              color: selected ? const Color(0xFF8AB4FF) : Colors.white24,
-            ),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        ),
-      ),
     );
   }
 }
