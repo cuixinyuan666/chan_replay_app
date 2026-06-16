@@ -8,8 +8,9 @@ import '../../core/models/chan_snapshot.dart';
 
 /// S13 单股多级别复盘内嵌筹码面板。
 ///
-/// 当前阶段只使用在线 analyze_multi 已经返回到前端的 ChanSnapshot.rawBars，
-/// 不读取离线分笔文件；若后端在线返回 chip_tick_bins，可继续通过同一引擎消费。
+/// 使用在线 analyze_multi 已返回到前端的 ChanSnapshot.rawBars；若后端 rawBars
+/// 携带 chip_tick_bins / chipTickBins，则优先复用 a_replay_trainer.py 风格的
+/// p/s/b/w 逐价桶；缺失时由 ChipDistributionEngine 使用 OHLCV 兜底。
 class S13ChipDistributionPanel extends StatelessWidget {
   final ChanSnapshot? snapshot;
   final bool enabled;
@@ -38,6 +39,7 @@ class S13ChipDistributionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!enabled) return const SizedBox.shrink();
     final bars = ChipOnlineReplayAdapter.fromSnapshot(snapshot);
+    final exactBarCount = bars.where((bar) => bar.hasExactChipBins).length;
     final targetIndex = ChipOnlineReplayAdapter.resolveTargetIndex(
       total: bars.length,
       isStepMode: isStepMode,
@@ -123,6 +125,8 @@ class S13ChipDistributionPanel extends StatelessWidget {
                         bars.isEmpty
                             ? '-'
                             : '${result.targetIndex + 1}/${bars.length}'),
+                    _miniMetric('精确桶',
+                        bars.isEmpty ? '-' : '$exactBarCount/${bars.length}'),
                     _miniMetric('现价', result.currentPrice.toStringAsFixed(2)),
                     _miniMetric('均价', result.averageCost.toStringAsFixed(2)),
                     _miniMetric('峰值', result.pocPrice.toStringAsFixed(2)),
@@ -147,7 +151,7 @@ class S13ChipDistributionPanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '在线 rawBars；不读离线分笔；只算目标K及以前。',
+                  '在线 rawBars；chip_tick_bins 优先，OHLCV 兜底；只算目标K及以前。',
                   style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.48),
                       fontSize: 10.5),
