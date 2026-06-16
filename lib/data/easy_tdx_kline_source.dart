@@ -15,8 +15,8 @@ import 'app_bundled_python_backend.dart';
 /// gives the chip engine the first easy-tdx-available bar through the current
 /// display cutoff bar.
 class EasyTdxKlineSource {
-  static dynamic _sharedLocalProcess;
-  static Future<dynamic>? _sharedStartup;
+  static AppBundledPythonBackendProcess? _sharedLocalProcess;
+  static Future<AppBundledPythonBackendProcess>? _sharedStartup;
 
   final String baseUrl;
   final http.Client _client;
@@ -114,14 +114,20 @@ class EasyTdxKlineSource {
       if (endDate != null) 'end': _fmtDate(endDate),
     };
 
-    if (Platform.isWindows) {
-      try {
-        return await _loadViaAutoLocalBackend(query);
-      } on _EasyTdxBackendMismatch {
+    final trimmedBaseUrl = baseUrl.trim();
+    final appManaged = _isAppManagedBaseUrl(trimmedBaseUrl);
+    if (Platform.isWindows && appManaged) {
+      return _loadViaAutoLocalBackend(query);
+    }
+
+    try {
+      return await _loadFromBase(trimmedBaseUrl, query);
+    } on _EasyTdxBackendMismatch {
+      if (Platform.isWindows && _canAutoFallback(trimmedBaseUrl)) {
         return _loadViaSharedAppBackend(query);
       }
+      rethrow;
     }
-    return _loadFromBase(baseUrl, query);
   }
 
   Future<List<Map<String, dynamic>>> _loadViaAutoLocalBackend(
@@ -157,7 +163,7 @@ class EasyTdxKlineSource {
       }
     } else {
       try {
-        await _sharedLocalProcess.refreshHealth();
+        await _sharedLocalProcess!.refreshHealth();
       } catch (_) {
         _sharedLocalProcess?.dispose();
         _sharedLocalProcess = null;
@@ -169,11 +175,14 @@ class EasyTdxKlineSource {
         }
       }
     }
-    return '${_sharedLocalProcess.baseUrl}';
+    return _sharedLocalProcess!.baseUrl;
   }
 
   Future<List<Map<String, dynamic>>> _loadFromBase(
       String sourceBaseUrl, Map<String, String> query) async {
+    if (sourceBaseUrl.trim().isEmpty) {
+      throw const FormatException('easy-tdx backend baseUrl is empty.');
+    }
     await _assertCompatibleBackend(sourceBaseUrl);
 
     final uri = Uri.parse(_join(sourceBaseUrl, '/api/tdx/kline')).replace(
@@ -249,6 +258,11 @@ class EasyTdxKlineSource {
     if (uri == null) return false;
     return uri.scheme == 'http' &&
         (uri.host == '127.0.0.1' || uri.host == 'localhost' || uri.host == '::1');
+  }
+
+  bool _isAppManagedBaseUrl(String raw) {
+    final text = raw.trim();
+    return text.isEmpty || text == 'app-managed bundled Python' || text == 'app-managed';
   }
 
   void close() {
