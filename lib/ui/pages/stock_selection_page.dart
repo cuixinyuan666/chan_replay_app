@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/runtime/xg_replay_jump.dart';
 import '../../data/stock_selection_backend_client.dart';
+import 'xg_replay_jump_page.dart';
 
 class StockSelectionPage extends StatefulWidget {
   final VoidCallback? onOpenMultiLevel;
@@ -146,7 +147,7 @@ class _StockSelectionPageState extends State<StockSelectionPage> {
   }
 
   Widget _right() => Column(children: [
-        _panel('跳转证据', SelectableText(_jump.isEmpty ? '点击扫描结果或交易记录后自动切到单股多级别并定位 raw_index。' : _jump, style: const TextStyle(color: Color(0xFFFFD54F), fontSize: 12)), expand: false),
+        _panel('跳转证据', SelectableText(_jump.isEmpty ? '点击扫描结果或交易记录后打开选股跳转复盘页并定位 raw_index。' : _jump, style: const TextStyle(color: Color(0xFFFFD54F), fontSize: 12)), expand: false),
         const SizedBox(height: 8),
         if (_running) const LinearProgressIndicator(),
         Expanded(child: _resultPanel()),
@@ -188,7 +189,7 @@ class _StockSelectionPageState extends State<StockSelectionPage> {
     setState(() => _jump = jsonText);
     if (req != null) {
       XgReplayJumpBus.publish(req);
-      widget.onOpenMultiLevel?.call();
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => XgReplayJumpPage(request: req, baseUrl: _backend.text.trim())));
     }
   }
 
