@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +23,7 @@ def functional_rhythm_sample() -> dict[str, bool | str | int | float]:
     if spec is None or spec.loader is None:
         return {'ok': False, 'error': 'cannot load a_rhythm_overlay.py'}
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
 
     bars = [
