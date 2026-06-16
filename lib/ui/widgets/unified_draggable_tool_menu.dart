@@ -39,21 +39,29 @@ class _UnifiedDraggableToolMenuState extends State<UnifiedDraggableToolMenu> {
     final screen = MediaQuery.sizeOf(context);
     final left = _offset.dx.clamp(0.0, math.max(0.0, screen.width - 68));
     final top = _offset.dy.clamp(0.0, math.max(0.0, screen.height - 68));
-    final panelHeight = (screen.height - top - 18)
-        .clamp(_panelMinHeight, math.min(_panelMaxHeight, screen.height - 24));
-    final panelLeft = (left + _buttonSize + 10 + _panelWidth > screen.width)
-        ? math.max(8.0, left - _panelWidth - 10)
-        : left + _buttonSize + 10;
+    final panelWidth = math.min(_panelWidth, math.max(260.0, screen.width - 16));
+    final maxPanelHeight =
+        math.max(180.0, math.min(_panelMaxHeight, screen.height - 24));
+    final panelHeight = math.min(
+      maxPanelHeight,
+      math.max(180.0, screen.height - top - 18),
+    );
+    final panelLeft = left + _buttonSize + 10 + panelWidth <= screen.width
+        ? left + _buttonSize + 10
+        : math.max(8.0, screen.width - panelWidth - 8);
+    final panelTop = top + panelHeight <= screen.height
+        ? top
+        : math.max(8.0, screen.height - panelHeight - 8);
 
-    return Positioned(
-      left: left,
-      top: top,
-      child: Material(
-        color: Colors.transparent,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            GestureDetector(
+    return Stack(
+      clipBehavior: Clip.none,
+      children: <Widget>[
+        Positioned(
+          left: left,
+          top: top,
+          child: Material(
+            color: Colors.transparent,
+            child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onPanUpdate: _drag,
               child: _UnifiedMenuButton(
@@ -62,23 +70,22 @@ class _UnifiedDraggableToolMenuState extends State<UnifiedDraggableToolMenu> {
                 onPressed: () => setState(() => _open = !_open),
               ),
             ),
-            if (_open)
-              Transform.translate(
-                offset: Offset(panelLeft - left - _buttonSize, 0),
-                child: SizedBox(
-                  width: _panelWidth,
-                  height: panelHeight,
-                  child: _UnifiedMenuPanel(
-                    currentIndex: widget.currentIndex,
-                    sections: widget.sections,
-                    onClose: () => setState(() => _open = false),
-                    onOpenRoute: _openRoute,
-                  ),
-                ),
-              ),
-          ],
+          ),
         ),
-      ),
+        if (_open)
+          Positioned(
+            left: panelLeft,
+            top: panelTop,
+            width: panelWidth,
+            height: panelHeight,
+            child: _UnifiedMenuPanel(
+              currentIndex: widget.currentIndex,
+              sections: widget.sections,
+              onClose: () => setState(() => _open = false),
+              onOpenRoute: _openRoute,
+            ),
+          ),
+      ],
     );
   }
 
