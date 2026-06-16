@@ -29,7 +29,9 @@ class _RootPageState extends State<RootPage> {
   final Set<int> _visited = <int>{_multiLevelIndex};
 
   void _open(int index) {
-    final target = index == _removedLegacyReplayIndex ? _multiLevelIndex : index;
+    final target = index == _removedLegacyReplayIndex
+        ? _multiLevelIndex
+        : index;
     if (_index == target) return;
     setState(() {
       _index = target;
