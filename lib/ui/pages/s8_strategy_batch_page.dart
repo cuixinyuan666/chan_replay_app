@@ -1,12 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/runtime/runtime_path.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
+import '../../data/stock_selection_backend_client.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import '../widgets/origin_kline_chart.dart';
@@ -19,17 +18,22 @@ class S8StrategyBatchPage extends StatefulWidget {
 }
 
 class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
-  static const String _defaultPath = 'test/fixtures/derived/s8_strategy_batch_candidates_v1.json';
+  final TextEditingController _backendController = TextEditingController(text: StockSelectionBackendClient.defaultBaseUrl);
+  final TextEditingController _symbolsController = TextEditingController(text: '600340.SH,000001.SZ,000002.SZ,600519.SH,300750.SZ');
+  final TextEditingController _levelsController = TextEditingController(text: 'DAILY,MIN30,MIN5');
+  final TextEditingController _startController = TextEditingController(text: '2022-01-01');
+  final TextEditingController _endController = TextEditingController(text: '2025-12-31');
+  final TextEditingController _countController = TextEditingController(text: '900');
+  final TextEditingController _limitController = TextEditingController(text: '50');
+  final TextEditingController _maxCandidatesController = TextEditingController(text: '20');
 
-  final TextEditingController _backendUrlController = TextEditingController(text: 'app-managed bundled Python');
-  final TextEditingController _pathController = TextEditingController(text: _defaultPath);
-  final List<_S8BatchCandidate> _candidates = <_S8BatchCandidate>[];
-
+  final List<_S8RealtimeCandidate> _candidates = <_S8RealtimeCandidate>[];
   PythonMultiLevelChanAnalysis? _analysis;
-  _S8BatchCandidate? _selected;
-  bool _loadingCandidates = false;
+  _S8RealtimeCandidate? _selected;
+  bool _scanning = false;
   bool _loadingReplay = false;
-  String _status = 'S8 batch candidates not loaded';
+  bool _stepConfirm = false;
+  String _status = 'S8 realtime candidates not scanned';
   String _activeLevel = 'MIN30';
   int _windowSize = 90;
   double _priceScale = 1.0;
@@ -38,54 +42,67 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
 
   @override
   void dispose() {
-    _backendUrlController.dispose();
-    _pathController.dispose();
+    for (final controller in [_backendController, _symbolsController, _levelsController, _startController, _endController, _countController, _limitController, _maxCandidatesController]) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
-  Future<void> _loadCandidates() async {
-    if (_loadingCandidates) return;
+  List<String> get _levels => _levelsController.text
+      .replaceAll('，', ',')
+      .split(',')
+      .map((item) => item.trim().toUpperCase())
+      .where((item) => item.isNotEmpty)
+      .toList(growable: false);
+
+  Future<void> _scanRealtime() async {
+    if (_scanning) return;
+    final client = StockSelectionBackendClient(baseUrl: _backendController.text);
     setState(() {
-      _loadingCandidates = true;
-      _status = 'loading S8 batch candidates...';
+      _scanning = true;
+      _status = 'running realtime S8 market scan...';
+      _candidates.clear();
+      _selected = null;
+      _analysis = null;
     });
     try {
-      final path = _pathController.text.trim().isEmpty ? _defaultPath : _pathController.text.trim();
-      final file = File(path);
-      if (!await file.exists()) {
-        throw FileSystemException('S8 output file not found; run python tools/export_s8_strategy_batch_candidates.py first', path);
-      }
-      final data = jsonDecode(await file.readAsString());
-      if (data is! Map<String, dynamic>) throw const FormatException('S8 output root must be a JSON object');
-      if (data['sample_kind'] != 's8_strategy_batch_candidates_v1') {
-        throw FormatException('invalid sample_kind: ${data['sample_kind']}');
-      }
-      final request = data['request'] is Map ? Map<String, dynamic>.from(data['request'] as Map) : <String, dynamic>{};
-      final rows = data['candidates'];
-      if (rows is! List) throw const FormatException('candidates must be a list');
-      final parsed = rows
-          .whereType<Map>()
-          .map((item) => _S8BatchCandidate.fromJson(Map<String, dynamic>.from(item), request))
-          .toList(growable: false);
+      final result = await client.scanS8(<String, dynamic>{
+        'symbols': _symbolsController.text.trim().isEmpty ? null : _symbolsController.text.trim(),
+        'levels': _levels,
+        'start': _startController.text.trim(),
+        'end': _endController.text.trim(),
+        'count': int.tryParse(_countController.text.trim()) ?? 900,
+        'limit': int.tryParse(_limitController.text.trim()) ?? 50,
+        'max_candidates': int.tryParse(_maxCandidatesController.text.trim()) ?? 20,
+        'step_confirm': _stepConfirm,
+        'rules': const ['DAILY_2B_MIN30_1B', 'DAILY_3B_MIN30_1B', 'DAILY_3B_MIN30_2B'],
+      });
+      final rows = result['candidates'];
+      final parsed = rows is List
+          ? rows.whereType<Map>().map((item) => _S8RealtimeCandidate.fromJson(Map<String, dynamic>.from(item), result)).toList(growable: false)
+          : <_S8RealtimeCandidate>[];
+      if (!mounted) return;
       setState(() {
         _candidates
           ..clear()
           ..addAll(parsed);
         _selected = parsed.isEmpty ? null : parsed.first;
         _activeLevel = _selected?.jumpTargetLevel ?? 'MIN30';
-        _status = 'S8 batch candidates loaded: ${parsed.length}; source_policy=${data['source_policy']}';
+        final summary = result['summary'];
+        _status = 'S8 realtime scan done: candidates=${parsed.length}, summary=${summary is Map ? jsonEncode(summary) : summary}';
       });
     } catch (e) {
       if (mounted) {
-        setState(() => _status = 'S8 load failed: $e');
+        setState(() => _status = 'S8 realtime scan failed: $e');
         _showMessage(_status);
       }
     } finally {
-      if (mounted) setState(() => _loadingCandidates = false);
+      client.close();
+      if (mounted) setState(() => _scanning = false);
     }
   }
 
-  Future<void> _openCandidate(_S8BatchCandidate candidate) async {
+  Future<void> _openCandidate(_S8RealtimeCandidate candidate) async {
     if (_loadingReplay) return;
     setState(() {
       _loadingReplay = true;
@@ -93,7 +110,7 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
       _activeLevel = candidate.jumpTargetLevel;
       _status = 'loading multi-level replay for ${candidate.code} ${candidate.ruleModeName}...';
     });
-    final source = PythonMultiLevelChanAnalysisSource(baseUrl: _backendUrlController.text.trim());
+    final source = PythonMultiLevelChanAnalysisSource(baseUrl: _backendController.text.trim());
     try {
       final analysis = await source.analyzeMulti(
         mode: 'once',
@@ -107,18 +124,14 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
         startDate: candidate.startDate,
         endDate: candidate.endDate,
         runtimePath: RuntimePathController.current,
-        config: const {
-          'bi_algo': 'normal',
-          'seg_algo': 'chan',
-          'zs_algo': 'normal',
-        },
+        config: const {'bi_algo': 'normal', 'seg_algo': 'chan', 'zs_algo': 'normal'},
       );
       if (!mounted) return;
       setState(() {
         _analysis = analysis;
         _priceScale = 1.0;
         _locateCandidate(candidate, analysis.snapshot);
-        _status = 'S8 candidate opened: ${candidate.code} ${candidate.ruleModeName} ${candidate.jumpTargetLevel} raw:${candidate.jumpRawIndex} marker:s8_batch_candidate_marker';
+        _status = 'S8 realtime candidate opened: ${candidate.code} ${candidate.ruleModeName} ${candidate.jumpTargetLevel} raw:${candidate.jumpRawIndex}';
       });
     } catch (e) {
       if (mounted) {
@@ -131,15 +144,14 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
     }
   }
 
-  void _locateCandidate(_S8BatchCandidate candidate, MultiLevelChanSnapshot snapshot) {
+  void _locateCandidate(_S8RealtimeCandidate candidate, MultiLevelChanSnapshot snapshot) {
     final levelSnapshot = snapshot.of(candidate.jumpTargetLevel);
     if (levelSnapshot == null || levelSnapshot.rawBars.isEmpty) {
       _viewEndIndex = null;
       _crosshairIndex = null;
       return;
     }
-    final raw = candidate.jumpRawIndex;
-    final index = _barListIndexForRawIndex(levelSnapshot, raw);
+    final index = _barListIndexForRawIndex(levelSnapshot, candidate.jumpRawIndex);
     _activeLevel = candidate.jumpTargetLevel;
     _viewEndIndex = index.clamp(0, levelSnapshot.rawBars.length - 1).toInt();
     _crosshairIndex = _viewEndIndex;
@@ -163,177 +175,130 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(52, 10, 10, 10),
-          child: Row(
-            children: [
-              SizedBox(width: 560, child: _leftPanel()),
-              const SizedBox(width: 10),
-              Expanded(child: _chartPanel(selectedSnapshot)),
-            ],
-          ),
+          child: Row(children: [
+            SizedBox(width: 560, child: _leftPanel()),
+            const SizedBox(width: 10),
+            Expanded(child: _chartPanel(selectedSnapshot)),
+          ]),
         ),
       ),
     );
   }
 
-  Widget _leftPanel() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+  Widget _leftPanel() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _headerPanel(),
         const SizedBox(height: 8),
         Expanded(child: _candidatesPanel()),
         const SizedBox(height: 8),
         _selectedEvidencePanel(),
-      ],
-    );
-  }
+      ]);
 
-  Widget _headerPanel() {
-    return _panel(
-      title: 'S8 batch candidates',
-      expandChild: false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(width: 260, child: _input(_pathController, 'S8 output JSON')),
-              SizedBox(width: 210, child: _input(_backendUrlController, 'backend', enabled: false)),
-              FilledButton.icon(
-                onPressed: _loadingCandidates ? null : _loadCandidates,
-                icon: _loadingCandidates
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.folder_open, size: 16),
-                label: const Text('读取候选'),
-              ),
-            ],
-          ),
+  Widget _headerPanel() => _panel(
+        title: 'S8 realtime candidates',
+        expandChild: false,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            SizedBox(width: 210, child: _input(_backendController, 'backend')),
+            SizedBox(width: 260, child: _input(_symbolsController, 'symbols; blank = backend pool')),
+            SizedBox(width: 210, child: _input(_levelsController, 'levels')),
+            SizedBox(width: 120, child: _input(_startController, 'start')),
+            SizedBox(width: 120, child: _input(_endController, 'end')),
+            SizedBox(width: 80, child: _input(_countController, 'count')),
+            SizedBox(width: 80, child: _input(_limitController, 'limit')),
+            SizedBox(width: 96, child: _input(_maxCandidatesController, 'max hits')),
+            FilterChip(label: const Text('step确认'), selected: _stepConfirm, onSelected: _scanning ? null : (v) => setState(() => _stepConfirm = v)),
+            FilledButton.icon(
+              onPressed: _scanning ? null : _scanRealtime,
+              icon: _scanning ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.radar, size: 16),
+              label: const Text('实时扫描'),
+            ),
+          ]),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              _chip('candidates', '${_candidates.length}', _candidates.isNotEmpty),
-              _chip('selected', _selected?.code ?? 'none', _selected != null),
-              _chip('jump', _selected == null ? 'none' : '${_selected!.jumpTargetLevel} raw:${_selected!.jumpRawIndex}', _selected != null),
-              _chip('source', 'local exporter JSON', true),
-            ],
-          ),
+          Wrap(spacing: 8, runSpacing: 6, children: [
+            _chip('candidates', '${_candidates.length}', _candidates.isNotEmpty),
+            _chip('selected', _selected?.code ?? 'none', _selected != null),
+            _chip('source', 'backend realtime', true),
+            _chip('dart calc', 'false', true),
+          ]),
           const SizedBox(height: 8),
-          Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-        ],
-      ),
-    );
-  }
+          Text(_status, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        ]),
+      );
 
-  Widget _candidatesPanel() {
-    return _panel(
-      title: '候选列表：点击后载入多级别图表并跳转',
-      child: _candidates.isEmpty
-          ? const Center(child: Text('先运行 exporter，再点击“读取候选”。', style: TextStyle(color: Colors.white54)))
-          : Scrollbar(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
+  Widget _candidatesPanel() => _panel(
+        title: '候选列表：点击后载入多级别图表并跳转',
+        child: _candidates.isEmpty
+            ? const Center(child: Text('点击“实时扫描”后显示候选。', style: TextStyle(color: Colors.white54)))
+            : Scrollbar(
                 child: SingleChildScrollView(
-                  child: DataTable(
-                    showCheckboxColumn: false,
-                    headingRowHeight: 34,
-                    dataRowMinHeight: 36,
-                    dataRowMaxHeight: 44,
-                    columnSpacing: 16,
-                    columns: const [
-                      DataColumn(label: Text('代码')),
-                      DataColumn(label: Text('阶段')),
-                      DataColumn(label: Text('规则')),
-                      DataColumn(label: Text('状态')),
-                      DataColumn(label: Text('跳转')),
-                    ],
-                    rows: [
-                      for (final candidate in _candidates)
-                        DataRow(
-                          selected: candidate.sameIdentity(_selected),
-                          onSelectChanged: (_) => _openCandidate(candidate),
-                          cells: [
-                            DataCell(Text(candidate.code)),
-                            DataCell(Text(candidate.phase)),
-                            DataCell(Text(candidate.ruleModeName)),
-                            DataCell(Text(candidate.state)),
-                            DataCell(Text('${candidate.jumpTargetLevel}#${candidate.jumpRawIndex}')),
-                          ],
-                        ),
-                    ],
+                  scrollDirection: Axis.horizontal,
+                  child: SingleChildScrollView(
+                    child: DataTable(
+                      showCheckboxColumn: false,
+                      headingRowHeight: 34,
+                      dataRowMinHeight: 36,
+                      dataRowMaxHeight: 44,
+                      columnSpacing: 16,
+                      columns: const [DataColumn(label: Text('代码')), DataColumn(label: Text('阶段')), DataColumn(label: Text('规则')), DataColumn(label: Text('状态')), DataColumn(label: Text('跳转'))],
+                      rows: [
+                        for (final c in _candidates)
+                          DataRow(
+                            selected: c.sameIdentity(_selected),
+                            onSelectChanged: (_) => _openCandidate(c),
+                            cells: [DataCell(Text(c.code)), DataCell(Text(c.phase)), DataCell(Text(c.ruleModeName)), DataCell(Text(c.state)), DataCell(Text('${c.jumpTargetLevel}#${c.jumpRawIndex}'))],
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-    );
-  }
+      );
 
-  Widget _selectedEvidencePanel() {
-    final selected = _selected;
-    return SizedBox(
-      height: 190,
-      child: _panel(
-        title: 'S8 traceability evidence',
-        trailing: OutlinedButton.icon(
-          onPressed: selected == null ? null : _copyS8Evidence,
-          icon: const Icon(Icons.copy, size: 16),
-          label: const Text('复制S8证据'),
-        ),
-        child: SingleChildScrollView(
-          child: SelectableText(
-            selected == null ? 'No S8 candidate selected.' : selected.toEvidenceText(),
-            style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
+  Widget _selectedEvidencePanel() => SizedBox(
+        height: 190,
+        child: _panel(
+          title: 'S8 traceability evidence',
+          child: SingleChildScrollView(
+            child: SelectableText(_selected == null ? 'No S8 candidate selected.' : _selected!.toEvidenceText(), style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35)),
           ),
         ),
-      ),
-    );
-  }
+      );
 
-  Widget _chartPanel(dynamic levelSnapshot) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFF131722),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: levelSnapshot == null || levelSnapshot.rawBars.isEmpty
-            ? const Center(child: Text('点击 S8 候选后显示多级别 replay 图表。', style: TextStyle(color: Colors.white60)))
-            : OriginKlineChart(
-                snapshot: levelSnapshot,
-                showFx: true,
-                showFxLine: true,
-                showFxText: true,
-                showBi: true,
-                showBiText: false,
-                showSeg: true,
-                showSegText: true,
-                showZs: true,
-                showBiBsp: true,
-                showSegBsp: true,
-                showMergedBars: false,
-                showEasyTdxIndicators: true,
-                easyTdxSubPanelCount: 2,
-                drawingObjects: _s8CandidateDrawingObjects(_activeLevel),
-                drawingStorageKey: 's8_${_selected?.code ?? 'empty'}_$_activeLevel',
-                symbolLabel: '${_selected?.code ?? 'S8'} $_activeLevel',
-                windowSize: _windowSize,
-                priceScale: _priceScale,
-                viewEndIndex: _viewEndIndex,
-                crosshairIndex: _crosshairIndex,
-                onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
-                onPanBars: _panChartByBars,
-                onWindowSizeChanged: (v) => setState(() => _windowSize = v),
-                onPriceScaleChanged: (v) => setState(() => _priceScale = v),
-              ),
-      ),
-    );
-  }
+  Widget _chartPanel(dynamic levelSnapshot) => DecoratedBox(
+        decoration: BoxDecoration(color: const Color(0xFF131722), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: levelSnapshot == null || levelSnapshot.rawBars.isEmpty
+              ? const Center(child: Text('点击 S8 候选后显示多级别 replay 图表。', style: TextStyle(color: Colors.white60)))
+              : OriginKlineChart(
+                  snapshot: levelSnapshot,
+                  showFx: true,
+                  showFxLine: true,
+                  showFxText: true,
+                  showBi: true,
+                  showBiText: false,
+                  showSeg: true,
+                  showSegText: true,
+                  showZs: true,
+                  showBiBsp: true,
+                  showSegBsp: true,
+                  showMergedBars: false,
+                  showEasyTdxIndicators: true,
+                  easyTdxSubPanelCount: 2,
+                  drawingObjects: _candidateDrawingObjects(_activeLevel),
+                  drawingStorageKey: 's8_rt_${_selected?.code ?? 'empty'}_$_activeLevel',
+                  symbolLabel: '${_selected?.code ?? 'S8'} $_activeLevel',
+                  windowSize: _windowSize,
+                  priceScale: _priceScale,
+                  viewEndIndex: _viewEndIndex,
+                  crosshairIndex: _crosshairIndex,
+                  onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
+                  onPanBars: _panChartByBars,
+                  onWindowSizeChanged: (v) => setState(() => _windowSize = v),
+                  onPriceScaleChanged: (v) => setState(() => _priceScale = v),
+                ),
+        ),
+      );
 
   void _panChartByBars(int bars) {
     final levelSnapshot = _analysis?.snapshot.of(_activeLevel);
@@ -344,7 +309,7 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
     if (next != current) setState(() => _viewEndIndex = next);
   }
 
-  List<DrawingObject> _s8CandidateDrawingObjects(String activeLevel) {
+  List<DrawingObject> _candidateDrawingObjects(String activeLevel) {
     final selected = _selected;
     final levelSnapshot = _analysis?.snapshot.of(activeLevel);
     if (selected == null || levelSnapshot == null || activeLevel != selected.jumpTargetLevel) return const [];
@@ -354,7 +319,7 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
     final now = DateTime.now();
     return [
       DrawingObject(
-        id: 's8_batch_candidate_marker_${selected.code}_${selected.ruleModeName}_${selected.jumpTargetLevel}_${selected.jumpRawIndex}',
+        id: 's8_realtime_candidate_marker_${selected.code}_${selected.ruleModeName}_${selected.jumpTargetLevel}_${selected.jumpRawIndex}',
         tool: TradingViewDrawingTool.priceLabel,
         anchors: [DrawingAnchor.chart(rawIndex: selected.jumpRawIndex, price: bar.close)],
         style: const DrawingStyle(colorValue: 0xFFFFD54F, fontSize: 12.0, filled: true, fillColorValue: 0x332962FF, fillOpacity: 0.22),
@@ -369,63 +334,24 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
   Widget _panel({required String title, required Widget child, Widget? trailing, bool expandChild = true}) => Container(
         width: double.infinity,
         padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF131722),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        ),
+        decoration: BoxDecoration(color: const Color(0xFF131722), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
-            if (trailing != null) trailing,
-          ]),
+          Row(children: [Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))), if (trailing != null) trailing]),
           const SizedBox(height: 8),
           if (expandChild) Expanded(child: child) else child,
         ]),
       );
 
-  Widget _input(TextEditingController controller, String label, {bool enabled = true}) {
-    return TextField(
-      controller: controller,
-      enabled: enabled && !_loadingCandidates && !_loadingReplay,
-      style: const TextStyle(color: Colors.white, fontSize: 12),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.white54, fontSize: 11),
-        isDense: true,
-        filled: true,
-        fillColor: const Color(0xFF1C2330),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-  }
+  Widget _input(TextEditingController controller, String label) => TextField(
+        controller: controller,
+        enabled: !_scanning && !_loadingReplay,
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        decoration: InputDecoration(labelText: label, labelStyle: const TextStyle(color: Colors.white54, fontSize: 11), isDense: true, filled: true, fillColor: const Color(0xFF1C2330), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
+      );
 
   Widget _chip(String label, String value, bool ok) {
     final color = ok ? const Color(0xFF66BB6A) : const Color(0xFFFFB74D);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.45)),
-      ),
-      child: Text('$label: $value', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
-    );
-  }
-
-  Future<void> _copyS8Evidence() async {
-    final selected = _selected;
-    if (selected == null) return;
-    final text = [
-      'manual S8 batch navigation evidence',
-      'button: 复制S8证据',
-      's8_phase: app_batch_candidate_navigation',
-      selected.toEvidenceText(),
-      'chart_marker_id: s8_batch_candidate_marker_${selected.code}_${selected.ruleModeName}_${selected.jumpTargetLevel}_${selected.jumpRawIndex}',
-      'status: ok',
-    ].join('\n');
-    await Clipboard.setData(ClipboardData(text: text));
-    _showMessage('S8 evidence copied');
+    return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(999), border: Border.all(color: color.withValues(alpha: 0.45))), child: Text('$label: $value', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)));
   }
 
   void _showMessage(String message) {
@@ -435,7 +361,7 @@ class _S8StrategyBatchPageState extends State<S8StrategyBatchPage> {
   }
 }
 
-class _S8BatchCandidate {
+class _S8RealtimeCandidate {
   final String symbol;
   final String market;
   final String code;
@@ -454,35 +380,16 @@ class _S8BatchCandidate {
   final DateTime? endDate;
   final int count;
 
-  const _S8BatchCandidate({
-    required this.symbol,
-    required this.market,
-    required this.code,
-    required this.phase,
-    required this.ruleModeName,
-    required this.sourceBspIdentifiers,
-    required this.sourceTargetLevels,
-    required this.nativeRelationRange,
-    required this.strictStepVisibility,
-    required this.state,
-    required this.jumpTargetLevel,
-    required this.jumpRawIndex,
-    required this.levels,
-    required this.adjust,
-    required this.startDate,
-    required this.endDate,
-    required this.count,
-  });
+  const _S8RealtimeCandidate({required this.symbol, required this.market, required this.code, required this.phase, required this.ruleModeName, required this.sourceBspIdentifiers, required this.sourceTargetLevels, required this.nativeRelationRange, required this.strictStepVisibility, required this.state, required this.jumpTargetLevel, required this.jumpRawIndex, required this.levels, required this.adjust, required this.startDate, required this.endDate, required this.count});
 
-  factory _S8BatchCandidate.fromJson(Map<String, dynamic> json, Map<String, dynamic> request) {
+  factory _S8RealtimeCandidate.fromJson(Map<String, dynamic> json, Map<String, dynamic> root) {
+    final request = root['request'] is Map ? Map<String, dynamic>.from(root['request'] as Map) : <String, dynamic>{};
     final jump = json['jump_target'] is Map ? Map<String, dynamic>.from(json['jump_target'] as Map) : <String, dynamic>{};
     final levelsRaw = request['levels'];
-    final levels = levelsRaw is List
-        ? levelsRaw.map((item) => '$item'.trim().toUpperCase()).where((item) => item.isNotEmpty).toList(growable: false)
-        : const ['DAILY', 'MIN30', 'MIN5'];
+    final levels = levelsRaw is List ? levelsRaw.map((item) => '$item'.trim().toUpperCase()).where((item) => item.isNotEmpty).toList(growable: false) : const ['DAILY', 'MIN30', 'MIN5'];
     final symbol = _string(json['symbol']);
     final market = _string(json['market']).isEmpty ? _inferMarket(symbol) : _string(json['market']).toUpperCase();
-    return _S8BatchCandidate(
+    return _S8RealtimeCandidate(
       symbol: symbol,
       market: market,
       code: _string(json['code']).isEmpty ? '$symbol.$market' : _string(json['code']),
@@ -503,52 +410,37 @@ class _S8BatchCandidate {
     );
   }
 
-  bool sameIdentity(_S8BatchCandidate? other) {
-    if (other == null) return false;
-    return code == other.code && ruleModeName == other.ruleModeName && jumpTargetLevel == other.jumpTargetLevel && jumpRawIndex == other.jumpRawIndex;
-  }
+  bool sameIdentity(_S8RealtimeCandidate? other) => other != null && code == other.code && ruleModeName == other.ruleModeName && jumpTargetLevel == other.jumpTargetLevel && jumpRawIndex == other.jumpRawIndex;
 
-  String toEvidenceText() {
-    return [
-      'code: $code',
-      'symbol: $symbol',
-      'market: $market',
-      'phase: $phase',
-      'rule_mode_name: $ruleModeName',
-      'source_bsp_identifiers: $sourceBspIdentifiers',
-      'source_target_levels: $sourceTargetLevels',
-      'native_relation_range: $nativeRelationRange',
-      'strict_step_visibility: $strictStepVisibility',
-      'state: $state',
-      'jump_target: $jumpTargetLevel raw_index=$jumpRawIndex',
-      'levels: ${levels.join(',')}',
-      'start: ${_fmtDate(startDate)}',
-      'end: ${_fmtDate(endDate)}',
-      'count: $count',
-      'candidate_policy: candidate signal only; not a trading recommendation',
-      'source_policy: original chan.py BSP + native LevelRelation only',
-      'dart_chan_calculation_authority: false',
-    ].join('\n');
-  }
+  String toEvidenceText() => [
+        'code: $code',
+        'symbol: $symbol',
+        'market: $market',
+        'phase: $phase',
+        'rule_mode_name: $ruleModeName',
+        'source_bsp_identifiers: $sourceBspIdentifiers',
+        'source_target_levels: $sourceTargetLevels',
+        'native_relation_range: $nativeRelationRange',
+        'strict_step_visibility: $strictStepVisibility',
+        'state: $state',
+        'jump_target: $jumpTargetLevel raw_index=$jumpRawIndex',
+        'levels: ${levels.join(',')}',
+        'start: ${_fmtDate(startDate)}',
+        'end: ${_fmtDate(endDate)}',
+        'count: $count',
+        'candidate_policy: candidate signal only; not a trading recommendation',
+        'source_policy: original chan.py BSP + native LevelRelation only',
+        'dart_chan_calculation_authority: false',
+      ].join('\n');
 
   static String _string(Object? value) => '${value ?? ''}'.trim();
-
-  static int? _int(Object? value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse('${value ?? ''}'.trim());
-  }
-
+  static int? _int(Object? value) => value is int ? value : int.tryParse('${value ?? ''}'.trim());
   static DateTime? _date(Object? value) {
     final text = '${value ?? ''}'.trim().replaceFirst(' ', 'T').replaceAll('/', '-');
     if (text.isEmpty || text.toLowerCase() == 'null') return null;
     return DateTime.tryParse(text);
   }
 
-  static String _fmtDate(DateTime? value) {
-    if (value == null) return '';
-    return '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
-  }
-
+  static String _fmtDate(DateTime? value) => value == null ? '' : '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
   static String _inferMarket(String code) => code.startsWith(RegExp(r'[569]')) ? 'SH' : 'SZ';
 }
