@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from .a_bsp_scanner import scan_bsp_events
 from .a_xg_condition_engine import analyze_single, backtest_single, condition_catalog, scan_market
+from .a_xg_s8_engine import scan_s8_market
 from .main import _scanner_args, app
 
 
@@ -29,6 +30,11 @@ def xg_backtest(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 @app.post('/api/xg/scan')
 def xg_scan(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     return scan_market(payload)
+
+
+@app.post('/api/xg/s8/scan')
+def xg_s8_scan(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    return scan_s8_market(payload)
 
 
 @app.post('/api/scanner/bsp/scan_stream')
