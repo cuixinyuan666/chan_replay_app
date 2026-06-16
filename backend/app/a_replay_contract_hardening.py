@@ -9,6 +9,33 @@ from typing import Any, Callable
 
 _BOOL_TRUE = {'1', 'true', 'yes', 'y', 'on'}
 _STRUCTURE_KEYS = ('merged_bars', 'fx', 'bi', 'seg', 'zs', 'bsp')
+_TRANSPORT_LAYER_KEYS = ('bars', 'indicators', *_STRUCTURE_KEYS)
+_LAYER_ALIASES = {
+    'bar': 'bars',
+    'bars': 'bars',
+    'kline': 'bars',
+    'k_line': 'bars',
+    'raw': 'bars',
+    'raw_bars': 'bars',
+    'indicator': 'indicators',
+    'indicators': 'indicators',
+    'easy_tdx': 'indicators',
+    'merged': 'merged_bars',
+    'merged_bar': 'merged_bars',
+    'merged_bars': 'merged_bars',
+    'mergedBars': 'merged_bars',
+    'fx': 'fx',
+    'fract': 'fx',
+    'fractal': 'fx',
+    'bi': 'bi',
+    'seg': 'seg',
+    'segment': 'seg',
+    'zs': 'zs',
+    'center': 'zs',
+    'bsp': 'bsp',
+    'bsps': 'bsp',
+    'buy_sell_point': 'bsp',
+}
 _RAW_INDEX_KEYS = (
     'raw_index',
     'start_raw_index',
@@ -474,12 +501,94 @@ def _apply_anti_future_meta(result: dict[str, Any]) -> dict[str, Any]:
     return patched
 
 
+def _canonical_layer(raw: Any) -> str | None:
+    text = str(raw or '').strip()
+    if not text:
+        return None
+    if text.lower() == 'all':
+        return 'all'
+    return _LAYER_ALIASES.get(text) or _LAYER_ALIASES.get(text.lower())
+
+
+def _requested_layer_list(raw: Any) -> list[str]:
+    if isinstance(raw, str):
+        values = [part.strip() for part in raw.replace('，', ',').split(',') if part.strip()]
+    elif isinstance(raw, list):
+        values = [str(part).strip() for part in raw if str(part).strip()]
+    elif isinstance(raw, dict):
+        values = [str(key).strip() for key, enabled in raw.items() if _bool(enabled, False)]
+    else:
+        values = []
+    result: list[str] = []
+    for value in values:
+        canonical = _canonical_layer(value)
+        if canonical == 'all':
+            return list(_TRANSPORT_LAYER_KEYS)
+        if canonical and canonical not in result:
+            result.append(canonical)
+    return result
+
+
+def _chart_lazy_source(payload: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    raw = payload.get('chart_lazy_layers')
+    if raw is None:
+        raw = config.get('chart_lazy_layers')
+    raw_layers = payload.get('chart_layers')
+    if raw_layers is None:
+        raw_layers = config.get('chart_layers')
+    if isinstance(raw, dict):
+        return {
+            'enabled': _bool(raw.get('enabled'), True),
+            'layers': raw.get('layers') if raw.get('layers') is not None else raw_layers,
+        }
+    return {
+        'enabled': _bool(raw, False),
+        'layers': raw_layers,
+    }
+
+
+def _resolve_chart_layers(payload: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    source = _chart_lazy_source(payload, config)
+    enabled = bool(source['enabled'])
+    requested = _requested_layer_list(source.get('layers'))
+    if enabled and not requested:
+        requested = list(_TRANSPORT_LAYER_KEYS)
+    display_layers = list(_TRANSPORT_LAYER_KEYS) if not enabled else list(dict.fromkeys(['bars', *requested]))
+
+    forced: list[str] = ['bars']
+    transport = set(display_layers)
+    if {'fx', 'bi', 'seg'} & transport:
+        forced.append('merged_bars')
+        transport.add('merged_bars')
+    if 'seg' in transport:
+        forced.append('bi')
+        transport.add('bi')
+        transport.add('merged_bars')
+    forced = [layer for layer in dict.fromkeys(forced) if layer not in display_layers]
+    transport.update(forced)
+    ordered_transport = [layer for layer in _TRANSPORT_LAYER_KEYS if layer in transport]
+    ordered_display = [layer for layer in _TRANSPORT_LAYER_KEYS if layer in display_layers]
+    omitted = [layer for layer in _TRANSPORT_LAYER_KEYS if layer not in ordered_transport]
+    return {
+        'enabled': enabled,
+        'requested': requested,
+        'display_layers': ordered_display,
+        'transport_layers': ordered_transport,
+        'forced_layers': forced,
+        'omitted_layers': omitted,
+    }
+
+
 def _layer_counts(level_payload: Any) -> dict[str, int]:
     result: dict[str, int] = {}
     if not isinstance(level_payload, dict):
         return result
-    for key in ('bars', 'indicators', *_STRUCTURE_KEYS):
+    for key in _TRANSPORT_LAYER_KEYS:
         value = level_payload.get(key)
+        if value is None and key == 'merged_bars':
+            value = level_payload.get('mergedBars')
+        if value is None and key == 'bsp':
+            value = level_payload.get('bsps')
         result[key] = len(value) if isinstance(value, list) else 0
     if not result.get('bars'):
         visible = _visible_count(level_payload)
@@ -494,27 +603,84 @@ def _build_layer_manifest(levels: Any) -> dict[str, Any]:
     return {str(level): _layer_counts(payload) for level, payload in levels.items()}
 
 
-def _apply_chart_lazy_layers_contract(result: dict[str, Any], payload: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
-    patched = dict(result)
-    meta = dict(patched.get('meta')) if isinstance(patched.get('meta'), dict) else {}
-    enabled = _bool(payload.get('chart_lazy_layers'), _bool(config.get('chart_lazy_layers'), False))
-    requested_layers = payload.get('chart_layers') or config.get('chart_layers') or []
-    if isinstance(requested_layers, str):
-        requested_layer_list = [part.strip() for part in requested_layers.replace('，', ',').split(',') if part.strip()]
-    elif isinstance(requested_layers, list):
-        requested_layer_list = [str(part).strip() for part in requested_layers if str(part).strip()]
-    else:
-        requested_layer_list = []
+def _removed_count(value: Any) -> int:
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, dict):
+        return len(value)
+    return 1 if value is not None else 0
 
+
+def _prune_level_payload(level_payload: Any, transport_layers: set[str], stats: dict[str, int]) -> Any:
+    if not isinstance(level_payload, dict):
+        return level_payload
+    patched = dict(level_payload)
+    aliases = {
+        'merged_bars': ('merged_bars', 'mergedBars'),
+        'bsp': ('bsp', 'bsps'),
+    }
+    for layer in _TRANSPORT_LAYER_KEYS:
+        if layer == 'bars':
+            continue
+        keys = aliases.get(layer, (layer,))
+        if layer not in transport_layers:
+            for key in keys:
+                if key in patched:
+                    stats[layer] = stats.get(layer, 0) + _removed_count(patched.get(key))
+                    patched.pop(key, None)
+    return patched
+
+
+def _prune_levels_map(levels: Any, transport_layers: set[str], stats: dict[str, int]) -> Any:
+    if not isinstance(levels, dict):
+        return levels
+    return {
+        key: _prune_level_payload(value, transport_layers, stats)
+        for key, value in levels.items()
+    }
+
+
+def _prune_result_chart_layers(result: dict[str, Any], layer_state: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int]]:
+    if not layer_state['enabled']:
+        return result, {}
+    transport_layers = set(layer_state['transport_layers'])
+    patched = dict(result)
+    stats: dict[str, int] = {}
+    patched['levels'] = _prune_levels_map(patched.get('levels'), transport_layers, stats)
+    frames = patched.get('frames')
+    if isinstance(frames, list):
+        patched_frames = []
+        for frame in frames:
+            if isinstance(frame, dict):
+                next_frame = dict(frame)
+                next_frame['levels'] = _prune_levels_map(next_frame.get('levels'), transport_layers, stats)
+                patched_frames.append(next_frame)
+            else:
+                patched_frames.append(frame)
+        patched['frames'] = patched_frames
+    return patched, stats
+
+
+def _apply_chart_lazy_layers_contract(result: dict[str, Any], payload: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    layer_state = _resolve_chart_layers(payload, config)
+    before_manifest = _build_layer_manifest(result.get('levels'))
+    patched, pruned_counts = _prune_result_chart_layers(result, layer_state)
     manifest = _build_layer_manifest(patched.get('levels'))
+    meta = dict(patched.get('meta')) if isinstance(patched.get('meta'), dict) else {}
     meta.update({
-        'chart_lazy_layers_contract': 'chart_lazy_layers_v1',
-        'chart_lazy_layers_enabled': enabled,
-        'chart_lazy_layers_requested': requested_layer_list,
-        'chart_lazy_layers_available': ['bars', 'indicators', *_STRUCTURE_KEYS],
+        'chart_lazy_layers_contract': 'chart_lazy_layers_v2_transport_pruning',
+        'chart_lazy_layers_enabled': layer_state['enabled'],
+        'chart_lazy_layers_requested': layer_state['requested'],
+        'chart_lazy_layers_display_layers': layer_state['display_layers'],
+        'chart_lazy_layers_transport_layers': layer_state['transport_layers'],
+        'chart_lazy_layers_forced_transport_layers': layer_state['forced_layers'],
+        'chart_lazy_layers_omitted_layers': layer_state['omitted_layers'],
+        'chart_lazy_layers_pruned_counts': pruned_counts,
+        'chart_lazy_layers_available': list(_TRANSPORT_LAYER_KEYS),
+        'chart_lazy_layers_manifest_before_prune': before_manifest,
         'chart_lazy_layers_manifest': manifest,
-        'chart_lazy_layers_compute_policy': 'transport/rendering contract only; chan.py calculation/export still runs on backend',
-        'chart_lazy_layers_flutter_policy': 'Flutter may choose visible layers from manifest but must not calculate FX/BI/SEG/ZS/BSP',
+        'chart_lazy_layers_compute_policy': 'chan.py calculation/export still runs on backend; only response transport payload is pruned',
+        'chart_lazy_layers_flutter_policy': 'Flutter sends desired layers and renders returned manifest; Flutter must not calculate FX/BI/SEG/ZS/BSP',
         'chart_lazy_layers_endpoint': '/api/chan/analyze_multi',
     })
     patched['layer_manifest'] = manifest
@@ -527,6 +693,8 @@ def _enrich_existing_bsp_rows(value: Any) -> Any:
         patched = dict(value)
         if isinstance(patched.get('bsp'), list):
             patched['bsp'] = _enrich_bsp_list(patched['bsp'])
+        if isinstance(patched.get('bsps'), list):
+            patched['bsps'] = _enrich_bsp_list(patched['bsps'])
         for key, item in list(patched.items()):
             if isinstance(item, (dict, list)):
                 patched[key] = _enrich_existing_bsp_rows(item)
@@ -543,12 +711,12 @@ def apply_analyze_multi_contracts(result: dict[str, Any], payload: dict[str, Any
     patched = _apply_anti_future_meta(patched)
     meta = dict(patched.get('meta')) if isinstance(patched.get('meta'), dict) else {}
     meta.update({
-        'contract_hardening': 'hichanhuancun_v1',
+        'contract_hardening': 'hichanhuancun_v2_chart_lazy_transport',
         'chan_py_core_unchanged': True,
         'flutter_chan_calculation_allowed': False,
         'backend_additions': [
             'session_kline_cache',
-            'chart_lazy_layers_contract',
+            'chart_lazy_layers_transport_pruning',
             'bsp_anchor_display_confirmed',
             'analyze_multi_anti_future_meta',
         ],
