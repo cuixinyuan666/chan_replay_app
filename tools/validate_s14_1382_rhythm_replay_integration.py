@@ -18,7 +18,7 @@ def contains(path: str, needles: list[str]) -> dict[str, bool]:
 def main() -> int:
     checks = {
         'backend_overlay_module': contains('backend/app/a_rhythm_overlay.py', ['RHYTHM_RATIO = 1.382', 'with_multilevel_rhythm_overlay', 'rhythm_lines', 'rhythm_hits']),
-        'backend_route': contains('backend/app/main.py', ['with_multilevel_rhythm_overlay', 'backend_route_rhythm_1382_overlay_ms', 'rhythm_lines', 'rhythm_hits', '_compact_multilevel_step_result']),
+        'backend_route': contains('backend/app/main.py', ['from .a_rhythm_overlay import with_multilevel_rhythm_overlay', 'with_multilevel_rhythm_overlay', 'backend_route_rhythm_1382_overlay_ms', 'rhythm_lines', 'rhythm_hits', '_compact_multilevel_step_result']),
         'dart_model': contains('lib/core/models/rhythm.dart', ['class RhythmLine', 'class RhythmHit', 'parseRhythmLines', 'parseRhythmHits']),
         'snapshot_model': contains('lib/core/models/chan_snapshot.dart', ['final List<RhythmLine> rhythmLines', 'final List<RhythmHit> rhythmHits', 'rhythmLines = const []', 'rhythmHits = const []']),
         'json_parser': contains('lib/data/chan_snapshot_json_parser.dart', ['rhythm_lines', 'rhythmHits: rhythmHits', 'parseRhythmLines', 'parseRhythmHits']),

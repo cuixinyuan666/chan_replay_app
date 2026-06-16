@@ -15,6 +15,7 @@ from .a_indicator_export import build_display_indicators, indicator_source_meta
 from .a_ml_bridge import score_bsp_features
 from .a_multilevel_engine_timed import analyze_multi
 from .a_replay_contract_hardening import apply_analyze_multi_contracts
+from .a_rhythm_overlay import with_multilevel_rhythm_overlay
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
