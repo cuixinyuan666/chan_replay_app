@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -10,10 +11,13 @@ import '../../core/models/raw_bar.dart';
 /// S13 单股多级别复盘内嵌筹码 overlay。
 ///
 /// 不再以独立右侧卡片显示，而是直接绘制在 K 线主图区右侧：
+/// - 只在用户打开筹码图层后懒计算；关闭时不计算、不绘制；
+/// - 使用当前 active level 的 easy-tdx K 线作为筹码量来源；
+/// - 默认统计区间为该级别首根可用 K 线到当前显示截止 K；
 /// - 有 chip_tick_bins / chipTickBins 时，优先使用 a_replay_trainer.py 风格 p/s/b/w；
-/// - 没有逐价桶时，使用 OHLCV 兜底；
+/// - 没有逐价桶时，使用 OHLCV 成交量兜底；
 /// - 使用 IgnorePointer，不拦截十字线、拖拽、画线工具等主图交互。
-class S13ChipDistributionPanel extends StatelessWidget {
+class S13ChipDistributionPanel extends StatefulWidget {
   static const double _topPad = 32;
   static const double _bottomPad = 28;
   static const double _leftPad = 4;
@@ -53,50 +57,175 @@ class S13ChipDistributionPanel extends StatelessWidget {
   });
 
   @override
+  State<S13ChipDistributionPanel> createState() => _S13ChipDistributionPanelState();
+}
+
+class _S13ChipDistributionPanelState extends State<S13ChipDistributionPanel> {
+  String? _loadedKey;
+  bool _loading = false;
+  Object? _loadError;
+  List<RawBar> _loadedRawBars = const <RawBar>[];
+  List<ChipDistributionBar> _loadedChipBars = const <ChipDistributionBar>[];
+  _ChipLazyLoadInfo? _loadInfo;
+  final Set<String> _announcedKeys = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleLazyLoad();
+  }
+
+  @override
+  void didUpdateWidget(covariant S13ChipDistributionPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _scheduleLazyLoad();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!enabled) return const SizedBox.shrink();
-    final bars = ChipOnlineReplayAdapter.fromSnapshot(snapshot);
-    final rawBars = snapshot?.rawBars ?? const <RawBar>[];
-    final targetIndex = ChipOnlineReplayAdapter.resolveTargetIndex(
-      total: bars.length,
-      isStepMode: isStepMode,
-      stepIndex: stepIndex,
-      crosshairIndex: crosshairIndex,
-      viewEndIndex: visibleRightIndex,
-    );
-    final result = const ChipDistributionEngine().calculate(
-      bars,
-      targetIndex: targetIndex,
-      options: ChipDistributionOptions(
-        binCount: binCount,
-        lookback: 1000000,
-        ageDecay: ageDecay,
-      ),
-    );
-    final exactBarCount = bars.where((bar) => bar.hasExactChipBins).length;
+    if (!widget.enabled) return const SizedBox.shrink();
+    _scheduleLazyLoad();
+    final chartRawBars = widget.snapshot?.rawBars ?? const <RawBar>[];
+    final result = _loadedChipBars.isEmpty
+        ? const ChipDistributionResult.empty()
+        : const ChipDistributionEngine().calculate(
+            _loadedChipBars,
+            targetIndex: _loadedChipBars.length - 1,
+            options: ChipDistributionOptions(
+              binCount: widget.binCount,
+              lookback: 1000000,
+              ageDecay: widget.ageDecay,
+            ),
+          );
+    final exactBarCount = _loadedChipBars.where((bar) => bar.hasExactChipBins).length;
     final targetPolicy = _targetPolicy(
-      isStepMode: isStepMode,
-      crosshairIndex: crosshairIndex,
-      visibleRightIndex: visibleRightIndex,
+      isStepMode: widget.isStepMode,
+      crosshairIndex: widget.crosshairIndex,
+      visibleRightIndex: widget.visibleRightIndex,
     );
 
     return Positioned.fill(
       child: IgnorePointer(
         child: CustomPaint(
           painter: _InChartChipDistributionPainter(
-            rawBars: rawBars,
+            rawBars: chartRawBars,
             result: result,
             exactBarCount: exactBarCount,
             targetPolicy: targetPolicy,
-            windowSize: windowSize,
-            priceScale: priceScale,
-            viewEndIndex: visibleRightIndex,
-            showEasyTdxIndicators: showEasyTdxIndicators,
-            easyTdxSubPanelCount: easyTdxSubPanelCount,
+            windowSize: widget.windowSize,
+            priceScale: widget.priceScale,
+            viewEndIndex: widget.visibleRightIndex,
+            showEasyTdxIndicators: widget.showEasyTdxIndicators,
+            easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
+            loading: _loading,
+            errorText: _loadError == null ? '' : '筹码加载失败：$_loadError',
+            loadInfo: _loadInfo,
           ),
         ),
       ),
     );
+  }
+
+  void _scheduleLazyLoad() {
+    if (!mounted || !widget.enabled) return;
+    scheduleMicrotask(_ensureLazyLoaded);
+  }
+
+  void _ensureLazyLoaded() {
+    if (!mounted || !widget.enabled) return;
+    final snapshot = widget.snapshot;
+    final rawBars = snapshot?.rawBars ?? const <RawBar>[];
+    if (rawBars.isEmpty) return;
+    final targetIndex = _targetIndex(rawBars.length);
+    final targetBar = rawBars[targetIndex];
+    final firstBar = rawBars.first;
+    final key = [
+      identityHashCode(snapshot),
+      rawBars.length,
+      firstBar.time.toIso8601String(),
+      targetIndex,
+      targetBar.time.toIso8601String(),
+      widget.binCount,
+      widget.ageDecay,
+    ].join('|');
+    if (_loadedKey == key || _loading) return;
+    setState(() {
+      _loading = true;
+      _loadError = null;
+      _loadedKey = key;
+      _loadedRawBars = const <RawBar>[];
+      _loadedChipBars = const <ChipDistributionBar>[];
+      _loadInfo = null;
+    });
+    Future<void>.delayed(Duration.zero, () {
+      if (!mounted || !widget.enabled || _loadedKey != key) return;
+      try {
+        final clippedRawBars = rawBars.sublist(0, targetIndex + 1);
+        final chipBars = ChipOnlineReplayAdapter.fromSnapshot(
+          ChanSnapshot(
+            rawBars: clippedRawBars,
+            mergedBars: const [],
+            fxs: const [],
+            bis: const [],
+            segs: const [],
+            zss: const [],
+            indicators: snapshot?.indicators ?? const dynamic,
+          ),
+        );
+        final info = _ChipLazyLoadInfo(
+          startDate: clippedRawBars.first.time,
+          endDate: clippedRawBars.last.time,
+          rawBarCount: clippedRawBars.length,
+          sourceText: 'easy-tdx ${_levelFromBars(clippedRawBars)} K线成交量',
+        );
+        if (!mounted || _loadedKey != key) return;
+        setState(() {
+          _loading = false;
+          _loadedRawBars = clippedRawBars;
+          _loadedChipBars = chipBars;
+          _loadInfo = info;
+        });
+        _announceLoadedRange(key, info);
+      } catch (e) {
+        if (!mounted || _loadedKey != key) return;
+        setState(() {
+          _loading = false;
+          _loadError = e;
+        });
+      }
+    });
+  }
+
+  int _targetIndex(int total) {
+    if (total <= 0) return 0;
+    final raw = widget.isStepMode
+        ? widget.stepIndex
+        : (widget.crosshairIndex ?? widget.visibleRightIndex ?? total - 1);
+    return raw.clamp(0, total - 1).toInt();
+  }
+
+  void _announceLoadedRange(String key, _ChipLazyLoadInfo info) {
+    if (!_announcedKeys.add(key)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('筹码分布加载成功'),
+          content: Text(
+            '筹码分布的获取区间为: ${_fmtDate(info.startDate)}-${_fmtDate(info.endDate)}\n'
+            '数据源: ${info.sourceText}\n'
+            'K线数量: ${info.rawBarCount}',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   static String _targetPolicy({
@@ -108,6 +237,26 @@ class S13ChipDistributionPanel extends StatelessWidget {
     if (crosshairIndex != null) return '十字线';
     if (visibleRightIndex != null) return '右侧K';
     return '末K';
+  }
+
+  static String _fmtDate(DateTime value) => value.toIso8601String().split('T').first;
+
+  static String _levelFromBars(List<RawBar> bars) {
+    if (bars.length < 2) return '当前级别';
+    final samples = <int>[];
+    for (var i = 1; i < bars.length && samples.length < 24; i++) {
+      final minutes = bars[i].time.difference(bars[i - 1].time).inMinutes.abs();
+      if (minutes > 0) samples.add(minutes);
+    }
+    if (samples.isEmpty) return '当前级别';
+    samples.sort();
+    final m = samples[samples.length ~/ 2];
+    if (m <= 2) return 'MIN1';
+    if (m <= 7) return 'MIN5';
+    if (m <= 20) return 'MIN15';
+    if (m <= 45) return 'MIN30';
+    if (m <= 90) return 'MIN60';
+    return 'DAILY';
   }
 }
 
@@ -121,6 +270,9 @@ class _InChartChipDistributionPainter extends CustomPainter {
   final int? viewEndIndex;
   final bool showEasyTdxIndicators;
   final int easyTdxSubPanelCount;
+  final bool loading;
+  final String errorText;
+  final _ChipLazyLoadInfo? loadInfo;
 
   const _InChartChipDistributionPainter({
     required this.rawBars,
@@ -132,6 +284,9 @@ class _InChartChipDistributionPainter extends CustomPainter {
     required this.viewEndIndex,
     required this.showEasyTdxIndicators,
     required this.easyTdxSubPanelCount,
+    required this.loading,
+    required this.errorText,
+    required this.loadInfo,
   });
 
   @override
@@ -151,6 +306,26 @@ class _InChartChipDistributionPainter extends CustomPainter {
     );
 
     _drawBackground(canvas, overlayRect);
+    if (loading) {
+      _drawText(
+        canvas,
+        '筹码懒加载中…',
+        Offset(overlayRect.left + 8, overlayRect.top + 8),
+        const Color(0xCCFFFFFF),
+        11,
+      );
+      return;
+    }
+    if (errorText.isNotEmpty) {
+      _drawText(
+        canvas,
+        errorText,
+        Offset(overlayRect.left + 8, overlayRect.top + 8),
+        const Color(0xFFFFAB91),
+        10.5,
+      );
+      return;
+    }
     if (result.isEmpty) {
       _drawText(
         canvas,
@@ -270,13 +445,17 @@ class _InChartChipDistributionPainter extends CustomPainter {
   }
 
   void _drawHeader(Canvas canvas, Rect chartRect, Rect overlayRect) {
-    final exact = rawBars.isEmpty ? '-' : '$exactBarCount/${rawBars.length}';
-    final line1 = '筹码 $targetPolicy  ${result.targetIndex + 1}/${rawBars.length}';
+    final exact = loadInfo == null ? '-' : '$exactBarCount/${loadInfo!.rawBarCount}';
+    final line1 = '筹码 $targetPolicy  ${result.targetIndex + 1}/${loadInfo?.rawBarCount ?? rawBars.length}';
     final line2 = '精确桶 $exact  获利 ${(result.profitRatio * 100).toStringAsFixed(1)}%';
     final line3 = '均 ${result.averageCost.toStringAsFixed(2)}  峰 ${result.pocPrice.toStringAsFixed(2)}';
+    final line4 = loadInfo == null
+        ? ''
+        : '${_fmtDate(loadInfo!.startDate)}-${_fmtDate(loadInfo!.endDate)}';
     final left = overlayRect.left + 8;
     final top = chartRect.top + 7;
-    final badgeRect = Rect.fromLTWH(left - 6, top - 4, overlayRect.width - 10, 48);
+    final badgeHeight = line4.isEmpty ? 48.0 : 63.0;
+    final badgeRect = Rect.fromLTWH(left - 6, top - 4, overlayRect.width - 10, badgeHeight);
     canvas.drawRRect(
       RRect.fromRectAndRadius(badgeRect, const Radius.circular(7)),
       Paint()..color = const Color(0xCC0D1117).withValues(alpha: 0.54),
@@ -284,6 +463,9 @@ class _InChartChipDistributionPainter extends CustomPainter {
     _drawText(canvas, line1, Offset(left, top), const Color(0xE6FFFFFF), 10.5);
     _drawText(canvas, line2, Offset(left, top + 15), const Color(0xCCFFFFFF), 10.0);
     _drawText(canvas, line3, Offset(left, top + 30), const Color(0xAAFFFFFF), 10.0);
+    if (line4.isNotEmpty) {
+      _drawText(canvas, line4, Offset(left, top + 45), const Color(0x99FFFFFF), 9.5);
+    }
   }
 
   void _drawText(Canvas canvas, String text, Offset offset, Color color, double size) {
@@ -299,6 +481,8 @@ class _InChartChipDistributionPainter extends CustomPainter {
     painter.paint(canvas, offset);
   }
 
+  static String _fmtDate(DateTime value) => value.toIso8601String().split('T').first;
+
   @override
   bool shouldRepaint(covariant _InChartChipDistributionPainter oldDelegate) {
     return oldDelegate.rawBars != rawBars ||
@@ -309,8 +493,25 @@ class _InChartChipDistributionPainter extends CustomPainter {
         oldDelegate.priceScale != priceScale ||
         oldDelegate.viewEndIndex != viewEndIndex ||
         oldDelegate.showEasyTdxIndicators != showEasyTdxIndicators ||
-        oldDelegate.easyTdxSubPanelCount != easyTdxSubPanelCount;
+        oldDelegate.easyTdxSubPanelCount != easyTdxSubPanelCount ||
+        oldDelegate.loading != loading ||
+        oldDelegate.errorText != errorText ||
+        oldDelegate.loadInfo != loadInfo;
   }
+}
+
+class _ChipLazyLoadInfo {
+  final DateTime startDate;
+  final DateTime endDate;
+  final int rawBarCount;
+  final String sourceText;
+
+  const _ChipLazyLoadInfo({
+    required this.startDate,
+    required this.endDate,
+    required this.rawBarCount,
+    required this.sourceText,
+  });
 }
 
 class _ChipChartMeta {
