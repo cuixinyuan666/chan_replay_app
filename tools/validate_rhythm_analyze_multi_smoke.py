@@ -33,6 +33,20 @@ def _as_levels(value: str) -> list[str]:
     return [part.strip().upper() for part in value.replace('，', ',').split(',') if part.strip()]
 
 
+def _is_native_alignment_failure(result: dict[str, Any]) -> bool:
+    meta = result.get('meta') if isinstance(result.get('meta'), dict) else {}
+    text = ' '.join(str(item) for item in (
+        result.get('error'),
+        meta.get('native_failure'),
+        ' '.join(str(w) for w in meta.get('warnings', []) if isinstance(meta.get('warnings'), list)),
+    ))
+    return (
+        result.get('ok') is False
+        and '找不到K线' in text
+        and 'native' in text.lower()
+    )
+
+
 def _validate_level(level_name: str, payload: dict[str, Any]) -> dict[str, Any]:
     lines = payload.get('rhythm_lines') if isinstance(payload.get('rhythm_lines'), list) else []
     hits = payload.get('rhythm_hits') if isinstance(payload.get('rhythm_hits'), list) else []
@@ -97,30 +111,15 @@ def _validate_level(level_name: str, payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description='Run real analyze_multi rhythm overlay smoke validation.')
-    parser.add_argument('--symbol', default='000001')
-    parser.add_argument('--market', default='SZ')
-    parser.add_argument('--levels', default='DAILY,MIN30,MIN5')
-    parser.add_argument('--start', default='2024-01-01')
-    parser.add_argument('--end', default='2024-12-31')
-    parser.add_argument('--count', type=int, default=900)
-    parser.add_argument('--mode', default='once', choices=['once', 'step'])
-    parser.add_argument('--main-level', default='DAILY')
-    parser.add_argument('--clock-level', default='MIN30')
-    parser.add_argument('--calc-mode', default='transition', choices=['normal', 'transition', 'strict1382'])
-    parser.add_argument('--require-lines', action='store_true')
-    args = parser.parse_args()
-
-    levels = _as_levels(args.levels)
-    result = analyze_multi(
+def _run_analyze(args: argparse.Namespace, levels: list[str], *, main_level: str, clock_level: str) -> dict[str, Any]:
+    return analyze_multi(
         symbol=args.symbol,
         market=args.market,
         levels=levels,
-        adjust='QFQ',
+        adjust=args.adjust,
         mode=args.mode,
-        main_level=args.main_level,
-        clock_level=args.clock_level,
+        main_level=main_level,
+        clock_level=clock_level,
         start=args.start,
         end=args.end,
         count=args.count,
@@ -134,11 +133,12 @@ def main() -> None:
             'rhythm_max_hits_per_line': 3,
         },
     )
-    if result.get('ok') is False:
-        raise RuntimeError(result.get('error') or result)
+
+
+def _validate_result(levels: list[str], result: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
     levels_payload = result.get('levels')
     if not isinstance(levels_payload, dict):
-        raise AssertionError('analyze_multi result has no levels dict')
+        return [], ['analyze_multi result has no levels dict']
 
     summaries = []
     errors: list[str] = []
@@ -150,7 +150,100 @@ def main() -> None:
         summary = _validate_level(level_name, payload)
         summaries.append(summary)
         errors.extend(summary['errors'])
+    return summaries, errors
 
+
+def _top_meta(result: dict[str, Any]) -> dict[str, Any]:
+    meta = result.get('meta') if isinstance(result.get('meta'), dict) else {}
+    return {
+        key: meta.get(key)
+        for key in (
+            'rhythm_1382_enabled',
+            'rhythm_1382_total_lines',
+            'rhythm_1382_total_hits',
+            'rhythm_1382_overlay_source',
+            'backend_route_rhythm_1382_overlay_ms',
+            'native_failure',
+            'warnings',
+        )
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description='Run real analyze_multi rhythm overlay smoke validation.')
+    parser.add_argument('--symbol', default='000001')
+    parser.add_argument('--market', default='SZ')
+    parser.add_argument('--levels', default='DAILY,MIN30,MIN5')
+    parser.add_argument('--start', default='2024-01-01')
+    parser.add_argument('--end', default='2024-12-31')
+    parser.add_argument('--count', type=int, default=900)
+    parser.add_argument('--adjust', default='QFQ')
+    parser.add_argument('--mode', default='once', choices=['once', 'step'])
+    parser.add_argument('--main-level', default='DAILY')
+    parser.add_argument('--clock-level', default='MIN30')
+    parser.add_argument('--calc-mode', default='transition', choices=['normal', 'transition', 'strict1382'])
+    parser.add_argument('--require-lines', action='store_true')
+    parser.add_argument('--single-level-fallback', dest='single_level_fallback', action='store_true', default=True,
+                        help='If native multi-level alignment fails because a child K-line is missing, validate each requested level independently.')
+    parser.add_argument('--no-single-level-fallback', dest='single_level_fallback', action='store_false')
+    args = parser.parse_args()
+
+    levels = _as_levels(args.levels)
+    result = _run_analyze(args, levels, main_level=args.main_level.upper(), clock_level=args.clock_level.upper())
+    fallback_used = False
+    fallback_reason = ''
+    fallback_runs: list[dict[str, Any]] = []
+
+    if result.get('ok') is False:
+        if not (_is_native_alignment_failure(result) and args.single_level_fallback):
+            print(json.dumps({
+                'symbol': args.symbol,
+                'market': args.market,
+                'levels': levels,
+                'mode': args.mode,
+                'calc_mode': args.calc_mode,
+                'status': 'analyze_multi_failed',
+                'top_meta': _top_meta(result),
+                'raw_error': result.get('error'),
+            }, ensure_ascii=False, indent=2))
+            raise SystemExit(1)
+        fallback_used = True
+        fallback_reason = str((result.get('meta') or {}).get('native_failure') or result.get('error') or 'native alignment failed')
+        combined_levels: dict[str, Any] = {}
+        combined_meta = {
+            'fallback_from_native_alignment_failure': True,
+            'fallback_reason': fallback_reason,
+        }
+        for level_name in levels:
+            single = _run_analyze(args, [level_name], main_level=level_name, clock_level=level_name)
+            fallback_runs.append({
+                'level': level_name,
+                'ok': single.get('ok') is not False,
+                'top_meta': _top_meta(single),
+                'error': single.get('error'),
+            })
+            if single.get('ok') is False:
+                print(json.dumps({
+                    'symbol': args.symbol,
+                    'market': args.market,
+                    'levels': levels,
+                    'mode': args.mode,
+                    'calc_mode': args.calc_mode,
+                    'status': 'single_level_fallback_failed',
+                    'fallback_reason': fallback_reason,
+                    'fallback_runs': fallback_runs,
+                }, ensure_ascii=False, indent=2))
+                raise SystemExit(1)
+            single_levels = single.get('levels') if isinstance(single.get('levels'), dict) else {}
+            if isinstance(single_levels.get(level_name), dict):
+                combined_levels[level_name] = single_levels[level_name]
+        result = {
+            'ok': True,
+            'levels': combined_levels,
+            'meta': combined_meta,
+        }
+
+    summaries, errors = _validate_result(levels, result)
     total_lines = sum(int(item['lines']) for item in summaries)
     total_hits = sum(int(item['hits']) for item in summaries)
     if args.require_lines and total_lines <= 0:
@@ -162,19 +255,14 @@ def main() -> None:
         'levels': levels,
         'mode': args.mode,
         'calc_mode': args.calc_mode,
+        'status': 'ok' if not errors else 'validation_failed',
+        'fallback_used': fallback_used,
+        'fallback_reason': fallback_reason,
+        'fallback_runs': fallback_runs,
         'total_lines': total_lines,
         'total_hits': total_hits,
         'summaries': summaries,
-        'top_meta': {
-            key: result.get('meta', {}).get(key)
-            for key in (
-                'rhythm_1382_enabled',
-                'rhythm_1382_total_lines',
-                'rhythm_1382_total_hits',
-                'rhythm_1382_overlay_source',
-                'backend_route_rhythm_1382_overlay_ms',
-            )
-        },
+        'top_meta': _top_meta(result),
         'errors': errors,
     }, ensure_ascii=False, indent=2))
 
