@@ -346,6 +346,8 @@ def _find_1382_hits(
     direction: str,
     threshold: float,
     level: str,
+    parent_level: str,
+    parent_label: str,
     source_kind: str,
     line_id: str,
     max_hits: int,
@@ -374,6 +376,8 @@ def _find_1382_hits(
             'line_id': line_id,
             'level': level,
             'source_kind': source_kind,
+            'parent_level': parent_level,
+            'parent_label': parent_label,
             'raw_index': raw_index,
             'time': _bar_time(row),
             'price': float(trigger_price if trigger_price is not None else threshold),
@@ -383,7 +387,7 @@ def _find_1382_hits(
             'detail': (
                 f'{_level_label(source_kind)}1382\n'
                 f'时间：{_bar_time(row)}\n'
-                f'父结构：{_level_label(level)}\n'
+                f'父结构：{parent_label}\n'
                 f'方向：{"上升" if direction == "UP" else "下降"}\n'
                 f'阈值价：{float(threshold):.3f}\n'
                 f'触发价：{price_field}={float(trigger_price if trigger_price is not None else threshold):.3f}'
@@ -513,6 +517,8 @@ def _build_parent_rhythm_entries(
             direction=parent_dir,
             threshold=self_threshold,
             level=level,
+            parent_level=parent_level,
+            parent_label=parent_label,
             source_kind=level,
             line_id=self_line_id,
             max_hits=max_hits_per_line,
