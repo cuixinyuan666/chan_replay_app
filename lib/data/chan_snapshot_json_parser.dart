@@ -1,3 +1,4 @@
+import '../core/analysis/chip_distribution.dart';
 import '../core/models/bi.dart';
 import '../core/models/bsp.dart';
 import '../core/models/chan_snapshot.dart';
@@ -183,14 +184,19 @@ class ChanSnapshotJsonParser {
         high == null ||
         low == null ||
         close == null) return null;
+    final chipTickBins = ChipTickBins.fromJson(
+      row['chip_tick_bins'] ?? row['chipTickBins'],
+    );
     return RawBar(
-        index: index,
-        time: time,
-        open: open,
-        high: high,
-        low: low,
-        close: close,
-        volume: volume);
+      index: index,
+      time: time,
+      open: open,
+      high: high,
+      low: low,
+      close: close,
+      volume: volume,
+      chipTickBins: chipTickBins,
+    );
   }
 
   static MergedBar? _parseMergedBar(Map row, List<RawBar> bars) {
@@ -414,8 +420,9 @@ class ChanSnapshotJsonParser {
 
   static MergedBar _mergedAt(List<MergedBar> bars, int rawIndex) {
     for (final bar in bars) {
-      if (rawIndex >= bar.startRawIndex && rawIndex <= bar.endRawIndex)
+      if (rawIndex >= bar.startRawIndex && rawIndex <= bar.endRawIndex) {
         return bar;
+      }
     }
     return bars[rawIndex.clamp(0, bars.length - 1).toInt()];
   }
