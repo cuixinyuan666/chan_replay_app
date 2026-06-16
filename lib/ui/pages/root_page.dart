@@ -4,7 +4,6 @@ import 'ashare_bsp_scanner_page.dart';
 import 'cache_optimization_page.dart';
 import 'chan_settings_page.dart';
 import 'chip_distribution_page.dart';
-import 'origin_replay_strict_page.dart';
 import 'research_backtest_page.dart';
 import 's8_strategy_batch_page.dart';
 import 's13_single_stock_replay_page.dart';
@@ -17,14 +16,13 @@ class RootPage extends StatefulWidget {
 }
 
 class _RootPageState extends State<RootPage> {
-  static const int _replayIndex = 0;
-  static const int _multiLevelIndex = 1;
-  static const int _scannerIndex = 2;
-  static const int _s8BatchIndex = 3;
-  static const int _researchIndex = 4;
-  static const int _settingsIndex = 5;
-  static const int _cacheOptimizationIndex = 6;
-  static const int _chipDistributionIndex = 7;
+  static const int _multiLevelIndex = 0;
+  static const int _scannerIndex = 1;
+  static const int _s8BatchIndex = 2;
+  static const int _researchIndex = 3;
+  static const int _settingsIndex = 4;
+  static const int _cacheOptimizationIndex = 5;
+  static const int _chipDistributionIndex = 6;
 
   int _index = _multiLevelIndex;
   final Set<int> _visited = <int>{_multiLevelIndex};
@@ -46,7 +44,6 @@ class _RootPageState extends State<RootPage> {
             index: _index,
             visited: _visited,
             builders: <_RouteBuilder>[
-              const _RouteBuilder(child: OriginReplayStrictPage()),
               _RouteBuilder(
                 child: S13SingleStockReplayPage(
                   currentRouteIndex: _index,
@@ -126,13 +123,6 @@ class _RouteToolColumn extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          _RouteToolButton(
-            tooltip: '复盘',
-            icon: Icons.candlestick_chart,
-            selected: currentIndex == _RootPageState._replayIndex,
-            onPressed: () => onOpen(_RootPageState._replayIndex),
-          ),
-          const SizedBox(height: 6),
           _RouteToolButton(
             tooltip: '单股多级别复盘',
             icon: Icons.account_tree,
