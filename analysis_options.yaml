@@ -7,7 +7,6 @@ analyzer:
     dangling_library_doc_comments: ignore
     deprecated_member_use: ignore
     unused_element: ignore
-    unused_field: ignore
 
 linter:
   rules:
