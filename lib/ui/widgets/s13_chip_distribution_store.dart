@@ -19,7 +19,9 @@ class S13ChipChartContext {
     required this.rawBarCount,
   });
 
-  String get key => '${symbol.trim()}|${market ?? ''}|${period.trim().toUpperCase()}|$rawBarCount';
+  String get normalizedMarket => (market ?? '').trim().toUpperCase();
+  String get key =>
+      '${symbol.trim()}|$normalizedMarket|${period.trim().toUpperCase()}|$rawBarCount';
 }
 
 class S13ChipDistributionSpec {
@@ -52,6 +54,7 @@ class S13ChipDistributionSpec {
   bool matches(S13ChipChartContext? context) {
     if (context == null) return false;
     return context.symbol == symbol &&
+        context.normalizedMarket == (market ?? '').trim().toUpperCase() &&
         context.period.toUpperCase() == period.toUpperCase();
   }
 
@@ -146,11 +149,19 @@ class S13ChipDistributionStore {
     if (head.isEmpty) return null;
     final parts = head.split(RegExp(r'\s+')).where((v) => v.trim().isNotEmpty).toList(growable: false);
     if (parts.isEmpty) return null;
-    final symbol = parts.first.trim();
+    final symbolPart = parts.first.trim();
+    final symbolPieces = symbolPart.split('.');
+    final symbol = symbolPieces.first.trim();
     if (symbol.isEmpty) return null;
     final period = parts.length >= 2 ? parts[1].trim().toUpperCase() : 'DAILY';
-    final market = _inferMarket(symbol);
-    return _ParsedSymbolLabel(symbol: symbol, market: market, period: period.isEmpty ? 'DAILY' : period);
+    final market = symbolPieces.length >= 2
+        ? symbolPieces[1].trim().toUpperCase()
+        : _inferMarket(symbol);
+    return _ParsedSymbolLabel(
+      symbol: symbol,
+      market: market,
+      period: period.isEmpty ? 'DAILY' : period,
+    );
   }
 
   static String? _inferMarket(String symbol) {
