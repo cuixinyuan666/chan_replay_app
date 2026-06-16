@@ -3,6 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/analysis/chip_distribution.dart';
+import '../../core/analysis/chip_online_replay_adapter.dart';
+import '../../core/models/chan_snapshot.dart';
+import '../../core/models/multi_level_chan_snapshot.dart';
+import '../../core/runtime/runtime_path.dart';
+import '../../data/python_multi_level_chan_analysis_source.dart';
 
 class ChipDistributionPage extends StatefulWidget {
   const ChipDistributionPage({super.key});
@@ -12,26 +17,107 @@ class ChipDistributionPage extends StatefulWidget {
 }
 
 class _ChipDistributionPageState extends State<ChipDistributionPage> {
-  static final List<ChipDistributionBar> _demoBars = _buildDemoBars();
   final ChipDistributionEngine _engine = const ChipDistributionEngine();
+  final _backendUrlController =
+          TextEditingController(text: 'app-managed bundled Python'),
+      _symbolController = TextEditingController(text: '600340'),
+      _marketController = TextEditingController(text: 'SH'),
+      _levelsController = TextEditingController(text: 'DAILY,MIN30,MIN5'),
+      _startController = TextEditingController(text: '2026-01-01'),
+      _endController = TextEditingController(
+          text: DateTime.now()
+              .subtract(const Duration(days: 2))
+              .toIso8601String()
+              .split('T')
+              .first);
 
-  int _targetIndex = _demoBars.length - 1;
-  int _lookback = _demoBars.length;
+  PythonMultiLevelChanAnalysis? _analysis;
+  String _mode = 'step';
+  String _activeLevel = 'DAILY';
+  String _status = '未加载在线复盘数据';
+  bool _loading = false;
+  int _frameIndex = 0;
   int _binCount = 80;
+  int? _crosshairIndex;
+  int? _viewEndIndex;
   double _ageDecay = 0.0;
 
+  @override
+  void dispose() {
+    _backendUrlController.dispose();
+    _symbolController.dispose();
+    _marketController.dispose();
+    _levelsController.dispose();
+    _startController.dispose();
+    _endController.dispose();
+    super.dispose();
+  }
+
+  MultiLevelChanSnapshot? get _currentSnapshot {
+    final a = _analysis;
+    if (a == null) return null;
+    if (_mode == 'step' && a.frames.isNotEmpty) {
+      return a.frames[_safeFrameIndex];
+    }
+    return a.snapshot;
+  }
+
+  int get _safeFrameIndex {
+    final count = _analysis?.frames.length ?? 0;
+    if (count <= 0) return 0;
+    return _frameIndex.clamp(0, count - 1).toInt();
+  }
+
+  List<String> get _loadedLevels {
+    final levels = _currentSnapshot?.levels ?? _analysis?.snapshot.levels ?? const <String>[];
+    final out = [
+      for (final level in levels)
+        if (level.trim().isNotEmpty) level.trim().toUpperCase(),
+    ];
+    if (out.isNotEmpty) return out;
+    return _parseLevels();
+  }
+
+  ChanSnapshot? get _activeSnapshot {
+    final c = _currentSnapshot;
+    if (c == null) return null;
+    final level = c.snapshots.containsKey(_activeLevel) ? _activeLevel : c.safeActiveLevel;
+    return c.of(level);
+  }
+
+  List<ChipDistributionBar> get _onlineBars => ChipOnlineReplayAdapter.fromSnapshot(_activeSnapshot);
+
+  int get _targetIndex {
+    final bars = _onlineBars;
+    return ChipOnlineReplayAdapter.resolveTargetIndex(
+      total: bars.length,
+      isStepMode: _mode == 'step',
+      stepIndex: bars.isEmpty ? 0 : bars.length - 1,
+      crosshairIndex: _crosshairIndex,
+      viewEndIndex: _viewEndIndex,
+    );
+  }
+
+  String get _targetPolicy {
+    if (_mode == 'step') return 'step 当前K';
+    if (_crosshairIndex != null) return '十字线K';
+    if (_viewEndIndex != null) return '视觉最右K';
+    return '最后一根K';
+  }
+
   ChipDistributionResult get _result => _engine.calculate(
-        _demoBars,
+        _onlineBars,
         targetIndex: _targetIndex,
         options: ChipDistributionOptions(
           binCount: _binCount,
-          lookback: _lookback,
+          lookback: 1000000,
           ageDecay: _ageDecay,
         ),
       );
 
   @override
   Widget build(BuildContext context) {
+    final bars = _onlineBars;
     final result = _result;
     return Scaffold(
       backgroundColor: const Color(0xFF0B0D10),
@@ -43,7 +129,9 @@ class _ChipDistributionPageState extends State<ChipDistributionPage> {
             children: <Widget>[
               _buildHeader(context),
               const SizedBox(height: 12),
-              _buildControlCard(result),
+              _buildOnlineControlCard(bars),
+              const SizedBox(height: 12),
+              _buildMetricCard(result, bars),
               const SizedBox(height: 12),
               Expanded(
                 child: DecoratedBox(
@@ -55,7 +143,9 @@ class _ChipDistributionPageState extends State<ChipDistributionPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: result.isEmpty
-                        ? const Center(child: Text('暂无可计算筹码数据'))
+                        ? const Center(
+                            child: Text('载入在线 analyze_multi 数据后显示筹码分布',
+                                style: TextStyle(color: Colors.white54)))
                         : CustomPaint(
                             painter: _ChipDistributionPainter(result),
                             child: const SizedBox.expand(),
@@ -78,7 +168,7 @@ class _ChipDistributionPageState extends State<ChipDistributionPage> {
         const Icon(Icons.stacked_bar_chart, color: Color(0xFF8AB4FF)),
         const SizedBox(width: 8),
         Text(
-          '筹码分布',
+          '筹码分布 - 在线 analyze_multi',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w700,
@@ -86,14 +176,87 @@ class _ChipDistributionPageState extends State<ChipDistributionPage> {
         ),
         const Spacer(),
         const Tooltip(
-          message: '当前页面为独立筹码分布研究页，不改写复盘页和 chan.py 结构。目标K优先级：步进K线 > 十字线K线 > 视觉最右K线。',
+          message: '只使用在线 analyze_multi 返回的 K 线；不读取离线分笔文件。目标K优先级：step当前K > 十字线K > 视觉最右K。',
           child: Icon(Icons.info_outline, color: Colors.white54),
         ),
       ],
     );
   }
 
-  Widget _buildControlCard(ChipDistributionResult result) {
+  Widget _buildOnlineControlCard(List<ChipDistributionBar> bars) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF131722),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
+              _input(_backendUrlController, 'backend', width: 210, enabled: false),
+              _input(_symbolController, 'symbol', width: 96),
+              _input(_marketController, 'market', width: 78),
+              _input(_levelsController, 'levels', width: 170),
+              _input(_startController, 'start', width: 116),
+              _input(_endController, 'end', width: 116),
+              _modeChip('once'),
+              _modeChip('step'),
+              FilledButton.icon(
+                onPressed: _loading ? null : _loadOnlineReplay,
+                icon: _loading
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.cloud_download, size: 16),
+                label: const Text('载入在线数据'),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
+              for (final level in _loadedLevels) _levelChip(level),
+              _MetricChip(label: '状态', value: _status),
+            ]),
+            if (_mode == 'step' && (_analysis?.frames.isNotEmpty == true))
+              _LabeledSlider(
+                label: 'step帧',
+                value: _safeFrameIndex.toDouble(),
+                min: 0,
+                max: ((_analysis?.frames.length ?? 1) - 1).toDouble(),
+                divisions: math.max(1, (_analysis?.frames.length ?? 1) - 1),
+                display: '${_safeFrameIndex + 1}/${_analysis?.frames.length ?? 0}',
+                onChanged: (v) => setState(() {
+                  _frameIndex = v.round();
+                  _crosshairIndex = null;
+                  _viewEndIndex = null;
+                }),
+              ),
+            if (_mode != 'step' && bars.isNotEmpty) ...[
+              _LabeledSlider(
+                label: '十字线K',
+                value: (_crosshairIndex ?? _targetIndex).toDouble(),
+                min: 0,
+                max: (bars.length - 1).toDouble(),
+                divisions: math.max(1, bars.length - 1),
+                display: _crosshairIndex == null ? '未激活' : '${_crosshairIndex! + 1}',
+                onChanged: (v) => setState(() => _crosshairIndex = v.round()),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _crosshairIndex = null),
+                  icon: const Icon(Icons.close, size: 16),
+                  label: const Text('关闭十字线，改用视觉最右K'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(ChipDistributionResult result, List<ChipDistributionBar> bars) {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFF131722),
@@ -109,7 +272,8 @@ class _ChipDistributionPageState extends State<ChipDistributionPage> {
               spacing: 12,
               runSpacing: 8,
               children: <Widget>[
-                _MetricChip(label: '目标K线', value: '${result.targetIndex + 1}/${_demoBars.length}'),
+                _MetricChip(label: '目标来源', value: _targetPolicy),
+                _MetricChip(label: '目标K线', value: bars.isEmpty ? '-' : '${result.targetIndex + 1}/${bars.length}'),
                 _MetricChip(label: '现价', value: result.currentPrice.toStringAsFixed(2)),
                 _MetricChip(label: '平均成本', value: result.averageCost.toStringAsFixed(2)),
                 _MetricChip(label: '峰值价位', value: result.pocPrice.toStringAsFixed(2)),
@@ -117,25 +281,6 @@ class _ChipDistributionPageState extends State<ChipDistributionPage> {
                 _MetricChip(label: '卖侧筹码', value: result.sellWeight.toStringAsFixed(0)),
                 _MetricChip(label: '买侧筹码', value: result.buyWeight.toStringAsFixed(0)),
               ],
-            ),
-            const SizedBox(height: 8),
-            _LabeledSlider(
-              label: '目标K线',
-              value: _targetIndex.toDouble(),
-              min: 0,
-              max: (_demoBars.length - 1).toDouble(),
-              divisions: _demoBars.length - 1,
-              display: '${_targetIndex + 1}',
-              onChanged: (v) => setState(() => _targetIndex = v.round()),
-            ),
-            _LabeledSlider(
-              label: '回看K数',
-              value: _lookback.toDouble(),
-              min: 20,
-              max: _demoBars.length.toDouble(),
-              divisions: math.max(1, _demoBars.length - 20),
-              display: '$_lookback',
-              onChanged: (v) => setState(() => _lookback = v.round()),
             ),
             _LabeledSlider(
               label: '价格桶数',
@@ -163,33 +308,113 @@ class _ChipDistributionPageState extends State<ChipDistributionPage> {
 
   Widget _buildPolicyText() {
     return const Text(
-      '计算口径：默认按“首根 -> 当前K”累计；逐价 chip_tick_bins(p/s/b/w) 优先，缺失时以OHLCV三角分摊兜底；该页不提供交易建议。',
+      '在线阶段：只使用 analyze_multi 返回的 bars 累计“首根 -> 当前K”；不接入离线 tick 文件。若后端返回 chip_tick_bins(p/s/b/w)，同一计算引擎可直接消费。',
       style: TextStyle(color: Colors.white54, fontSize: 12),
     );
   }
 
-  static List<ChipDistributionBar> _buildDemoBars() {
-    final out = <ChipDistributionBar>[];
-    var close = 10.0;
-    for (var i = 0; i < 180; i++) {
-      final wave = math.sin(i / 8.0) * 0.18 + math.cos(i / 19.0) * 0.12;
-      final drift = i * 0.006;
-      final open = close;
-      close = (10.0 + drift + wave).clamp(8.0, 18.0).toDouble();
-      final high = math.max(open, close) + 0.08 + (i % 5) * 0.01;
-      final low = math.min(open, close) - 0.08 - (i % 7) * 0.008;
-      final volume = 8000.0 + (i % 17) * 450.0 + math.max(0, math.sin(i / 5.0)) * 3000.0;
-      out.add(ChipDistributionBar(
-        index: i,
-        time: DateTime(2026, 1, 1).add(Duration(days: i)),
-        open: open,
-        high: high,
-        low: low,
-        close: close,
-        volume: volume,
-      ));
+  Future<void> _loadOnlineReplay() async {
+    if (_loading) return;
+    final levels = _parseLevels();
+    if (levels.length < 2) {
+      _showMessage('至少输入两个级别，例如 DAILY,MIN30,MIN5');
+      return;
     }
-    return out;
+    final start = DateTime.tryParse(_startController.text.trim());
+    final end = DateTime.tryParse(_endController.text.trim());
+    if (start == null || end == null || start.isAfter(end)) {
+      _showMessage('日期无效：请使用 YYYY-MM-DD，且 start <= end');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _status = 'loading online analyze_multi ${_mode.toUpperCase()}...';
+    });
+    final source = PythonMultiLevelChanAnalysisSource(baseUrl: _backendUrlController.text.trim());
+    try {
+      final a = await source.analyzeMulti(
+        mode: _mode,
+        market: _marketController.text.trim().toUpperCase(),
+        code: _symbolController.text.trim(),
+        levels: levels,
+        adjust: 'QFQ',
+        mainLevel: levels.first,
+        clockLevel: levels.first,
+        startDate: start,
+        endDate: end,
+        runtimePath: RuntimePathController.current,
+        config: const <String, dynamic>{
+          'bi_algo': 'normal',
+          'seg_algo': 'chan',
+          'zs_algo': 'normal',
+        },
+      );
+      if (!mounted) return;
+      final snap = _mode == 'step' && a.frames.isNotEmpty ? a.frames.first : a.snapshot;
+      setState(() {
+        _analysis = a;
+        _frameIndex = 0;
+        _activeLevel = snap.safeActiveLevel;
+        _crosshairIndex = null;
+        _viewEndIndex = null;
+        _status = 'loaded online bars:${_onlineBars.length} frames:${a.frames.length} active:$_activeLevel';
+      });
+    } catch (e) {
+      if (mounted) setState(() => _status = 'load failed: $e');
+    } finally {
+      source.close();
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  List<String> _parseLevels() => [
+        for (final item in _levelsController.text.split(','))
+          if (item.trim().isNotEmpty) item.trim().toUpperCase(),
+      ];
+
+  Widget _input(TextEditingController c, String label, {double width = 120, bool enabled = true}) => SizedBox(
+        width: width,
+        height: 42,
+        child: TextField(
+          controller: c,
+          enabled: enabled,
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+          decoration: InputDecoration(labelText: label, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+        ),
+      );
+
+  Widget _modeChip(String mode) {
+    final selected = _mode == mode;
+    return ChoiceChip(
+      label: Text(mode),
+      selected: selected,
+      onSelected: _loading
+          ? null
+          : (_) => setState(() {
+                _mode = mode;
+                _frameIndex = 0;
+                _crosshairIndex = null;
+                _viewEndIndex = null;
+              }),
+    );
+  }
+
+  Widget _levelChip(String level) {
+    final selected = _activeLevel == level;
+    return ChoiceChip(
+      label: Text(level),
+      selected: selected,
+      onSelected: (_) => setState(() {
+        _activeLevel = level;
+        _crosshairIndex = null;
+        _viewEndIndex = null;
+      }),
+    );
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -251,7 +476,7 @@ class _LabeledSlider extends StatelessWidget {
           ),
         ),
         SizedBox(
-          width: 54,
+          width: 70,
           child: Text(display, textAlign: TextAlign.right, style: const TextStyle(color: Colors.white70, fontSize: 12)),
         ),
       ],
