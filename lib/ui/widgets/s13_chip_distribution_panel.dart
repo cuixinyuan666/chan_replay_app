@@ -5,13 +5,22 @@ import 'package:flutter/material.dart';
 import '../../core/analysis/chip_distribution.dart';
 import '../../core/analysis/chip_online_replay_adapter.dart';
 import '../../core/models/chan_snapshot.dart';
+import '../../core/models/raw_bar.dart';
 
-/// S13 单股多级别复盘内嵌筹码面板。
+/// S13 单股多级别复盘内嵌筹码 overlay。
 ///
-/// 使用在线 analyze_multi 已返回到前端的 ChanSnapshot.rawBars；若后端 rawBars
-/// 携带 chip_tick_bins / chipTickBins，则优先复用 a_replay_trainer.py 风格的
-/// p/s/b/w 逐价桶；缺失时由 ChipDistributionEngine 使用 OHLCV 兜底。
+/// 不再以独立右侧卡片显示，而是直接绘制在 K 线主图区右侧：
+/// - 有 chip_tick_bins / chipTickBins 时，优先使用 a_replay_trainer.py 风格 p/s/b/w；
+/// - 没有逐价桶时，使用 OHLCV 兜底；
+/// - 使用 IgnorePointer，不拦截十字线、拖拽、画线工具等主图交互。
 class S13ChipDistributionPanel extends StatelessWidget {
+  static const double _topPad = 32;
+  static const double _bottomPad = 28;
+  static const double _leftPad = 4;
+  static const double _rightPad = 58;
+  static const double _subPanelHeight = 74;
+  static const double _panelGap = 6;
+
   final ChanSnapshot? snapshot;
   final bool enabled;
   final bool isStepMode;
@@ -20,6 +29,10 @@ class S13ChipDistributionPanel extends StatelessWidget {
   final int? visibleRightIndex;
   final int binCount;
   final double ageDecay;
+  final int windowSize;
+  final double priceScale;
+  final bool showEasyTdxIndicators;
+  final int easyTdxSubPanelCount;
   final VoidCallback? onClose;
 
   const S13ChipDistributionPanel({
@@ -32,6 +45,10 @@ class S13ChipDistributionPanel extends StatelessWidget {
     required this.visibleRightIndex,
     this.binCount = 80,
     this.ageDecay = 0.0,
+    this.windowSize = 90,
+    this.priceScale = 1.0,
+    this.showEasyTdxIndicators = false,
+    this.easyTdxSubPanelCount = 0,
     this.onClose,
   });
 
@@ -39,7 +56,7 @@ class S13ChipDistributionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!enabled) return const SizedBox.shrink();
     final bars = ChipOnlineReplayAdapter.fromSnapshot(snapshot);
-    final exactBarCount = bars.where((bar) => bar.hasExactChipBins).length;
+    final rawBars = snapshot?.rawBars ?? const <RawBar>[];
     final targetIndex = ChipOnlineReplayAdapter.resolveTargetIndex(
       total: bars.length,
       isStepMode: isStepMode,
@@ -56,108 +73,26 @@ class S13ChipDistributionPanel extends StatelessWidget {
         ageDecay: ageDecay,
       ),
     );
+    final exactBarCount = bars.where((bar) => bar.hasExactChipBins).length;
     final targetPolicy = _targetPolicy(
       isStepMode: isStepMode,
       crosshairIndex: crosshairIndex,
       visibleRightIndex: visibleRightIndex,
     );
 
-    return Positioned(
-      right: 16,
-      top: 72,
-      width: 286,
-      height: 360,
-      child: Material(
-        color: Colors.transparent,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xEE111722),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white24),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x66000000),
-                blurRadius: 18,
-                offset: Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    const Icon(Icons.stacked_bar_chart,
-                        color: Color(0xFF8AB4FF), size: 18),
-                    const SizedBox(width: 6),
-                    const Expanded(
-                      child: Text(
-                        '筹码分布',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    if (onClose != null)
-                      IconButton(
-                        tooltip: '关闭筹码面板',
-                        onPressed: onClose,
-                        icon: const Icon(Icons.close, size: 16),
-                        color: Colors.white54,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints.tightFor(
-                            width: 28, height: 28),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: <Widget>[
-                    _miniMetric('来源', targetPolicy),
-                    _miniMetric(
-                        '目标',
-                        bars.isEmpty
-                            ? '-'
-                            : '${result.targetIndex + 1}/${bars.length}'),
-                    _miniMetric('精确桶',
-                        bars.isEmpty ? '-' : '$exactBarCount/${bars.length}'),
-                    _miniMetric('现价', result.currentPrice.toStringAsFixed(2)),
-                    _miniMetric('均价', result.averageCost.toStringAsFixed(2)),
-                    _miniMetric('峰值', result.pocPrice.toStringAsFixed(2)),
-                    _miniMetric('获利',
-                        '${(result.profitRatio * 100).toStringAsFixed(1)}%'),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: result.isEmpty
-                      ? const Center(
-                          child: Text(
-                            '暂无在线K线',
-                            style:
-                                TextStyle(color: Colors.white54, fontSize: 12),
-                          ),
-                        )
-                      : CustomPaint(
-                          painter: _CompactChipDistributionPainter(result),
-                          child: const SizedBox.expand(),
-                        ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '在线 rawBars；chip_tick_bins 优先，OHLCV 兜底；只算目标K及以前。',
-                  style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.48),
-                      fontSize: 10.5),
-                ),
-              ],
-            ),
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: _InChartChipDistributionPainter(
+            rawBars: rawBars,
+            result: result,
+            exactBarCount: exactBarCount,
+            targetPolicy: targetPolicy,
+            windowSize: windowSize,
+            priceScale: priceScale,
+            viewEndIndex: visibleRightIndex,
+            showEasyTdxIndicators: showEasyTdxIndicators,
+            easyTdxSubPanelCount: easyTdxSubPanelCount,
           ),
         ),
       ),
@@ -174,101 +109,223 @@ class S13ChipDistributionPanel extends StatelessWidget {
     if (visibleRightIndex != null) return '右侧K';
     return '末K';
   }
-
-  Widget _miniMetric(String label, String value) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.24),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: Colors.white12),
-        ),
-        child: Text(
-          '$label:$value',
-          style: const TextStyle(color: Colors.white70, fontSize: 10.5),
-        ),
-      );
 }
 
-class _CompactChipDistributionPainter extends CustomPainter {
+class _InChartChipDistributionPainter extends CustomPainter {
+  final List<RawBar> rawBars;
   final ChipDistributionResult result;
+  final int exactBarCount;
+  final String targetPolicy;
+  final int windowSize;
+  final double priceScale;
+  final int? viewEndIndex;
+  final bool showEasyTdxIndicators;
+  final int easyTdxSubPanelCount;
 
-  const _CompactChipDistributionPainter(this.result);
+  const _InChartChipDistributionPainter({
+    required this.rawBars,
+    required this.result,
+    required this.exactBarCount,
+    required this.targetPolicy,
+    required this.windowSize,
+    required this.priceScale,
+    required this.viewEndIndex,
+    required this.showEasyTdxIndicators,
+    required this.easyTdxSubPanelCount,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (result.bins.isEmpty || size.width <= 0 || size.height <= 0) return;
-    final nonZero =
-        result.bins.where((b) => b.weight > 0).toList(growable: false);
-    if (nonZero.isEmpty) return;
+    if (rawBars.isEmpty || size.width <= 0 || size.height <= 0) return;
+    final chart = _visibleChartMeta(size);
+    if (chart == null || chart.rect.width <= 0 || chart.rect.height <= 0) return;
 
-    final minPrice = result.bins.first.price;
-    final maxPrice = result.bins.last.price;
-    final maxRatio = nonZero.map((b) => b.ratio).fold<double>(0, math.max);
-    final left = 50.0;
-    final right = size.width - 10.0;
-    final top = 8.0;
-    final bottom = size.height - 18.0;
-    final width = math.max(1.0, right - left);
-    final height = math.max(1.0, bottom - top);
-    final gap = height / result.bins.length;
+    final overlayWidth = math.min(190.0, math.max(72.0, chart.rect.width * 0.28));
+    final overlayRight = chart.rect.right - 2;
+    final overlayLeft = overlayRight - overlayWidth;
+    final overlayRect = Rect.fromLTRB(
+      overlayLeft,
+      chart.rect.top + 2,
+      overlayRight,
+      chart.rect.bottom - 2,
+    );
 
-    final sellPaint = Paint()
-      ..color = const Color(0xFF26A69A).withValues(alpha: 0.68);
-    final buyPaint = Paint()
-      ..color = const Color(0xFFEF5350).withValues(alpha: 0.68);
-    final pocPaint = Paint()
-      ..color = const Color(0xFFFFB300).withValues(alpha: 0.88);
-    final currentPaint = Paint()
-      ..color = const Color(0xFF66BB6A)
-      ..strokeWidth = 1.2;
-
-    for (var i = 0; i < result.bins.length; i++) {
-      final bin = result.bins[i];
-      if (bin.weight <= 0) continue;
-      final y = bottom - (i + 0.5) * gap;
-      final totalW = maxRatio <= 0 ? 0.0 : width * (bin.ratio / maxRatio);
-      final sellW =
-          bin.weight <= 0 ? 0.0 : totalW * (bin.sellWeight / bin.weight);
-      final buyW = math.max(0.0, totalW - sellW);
-      final h = math.max(1.0, gap * 0.68);
-      final y0 = y - h / 2;
-      final isPoc = (bin.price - result.pocPrice).abs() <=
-          (maxPrice - minPrice) / result.bins.length;
-      canvas.drawRect(
-          Rect.fromLTWH(left, y0, sellW, h), isPoc ? pocPaint : sellPaint);
-      canvas.drawRect(Rect.fromLTWH(left + sellW, y0, buyW, h),
-          isPoc ? pocPaint : buyPaint);
+    _drawBackground(canvas, overlayRect);
+    if (result.isEmpty) {
+      _drawText(
+        canvas,
+        '筹码：暂无数据',
+        Offset(overlayRect.left + 8, overlayRect.top + 8),
+        const Color(0xCCFFFFFF),
+        11,
+      );
+      return;
     }
 
-    final currentY =
-        _priceToY(result.currentPrice, minPrice, maxPrice, top, bottom);
-    canvas.drawLine(
-        Offset(left, currentY), Offset(right, currentY), currentPaint);
-    _drawText(
-        canvas, maxPrice.toStringAsFixed(2), Offset(4, top), Colors.white54);
-    _drawText(canvas, minPrice.toStringAsFixed(2), Offset(4, bottom - 12),
-        Colors.white54);
-    _drawText(canvas, '现价', Offset(right - 28, currentY - 14),
-        const Color(0xFF66BB6A));
+    final nonZero = result.bins.where((bin) => bin.weight > 0).toList(growable: false);
+    if (nonZero.isEmpty) return;
+    final maxWeight = nonZero.map((bin) => bin.weight).fold<double>(0, math.max);
+    if (maxWeight <= 0) return;
+
+    final priceStep = result.bins.length >= 2
+        ? (result.bins[1].price - result.bins[0].price).abs()
+        : math.max(result.currentPrice.abs() * 0.002, 0.01);
+    final minBarHeight = math.max(1.0, overlayRect.height / math.max(90, result.bins.length) * 0.72);
+
+    final sellPaint = Paint()..color = const Color(0xFF26A69A).withValues(alpha: 0.36);
+    final buyPaint = Paint()..color = const Color(0xFFEF5350).withValues(alpha: 0.38);
+    final pocPaint = Paint()..color = const Color(0xFFFFC107).withValues(alpha: 0.58);
+    final targetLinePaint = Paint()
+      ..color = const Color(0xFF66BB6A).withValues(alpha: 0.70)
+      ..strokeWidth = 1.0;
+    final pocLinePaint = Paint()
+      ..color = const Color(0xFFFFC107).withValues(alpha: 0.58)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    canvas.save();
+    canvas.clipRect(chart.rect);
+    for (final bin in result.bins) {
+      if (bin.weight <= 0) continue;
+      final y = chart.priceToY(bin.price);
+      if (y < chart.rect.top - 2 || y > chart.rect.bottom + 2) continue;
+      final yHigh = chart.priceToY(bin.price + priceStep / 2);
+      final yLow = chart.priceToY(bin.price - priceStep / 2);
+      final h = math.max(minBarHeight, (yLow - yHigh).abs() * 0.76);
+      final totalW = overlayWidth * 0.92 * (bin.weight / maxWeight);
+      final sellW = bin.weight <= 0 ? 0.0 : totalW * (bin.sellWeight / bin.weight);
+      final buyW = math.max(0.0, totalW - sellW);
+      final right = overlayRight - 4;
+      final y0 = (y - h / 2).clamp(chart.rect.top, chart.rect.bottom).toDouble();
+      final isPoc = (bin.price - result.pocPrice).abs() <= priceStep * 0.6;
+      final firstPaint = isPoc ? pocPaint : sellPaint;
+      final secondPaint = isPoc ? pocPaint : buyPaint;
+      canvas.drawRect(Rect.fromLTWH(right - totalW, y0, sellW, h), firstPaint);
+      canvas.drawRect(Rect.fromLTWH(right - totalW + sellW, y0, buyW, h), secondPaint);
+    }
+
+    final targetY = chart.priceToY(result.currentPrice);
+    if (targetY >= chart.rect.top && targetY <= chart.rect.bottom) {
+      canvas.drawLine(Offset(overlayLeft, targetY), Offset(overlayRight, targetY), targetLinePaint);
+    }
+    final pocY = chart.priceToY(result.pocPrice);
+    if (pocY >= chart.rect.top && pocY <= chart.rect.bottom) {
+      canvas.drawLine(Offset(overlayLeft, pocY), Offset(overlayRight, pocY), pocLinePaint);
+    }
+    canvas.restore();
+
+    _drawHeader(canvas, chart.rect, overlayRect);
   }
 
-  double _priceToY(double price, double minPrice, double maxPrice, double top,
-      double bottom) {
-    if ((maxPrice - minPrice).abs() < 1e-9) return (top + bottom) / 2;
-    final t =
-        ((price - minPrice) / (maxPrice - minPrice)).clamp(0.0, 1.0).toDouble();
-    return bottom - (bottom - top) * t;
+  _ChipChartMeta? _visibleChartMeta(Size size) {
+    final activeSubPanels = showEasyTdxIndicators ? easyTdxSubPanelCount.clamp(0, 4).toInt() : 0;
+    final totalSubHeight = activeSubPanels == 0
+        ? 0.0
+        : activeSubPanels * S13ChipDistributionPanel._subPanelHeight +
+            (activeSubPanels - 1) * S13ChipDistributionPanel._panelGap;
+    final contentWidth = math.max(
+      0.0,
+      size.width - S13ChipDistributionPanel._leftPad - S13ChipDistributionPanel._rightPad,
+    );
+    final mainHeight = math.max(
+      0.0,
+      size.height -
+          S13ChipDistributionPanel._topPad -
+          S13ChipDistributionPanel._bottomPad -
+          totalSubHeight -
+          (activeSubPanels > 0 ? S13ChipDistributionPanel._panelGap : 0),
+    );
+    final rect = Rect.fromLTWH(
+      S13ChipDistributionPanel._leftPad,
+      S13ChipDistributionPanel._topPad,
+      contentWidth,
+      mainHeight,
+    );
+    if (rect.width <= 0 || rect.height <= 0) return null;
+
+    final end = (viewEndIndex ?? rawBars.length - 1).clamp(0, rawBars.length - 1).toInt();
+    final safeWindow = windowSize.clamp(24, 360).toInt();
+    final start = math.max(0, end - safeWindow + 1).toInt();
+    final visible = rawBars.sublist(start, end + 1);
+    if (visible.isEmpty) return null;
+    final low = visible.map((bar) => bar.low).reduce(math.min);
+    final high = visible.map((bar) => bar.high).reduce(math.max);
+    final center = (high + low) / 2;
+    final rawRange = math.max(high - low, high.abs() * 0.002);
+    final scaledRange = rawRange / priceScale.clamp(0.35, 5.0);
+    final padding = math.max(scaledRange * 0.08, high.abs() * 0.001);
+    final minPrice = center - scaledRange / 2 - padding;
+    final maxPrice = center + scaledRange / 2 + padding;
+    return _ChipChartMeta(rect: rect, minPrice: minPrice, maxPrice: maxPrice);
   }
 
-  void _drawText(Canvas canvas, String text, Offset offset, Color color) {
+  void _drawBackground(Canvas canvas, Rect rect) {
+    final bgPaint = Paint()..color = const Color(0xFF111722).withValues(alpha: 0.16);
+    final borderPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.08)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(8)), bgPaint);
+    canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(8)), borderPaint);
+  }
+
+  void _drawHeader(Canvas canvas, Rect chartRect, Rect overlayRect) {
+    final exact = rawBars.isEmpty ? '-' : '$exactBarCount/${rawBars.length}';
+    final line1 = '筹码 $targetPolicy  ${result.targetIndex + 1}/${rawBars.length}';
+    final line2 = '精确桶 $exact  获利 ${(result.profitRatio * 100).toStringAsFixed(1)}%';
+    final line3 = '均 ${result.averageCost.toStringAsFixed(2)}  峰 ${result.pocPrice.toStringAsFixed(2)}';
+    final left = overlayRect.left + 8;
+    final top = chartRect.top + 7;
+    final badgeRect = Rect.fromLTWH(left - 6, top - 4, overlayRect.width - 10, 48);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(badgeRect, const Radius.circular(7)),
+      Paint()..color = const Color(0xCC0D1117).withValues(alpha: 0.54),
+    );
+    _drawText(canvas, line1, Offset(left, top), const Color(0xE6FFFFFF), 10.5);
+    _drawText(canvas, line2, Offset(left, top + 15), const Color(0xCCFFFFFF), 10.0);
+    _drawText(canvas, line3, Offset(left, top + 30), const Color(0xAAFFFFFF), 10.0);
+  }
+
+  void _drawText(Canvas canvas, String text, Offset offset, Color color, double size) {
     final painter = TextPainter(
-      text: TextSpan(text: text, style: TextStyle(color: color, fontSize: 10)),
+      text: TextSpan(
+        text: text,
+        style: TextStyle(color: color, fontSize: size, fontWeight: FontWeight.w600),
+      ),
       textDirection: TextDirection.ltr,
-    )..layout(maxWidth: 80);
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: 178);
     painter.paint(canvas, offset);
   }
 
   @override
-  bool shouldRepaint(covariant _CompactChipDistributionPainter oldDelegate) =>
-      oldDelegate.result != result;
+  bool shouldRepaint(covariant _InChartChipDistributionPainter oldDelegate) {
+    return oldDelegate.rawBars != rawBars ||
+        oldDelegate.result != result ||
+        oldDelegate.exactBarCount != exactBarCount ||
+        oldDelegate.targetPolicy != targetPolicy ||
+        oldDelegate.windowSize != windowSize ||
+        oldDelegate.priceScale != priceScale ||
+        oldDelegate.viewEndIndex != viewEndIndex ||
+        oldDelegate.showEasyTdxIndicators != showEasyTdxIndicators ||
+        oldDelegate.easyTdxSubPanelCount != easyTdxSubPanelCount;
+  }
+}
+
+class _ChipChartMeta {
+  final Rect rect;
+  final double minPrice;
+  final double maxPrice;
+
+  const _ChipChartMeta({
+    required this.rect,
+    required this.minPrice,
+    required this.maxPrice,
+  });
+
+  double priceToY(double price) {
+    final range = math.max(maxPrice - minPrice, 0.0000001);
+    return rect.bottom - (price - minPrice) / range * rect.height;
+  }
 }
