@@ -17,6 +17,7 @@ class ChanSnapshot {
   final List<BI> bis;
   final List<SEG> segs;
   final Map<int, List<RecursiveSEG>> recursiveSegLayers;
+  final Map<int, List<BspPoint>> recursiveSegBsps;
   final List<ZS> zss;
   final List<BspPoint> bsps;
   final List<ZS> segZss;
@@ -33,6 +34,7 @@ class ChanSnapshot {
     required this.bis,
     required this.segs,
     this.recursiveSegLayers = const <int, List<RecursiveSEG>>{},
+    this.recursiveSegBsps = const <int, List<BspPoint>>{},
     required this.zss,
     this.bsps = const [],
     this.segZss = const [],
@@ -50,6 +52,7 @@ class ChanSnapshot {
         bis: [],
         segs: [],
         recursiveSegLayers: <int, List<RecursiveSEG>>{},
+        recursiveSegBsps: <int, List<BspPoint>>{},
         zss: [],
         bsps: [],
         segZss: [],
