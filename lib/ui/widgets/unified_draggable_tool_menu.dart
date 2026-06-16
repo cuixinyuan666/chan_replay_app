@@ -285,8 +285,11 @@ class _UnifiedMenuPanel extends StatelessWidget {
   }
 
   Widget _itemTile(UnifiedToolMenuItem item) {
-    final selected = item.routeIndex == currentIndex;
-    final enabled = item.enabled && item.routeIndex != null;
+    final hasSwitch = item.switchValue != null && item.onSwitchChanged != null;
+    final hasAction = item.onPressed != null;
+    final hasRoute = item.routeIndex != null;
+    final enabled = item.enabled && (hasSwitch || hasAction || hasRoute);
+    final selected = hasRoute && item.routeIndex == currentIndex;
     return ListTile(
       dense: true,
       visualDensity: VisualDensity.compact,
@@ -298,13 +301,21 @@ class _UnifiedMenuPanel extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       leading: Icon(
         item.icon,
-        color: selected ? const Color(0xFF8AB4FF) : Colors.white60,
+        color: !enabled
+            ? Colors.white24
+            : selected
+                ? const Color(0xFF8AB4FF)
+                : Colors.white60,
         size: 18,
       ),
       title: Text(
         item.label,
         style: TextStyle(
-          color: selected ? Colors.white : Colors.white70,
+          color: !enabled
+              ? Colors.white30
+              : selected
+                  ? Colors.white
+                  : Colors.white70,
           fontSize: 12,
           fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
         ),
@@ -313,12 +324,32 @@ class _UnifiedMenuPanel extends StatelessWidget {
           ? null
           : Text(
               item.description!,
-              style: const TextStyle(color: Colors.white38, fontSize: 10.5),
+              style: TextStyle(
+                color: enabled ? Colors.white38 : Colors.white24,
+                fontSize: 10.5,
+              ),
             ),
-      trailing: selected
-          ? const Icon(Icons.check_circle, color: Color(0xFF66BB6A), size: 16)
-          : const Icon(Icons.chevron_right, color: Colors.white30, size: 16),
-      onTap: enabled ? () => onOpenRoute(item.routeIndex!) : null,
+      trailing: hasSwitch
+          ? Switch.adaptive(
+              value: item.switchValue!,
+              onChanged: enabled ? item.onSwitchChanged : null,
+            )
+          : selected
+              ? const Icon(Icons.check_circle,
+                  color: Color(0xFF66BB6A), size: 16)
+              : hasAction
+                  ? const Icon(Icons.flash_on, color: Colors.white38, size: 16)
+                  : hasRoute
+                      ? const Icon(Icons.chevron_right,
+                          color: Colors.white30, size: 16)
+                      : const Icon(Icons.block, color: Colors.white24, size: 16),
+      onTap: !enabled
+          ? null
+          : hasSwitch
+              ? () => item.onSwitchChanged!(!item.switchValue!)
+              : hasAction
+                  ? item.onPressed
+                  : () => onOpenRoute(item.routeIndex!),
     );
   }
 }
@@ -359,12 +390,18 @@ class UnifiedToolMenuItem {
   final int? routeIndex;
   final String? description;
   final bool enabled;
+  final bool? switchValue;
+  final ValueChanged<bool>? onSwitchChanged;
+  final VoidCallback? onPressed;
 
   const UnifiedToolMenuItem({
     required this.label,
     required this.icon,
-    required this.routeIndex,
+    this.routeIndex,
     this.description,
     this.enabled = true,
+    this.switchValue,
+    this.onSwitchChanged,
+    this.onPressed,
   });
 }
