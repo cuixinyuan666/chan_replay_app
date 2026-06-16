@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import '../core/settings/level_promoter_settings.dart';
+
 class ScannerBackendClient {
   final String baseUrl;
   final http.Client _client;
@@ -104,7 +106,7 @@ class ScannerBackendClient {
         'recent_days': recentDays,
         'limit': limit,
         'bi_strict': biStrict,
-        'config': config,
+        'config': LevelPromoterSettings.applyToConfig(config),
       };
 
   Future<String> _readyBaseUrl() async {
@@ -319,46 +321,34 @@ class _ScannerLocalPythonProcess {
         onTimeout: () => -999999,
       );
       if (exitCode != -999999) {
-        throw Exception(
-            'Python chan.py 本地服务提前退出，exitCode=$exitCode，stderr=${_stderr.toString()}');
+        throw Exception('Python 扫描器后端进程提前退出 code=$exitCode stderr=$_stderr');
       }
       try {
-        final client = HttpClient();
-        final request = await client
-            .getUrl(Uri.parse('$baseUrl/health'))
-            .timeout(const Duration(milliseconds: 700));
-        final response =
-            await request.close().timeout(const Duration(milliseconds: 700));
-        client.close(force: true);
-        if (response.statusCode >= 200 && response.statusCode < 300) return;
+        final uri = Uri.parse('$baseUrl/health');
+        final response = await http.get(uri).timeout(const Duration(milliseconds: 700));
+        if (response.statusCode == 200) return;
+        lastError = 'health ${response.statusCode} ${response.body}';
       } catch (e) {
         lastError = e;
       }
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
-    dispose();
-    throw Exception(
-        'Python chan.py 本地服务启动超时：$lastError，stderr=${_stderr.toString()}');
+    throw Exception('等待 Python 扫描器后端启动超时: $lastError stderr=$_stderr');
   }
 
   void dispose() {
-    try {
-      process.kill(ProcessSignal.sigterm);
-    } catch (_) {}
+    process.kill();
   }
 }
 
 class _ScannerPythonCandidate {
   final String executable;
-
   const _ScannerPythonCandidate(this.executable);
 }
 
 class _ScannerBackendMismatch implements Exception {
   final String message;
-
   const _ScannerBackendMismatch(this.message);
-
   @override
   String toString() => message;
 }
