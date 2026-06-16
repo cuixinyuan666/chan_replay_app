@@ -14,6 +14,7 @@ from .a_bsp_scanner import scan_bsp, scan_bsp_events
 from .a_indicator_export import build_display_indicators, indicator_source_meta
 from .a_ml_bridge import score_bsp_features
 from .a_multilevel_engine_timed import analyze_multi
+from .a_replay_contract_hardening import apply_analyze_multi_contracts
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
@@ -400,6 +401,10 @@ def chan_analyze_multi(payload: dict[str, Any] = Body(...)) -> dict[str, object]
     result = _compact_multilevel_step_result(result, payload, config)
     compact_ms = _elapsed_ms(compact_start)
 
+    contract_start = perf_counter()
+    result = apply_analyze_multi_contracts(result, payload, config)
+    contract_ms = _elapsed_ms(contract_start)
+
     json_probe_start = perf_counter()
     response_probe = json.dumps(result, ensure_ascii=False, separators=(',', ':'))
     json_probe_ms = _elapsed_ms(json_probe_start)
@@ -407,6 +412,7 @@ def chan_analyze_multi(payload: dict[str, Any] = Body(...)) -> dict[str, object]
     result = _merge_meta(result, {
         'backend_route_analyze_multi_ms': analyze_ms,
         'backend_route_compact_transform_ms': compact_ms,
+        'backend_route_contract_hardening_ms': contract_ms,
         'backend_route_json_serialize_probe_ms': json_probe_ms,
         'backend_route_response_bytes_probe': len(response_probe.encode('utf-8')),
         'backend_route_total_before_response_ms': _elapsed_ms(route_start),

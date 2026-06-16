@@ -53,16 +53,14 @@ Required completion summary fields:
 - B1a runtime path dropdown and copy diagnostics: accepted.
 - B1b Dart-side Chan cleanup/search evidence: accepted.
 - S1 Strategy mode runtime acceptance: accepted.
-- S2 pinned offline fixture export for accepted S1 baseline: accepted.
+- S2 pinned fixture export for accepted S1 baseline: accepted.
 - S3 pinned S1 fixture offline validator: accepted.
-- R1 receiver burden code cleanup: accepted by App evidence.
+- R1 receiver burden code cleanup: accepted.
 - R1b CLI receiver-burden validation: accepted.
 - S4 CLI strategy diagnostics validator: accepted.
-- S5 CLI strategy rule matrix validation: accepted.
+- S5 CLI strategy rule matrix validation.
 - S6 strategy signal sample coverage: accepted.
 - S7 App strategy signal display loop: accepted.
-- S8a CLI scanner / batch candidate output: accepted.
-- S8b App scanner / batch candidate navigation: accepted.
 - S8 scanner / batch strategy output: accepted.
 - S9 local generated artifact hygiene and continuation baseline: accepted.
 - S10 analyze_multi long-history window count expansion: accepted by receiver CLI evidence.
@@ -77,10 +75,13 @@ Required completion summary fields:
 - S13 native multi-level step frames through `CChan(lv_list=[...]).step_load()` and compact frame transport: implementation completed in code; dedicated S13 CLI/native validator remains required.
 - S13 nested BSP marker overlay, lower-level BSP upward trigger, loaded-level switcher, and BSP candidate persistence: implementation completed in code; hidden logic review remains required.
 - S13 default publish prep: start date `2026-01-01`, end date `system current date - 2 days`, replay mode `step`; `flutter analyze` passed.
+- hichanhuancun stage-1 backend cache/lazy-layer/BSP-freeze/anti-future contracts: implementation completed in code; dedicated static validator added as `python tools/validate_hichanhuancun_contracts.py`.
+- hichanhuancun cache optimization page: implementation completed in code as a new same-level root page `缓存优化`; dedicated static validator updated.
+- hichanhuancun chart_lazy_layers v2 transport pruning loop: implementation completed in code; backend prunes returned layer payload by request and App page can send layer requests and display returned manifest.
 
 ## Current selected task
 
-S13 interval-nest hidden logic hardening is selected on branch `hichan1`.
+S13 interval-nest hidden logic hardening and hichanhuancun chart_lazy_layers v2 transport pruning validation are selected for integration into `hichan`.
 
 Current supervisor position:
 
@@ -92,10 +93,21 @@ Current supervisor position:
 - The validator is intentionally allowed to fail until S13 marker mapping is hardened.
 - Multiple lower-level BSP observations mapped to one higher-level K must be preserved as distinct triggers and rendered with numeric labels only when count > 1.
 - BSP candidate-trail observations are at-the-time observations and have the same interval-nest trigger priority as current/final BSP observations.
+- hichanhuancun adds backend-only cache, export-history fields, transport contracts, anti-future metadata, and chart layer transport pruning; it does not grant Flutter/Dart Chan calculation authority.
+- `缓存优化` is a root-level UI diagnostics/request page beside `复盘` and `单股多级别`; it can send `chart_lazy_layers/chart_layers` to `/api/chan/analyze_multi` and render returned manifest/evidence.
+- Next required work is to run the dedicated validator and then receiver App evidence for real backend pruning behavior.
 
 Optional display-layout debt remains:
 
 - Global chart-label migration debt: `_drawFx` should eventually migrate through the shared `ChartLabelLayout` path and clear `audit_origin_kline_global_label_layout_usage.py --strict`.
+
+## hichanhuancun completion summary
+
+- completed_tasks: Added backend raw K-line session cache with key/TTL policy; added BSP `anchor/display/confirmed` frozen export fields; added `multi_level_anti_future_meta_v1`; added same-level App page `缓存优化`; upgraded `chart_lazy_layers` from v1 returned contract to `chart_lazy_layers_v2_transport_pruning`, where request `chart_layers` controls returned layer payload and meta reports display/transport/forced/omitted/pruned/manifest state.
+- evidence_button: App page `缓存优化` has `请求 analyze_multi` and `复制证据`; command-line receiver evidence is `python tools/validate_hichanhuancun_contracts.py`.
+- validation_result: Static validator updated for backend pruning loop and App request/manifest display loop; full runtime validation still depends on receiver environment with easy-tdx / chan.py / Flutter available.
+- remaining_risk: Runtime pruning must still be verified against real step frames; S13 chart page itself has not yet received per-layer chart toggles wired to this transport contract, so the complete visual chart-control integration remains a later UI stage.
+- next_task: Run validator, open `缓存优化`, deselect layers, request analyze_multi, and confirm `chart_lazy_layers_pruned_counts` and `chart_lazy_layers_manifest` change as expected.
 
 ## Historical accepted summary
 

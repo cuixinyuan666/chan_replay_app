@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .a_multilevel_native_timed_recursive_engine import analyze_multi_native_timed_recursive
+from .a_replay_contract_hardening import apply_analyze_multi_contracts
 
 
 def analyze_multi(
@@ -22,9 +23,11 @@ def analyze_multi(
     """Timed multi-level App adapter entrypoint.
 
     This keeps native CChan(lv_list) as the calculation source and adds
-    export-only recursive segment layers through the hichan2 adapter.
+    export-only recursive segment layers through the hichan2 adapter, then
+    applies transport hardening contracts without changing chan.py semantics.
     """
-    return analyze_multi_native_timed_recursive(
+    cfg = config or {}
+    result = analyze_multi_native_timed_recursive(
         symbol=symbol,
         market=market,
         levels=levels,
@@ -35,5 +38,19 @@ def analyze_multi(
         start=start,
         end=end,
         count=count,
-        config=config,
+        config=cfg,
     )
+    payload = {
+        'mode': mode,
+        'symbol': symbol,
+        'market': market,
+        'lv_list': levels,
+        'adjust': adjust,
+        'main_level': main_level,
+        'clock_level': clock_level,
+        'start': start,
+        'end': end,
+        'count': count,
+        'config': cfg,
+    }
+    return apply_analyze_multi_contracts(result, payload, cfg)
