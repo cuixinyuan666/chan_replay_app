@@ -306,7 +306,7 @@ class _ChanSettingsPageState extends State<ChanSettingsPage> {
 
   Widget _rightTooltipPanel() {
     final key = _hoverKey;
-    final title = key == null ? '设置说明' : key;
+    final title = key ?? '设置说明';
     final message = key == null ? '将鼠标移动到左侧任一设置项，说明会固定显示在这里；不使用 Flutter Tooltip 浮层，因此不会干扰滚轮滚动。' : _tooltipFor(key);
     return Align(
       alignment: Alignment.topLeft,
