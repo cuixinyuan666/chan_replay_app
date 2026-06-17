@@ -260,6 +260,7 @@ class _RecursiveSegOriginKlineChartState
   String _viewportScopeKey = '';
   int? _stickyViewEndIndex;
   double? _stickyPriceScale;
+  bool _parentViewportSyncPending = false;
 
   @override
   void initState() {
@@ -273,6 +274,7 @@ class _RecursiveSegOriginKlineChartState
     final nextScope = _scopeKeyFor(widget);
     if (nextScope != _viewportScopeKey) {
       _resetStickyViewportForScope();
+      _scheduleParentViewportSync();
       return;
     }
     if (widget.viewEndIndex != null) {
@@ -281,12 +283,13 @@ class _RecursiveSegOriginKlineChartState
     if (_isExplicitPriceScale(widget.priceScale)) {
       _stickyPriceScale = _safePriceScale(widget.priceScale);
     }
+    _scheduleParentViewportSync();
   }
 
   String _scopeKeyFor(RecursiveSegOriginKlineChart widget) {
     final bars = widget.snapshot.rawBars;
     final first = bars.isEmpty ? 'empty' : bars.first.time.toIso8601String();
-    return '${widget.drawingStorageKey}|$first';
+    return '${widget.drawingStorageKey}|${widget.symbolLabel}|$first';
   }
 
   void _resetStickyViewportForScope() {
@@ -319,6 +322,41 @@ class _RecursiveSegOriginKlineChartState
       return _safePriceScale(widget.priceScale);
     }
     return _stickyPriceScale ?? _safePriceScale(widget.priceScale);
+  }
+
+  void _scheduleParentViewportSync() {
+    if (_parentViewportSyncPending) return;
+    final hasStickyViewEnd = widget.viewEndIndex == null &&
+        _stickyViewEndIndex != null &&
+        widget.snapshot.rawBars.isNotEmpty;
+    final hasStickyPriceScale = !_isExplicitPriceScale(widget.priceScale) &&
+        _stickyPriceScale != null &&
+        _isExplicitPriceScale(_stickyPriceScale!);
+    if (!hasStickyViewEnd && !hasStickyPriceScale) return;
+
+    _parentViewportSyncPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _parentViewportSyncPending = false;
+      if (!mounted) return;
+
+      final bars = widget.snapshot.rawBars;
+      if (widget.viewEndIndex == null &&
+          _stickyViewEndIndex != null &&
+          bars.isNotEmpty) {
+        final max = bars.length - 1;
+        final target = _clampViewEnd(_stickyViewEndIndex);
+        if (target != null) {
+          final delta = target - max;
+          if (delta != 0) widget.onPanBars?.call(delta);
+        }
+      }
+
+      if (!_isExplicitPriceScale(widget.priceScale) &&
+          _stickyPriceScale != null &&
+          _isExplicitPriceScale(_stickyPriceScale!)) {
+        widget.onPriceScaleChanged?.call(_safePriceScale(_stickyPriceScale!));
+      }
+    });
   }
 
   void _handlePanBars(int bars) {
