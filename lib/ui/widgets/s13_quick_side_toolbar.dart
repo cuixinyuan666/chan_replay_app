@@ -75,8 +75,8 @@ class S13QuickSideToolbar extends StatelessWidget {
     );
   }
 
-  Widget _header() => Row(
-        children: const <Widget>[
+  Widget _header() => const Row(
+        children: <Widget>[
           Icon(Icons.account_tree, color: Color(0xFFFFD54F), size: 18),
           SizedBox(width: 6),
           Expanded(
