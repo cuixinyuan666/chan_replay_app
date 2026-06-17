@@ -15,10 +15,6 @@ class SideToolbarSection {
 }
 
 /// A left-side toolbar shell that can auto-collapse after user inactivity.
-///
-/// It is intentionally generic so S13 and other chart pages can migrate their
-/// existing actions into it section by section without rewriting the business
-/// logic in one large patch.
 class AutoCollapsibleSideToolbar extends StatefulWidget {
   final List<SideToolbarSection> sections;
   final Widget? header;
@@ -37,7 +33,7 @@ class AutoCollapsibleSideToolbar extends StatefulWidget {
     this.initiallyExpanded = true,
     this.autoCollapseDelay = const Duration(seconds: 5),
     this.expandedWidth = 286,
-    this.collapsedWidth = 34,
+    this.collapsedWidth = 44,
     this.top = 12,
     this.bottom = 12,
     this.onExpandedChanged,
@@ -136,6 +132,13 @@ class _AutoCollapsibleSideToolbarState
               color: Colors.transparent,
               child: Stack(
                 children: <Widget>[
+                  if (!_expanded)
+                    Positioned.fill(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _setExpanded(true),
+                      ),
+                    ),
                   Positioned.fill(
                     child: IgnorePointer(
                       ignoring: !_expanded,
@@ -262,33 +265,38 @@ class _ToolbarToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final label = expanded ? '收回左侧工具栏' : '展开左侧工具栏';
     return Tooltip(
-      message: expanded ? '收回左侧工具栏' : '展开左侧工具栏',
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onPressed,
-        child: Container(
-          width: 30,
-          height: 52,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color(0xF01E293B),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white24),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x55000000),
-                blurRadius: 10,
-                offset: Offset(2, 0),
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onPressed,
+          child: Container(
+            width: 38,
+            height: 58,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xF01E293B),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white24),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x55000000),
+                  blurRadius: 10,
+                  offset: Offset(2, 0),
+                ),
+              ],
+            ),
+            child: Text(
+              expanded ? '<' : '>',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
               ),
-            ],
-          ),
-          child: Text(
-            expanded ? '<' : '>',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
             ),
           ),
         ),

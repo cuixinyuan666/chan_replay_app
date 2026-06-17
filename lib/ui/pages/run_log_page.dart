@@ -533,7 +533,7 @@ class _RunLogPageState extends State<RunLogPage> {
     final rows = <_TimingRow>[];
     void collect(String source, Map<String, dynamic> node) {
       for (final entry in node.entries) {
-        final key = '${entry.key}';
+        final key = entry.key;
         if (!key.contains('_ms')) continue;
         final ms = _int(entry.value);
         if (ms == null) continue;

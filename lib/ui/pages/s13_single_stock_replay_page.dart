@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/models/bsp.dart';
 import '../../core/models/chan_snapshot.dart';
@@ -18,8 +20,11 @@ import '../drawing/tradingview_drawing_tool.dart';
 import 's13_nested_marker_numbering_policy.dart';
 import 's13_rhythm_display_settings.dart';
 import 's13_rhythm_viewport_selector.dart';
+import '../widgets/auto_collapsible_side_toolbar.dart';
+import '../widgets/permanent_window_controls.dart';
 import '../widgets/recursive_seg_origin_kline_chart.dart';
 import '../widgets/s13_chip_distribution_panel.dart';
+import '../widgets/s13_quick_side_toolbar.dart';
 
 class S13SingleStockReplayPage extends StatefulWidget {
   final int currentRouteIndex;
@@ -83,7 +88,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   int? _viewEndIndex, _crosshairIndex;
   DateTime? _startDate, _endDate;
   Timer? _playTimer;
-  Offset _floatingToolbarOffset = const Offset(12, 54);
+  bool _windowMaximized = false;
   final Map<String, Offset> _replayControlOffsets = <String, Offset>{};
   S13RhythmDisplaySettings _rhythmSettings = const S13RhythmDisplaySettings();
   String _loadedChanConfigFingerprint = '';
@@ -96,6 +101,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     _loadedChanConfigFingerprint = _chanConfigFingerprint();
     ChanConfigStore.notifier.addListener(_handleGlobalChanConfigChanged);
     LevelPromoterSettings.maxLayer.addListener(_handleGlobalChanConfigChanged);
+    _syncWindowMaximizedState();
   }
 
   @override
@@ -110,6 +116,40 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     _toolboxOpenSignal.dispose();
     _playTimer?.cancel();
     super.dispose();
+  }
+
+  bool get _supportsWindowManager =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+  Future<void> _syncWindowMaximizedState() async {
+    if (!_supportsWindowManager || !mounted) return;
+    final maximized = await windowManager.isMaximized();
+    if (!mounted) return;
+    setState(() => _windowMaximized = maximized);
+  }
+
+  Future<void> _minimizeWindow() async {
+    if (_supportsWindowManager) {
+      await windowManager.minimize();
+    }
+  }
+
+  Future<void> _toggleWindowMaximizeRestore() async {
+    if (!_supportsWindowManager) return;
+    final maximized = await windowManager.isMaximized();
+    if (maximized) {
+      await windowManager.unmaximize();
+      if (mounted) setState(() => _windowMaximized = false);
+    } else {
+      await windowManager.maximize();
+      if (mounted) setState(() => _windowMaximized = true);
+    }
+  }
+
+  Future<void> _closeWindow() async {
+    if (_supportsWindowManager) {
+      await windowManager.close();
+    }
   }
 
   String _chanConfigFingerprint() {
@@ -908,94 +948,173 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                   ),
                 ),
               _titleLevelSwitcher(),
-              _floatingToolbar(),
+              _s13QuickSideToolbar(),
+              PermanentWindowControls(
+                maximized: _windowMaximized,
+                onMinimize: _supportsWindowManager ? _minimizeWindow : null,
+                onMaximizeRestore: _supportsWindowManager
+                    ? _toggleWindowMaximizeRestore
+                    : null,
+                onClose: _supportsWindowManager ? _closeWindow : null,
+              ),
             ],
           ),
         ),
       );
 
-  Widget _floatingToolbar() => Positioned(
-        left: _floatingToolbarOffset.dx,
-        top: _floatingToolbarOffset.dy,
-        child: Material(
-          color: Colors.transparent,
-          child: Opacity(
-            opacity: 0.58,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _s13QuickSideToolbar() => S13QuickSideToolbar(
+        settingsPanelOpen: _panelOpen,
+        settingsSections: _s13ToolbarSections(),
+        onToggleSettingsPanel: () => setState(() => _panelOpen = !_panelOpen),
+      );
+
+  List<SideToolbarSection> _s13ToolbarSections() => <SideToolbarSection>[
+        SideToolbarSection(
+          title: '股票',
+          children: <Widget>[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: <Widget>[
-                GestureDetector(
-                  onPanUpdate: _dragFloatingToolbar,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      _floatingIcon(
-                        Icons.tune,
-                        '工具栏',
-                        () => setState(() => _panelOpen = !_panelOpen),
-                      ),
-                      const SizedBox(width: 6),
-                      _floatingIcon(
-                        Icons.architecture,
-                        '画线工具',
-                        () => _toolboxOpenSignal.value++,
-                      ),
-                      const SizedBox(width: 6),
-                      _floatingIcon(
-                        Icons.stacked_bar_chart,
-                        _showChipDistribution ? '关闭筹码分布' : '筹码分布',
-                        () => setState(() =>
-                            _showChipDistribution = !_showChipDistribution),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.drag_indicator,
-                          size: 18, color: Colors.white54),
-                    ],
-                  ),
-                ),
-                if (_panelOpen)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: SizedBox(
-                      width: 390,
-                      height: math.min(
-                          600, MediaQuery.sizeOf(context).height - 120),
-                      child: _settingsPanel(),
-                    ),
-                  ),
+                _input(_backendUrlController, 'backend',
+                    width: 210, enabled: false),
+                _input(_symbolController, 'symbol', width: 104),
+                _input(_marketController, 'market', width: 78),
+                _dateButton(
+                    'start', _startDate, () => _pickDate(isStart: true)),
+                _dateButton('end', _endDate, () => _pickDate(isStart: false)),
+                _runtimePathButton(),
+                _infoButton('窗口', _effectiveWindowText),
+                _infoButton('状态', _status),
               ],
             ),
-          ),
+          ],
         ),
-      );
-
-  void _dragFloatingToolbar(DragUpdateDetails details) {
-    final size = MediaQuery.sizeOf(context);
-    setState(() {
-      _floatingToolbarOffset = Offset(
-        (_floatingToolbarOffset.dx + details.delta.dx)
-            .clamp(0.0, size.width - 400),
-        (_floatingToolbarOffset.dy + details.delta.dy)
-            .clamp(0.0, size.height - 80),
-      );
-    });
-  }
-
-  Widget _floatingIcon(IconData icon, String tip, VoidCallback onPressed) =>
-      Tooltip(
-        message: tip,
-        child: IconButton(
-          onPressed: onPressed,
-          icon: Icon(icon, size: 19),
-          color: Colors.white70,
-          style: IconButton.styleFrom(
-            backgroundColor: const Color(0x99111722),
-            side: const BorderSide(color: Colors.white24),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-          ),
+        SideToolbarSection(
+          title: '级别',
+          children: <Widget>[
+            Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
+              for (final level in _levelOptions) _levelChip(level),
+            ]),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
+              for (final level in _loadedLevels) _activeLevelChip(level),
+            ]),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
+              _infoButton('校验', _lastLevelValidation),
+              _infoButton('当前', _loadedLevels.join(',')),
+            ]),
+          ],
         ),
-      );
+        SideToolbarSection(
+          title: '复盘 / marker',
+          children: <Widget>[
+            Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
+              _modeChip('once'),
+              _modeChip('step'),
+              FilledButton.icon(
+                onPressed: _loading ? null : _loadReplay,
+                icon: _loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.play_arrow, size: 16),
+                label: const Text('载入复盘'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _copyS13IntervalNestMarkerEvidence,
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('复制 marker 证据'),
+              ),
+              _infoButton('step', _stepFrameLabel),
+              _infoButton('marker', '${_nestedBspMarkers.length}'),
+              _infoButton(
+                  '1.382', _rhythmSummaryFor(_activeSnapshot).shortText),
+            ]),
+          ],
+        ),
+        SideToolbarSection(
+          title: '图层',
+          children: <Widget>[
+            Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
+              for (final n in const <String>['MA', 'BOLL', 'VOL', 'MACD'])
+                _indicatorChip(n),
+            ]),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
+              FilterChip(
+                label: const Text('节奏线'),
+                selected: _showRhythmLines,
+                onSelected: _loading
+                    ? null
+                    : (v) => setState(() => _showRhythmLines = v),
+              ),
+              FilterChip(
+                label: const Text('1.382命中'),
+                selected: _show1382Hits,
+                onSelected:
+                    _loading ? null : (v) => setState(() => _show1382Hits = v),
+              ),
+              FilterChip(
+                label: const Text('筹码分布'),
+                selected: _showChipDistribution,
+                onSelected: _loading
+                    ? null
+                    : (v) => setState(() => _showChipDistribution = v),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _loading ? null : _openRhythmDisplaySettings,
+                icon: const Icon(Icons.tune, size: 16),
+                label: const Text('节奏线设置'),
+              ),
+            ]),
+            SwitchListTile(
+              value: _showBspCandidateTrail,
+              onChanged: _loading
+                  ? null
+                  : (v) => setState(() => _showBspCandidateTrail = v),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: const Text(
+                'BSP 候选轨迹层',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        SideToolbarSection(
+          title: '画线',
+          children: <Widget>[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonalIcon(
+                onPressed: () => _toolboxOpenSignal.value++,
+                icon: const Icon(Icons.architecture, size: 18),
+                label: const Text('打开画线工具'),
+              ),
+            ),
+          ],
+        ),
+        SideToolbarSection(
+          title: '页面',
+          children: <Widget>[
+            Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
+              _routeButton('复盘', Icons.candlestick_chart, 0),
+              _routeButton('单股多级别', Icons.account_tree, 1),
+              _routeButton('扫描器', Icons.radar, 2),
+              _routeButton('批量候选', Icons.view_list, 3),
+              _routeButton('研究', Icons.science, 4),
+            ]),
+          ],
+        ),
+      ];
 
   Widget _titleLevelSwitcher() => Positioned(
         top: 8,

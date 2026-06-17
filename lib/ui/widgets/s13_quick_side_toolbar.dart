@@ -2,30 +2,17 @@ import 'package:flutter/material.dart';
 
 import 'auto_collapsible_side_toolbar.dart';
 
-/// Low-risk S13-specific adapter for the reusable left side toolbar shell.
-///
-/// It only hosts the first migrated entries requested by the hichan UI task:
-/// toolbar, drawing tools and chip distribution. The large S13 settings panel can
-/// be passed as [settingsPanel] so existing business widgets do not need to be
-/// rewritten during the first integration step.
+/// S13-specific adapter for the reusable left side toolbar shell.
 class S13QuickSideToolbar extends StatelessWidget {
   final bool settingsPanelOpen;
-  final bool chipDistributionVisible;
-  final bool loading;
-  final Widget settingsPanel;
+  final List<SideToolbarSection> settingsSections;
   final VoidCallback onToggleSettingsPanel;
-  final VoidCallback onOpenDrawingTools;
-  final VoidCallback onToggleChipDistribution;
 
   const S13QuickSideToolbar({
     super.key,
     required this.settingsPanelOpen,
-    required this.chipDistributionVisible,
-    required this.loading,
-    required this.settingsPanel,
+    required this.settingsSections,
     required this.onToggleSettingsPanel,
-    required this.onOpenDrawingTools,
-    required this.onToggleChipDistribution,
   });
 
   @override
@@ -33,7 +20,7 @@ class S13QuickSideToolbar extends StatelessWidget {
     return AutoCollapsibleSideToolbar(
       top: 44,
       bottom: 12,
-      expandedWidth: settingsPanelOpen ? 430 : 286,
+      expandedWidth: settingsPanelOpen ? 430 : 240,
       initiallyExpanded: true,
       autoCollapseDelay: const Duration(seconds: 5),
       header: _header(),
@@ -43,34 +30,12 @@ class S13QuickSideToolbar extends StatelessWidget {
           children: <Widget>[
             _actionButton(
               icon: Icons.tune,
-              label: settingsPanelOpen ? '收回工具栏面板' : '展开工具栏面板',
+              label: settingsPanelOpen ? '收回工具栏' : '展开工具栏',
               onPressed: onToggleSettingsPanel,
-            ),
-            const SizedBox(height: 8),
-            _actionButton(
-              icon: Icons.architecture,
-              label: '画线工具',
-              onPressed: onOpenDrawingTools,
-            ),
-            const SizedBox(height: 8),
-            _actionButton(
-              icon: Icons.stacked_bar_chart,
-              label: chipDistributionVisible ? '关闭筹码分布' : '筹码分布',
-              selected: chipDistributionVisible,
-              onPressed: loading ? null : onToggleChipDistribution,
             ),
           ],
         ),
-        if (settingsPanelOpen)
-          SideToolbarSection(
-            title: '工具栏',
-            children: <Widget>[
-              SizedBox(
-                height: MediaQuery.sizeOf(context).height - 170,
-                child: settingsPanel,
-              ),
-            ],
-          ),
+        if (settingsPanelOpen) ...settingsSections,
       ],
     );
   }
@@ -96,7 +61,6 @@ class S13QuickSideToolbar extends StatelessWidget {
     required IconData icon,
     required String label,
     required VoidCallback? onPressed,
-    bool selected = false,
   }) {
     return SizedBox(
       width: double.infinity,
@@ -108,16 +72,12 @@ class S13QuickSideToolbar extends StatelessWidget {
           child: Text(label, overflow: TextOverflow.ellipsis),
         ),
         style: FilledButton.styleFrom(
-          backgroundColor: selected
-              ? const Color(0x5542A5F5)
-              : const Color(0x221E293B),
-          foregroundColor: selected ? const Color(0xFFBBDEFB) : Colors.white70,
+          backgroundColor: const Color(0x221E293B),
+          foregroundColor: Colors.white70,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
-            side: BorderSide(
-              color: selected ? const Color(0x8842A5F5) : Colors.white12,
-            ),
+            side: const BorderSide(color: Colors.white12),
           ),
         ),
       ),
