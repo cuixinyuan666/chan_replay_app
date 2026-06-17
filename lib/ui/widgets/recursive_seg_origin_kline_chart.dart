@@ -12,8 +12,8 @@ import 'origin_kline_chart_unlimited_interaction.dart' as base;
 /// This widget does not calculate Chan structures. It converts backend-exported
 /// `snapshot.recursiveSegLayers` / `snapshot.recursiveSegBsps` rows into
 /// non-persistent drawing overlays and delegates actual K-line rendering to the
-/// original `OriginKlineChart` via the unlimited pan/zoom interaction adapter.
-class RecursiveSegOriginKlineChart extends StatelessWidget {
+/// original `OriginKlineChart` via the real viewport interaction adapter.
+class RecursiveSegOriginKlineChart extends StatefulWidget {
   final ChanSnapshot snapshot;
   final bool showFx;
   final bool showFxLine;
@@ -93,60 +93,23 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
     this.maxRecursiveSegLayer,
   });
 
+  @override
+  State<RecursiveSegOriginKlineChart> createState() =>
+      _RecursiveSegOriginKlineChartState();
+
   int get _effectiveMaxRecursiveSegLayer {
     final explicit = maxRecursiveSegLayer;
     if (explicit != null && explicit >= 2) return explicit;
     return LevelPromoterSettings.currentMaxLayer;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return base.OriginKlineChart(
-      snapshot: snapshot,
-      showFx: showFx,
-      showFxLine: showFxLine,
-      showFxText: showFxText,
-      showBi: showBi,
-      showBiText: showBiText,
-      showSeg: showSeg,
-      showSegText: showSegText,
-      showZs: showZs,
-      showBiBsp: showBiBsp,
-      showSegBsp: showSegBsp,
-      showMergedBars: showMergedBars,
-      showEasyTdxIndicators: showEasyTdxIndicators,
-      easyTdxSubPanelCount: easyTdxSubPanelCount,
-      enabledEasyTdxIndicators: enabledEasyTdxIndicators,
-      drawingObjects: [
-        if (showRecursiveSegLayers) ..._recursiveSegDrawingObjects(snapshot),
-        if (showRecursiveSegBsp) ..._recursiveSegBspDrawingObjects(snapshot),
-        ...drawingObjects,
-      ],
-      drawingStorageKey: drawingStorageKey,
-      symbolLabel: _symbolLabelWithRecursiveSegSummary(symbolLabel, snapshot),
-      isChanOverlayVisible: isChanOverlayVisible,
-      onChanOverlayToggled: onChanOverlayToggled,
-      toolboxOpenSignal: toolboxOpenSignal,
-      toolboxSelectedToolSignal: toolboxSelectedToolSignal,
-      onToolboxQuickToolAdded: onToolboxQuickToolAdded,
-      windowSize: windowSize,
-      priceScale: priceScale,
-      viewEndIndex: viewEndIndex,
-      crosshairIndex: crosshairIndex,
-      onCrosshairChanged: onCrosshairChanged,
-      onPanBars: onPanBars,
-      onWindowSizeChanged: onWindowSizeChanged,
-      onPriceScaleChanged: onPriceScaleChanged,
-      onEasyTdxSubPanelCountChanged: onEasyTdxSubPanelCountChanged,
-      onEasyTdxIndicatorToggled: onEasyTdxIndicatorToggled,
-    );
-  }
-
   List<DrawingObject> _recursiveSegDrawingObjects(ChanSnapshot snapshot) {
     final rows = <DrawingObject>[];
     final now = DateTime.fromMillisecondsSinceEpoch(0);
     final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
-    final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer ? minLayer : _effectiveMaxRecursiveSegLayer;
+    final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer
+        ? minLayer
+        : _effectiveMaxRecursiveSegLayer;
     for (final entry in snapshot.recursiveSegLayers.entries) {
       final layer = entry.key;
       if (layer < minLayer || layer > maxLayer) continue;
@@ -177,7 +140,9 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
     final rows = <DrawingObject>[];
     final now = DateTime.fromMillisecondsSinceEpoch(0);
     final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
-    final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer ? minLayer : _effectiveMaxRecursiveSegLayer;
+    final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer
+        ? minLayer
+        : _effectiveMaxRecursiveSegLayer;
 
     if (snapshot.recursiveSegBsps.isNotEmpty) {
       for (final entry in snapshot.recursiveSegBsps.entries) {
@@ -188,7 +153,13 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
             id: 'hichan2_seg${layer}_bsp_${bsp.index}_${bsp.rawIndex}',
             tool: TradingViewDrawingTool.priceLabel,
             anchors: [DrawingAnchor.chart(rawIndex: bsp.rawIndex, price: bsp.price)],
-            style: DrawingStyle(colorValue: _colorValueForLayer(layer), fontSize: 11.0, filled: true, fillColorValue: 0x33131722, fillOpacity: 0.25),
+            style: DrawingStyle(
+              colorValue: _colorValueForLayer(layer),
+              fontSize: 11.0,
+              filled: true,
+              fillColorValue: 0x33131722,
+              fillOpacity: 0.25,
+            ),
             text: bsp.type,
             locked: true,
             hidden: false,
@@ -209,12 +180,22 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
       if (layer < minLayer || layer > maxLayer || layer < 2) continue;
       for (final seg in entry.value) {
         if (!seg.isVisibleRangeValid) continue;
-        final type = seg.isDown ? 'SEG${layer}_B' : seg.isUp ? 'SEG${layer}_S' : 'SEG${layer}_BSP';
+        final type = seg.isDown
+            ? 'SEG${layer}_B'
+            : seg.isUp
+                ? 'SEG${layer}_S'
+                : 'SEG${layer}_BSP';
         rows.add(DrawingObject(
           id: 'hichan2_seg${layer}_bsp_fallback_${seg.index}_${seg.endRawIndex}',
           tool: TradingViewDrawingTool.priceLabel,
           anchors: [DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice)],
-          style: DrawingStyle(colorValue: _colorValueForLayer(layer), fontSize: 11.0, filled: true, fillColorValue: 0x33131722, fillOpacity: 0.25),
+          style: DrawingStyle(
+            colorValue: _colorValueForLayer(layer),
+            fontSize: 11.0,
+            filled: true,
+            fillColorValue: 0x33131722,
+            fillOpacity: 0.25,
+          ),
           text: type,
           locked: true,
           hidden: false,
@@ -257,15 +238,156 @@ class RecursiveSegOriginKlineChart extends StatelessWidget {
   String _symbolLabelWithRecursiveSegSummary(String baseLabel, ChanSnapshot snapshot) {
     final layerCounts = <String>[];
     final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
-    final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer ? minLayer : _effectiveMaxRecursiveSegLayer;
+    final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer
+        ? minLayer
+        : _effectiveMaxRecursiveSegLayer;
     for (var layer = minLayer; layer <= maxLayer; layer++) {
       final segCount = snapshot.recursiveSegLayers[layer]?.length ?? 0;
       final bspCount = snapshot.recursiveSegBsps[layer]?.length ?? segCount;
-      if (segCount > 0 || bspCount > 0) layerCounts.add('L$layer:$segCount/B$bspCount');
+      if (segCount > 0 || bspCount > 0) {
+        layerCounts.add('L$layer:$segCount/B$bspCount');
+      }
     }
     if (layerCounts.isEmpty) return baseLabel;
     final prefix = baseLabel.trim();
     final suffix = '级别推进 ${layerCounts.join(' ')}';
     return prefix.isEmpty ? suffix : '$prefix | $suffix';
+  }
+}
+
+class _RecursiveSegOriginKlineChartState
+    extends State<RecursiveSegOriginKlineChart> {
+  String _viewportScopeKey = '';
+  int? _stickyViewEndIndex;
+  double? _stickyPriceScale;
+
+  @override
+  void initState() {
+    super.initState();
+    _resetStickyViewportForScope();
+  }
+
+  @override
+  void didUpdateWidget(covariant RecursiveSegOriginKlineChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextScope = _scopeKeyFor(widget);
+    if (nextScope != _viewportScopeKey) {
+      _resetStickyViewportForScope();
+      return;
+    }
+    if (widget.viewEndIndex != null) {
+      _stickyViewEndIndex = _clampViewEnd(widget.viewEndIndex);
+    }
+    if (_isExplicitPriceScale(widget.priceScale)) {
+      _stickyPriceScale = _safePriceScale(widget.priceScale);
+    }
+  }
+
+  String _scopeKeyFor(RecursiveSegOriginKlineChart widget) {
+    final bars = widget.snapshot.rawBars;
+    final first = bars.isEmpty ? 'empty' : bars.first.time.toIso8601String();
+    return '${widget.drawingStorageKey}|$first';
+  }
+
+  void _resetStickyViewportForScope() {
+    _viewportScopeKey = _scopeKeyFor(widget);
+    _stickyViewEndIndex = _clampViewEnd(widget.viewEndIndex);
+    _stickyPriceScale = _isExplicitPriceScale(widget.priceScale)
+        ? _safePriceScale(widget.priceScale)
+        : null;
+  }
+
+  int? _clampViewEnd(int? value) {
+    final bars = widget.snapshot.rawBars;
+    if (value == null || bars.isEmpty) return null;
+    return value.clamp(0, bars.length - 1).toInt();
+  }
+
+  bool _isExplicitPriceScale(double value) =>
+      value.isFinite && (value - 1.0).abs() > 0.000001;
+
+  double _safePriceScale(double value) {
+    if (!value.isFinite || value <= 0) return 1.0;
+    return value;
+  }
+
+  int? get _effectiveViewEndIndex =>
+      _clampViewEnd(widget.viewEndIndex) ?? _clampViewEnd(_stickyViewEndIndex);
+
+  double get _effectivePriceScale {
+    if (_isExplicitPriceScale(widget.priceScale)) {
+      return _safePriceScale(widget.priceScale);
+    }
+    return _stickyPriceScale ?? _safePriceScale(widget.priceScale);
+  }
+
+  void _handlePanBars(int bars) {
+    final rawBars = widget.snapshot.rawBars;
+    if (bars == 0 || rawBars.isEmpty) return;
+    final max = rawBars.length - 1;
+    final current = (_effectiveViewEndIndex ?? max).clamp(0, max).toInt();
+    final next = (current + bars).clamp(0, max).toInt();
+    if (next != current) {
+      setState(() => _stickyViewEndIndex = next);
+    }
+    widget.onPanBars?.call(bars);
+  }
+
+  void _handleWindowSizeChanged(int value) {
+    widget.onWindowSizeChanged?.call(value);
+  }
+
+  void _handlePriceScaleChanged(double value) {
+    final safe = _safePriceScale(value);
+    setState(() => _stickyPriceScale = safe);
+    widget.onPriceScaleChanged?.call(safe);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return base.OriginKlineChart(
+      snapshot: widget.snapshot,
+      showFx: widget.showFx,
+      showFxLine: widget.showFxLine,
+      showFxText: widget.showFxText,
+      showBi: widget.showBi,
+      showBiText: widget.showBiText,
+      showSeg: widget.showSeg,
+      showSegText: widget.showSegText,
+      showZs: widget.showZs,
+      showBiBsp: widget.showBiBsp,
+      showSegBsp: widget.showSegBsp,
+      showMergedBars: widget.showMergedBars,
+      showEasyTdxIndicators: widget.showEasyTdxIndicators,
+      easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
+      enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
+      drawingObjects: [
+        if (widget.showRecursiveSegLayers)
+          ...widget._recursiveSegDrawingObjects(widget.snapshot),
+        if (widget.showRecursiveSegBsp)
+          ...widget._recursiveSegBspDrawingObjects(widget.snapshot),
+        ...widget.drawingObjects,
+      ],
+      drawingStorageKey: widget.drawingStorageKey,
+      symbolLabel: widget._symbolLabelWithRecursiveSegSummary(
+        widget.symbolLabel,
+        widget.snapshot,
+      ),
+      isChanOverlayVisible: widget.isChanOverlayVisible,
+      onChanOverlayToggled: widget.onChanOverlayToggled,
+      toolboxOpenSignal: widget.toolboxOpenSignal,
+      toolboxSelectedToolSignal: widget.toolboxSelectedToolSignal,
+      onToolboxQuickToolAdded: widget.onToolboxQuickToolAdded,
+      windowSize: widget.windowSize,
+      priceScale: _effectivePriceScale,
+      viewEndIndex: _effectiveViewEndIndex,
+      crosshairIndex: widget.crosshairIndex,
+      onCrosshairChanged: widget.onCrosshairChanged,
+      onPanBars: _handlePanBars,
+      onWindowSizeChanged: _handleWindowSizeChanged,
+      onPriceScaleChanged: _handlePriceScaleChanged,
+      onEasyTdxSubPanelCountChanged: widget.onEasyTdxSubPanelCountChanged,
+      onEasyTdxIndicatorToggled: widget.onEasyTdxIndicatorToggled,
+    );
   }
 }
