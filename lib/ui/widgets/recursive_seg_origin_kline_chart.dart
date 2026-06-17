@@ -259,6 +259,7 @@ class _RecursiveSegOriginKlineChartState
     extends State<RecursiveSegOriginKlineChart> {
   String _viewportScopeKey = '';
   int? _stickyViewEndIndex;
+  int? _stickyWindowSize;
   double? _stickyPriceScale;
   bool _parentViewportSyncPending = false;
 
@@ -295,6 +296,7 @@ class _RecursiveSegOriginKlineChartState
   void _resetStickyViewportForScope() {
     _viewportScopeKey = _scopeKeyFor(widget);
     _stickyViewEndIndex = _clampViewEnd(widget.viewEndIndex);
+    _stickyWindowSize = null;
     _stickyPriceScale = _isExplicitPriceScale(widget.priceScale)
         ? _safePriceScale(widget.priceScale)
         : null;
@@ -306,6 +308,8 @@ class _RecursiveSegOriginKlineChartState
     return value.clamp(0, bars.length - 1).toInt();
   }
 
+  int _safeWindowSize(int value) => value < 1 ? 1 : value;
+
   bool _isExplicitPriceScale(double value) =>
       value.isFinite && (value - 1.0).abs() > 0.000001;
 
@@ -316,6 +320,11 @@ class _RecursiveSegOriginKlineChartState
 
   int? get _effectiveViewEndIndex =>
       _clampViewEnd(widget.viewEndIndex) ?? _clampViewEnd(_stickyViewEndIndex);
+
+  int get _effectiveWindowSize =>
+      _stickyWindowSize == null
+          ? _safeWindowSize(widget.windowSize)
+          : _safeWindowSize(_stickyWindowSize!);
 
   double get _effectivePriceScale {
     if (_isExplicitPriceScale(widget.priceScale)) {
@@ -329,10 +338,12 @@ class _RecursiveSegOriginKlineChartState
     final hasStickyViewEnd = widget.viewEndIndex == null &&
         _stickyViewEndIndex != null &&
         widget.snapshot.rawBars.isNotEmpty;
+    final hasStickyWindowSize = _stickyWindowSize != null &&
+        _safeWindowSize(widget.windowSize) != _safeWindowSize(_stickyWindowSize!);
     final hasStickyPriceScale = !_isExplicitPriceScale(widget.priceScale) &&
         _stickyPriceScale != null &&
         _isExplicitPriceScale(_stickyPriceScale!);
-    if (!hasStickyViewEnd && !hasStickyPriceScale) return;
+    if (!hasStickyViewEnd && !hasStickyWindowSize && !hasStickyPriceScale) return;
 
     _parentViewportSyncPending = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -349,6 +360,12 @@ class _RecursiveSegOriginKlineChartState
           final delta = target - max;
           if (delta != 0) widget.onPanBars?.call(delta);
         }
+      }
+
+      if (_stickyWindowSize != null &&
+          _safeWindowSize(widget.windowSize) !=
+              _safeWindowSize(_stickyWindowSize!)) {
+        widget.onWindowSizeChanged?.call(_safeWindowSize(_stickyWindowSize!));
       }
 
       if (!_isExplicitPriceScale(widget.priceScale) &&
@@ -372,7 +389,9 @@ class _RecursiveSegOriginKlineChartState
   }
 
   void _handleWindowSizeChanged(int value) {
-    widget.onWindowSizeChanged?.call(value);
+    final safe = _safeWindowSize(value);
+    setState(() => _stickyWindowSize = safe);
+    widget.onWindowSizeChanged?.call(safe);
   }
 
   void _handlePriceScaleChanged(double value) {
@@ -416,7 +435,7 @@ class _RecursiveSegOriginKlineChartState
       toolboxOpenSignal: widget.toolboxOpenSignal,
       toolboxSelectedToolSignal: widget.toolboxSelectedToolSignal,
       onToolboxQuickToolAdded: widget.onToolboxQuickToolAdded,
-      windowSize: widget.windowSize,
+      windowSize: _effectiveWindowSize,
       priceScale: _effectivePriceScale,
       viewEndIndex: _effectiveViewEndIndex,
       crosshairIndex: widget.crosshairIndex,
