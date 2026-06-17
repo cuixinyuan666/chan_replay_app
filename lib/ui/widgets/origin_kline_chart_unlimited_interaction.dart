@@ -119,6 +119,46 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
 
   _DragAxis? _dragAxis;
   double _panRemainder = 0.0;
+  TradingViewDrawingTool _selectedTool = TradingViewDrawingTool.cursor;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedTool = widget.toolboxSelectedToolSignal?.value ??
+        TradingViewDrawingTool.cursor;
+    widget.toolboxSelectedToolSignal?.addListener(_handleToolSelectionChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant OriginKlineChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.toolboxSelectedToolSignal != widget.toolboxSelectedToolSignal) {
+      oldWidget.toolboxSelectedToolSignal
+          ?.removeListener(_handleToolSelectionChanged);
+      _selectedTool = widget.toolboxSelectedToolSignal?.value ??
+          TradingViewDrawingTool.cursor;
+      widget.toolboxSelectedToolSignal?.addListener(_handleToolSelectionChanged);
+      _clearDragState();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.toolboxSelectedToolSignal?.removeListener(_handleToolSelectionChanged);
+    super.dispose();
+  }
+
+  void _handleToolSelectionChanged() {
+    final next = widget.toolboxSelectedToolSignal?.value ??
+        TradingViewDrawingTool.cursor;
+    if (next == _selectedTool) return;
+    setState(() => _selectedTool = next);
+    _clearDragState();
+  }
+
+  bool get _isViewportDragEnabled =>
+      _selectedTool == TradingViewDrawingTool.cursor ||
+      _selectedTool == TradingViewDrawingTool.crosshair;
 
   int get _safeWindowSize => math.max(_minWindowSize, widget.windowSize);
 
@@ -224,10 +264,11 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
         .toDouble();
     final anchorRaw = oldStart + fraction * math.max(0, oldVisibleCount - 1);
     final nextVisibleCount = math.min(nextWindow, bars.length);
-    final nextEnd = (anchorRaw + (1 - fraction) * math.max(0, nextVisibleCount - 1))
-        .round()
-        .clamp(0, bars.length - 1)
-        .toInt();
+    final nextEnd =
+        (anchorRaw + (1 - fraction) * math.max(0, nextVisibleCount - 1))
+            .round()
+            .clamp(0, bars.length - 1)
+            .toInt();
     final deltaEnd = nextEnd - oldEnd;
 
     widget.onWindowSizeChanged?.call(nextWindow);
@@ -241,6 +282,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   }
 
   void _handlePointerDown(PointerDownEvent event, _ChartRects rects) {
+    if (!_isViewportDragEnabled) return;
     if ((event.buttons & kPrimaryMouseButton) == 0) return;
     if (!rects.mainRect.contains(event.localPosition)) return;
     _dragAxis = null;
@@ -248,6 +290,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   }
 
   void _handlePointerMove(PointerMoveEvent event, _ChartRects rects) {
+    if (!_isViewportDragEnabled) return;
     if ((event.buttons & kPrimaryMouseButton) == 0) return;
     if (_dragAxis == null && !rects.mainRect.contains(event.localPosition)) {
       return;
@@ -269,6 +312,10 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   }
 
   void _handlePointerEnd(PointerEvent event) {
+    _clearDragState();
+  }
+
+  void _clearDragState() {
     _dragAxis = null;
     _panRemainder = 0.0;
   }
