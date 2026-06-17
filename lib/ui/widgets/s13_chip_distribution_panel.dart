@@ -11,6 +11,11 @@ import '../../core/models/chan_snapshot.dart';
 /// 当前阶段只使用在线 analyze_multi 已经返回到前端的 ChanSnapshot.rawBars，
 /// 不读取离线分笔文件；若后端在线返回 chip_tick_bins，可继续通过同一引擎消费。
 class S13ChipDistributionPanel extends StatelessWidget {
+  static const double _chartTopPad = 32.0;
+  static const double _chartRightPad = 58.0;
+  static const double _chartBottomPad = 28.0;
+  static const double _embeddedGap = 8.0;
+
   final ChanSnapshot? snapshot;
   final bool enabled;
   final bool isStepMode;
@@ -60,102 +65,45 @@ class S13ChipDistributionPanel extends StatelessWidget {
       visibleRightIndex: visibleRightIndex,
     );
 
-    return Positioned(
-      right: 16,
-      top: 72,
-      width: 286,
-      height: 360,
-      child: Material(
-        color: Colors.transparent,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xEE111722),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white24),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x66000000),
-                blurRadius: 18,
-                offset: Offset(0, 8),
+    return Positioned.fill(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = Size(constraints.maxWidth, constraints.maxHeight);
+          if (size.width <= 180 || size.height <= 180) {
+            return const SizedBox.shrink();
+          }
+
+          final right = size.width > 420
+              ? _chartRightPad + _embeddedGap
+              : _embeddedGap;
+          final top = _chartTopPad + _embeddedGap;
+          final bottom = _chartBottomPad + _embeddedGap;
+          final maxWidth = math.max(140.0, size.width - right - _embeddedGap);
+          final width = math.min(
+            maxWidth,
+            size.width >= 900 ? 286.0 : math.max(190.0, size.width * 0.28),
+          );
+          final availableHeight = size.height - top - bottom;
+          if (availableHeight <= 140) return const SizedBox.shrink();
+          final height = math.min(360.0, availableHeight);
+
+          return Stack(
+            children: <Widget>[
+              Positioned(
+                right: right,
+                top: top,
+                width: width,
+                height: height,
+                child: _ChipDistributionCard(
+                  result: result,
+                  barsLength: bars.length,
+                  targetPolicy: targetPolicy,
+                  onClose: onClose,
+                ),
               ),
             ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    const Icon(Icons.stacked_bar_chart,
-                        color: Color(0xFF8AB4FF), size: 18),
-                    const SizedBox(width: 6),
-                    const Expanded(
-                      child: Text(
-                        '筹码分布',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    if (onClose != null)
-                      IconButton(
-                        tooltip: '关闭筹码面板',
-                        onPressed: onClose,
-                        icon: const Icon(Icons.close, size: 16),
-                        color: Colors.white54,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints.tightFor(
-                            width: 28, height: 28),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: <Widget>[
-                    _miniMetric('来源', targetPolicy),
-                    _miniMetric(
-                        '目标',
-                        bars.isEmpty
-                            ? '-'
-                            : '${result.targetIndex + 1}/${bars.length}'),
-                    _miniMetric('现价', result.currentPrice.toStringAsFixed(2)),
-                    _miniMetric('均价', result.averageCost.toStringAsFixed(2)),
-                    _miniMetric('峰值', result.pocPrice.toStringAsFixed(2)),
-                    _miniMetric('获利',
-                        '${(result.profitRatio * 100).toStringAsFixed(1)}%'),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: result.isEmpty
-                      ? const Center(
-                          child: Text(
-                            '暂无在线K线',
-                            style:
-                                TextStyle(color: Colors.white54, fontSize: 12),
-                          ),
-                        )
-                      : CustomPaint(
-                          painter: _CompactChipDistributionPainter(result),
-                          child: const SizedBox.expand(),
-                        ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '在线 rawBars；不读离线分笔；只算目标K及以前。',
-                  style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.48),
-                      fontSize: 10.5),
-                ),
-              ],
-            ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -170,17 +118,125 @@ class S13ChipDistributionPanel extends StatelessWidget {
     if (visibleRightIndex != null) return '右侧K';
     return '末K';
   }
+}
+
+class _ChipDistributionCard extends StatelessWidget {
+  final ChipDistributionResult result;
+  final int barsLength;
+  final String targetPolicy;
+  final VoidCallback? onClose;
+
+  const _ChipDistributionCard({
+    required this.result,
+    required this.barsLength,
+    required this.targetPolicy,
+    this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xD8111722),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x44000000),
+              blurRadius: 12,
+              offset: Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(9),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  const Icon(Icons.stacked_bar_chart,
+                      color: Color(0xFF8AB4FF), size: 17),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      '筹码分布',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (onClose != null)
+                    IconButton(
+                      tooltip: '关闭筹码面板',
+                      onPressed: onClose,
+                      icon: const Icon(Icons.close, size: 15),
+                      color: Colors.white54,
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints.tightFor(width: 26, height: 26),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Wrap(
+                spacing: 5,
+                runSpacing: 5,
+                children: <Widget>[
+                  _miniMetric('来源', targetPolicy),
+                  _miniMetric(
+                      '目标',
+                      barsLength <= 0
+                          ? '-'
+                          : '${result.targetIndex + 1}/$barsLength'),
+                  _miniMetric('现价', result.currentPrice.toStringAsFixed(2)),
+                  _miniMetric('均价', result.averageCost.toStringAsFixed(2)),
+                  _miniMetric('峰值', result.pocPrice.toStringAsFixed(2)),
+                  _miniMetric('获利',
+                      '${(result.profitRatio * 100).toStringAsFixed(1)}%'),
+                ],
+              ),
+              const SizedBox(height: 7),
+              Expanded(
+                child: result.isEmpty
+                    ? const Center(
+                        child: Text(
+                          '暂无在线K线',
+                          style: TextStyle(color: Colors.white54, fontSize: 12),
+                        ),
+                      )
+                    : CustomPaint(
+                        painter: _CompactChipDistributionPainter(result),
+                        child: const SizedBox.expand(),
+                      ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                '在线 rawBars；只算目标K及以前。',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.46), fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _miniMetric(String label, String value) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.24),
+          color: Colors.black.withValues(alpha: 0.22),
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: Colors.white12),
         ),
         child: Text(
           '$label:$value',
-          style: const TextStyle(color: Colors.white70, fontSize: 10.5),
+          style: const TextStyle(color: Colors.white70, fontSize: 10.2),
         ),
       );
 }
@@ -238,8 +294,7 @@ class _CompactChipDistributionPainter extends CustomPainter {
 
     final currentY =
         _priceToY(result.currentPrice, minPrice, maxPrice, top, bottom);
-    canvas.drawLine(
-        Offset(left, currentY), Offset(right, currentY), currentPaint);
+    canvas.drawLine(Offset(left, currentY), Offset(right, currentY), currentPaint);
     _drawText(
         canvas, maxPrice.toStringAsFixed(2), Offset(4, top), Colors.white54);
     _drawText(canvas, minPrice.toStringAsFixed(2), Offset(4, bottom - 12),
@@ -248,8 +303,8 @@ class _CompactChipDistributionPainter extends CustomPainter {
         const Color(0xFF66BB6A));
   }
 
-  double _priceToY(double price, double minPrice, double maxPrice, double top,
-      double bottom) {
+  double _priceToY(
+      double price, double minPrice, double maxPrice, double top, double bottom) {
     if ((maxPrice - minPrice).abs() < 1e-9) return (top + bottom) / 2;
     final t =
         ((price - minPrice) / (maxPrice - minPrice)).clamp(0.0, 1.0).toDouble();
