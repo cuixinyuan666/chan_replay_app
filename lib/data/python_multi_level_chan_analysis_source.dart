@@ -34,7 +34,8 @@ class _LazyMultiLevelFrameList extends ListBase<MultiLevelChanSnapshot> {
   final List<dynamic> rawFrames;
   final Object? baseLevels;
   final Map<String, dynamic> timeLog;
-  final Map<int, MultiLevelChanSnapshot> _cache = <int, MultiLevelChanSnapshot>{};
+  final Map<int, MultiLevelChanSnapshot> _cache =
+      <int, MultiLevelChanSnapshot>{};
 
   _LazyMultiLevelFrameList({
     required this.rawFrames,
@@ -46,13 +47,15 @@ class _LazyMultiLevelFrameList extends ListBase<MultiLevelChanSnapshot> {
   int get length => rawFrames.length;
 
   @override
-  set length(int newLength) => throw UnsupportedError('Lazy frame list length is fixed.');
+  set length(int newLength) =>
+      throw UnsupportedError('Lazy frame list length is fixed.');
 
   @override
   MultiLevelChanSnapshot operator [](int index) {
     final cached = _cache[index];
     if (cached != null) {
-      timeLog['lazy_frame_cache_hits'] = _toInt(timeLog['lazy_frame_cache_hits']) + 1;
+      timeLog['lazy_frame_cache_hits'] =
+          _toInt(timeLog['lazy_frame_cache_hits']) + 1;
       return cached;
     }
     if (index < 0 || index >= rawFrames.length) {
@@ -74,9 +77,11 @@ class _LazyMultiLevelFrameList extends ListBase<MultiLevelChanSnapshot> {
       'lazy_frame_cache_hit': false,
     });
     _cache[index] = enriched;
-    timeLog['lazy_frame_cache_misses'] = _toInt(timeLog['lazy_frame_cache_misses']) + 1;
+    timeLog['lazy_frame_cache_misses'] =
+        _toInt(timeLog['lazy_frame_cache_misses']) + 1;
     timeLog['parsed_frame_count'] = _cache.length;
-    timeLog['lazy_frame_parse_ms'] = _toInt(timeLog['lazy_frame_parse_ms']) + sw.elapsedMilliseconds;
+    timeLog['lazy_frame_parse_ms'] =
+        _toInt(timeLog['lazy_frame_parse_ms']) + sw.elapsedMilliseconds;
     timeLog['lazy_frame_last_index'] = index;
     timeLog['lazy_frame_last_parse_ms'] = sw.elapsedMilliseconds;
     return enriched;
@@ -138,7 +143,8 @@ class PythonMultiLevelChanAnalysisSource {
     final totalSw = Stopwatch()..start();
     final stages = <String, int>{};
     final selectedRuntimePath = runtimePath ?? RuntimePathController.current;
-    final runtimeDiagnostics = RuntimePathController.diagnostics(selectedRuntimePath);
+    final runtimeDiagnostics =
+        RuntimePathController.diagnostics(selectedRuntimePath);
 
     final requestBuildSw = Stopwatch()..start();
     final normalizedLevels = [
@@ -171,9 +177,8 @@ class PythonMultiLevelChanAnalysisSource {
     }
 
     final readySw = Stopwatch()..start();
-    final sourceBase = Platform.isWindows
-        ? await _readyAppManagedBaseUrl(stages)
-        : baseUrl;
+    final sourceBase =
+        Platform.isWindows ? await _readyAppManagedBaseUrl(stages) : baseUrl;
     stages['frontend.backend_ready'] = readySw.elapsedMilliseconds;
 
     return _postAnalyzeMulti(
@@ -191,6 +196,12 @@ class PythonMultiLevelChanAnalysisSource {
         'max_step_frames': effectiveConfig['max_step_frames'],
         'chan_config_changed_count': ChanConfigStore.changedCount,
         'chan_config_source': ChanConfigStore.sourceBranch,
+        'chan_config_bi_algo': effectiveConfig['bi_algo'],
+        'chan_config_seg_algo': effectiveConfig['seg_algo'],
+        'chan_config_zs_algo': effectiveConfig['zs_algo'],
+        'chan_config_bs_type': effectiveConfig['bs_type'],
+        'level_promoter_max_level': effectiveConfig['level_promoter_max_level'],
+        'recursive_seg_max_level': effectiveConfig['recursive_seg_max_level'],
         'start': startDate == null ? null : _fmtDate(startDate),
         'end': endDate == null ? null : _fmtDate(endDate),
         ...runtimeDiagnostics,
@@ -216,7 +227,8 @@ class PythonMultiLevelChanAnalysisSource {
       }
     }
     startOrReuseSw.stop();
-    stages['frontend.backend_ready.start_or_reuse'] = startOrReuseSw.elapsedMilliseconds;
+    stages['frontend.backend_ready.start_or_reuse'] =
+        startOrReuseSw.elapsedMilliseconds;
 
     final healthSw = Stopwatch()..start();
     if (reused) {
@@ -237,7 +249,8 @@ class PythonMultiLevelChanAnalysisSource {
       }
     }
     healthSw.stop();
-    stages['frontend.backend_ready.health_check'] = healthSw.elapsedMilliseconds;
+    stages['frontend.backend_ready.health_check'] =
+        healthSw.elapsedMilliseconds;
 
     readySw.stop();
     _sharedLocalProcess!.markRequest(
@@ -344,7 +357,8 @@ class PythonMultiLevelChanAnalysisSource {
     stages['frontend.parse.top_snapshot'] = topParseSw.elapsedMilliseconds;
     stages.addAll(topSnapshotStages);
     if (snapshot == null) {
-      throw const FormatException('chan.py multi-level response missing levels structure');
+      throw const FormatException(
+          'chan.py multi-level response missing levels structure');
     }
 
     final decodedMeta = decoded['meta'] is Map
@@ -376,8 +390,10 @@ class PythonMultiLevelChanAnalysisSource {
     final intervalSignals = _parseIntervalNestSignals(
       decoded['interval_nest_signals'] ?? decoded['intervalNestSignals'],
     );
-    stages['frontend.parse.interval_signals'] = signalsParseSw.elapsedMilliseconds;
-    stages['frontend.parse.snapshot_frames_relations_bsp'] = parseSw.elapsedMilliseconds;
+    stages['frontend.parse.interval_signals'] =
+        signalsParseSw.elapsedMilliseconds;
+    stages['frontend.parse.snapshot_frames_relations_bsp'] =
+        parseSw.elapsedMilliseconds;
 
     final meta = Map<String, dynamic>.from(decodedMeta)
       ..addAll(_runtimePathDiagnosticsFromRequest(requestContext));
@@ -452,10 +468,13 @@ class PythonMultiLevelChanAnalysisSource {
     required int responseBytes,
   }) {
     final frontendTotal = stages['frontend.total'] ?? 0;
-    final backendElapsed = _numToInt(meta['backend_elapsed_ms']) ?? stages['frontend.http_round_trip'] ?? 0;
+    final backendElapsed = _numToInt(meta['backend_elapsed_ms']) ??
+        stages['frontend.http_round_trip'] ??
+        0;
     final runtime = backendDiagnostics ?? const <String, dynamic>{};
     final backendStages = _backendTimingStages(meta);
-    final runtimeDiagnostics = _runtimePathDiagnosticsFromRequest(requestContext);
+    final runtimeDiagnostics =
+        _runtimePathDiagnosticsFromRequest(requestContext);
     return {
       'trace_id': traceId,
       'mode': requestContext['mode'],
@@ -466,11 +485,19 @@ class PythonMultiLevelChanAnalysisSource {
       'max_step_frames': requestContext['max_step_frames'],
       'chan_config_changed_count': requestContext['chan_config_changed_count'],
       'chan_config_source': requestContext['chan_config_source'],
+      'chan_config_bi_algo': requestContext['chan_config_bi_algo'],
+      'chan_config_seg_algo': requestContext['chan_config_seg_algo'],
+      'chan_config_zs_algo': requestContext['chan_config_zs_algo'],
+      'chan_config_bs_type': requestContext['chan_config_bs_type'],
+      'level_promoter_max_level': requestContext['level_promoter_max_level'],
+      'recursive_seg_max_level': requestContext['recursive_seg_max_level'],
       'start': requestContext['start'],
       'end': requestContext['end'],
       ...runtimeDiagnostics,
-      'backend_url': meta['backend_url'] ?? runtime['backend_url'] ?? sourceBaseUrl ?? '',
-      'python_runtime': meta['python_runtime'] ?? runtime['python_runtime'] ?? '',
+      'backend_url':
+          meta['backend_url'] ?? runtime['backend_url'] ?? sourceBaseUrl ?? '',
+      'python_runtime':
+          meta['python_runtime'] ?? runtime['python_runtime'] ?? '',
       'process_source': runtime['process_source'] ?? '',
       'total_elapsed_ms': frontendTotal,
       'backend_elapsed_ms': backendElapsed,
@@ -489,16 +516,21 @@ class PythonMultiLevelChanAnalysisSource {
       'backend_process_ready_at': runtime['backend_process_ready_at'],
       'backend_process_uptime_ms': runtime['backend_process_uptime_ms'],
       'backend_startup_elapsed_ms': runtime['backend_startup_elapsed_ms'],
-      'backend_last_health_check_elapsed_ms': runtime['backend_last_health_check_elapsed_ms'],
+      'backend_last_health_check_elapsed_ms':
+          runtime['backend_last_health_check_elapsed_ms'],
       'backend_health_check_count': runtime['backend_health_check_count'],
       'backend_request_count': runtime['backend_request_count'],
       'backend_last_request_reused': runtime['backend_last_request_reused'],
       'backend_last_ready_elapsed_ms': runtime['backend_last_ready_elapsed_ms'],
       'backend_route_analyze_multi_ms': meta['backend_route_analyze_multi_ms'],
-      'backend_route_compact_transform_ms': meta['backend_route_compact_transform_ms'],
-      'backend_route_json_serialize_probe_ms': meta['backend_route_json_serialize_probe_ms'],
-      'backend_route_response_bytes_probe': meta['backend_route_response_bytes_probe'],
-      'backend_route_total_before_response_ms': meta['backend_route_total_before_response_ms'],
+      'backend_route_compact_transform_ms':
+          meta['backend_route_compact_transform_ms'],
+      'backend_route_json_serialize_probe_ms':
+          meta['backend_route_json_serialize_probe_ms'],
+      'backend_route_response_bytes_probe':
+          meta['backend_route_response_bytes_probe'],
+      'backend_route_total_before_response_ms':
+          meta['backend_route_total_before_response_ms'],
       'backend_data_cache_enabled': meta['backend_data_cache_enabled'],
       'backend_data_cache_hits': meta['backend_data_cache_hits'],
       'backend_data_cache_misses': meta['backend_data_cache_misses'],
@@ -506,9 +538,15 @@ class PythonMultiLevelChanAnalysisSource {
       'backend_data_cache_miss_levels': meta['backend_data_cache_miss_levels'],
       'backend_data_cache_key_count': meta['backend_data_cache_key_count'],
       'backend_data_cache_policy': meta['backend_data_cache_policy'],
-      'compact_first_step_frame_export': meta['compact_first_step_frame_export'],
-      'stages': <String, int>{...Map<String, int>.from(stages), ...backendStages},
-      'used_app_bundled_python': (meta['python_runtime'] ?? runtime['python_runtime']) == 'app_bundled',
+      'compact_first_step_frame_export':
+          meta['compact_first_step_frame_export'],
+      'stages': <String, int>{
+        ...Map<String, int>.from(stages),
+        ...backendStages
+      },
+      'used_app_bundled_python':
+          (meta['python_runtime'] ?? runtime['python_runtime']) ==
+              'app_bundled',
       'native_cchan_lv_list': meta['native_cchan_lv_list'],
       'fallback_to_bridge': meta['fallback_to_bridge'] ?? false,
       'step_frame_format': meta['step_frame_format'],
@@ -520,7 +558,8 @@ class PythonMultiLevelChanAnalysisSource {
       'include_bars_in_frames': meta['include_bars_in_frames'],
       'include_indicators_in_frames': meta['include_indicators_in_frames'],
       'compact_validation_status': meta['compact_validation_status'],
-      'compact_validation_mismatch_count': meta['compact_validation_mismatch_count'],
+      'compact_validation_mismatch_count':
+          meta['compact_validation_mismatch_count'],
       'status': 'ok',
     };
   }
@@ -531,10 +570,14 @@ class PythonMultiLevelChanAnalysisSource {
       final value = _numToInt(meta[metaKey]);
       if (value != null) result[stageName] = value;
     }
+
     add('backend.route.analyze_multi', 'backend_route_analyze_multi_ms');
-    add('backend.route.compact_transform', 'backend_route_compact_transform_ms');
-    add('backend.route.json_serialize_probe', 'backend_route_json_serialize_probe_ms');
-    add('backend.route.total_before_response', 'backend_route_total_before_response_ms');
+    add('backend.route.compact_transform',
+        'backend_route_compact_transform_ms');
+    add('backend.route.json_serialize_probe',
+        'backend_route_json_serialize_probe_ms');
+    add('backend.route.total_before_response',
+        'backend_route_total_before_response_ms');
     add('backend.native.data_load', 'backend_native_data_load_ms');
     add('backend.native.prepare_chan', 'backend_native_prepare_chan_ms');
     add('backend.native.step_export', 'backend_native_step_export_ms');
@@ -544,19 +587,27 @@ class PythonMultiLevelChanAnalysisSource {
     add('backend.data_cache.misses', 'backend_data_cache_misses');
     add('backend.data_cache.key_count', 'backend_data_cache_key_count');
     add('backend.step_export.iter', 'backend_step_export_iter_ms');
-    add('backend.step_export.frame_build', 'backend_step_export_frame_build_ms');
-    add('backend.step_export.level_snapshot', 'backend_step_export_level_snapshot_ms');
+    add('backend.step_export.frame_build',
+        'backend_step_export_frame_build_ms');
+    add('backend.step_export.level_snapshot',
+        'backend_step_export_level_snapshot_ms');
     add('backend.step_export.structure', 'backend_step_export_structure_ms');
-    add('backend.step_export.visible_bars', 'backend_step_export_visible_bars_ms');
-    add('backend.step_export.level_payload', 'backend_step_export_level_payload_ms');
+    add('backend.step_export.visible_bars',
+        'backend_step_export_visible_bars_ms');
+    add('backend.step_export.level_payload',
+        'backend_step_export_level_payload_ms');
     add('backend.step_export.relation', 'backend_step_export_relation_ms');
     add('backend.step_export.bsp', 'backend_step_export_bsp_ms');
-    add('backend.step_export.current_time', 'backend_step_export_current_time_ms');
-    add('backend.step_export.final_snapshot', 'backend_step_export_final_snapshot_ms');
+    add('backend.step_export.current_time',
+        'backend_step_export_current_time_ms');
+    add('backend.step_export.final_snapshot',
+        'backend_step_export_final_snapshot_ms');
     add('backend.step_export.total_frames', 'backend_step_export_total_frames');
-    add('backend.step_export.returned_frames', 'backend_step_export_returned_frames');
+    add('backend.step_export.returned_frames',
+        'backend_step_export_returned_frames');
     add('backend.step_export.bsp_count', 'backend_step_export_bsp_count');
-    add('backend.structure_export.merged', 'backend_structure_export_merged_ms');
+    add('backend.structure_export.merged',
+        'backend_structure_export_merged_ms');
     add('backend.structure_export.fx', 'backend_structure_export_fx_ms');
     add('backend.structure_export.bi', 'backend_structure_export_bi_ms');
     add('backend.structure_export.seg', 'backend_structure_export_seg_ms');
@@ -565,7 +616,8 @@ class PythonMultiLevelChanAnalysisSource {
     return result;
   }
 
-  Map<String, dynamic> _runtimePathDiagnosticsFromRequest(Map<String, dynamic> requestContext) {
+  Map<String, dynamic> _runtimePathDiagnosticsFromRequest(
+      Map<String, dynamic> requestContext) {
     final rawPath = '${requestContext['runtime_path'] ?? 'high_speed'}'.trim();
     final path = rawPath.isEmpty ? 'high_speed' : rawPath;
     final high = path != 'slow_path';
@@ -591,7 +643,8 @@ class PythonMultiLevelChanAnalysisSource {
       parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
     );
     if (snapshot == null) {
-      throw const FormatException('chan.py multi-level response missing levels structure');
+      throw const FormatException(
+          'chan.py multi-level response missing levels structure');
     }
 
     final frames = MultiLevelChanAnalysisParser.parseFrames(

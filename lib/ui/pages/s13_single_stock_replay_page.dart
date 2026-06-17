@@ -10,6 +10,8 @@ import '../../core/models/level_relation.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/models/rhythm.dart';
 import '../../core/runtime/runtime_path.dart';
+import '../../core/settings/chan_config_store.dart';
+import '../../core/settings/level_promoter_settings.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
@@ -84,15 +86,79 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   Offset _floatingToolbarOffset = const Offset(12, 54);
   final Map<String, Offset> _replayControlOffsets = <String, Offset>{};
   S13RhythmDisplaySettings _rhythmSettings = const S13RhythmDisplaySettings();
+  String _loadedChanConfigFingerprint = '';
+  bool _chanConfigDirtySinceLoad = false;
+  Timer? _chanConfigChangeSnackTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadedChanConfigFingerprint = _chanConfigFingerprint();
+    ChanConfigStore.notifier.addListener(_handleGlobalChanConfigChanged);
+    LevelPromoterSettings.maxLayer.addListener(_handleGlobalChanConfigChanged);
+  }
 
   @override
   void dispose() {
+    ChanConfigStore.notifier.removeListener(_handleGlobalChanConfigChanged);
+    LevelPromoterSettings.maxLayer
+        .removeListener(_handleGlobalChanConfigChanged);
+    _chanConfigChangeSnackTimer?.cancel();
     _backendUrlController.dispose();
     _symbolController.dispose();
     _marketController.dispose();
     _toolboxOpenSignal.dispose();
     _playTimer?.cancel();
     super.dispose();
+  }
+
+  String _chanConfigFingerprint() {
+    final entries = ChanConfigStore.values.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final valuesText =
+        entries.map((entry) => '${entry.key}=${entry.value}').join('|');
+    return '$valuesText|level_promoter_max_level=${LevelPromoterSettings.currentMaxLayer}';
+  }
+
+  void _handleGlobalChanConfigChanged() {
+    if (!mounted) return;
+
+    final currentFingerprint = _chanConfigFingerprint();
+    final hasLoadedReplay = _analysis != null;
+    final dirty =
+        hasLoadedReplay && currentFingerprint != _loadedChanConfigFingerprint;
+
+    if (_chanConfigDirtySinceLoad != dirty) {
+      setState(() {
+        _chanConfigDirtySinceLoad = dirty;
+        if (dirty) {
+          _status = '缠论设置已变更，请重新加载';
+        }
+      });
+    } else if (dirty && _status != '缠论设置已变更，请重新加载') {
+      setState(() => _status = '缠论设置已变更，请重新加载');
+    }
+
+    if (dirty) {
+      _showChanConfigChangedSnack();
+    }
+  }
+
+  void _showChanConfigChangedSnack() {
+    _chanConfigChangeSnackTimer?.cancel();
+    _chanConfigChangeSnackTimer = Timer(const Duration(milliseconds: 120), () {
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      if (messenger == null) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('缠论设置已变更，请重新加载'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    });
   }
 
   DateTime get _defaultEndDate =>
@@ -593,6 +659,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final source = PythonMultiLevelChanAnalysisSource(
       baseUrl: _backendUrlController.text.trim(),
     );
+    final requestConfigFingerprint = _chanConfigFingerprint();
     try {
       final a = await source.analyzeMulti(
           mode: requestMode,
@@ -618,6 +685,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       if (!mounted) return;
       setState(() {
         _analysis = a;
+        _loadedChanConfigFingerprint = requestConfigFingerprint;
+        _chanConfigDirtySinceLoad =
+            _chanConfigFingerprint() != requestConfigFingerprint;
         _frameIndex = 0;
         final init = _currentSnapshot ?? a.snapshot;
         _activeLevel = init.safeActiveLevel;
@@ -672,8 +742,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _viewEndIndex = null;
       _crosshairIndex = null;
       _priceScale = 1.0;
+      final activeBiCount = f.of(level)?.bis.length ?? 0;
       _status =
-          'S13 step frame ${next + 1}/${a.frames.length} active:$level relations:${f.relations.length} nested_markers:${_nestedBspMarkers.length} candidate_trail:$_bspCandidateTrailCount missing_edges:${_missingAdjacentRelationEdges().join(',')}';
+          'S13 step frame ${next + 1}/${a.frames.length} active:$level active_bi:$activeBiCount loaded_config:{${_loadedChanConfigSummary(a)}} final_bi_counts:{${_biCountSummary(a.snapshot)}} current_bi_counts:{${_biCountSummary(f)}} relations:${f.relations.length} nested_markers:${_nestedBspMarkers.length} candidate_trail:$_bspCandidateTrailCount missing_edges:${_missingAdjacentRelationEdges().join(',')}';
     });
   }
 
@@ -1846,10 +1917,44 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Colors.white12)));
+  Object? _analysisTimeLogValue(
+      PythonMultiLevelChanAnalysis analysis, String key) {
+    final timeLog = analysis.meta['time_log'];
+    if (timeLog is Map) return timeLog[key];
+    return analysis.meta[key];
+  }
+
+  String _loadedChanConfigSummary(PythonMultiLevelChanAnalysis analysis) {
+    final bi =
+        _analysisTimeLogValue(analysis, 'chan_config_bi_algo') ?? 'unknown';
+    final seg =
+        _analysisTimeLogValue(analysis, 'chan_config_seg_algo') ?? 'unknown';
+    final zs =
+        _analysisTimeLogValue(analysis, 'chan_config_zs_algo') ?? 'unknown';
+    final n = _analysisTimeLogValue(analysis, 'level_promoter_max_level') ??
+        _analysisTimeLogValue(analysis, 'recursive_seg_max_level') ??
+        'unknown';
+    return 'bi_algo=$bi seg_algo=$seg zs_algo=$zs N=$n';
+  }
+
+  String _biCountSummary(MultiLevelChanSnapshot snapshot) {
+    if (snapshot.levels.isEmpty) return 'none';
+    return snapshot.levels.map((level) {
+      final normalized = level.trim().toUpperCase();
+      final snap = snapshot.snapshots[level] ?? snapshot.snapshots[normalized];
+      return '$normalized:${snap?.bis.length ?? 0}';
+    }).join(',');
+  }
+
   String _buildStatus(PythonMultiLevelChanAnalysis a, DateTime s, DateTime e) {
     final m = a.meta;
     final rhythm = _rhythmSummaryFor(_activeSnapshot);
-    return 'S13 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(a)} native:${m['native_cchan_lv_list']} fallback:${m['fallback_to_bridge'] ?? false} frames:${a.frames.length} active_frame:$_stepFrameLabel levels:${a.snapshot.levels.join(',')} window:${_fmtDate(s)}~${_fmtDate(e)} nested_markers:${_nestedBspMarkers.length} candidate_trail:$_bspCandidateTrailCount rhythm_1382_line_count:${rhythm.lineCount} rhythm_1382_hit_count:${rhythm.hitCount} rhythm_1382_visible_lines:$_showRhythmLines rhythm_1382_visible_hits:$_show1382Hits rhythm_1382_backend_route_ms:${m['backend_route_rhythm_1382_overlay_ms'] ?? 'unknown'} rhythm_1382_overlay_policy:$_rhythmPolicy dart_chan_calculation_authority: false';
+    final loadedConfig = _loadedChanConfigSummary(a);
+    final finalBiCounts = _biCountSummary(a.snapshot);
+    final current = _currentSnapshot;
+    final currentBiCounts = current == null ? 'none' : _biCountSummary(current);
+    final activeBiCount = _activeSnapshot?.bis.length ?? 0;
+    return 'S13 analyze_multi ${_mode.toUpperCase()} runtime_path:${_runtimePathText(a)} native:${m['native_cchan_lv_list']} fallback:${m['fallback_to_bridge'] ?? false} loaded_config:{$loadedConfig} frames:${a.frames.length} active_frame:$_stepFrameLabel levels:${a.snapshot.levels.join(',')} window:${_fmtDate(s)}~${_fmtDate(e)} final_bi_counts:{$finalBiCounts} current_bi_counts:{$currentBiCounts} active_bi:$_activeLevel=$activeBiCount nested_markers:${_nestedBspMarkers.length} candidate_trail:$_bspCandidateTrailCount rhythm_1382_line_count:${rhythm.lineCount} rhythm_1382_hit_count:${rhythm.hitCount} rhythm_1382_visible_lines:$_showRhythmLines rhythm_1382_visible_hits:$_show1382Hits rhythm_1382_backend_route_ms:${m['backend_route_rhythm_1382_overlay_ms'] ?? 'unknown'} rhythm_1382_overlay_policy:$_rhythmPolicy dart_chan_calculation_authority: false';
   }
 
   String _runtimePathText(PythonMultiLevelChanAnalysis analysis) {
