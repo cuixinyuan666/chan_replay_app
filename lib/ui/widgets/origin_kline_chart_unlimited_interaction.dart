@@ -119,6 +119,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
 
   _DragAxis? _dragAxis;
   double _panRemainder = 0.0;
+  bool _dragSessionActive = false;
   TradingViewDrawingTool _selectedTool = TradingViewDrawingTool.cursor;
 
   @override
@@ -282,17 +283,17 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   }
 
   void _handlePointerDown(PointerDownEvent event, _ChartRects rects) {
+    _clearDragState();
     if (!_isViewportDragEnabled) return;
     if ((event.buttons & kPrimaryMouseButton) == 0) return;
     if (!rects.mainRect.contains(event.localPosition)) return;
-    _dragAxis = null;
-    _panRemainder = 0.0;
+    _dragSessionActive = true;
   }
 
   void _handlePointerMove(PointerMoveEvent event, _ChartRects rects) {
-    if (!_isViewportDragEnabled) return;
-    if ((event.buttons & kPrimaryMouseButton) == 0) return;
-    if (_dragAxis == null && !rects.mainRect.contains(event.localPosition)) {
+    if (!_dragSessionActive || !_isViewportDragEnabled) return;
+    if ((event.buttons & kPrimaryMouseButton) == 0) {
+      _clearDragState();
       return;
     }
     final delta = event.delta;
@@ -318,6 +319,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   void _clearDragState() {
     _dragAxis = null;
     _panRemainder = 0.0;
+    _dragSessionActive = false;
   }
 
   _DragAxis? _resolveDragAxis(Offset delta) {
