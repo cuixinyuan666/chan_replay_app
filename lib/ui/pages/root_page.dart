@@ -28,12 +28,23 @@ class _RootPageState extends State<RootPage> {
   static const int _chipDistributionIndex = 8;
 
   int _index = _multiLevelIndex;
+  bool _settingsOpen = false;
   final Set<int> _visited = <int>{_multiLevelIndex};
+
+  void _closeSettings() {
+    if (!_settingsOpen) return;
+    setState(() => _settingsOpen = false);
+  }
 
   void _open(int index) {
     final target = index == _removedLegacyReplayIndex ? _multiLevelIndex : index;
-    if (_index == target) return;
+    if (target == _settingsIndex) {
+      setState(() => _settingsOpen = !_settingsOpen);
+      return;
+    }
+    if (_index == target && !_settingsOpen) return;
     setState(() {
+      _settingsOpen = false;
       _index = target;
       _visited.add(target);
     });
@@ -64,12 +75,22 @@ class _RootPageState extends State<RootPage> {
               const _RouteBuilder(child: ChipDistributionPage()),
             ],
           ),
+          if (_settingsOpen)
+            Positioned.fill(
+              child: ChanSettingsPage(
+                overlayMode: true,
+                onClose: _closeSettings,
+              ),
+            ),
           Positioned(
             left: 3,
             bottom: 18,
             child: Opacity(
               opacity: 0.18,
-              child: _RouteToolColumn(currentIndex: _index, onOpen: _open),
+              child: _RouteToolColumn(
+                currentIndex: _settingsOpen ? _settingsIndex : _index,
+                onOpen: _open,
+              ),
             ),
           ),
         ],
@@ -144,45 +165,10 @@ class _RouteToolColumn extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           _RouteToolButton(
-            tooltip: '级别推进器',
-            icon: Icons.double_arrow,
-            selected: currentIndex == _RootPageState._levelPromoterIndex,
-            onPressed: () => onOpen(_RootPageState._levelPromoterIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: 'S8批量候选',
-            icon: Icons.view_list,
-            selected: currentIndex == _RootPageState._s8BatchIndex,
-            onPressed: () => onOpen(_RootPageState._s8BatchIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '研究',
-            icon: Icons.science,
-            selected: currentIndex == _RootPageState._researchIndex,
-            onPressed: () => onOpen(_RootPageState._researchIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
             tooltip: '设置',
             icon: Icons.settings,
             selected: currentIndex == _RootPageState._settingsIndex,
             onPressed: () => onOpen(_RootPageState._settingsIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '运行日志',
-            icon: Icons.receipt_long,
-            selected: currentIndex == _RootPageState._runLogIndex,
-            onPressed: () => onOpen(_RootPageState._runLogIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '筹码分布',
-            icon: Icons.stacked_bar_chart,
-            selected: currentIndex == _RootPageState._chipDistributionIndex,
-            onPressed: () => onOpen(_RootPageState._chipDistributionIndex),
           ),
         ],
       ),
@@ -211,15 +197,9 @@ class _RouteToolButton extends StatelessWidget {
         width: 42,
         height: 38,
         child: IconButton(
-          onPressed: selected ? null : onPressed,
+          onPressed: onPressed,
           icon: Icon(icon, size: 19),
           color: selected ? Colors.white : Colors.white70,
-          disabledColor: Colors.white,
-          style: IconButton.styleFrom(
-            backgroundColor: selected ? const Color(0xFF2962FF) : const Color(0xEE131722),
-            side: BorderSide(color: selected ? const Color(0xFF8AB4FF) : Colors.white24),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
         ),
       ),
     );
