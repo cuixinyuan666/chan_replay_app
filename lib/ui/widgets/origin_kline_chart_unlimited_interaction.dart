@@ -216,14 +216,9 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
           totalSubHeight -
           (safeSubPanelCount > 0 ? _panelGap : 0),
     );
-    final mainRect = Rect.fromLTWH(_leftPad, _topPad, contentWidth, mainHeight);
-    final subRects = <Rect>[];
-    var top = mainRect.bottom + _panelGap;
-    for (var i = 0; i < safeSubPanelCount; i++) {
-      subRects.add(Rect.fromLTWH(_leftPad, top, contentWidth, _subPanelHeight));
-      top += _subPanelHeight + _panelGap;
-    }
-    return _ChartRects(mainRect: mainRect, subRects: subRects);
+    return _ChartRects(
+      mainRect: Rect.fromLTWH(_leftPad, _topPad, contentWidth, mainHeight),
+    );
   }
 
   void _handleWheel(PointerScrollEvent event, _ChartRects rects) {
@@ -408,7 +403,6 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
 
 class _ChartRects {
   final Rect mainRect;
-  final List<Rect> subRects;
 
-  const _ChartRects({required this.mainRect, required this.subRects});
+  const _ChartRects({required this.mainRect});
 }
