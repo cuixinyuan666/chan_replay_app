@@ -9,7 +9,7 @@ class PermanentWindowControls extends StatelessWidget {
   final VoidCallback? onMaximizeRestore;
   final VoidCallback? onClose;
   final bool maximized;
-  final EdgeInsetsGeometry padding;
+  final EdgeInsets padding;
 
   const PermanentWindowControls({
     super.key,
