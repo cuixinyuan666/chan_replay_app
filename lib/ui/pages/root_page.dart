@@ -19,13 +19,7 @@ class RootPage extends StatefulWidget {
 class _RootPageState extends State<RootPage> {
   static const int _removedLegacyReplayIndex = 0;
   static const int _multiLevelIndex = 1;
-  static const int _scannerIndex = 2;
-  static const int _levelPromoterIndex = 3;
-  static const int _s8BatchIndex = 4;
-  static const int _researchIndex = 5;
   static const int _settingsIndex = 6;
-  static const int _runLogIndex = 7;
-  static const int _chipDistributionIndex = 8;
 
   int _index = _multiLevelIndex;
   bool _settingsOpen = false;
@@ -37,7 +31,8 @@ class _RootPageState extends State<RootPage> {
   }
 
   void _open(int index) {
-    final target = index == _removedLegacyReplayIndex ? _multiLevelIndex : index;
+    final target =
+        index == _removedLegacyReplayIndex ? _multiLevelIndex : index;
     if (target == _settingsIndex) {
       setState(() => _settingsOpen = !_settingsOpen);
       return;
@@ -82,17 +77,6 @@ class _RootPageState extends State<RootPage> {
                 onClose: _closeSettings,
               ),
             ),
-          Positioned(
-            left: 3,
-            bottom: 18,
-            child: Opacity(
-              opacity: 0.18,
-              child: _RouteToolColumn(
-                currentIndex: _settingsOpen ? _settingsIndex : _index,
-                onOpen: _open,
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -133,115 +117,6 @@ class _LazyRouteStack extends StatelessWidget {
             ),
           ),
       ],
-    );
-  }
-}
-
-class _RouteToolColumn extends StatelessWidget {
-  final int currentIndex;
-  final ValueChanged<int> onOpen;
-
-  const _RouteToolColumn({required this.currentIndex, required this.onOpen});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _RouteToolButton(
-            tooltip: '单股多级别复盘',
-            icon: Icons.account_tree,
-            selected: currentIndex == _RootPageState._multiLevelIndex,
-            onPressed: () => onOpen(_RootPageState._multiLevelIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '扫描器',
-            icon: Icons.radar,
-            selected: currentIndex == _RootPageState._scannerIndex,
-            onPressed: () => onOpen(_RootPageState._scannerIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '级别推进器',
-            icon: Icons.double_arrow,
-            selected: currentIndex == _RootPageState._levelPromoterIndex,
-            onPressed: () => onOpen(_RootPageState._levelPromoterIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: 'S8批量候选',
-            icon: Icons.view_list,
-            selected: currentIndex == _RootPageState._s8BatchIndex,
-            onPressed: () => onOpen(_RootPageState._s8BatchIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '研究',
-            icon: Icons.science,
-            selected: currentIndex == _RootPageState._researchIndex,
-            onPressed: () => onOpen(_RootPageState._researchIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '设置',
-            icon: Icons.settings,
-            selected: currentIndex == _RootPageState._settingsIndex,
-            onPressed: () => onOpen(_RootPageState._settingsIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '运行日志',
-            icon: Icons.receipt_long,
-            selected: currentIndex == _RootPageState._runLogIndex,
-            onPressed: () => onOpen(_RootPageState._runLogIndex),
-          ),
-          const SizedBox(height: 6),
-          _RouteToolButton(
-            tooltip: '筹码分布',
-            icon: Icons.stacked_bar_chart,
-            selected: currentIndex == _RootPageState._chipDistributionIndex,
-            onPressed: () => onOpen(_RootPageState._chipDistributionIndex),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RouteToolButton extends StatelessWidget {
-  final String tooltip;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  const _RouteToolButton({
-    required this.tooltip,
-    required this.icon,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: SizedBox(
-        width: 42,
-        height: 38,
-        child: IconButton(
-          onPressed: onPressed,
-          icon: Icon(icon, size: 19),
-          color: selected ? Colors.white : Colors.white70,
-          style: IconButton.styleFrom(
-            backgroundColor: selected ? const Color(0xFF2962FF) : const Color(0xEE131722),
-            side: BorderSide(color: selected ? const Color(0xFF8AB4FF) : Colors.white24),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        ),
-      ),
     );
   }
 }

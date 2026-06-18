@@ -33,7 +33,7 @@ class AutoCollapsibleSideToolbar extends StatefulWidget {
     this.initiallyExpanded = true,
     this.autoCollapseDelay = const Duration(seconds: 5),
     this.expandedWidth = 286,
-    this.collapsedWidth = 44,
+    this.collapsedWidth = 52,
     this.top = 12,
     this.bottom = 12,
     this.onExpandedChanged,
@@ -132,13 +132,12 @@ class _AutoCollapsibleSideToolbarState
               color: Colors.transparent,
               child: Stack(
                 children: <Widget>[
-                  if (!_expanded)
-                    Positioned.fill(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _setExpanded(true),
-                      ),
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: _expanded ? null : () => _setExpanded(true),
                     ),
+                  ),
                   Positioned.fill(
                     child: IgnorePointer(
                       ignoring: !_expanded,
@@ -205,7 +204,7 @@ class _ToolbarBody extends StatelessWidget {
         child: SingleChildScrollView(
           controller: scrollController,
           physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(10, 10, 16, 10),
+          padding: const EdgeInsets.fromLTRB(10, 10, 18, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
@@ -275,8 +274,8 @@ class _ToolbarToggleButton extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: onPressed,
           child: Container(
-            width: 38,
-            height: 58,
+            width: 44,
+            height: 64,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: const Color(0xF01E293B),
@@ -294,7 +293,7 @@ class _ToolbarToggleButton extends StatelessWidget {
               expanded ? '<' : '>',
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: FontWeight.w800,
               ),
             ),
