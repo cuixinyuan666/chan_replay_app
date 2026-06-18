@@ -137,7 +137,8 @@ class S13QuickSideToolbar extends StatelessWidget {
       return;
     }
     if (widget is Padding) {
-      _collectWidgetSettings(widget.child, out, depth: depth);
+      final child = widget.child;
+      if (child != null) _collectWidgetSettings(child, out, depth: depth);
       return;
     }
     if (widget is Align) {
