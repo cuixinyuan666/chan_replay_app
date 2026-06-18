@@ -6,10 +6,12 @@ import 'auto_collapsible_side_toolbar.dart';
 /// S13-specific adapter for the reusable left side toolbar shell.
 class S13QuickSideToolbar extends StatelessWidget {
   final List<SideToolbarSection> sections;
+  final String Function()? currentSettingsTextBuilder;
 
   const S13QuickSideToolbar({
     super.key,
     required this.sections,
+    this.currentSettingsTextBuilder,
   });
 
   @override
@@ -50,6 +52,9 @@ class S13QuickSideToolbar extends StatelessWidget {
   }
 
   String _toolbarSettingsText() {
+    final explicit = currentSettingsTextBuilder?.call().trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+
     final buffer = StringBuffer()
       ..writeln('S13_CURRENT_TOOLBAR_SETTINGS')
       ..writeln('generated_at=${DateTime.now().toIso8601String()}')
