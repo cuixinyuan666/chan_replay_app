@@ -77,7 +77,7 @@ class S13QuickSideToolbar extends StatelessWidget {
     List<String> out, {
     required int depth,
   }) {
-    final indent = '  ' * depth;
+    final indent = ''.padLeft(depth * 2);
     if (widget is Text) {
       final text = widget.data?.trim();
       if (text != null && text.isNotEmpty) out.add('$indent- text=$text');
