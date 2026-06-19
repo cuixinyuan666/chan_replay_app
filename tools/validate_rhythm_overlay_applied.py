@@ -20,7 +20,7 @@ def main() -> None:
     p.add_argument('--start', default='2024-01-01')
     p.add_argument('--end', default='2024-12-31')
     p.add_argument('--count', type=int, default=900)
-    p.add_argument('--calc-mode', default='transition', choices=['normal', 'transition', 'strict1382'])
+    p.add_argument('--calc-mode', default='strict1382', choices=['transition', 'strict1382'])
     args = p.parse_args()
 
     level = args.level.strip().upper()

@@ -6,11 +6,9 @@ from typing import Any
 
 
 RHYTHM_RATIO = 1.382
-RHYTHM_CALC_MODE_NORMAL = 'normal'
 RHYTHM_CALC_MODE_TRANSITION = 'transition'
 RHYTHM_CALC_MODE_STRICT_1382 = 'strict1382'
 RHYTHM_CALC_MODES = {
-    RHYTHM_CALC_MODE_NORMAL,
     RHYTHM_CALC_MODE_TRANSITION,
     RHYTHM_CALC_MODE_STRICT_1382,
 }
@@ -63,8 +61,19 @@ def _enabled(config: dict[str, Any] | None) -> bool:
 
 
 def _calc_mode(config: dict[str, Any] | None) -> str:
-    value = str((config or {}).get('rhythm_calc_mode') or RHYTHM_CALC_MODE_NORMAL).strip()
-    return value if value in RHYTHM_CALC_MODES else RHYTHM_CALC_MODE_NORMAL
+    value = str((config or {}).get('rhythm_calc_mode') or RHYTHM_CALC_MODE_STRICT_1382).strip()
+    if value == 'normal' or value not in RHYTHM_CALC_MODES:
+        return RHYTHM_CALC_MODE_STRICT_1382
+    return value
+
+
+def _deprecated_calc_mode_note(config: dict[str, Any] | None) -> str:
+    value = str((config or {}).get('rhythm_calc_mode') or '').strip()
+    if value == 'normal':
+        return 'normal is deprecated; treated as strict1382'
+    if value and value not in RHYTHM_CALC_MODES:
+        return f'{value} is invalid; treated as strict1382'
+    return ''
 
 
 def _level_label(level: str) -> str:
@@ -244,19 +253,33 @@ def _threshold(direction: str, *, prev_same_val: float, opposite_val: float) -> 
     return float('nan')
 
 
-def _retrace_allowed(mode: str, direction: str, *, b_val: float, d_val: float, threshold: float) -> bool:
-    if mode == RHYTHM_CALC_MODE_NORMAL:
+def _retrace_allowed(
+    mode: str,
+    direction: str,
+    *,
+    a_val: float,
+    b_val: float,
+    c_val: float,
+    d_val: float,
+    threshold: float,
+) -> bool:
+    """Enforce transition first; strict1382 then adds its threshold gate."""
+    if not _monotonic_rhythm_triplet(
+        direction,
+        first_start=a_val,
+        first_end=b_val,
+        retrace_end=c_val,
+        current_end=d_val,
+    ):
+        return False
+    if mode == RHYTHM_CALC_MODE_TRANSITION:
         return True
     eps = 1e-12
     if direction == 'UP':
-        if d_val + eps < b_val:
-            return False
-        return mode != RHYTHM_CALC_MODE_STRICT_1382 or d_val + eps >= threshold
+        return mode == RHYTHM_CALC_MODE_STRICT_1382 and d_val + eps >= threshold
     if direction == 'DOWN':
-        if d_val - eps > b_val:
-            return False
-        return mode != RHYTHM_CALC_MODE_STRICT_1382 or d_val - eps <= threshold
-    return True
+        return mode == RHYTHM_CALC_MODE_STRICT_1382 and d_val - eps <= threshold
+    return False
 
 
 def _monotonic_rhythm_triplet(
@@ -354,14 +377,6 @@ def _build_parent_entries(
             d_val = float(d_line.end_val)
             gate_b = seq[2 * (round_current - 1)]
             gate_c = seq[2 * (round_current - 1) + 1]
-            if not _monotonic_rhythm_triplet(
-                rhythm_dir,
-                first_start=gate_b.begin_val,
-                first_end=gate_b.end_val,
-                retrace_end=gate_c.end_val,
-                current_end=d_val,
-            ):
-                continue
             gate_threshold = _threshold(
                 rhythm_dir,
                 prev_same_val=gate_b.end_val,
@@ -370,12 +385,16 @@ def _build_parent_entries(
             if not _finite(gate_threshold) or not _retrace_allowed(
                 mode,
                 rhythm_dir,
+                a_val=gate_b.begin_val,
                 b_val=gate_b.end_val,
+                c_val=gate_c.end_val,
                 d_val=d_val,
                 threshold=gate_threshold,
             ):
                 continue
 
+            # ABCD confirms the rhythm. E is the next opposite child endpoint
+            # and defines the rendered C->E span, including a parent turn.
             line_end = seq[2 * round_current + 1]
             self_line_id = ''
             self_threshold = float(gate_threshold)
@@ -436,7 +455,7 @@ def _build_parent_entries(
                     # Every line in one round_ref group shares its C-point time.
                     'x1': int(c_line.end_x),
                     'y1': float(rhythm_price),
-                    # Keep the existing current-round endpoint policy.
+                    # D confirms; the next opposite child endpoint E renders.
                     'x2': int(line_end.end_x),
                     'y2': float(rhythm_price),
                     'backend_authority': 'python_backend_monotonic_rhythm_overlay',
@@ -523,11 +542,12 @@ def with_level_rhythm_overlay(level: str, level_payload: dict[str, Any], config:
     meta.update({
         'rhythm_1382_enabled': True,
         'rhythm_calc_mode': mode,
+        'rhythm_calc_mode_compat_note': _deprecated_calc_mode_note(config),
         'rhythm_line_count': len(lines),
         'rhythm_hit_count': len(hits),
         'rhythm_policy': 'backend parent-child rhythm overlay ported from chan_month5 full-optimization a_replay_trainer.py; Dart only parses/renders',
         'rhythm_mapping_policy': 'fx->bi, bi->seg, seg->segseg; only rising UP-DOWN-UP or falling DOWN-UP-DOWN child structures qualify, independent of parent direction',
-        'rhythm_group_anchor_policy': 'same round_ref group shares the same x1; x2 keeps the current-round endpoint',
+        'rhythm_group_anchor_policy': 'numbering resets per parent_key; ABCD confirms and each line renders C-to-E using the next opposite child endpoint',
         'rhythm_level_field_policy': 'line.level/hit.level is chart timeframe; source_kind is structure kind',
         'rhythm_1382_cap_policy': 'trainer parity: backend rhythm export is uncapped; Flutter may still display a subset for performance',
     })
@@ -538,6 +558,9 @@ def with_level_rhythm_overlay(level: str, level_payload: dict[str, Any], config:
 def with_multilevel_rhythm_overlay(result: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
     if not _enabled(config) or not isinstance(result, dict):
         return result
+
+    mode = _calc_mode(config)
+    compat_note = _deprecated_calc_mode_note(config)
 
     def patch_snapshot(snapshot: Any) -> Any:
         if not isinstance(snapshot, dict):
@@ -561,6 +584,8 @@ def with_multilevel_rhythm_overlay(result: dict[str, Any], config: dict[str, Any
         meta = dict(patched.get('meta')) if isinstance(patched.get('meta'), dict) else {}
         meta.update({
             'rhythm_1382_enabled': True,
+            'rhythm_calc_mode': mode,
+            'rhythm_calc_mode_compat_note': compat_note,
             'rhythm_1382_total_lines': total_lines,
             'rhythm_1382_total_hits': total_hits,
             'rhythm_1382_scope': 'multi_level_snapshot_levels_and_step_frames',

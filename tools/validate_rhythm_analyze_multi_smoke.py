@@ -181,7 +181,7 @@ def main() -> None:
     parser.add_argument('--mode', default='once', choices=['once', 'step'])
     parser.add_argument('--main-level', default='DAILY')
     parser.add_argument('--clock-level', default='MIN30')
-    parser.add_argument('--calc-mode', default='transition', choices=['normal', 'transition', 'strict1382'])
+    parser.add_argument('--calc-mode', default='strict1382', choices=['transition', 'strict1382'])
     parser.add_argument('--require-lines', action='store_true')
     parser.add_argument('--single-level-fallback', dest='single_level_fallback', action='store_true', default=True,
                         help='If native multi-level alignment fails because a child K-line is missing, validate each requested level independently.')

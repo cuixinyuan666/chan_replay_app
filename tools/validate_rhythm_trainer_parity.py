@@ -94,22 +94,19 @@ def validate_rhythm_price_not_threshold() -> None:
 
 
 def validate_calc_mode_semantics() -> None:
-    # d=21 is stronger than b=20, but weaker than 1.382 threshold ~=22.292.
-    # The mandatory monotonic structure passes normal/transition, while the
-    # additional 1.382 gate still rejects it in strict mode.
-    normal = _overlay('normal', d_price=21.0)
+    # d=21 passes transition but is weaker than the 1.382 threshold.
+    legacy_normal = _overlay('normal', d_price=21.0)
     transition = _overlay('transition', d_price=21.0)
     strict = _overlay('strict1382', d_price=21.0)
-    normal_weak = _overlay('normal', d_price=19.0)
     transition_weak = _overlay('transition', d_price=19.0)
-    if not normal.get('rhythm_lines'):
-        raise AssertionError('normal must allow a monotonic structure below the 1.382 threshold')
+    if legacy_normal.get('rhythm_lines'):
+        raise AssertionError('legacy normal must map to strict1382')
+    if legacy_normal.get('meta', {}).get('rhythm_calc_mode') != 'strict1382':
+        raise AssertionError('legacy normal must export strict1382')
     if not transition.get('rhythm_lines'):
         raise AssertionError('transition must allow d >= b even when d < 1.382 threshold')
     if strict.get('rhythm_lines'):
         raise AssertionError('strict1382 must reject d below 1.382 threshold')
-    if normal_weak.get('rhythm_lines'):
-        raise AssertionError('normal must reject a non-monotonic UP-DOWN-UP structure')
     if transition_weak.get('rhythm_lines'):
         raise AssertionError('transition must reject a non-monotonic UP-DOWN-UP structure')
 

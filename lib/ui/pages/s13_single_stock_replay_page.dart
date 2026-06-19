@@ -1914,19 +1914,10 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     if (_showRhythmLines) {
       final visibleLines =
           selection.lines.where(_rhythmSettings.lineVisible).toList();
-      final orderedLines = List<RhythmLine>.from(visibleLines)
-        ..sort((a, b) {
-          final byStart = a.x1.compareTo(b.x1);
-          if (byStart != 0) return byStart;
-          final byEnd = a.x2.compareTo(b.x2);
-          return byEnd != 0 ? byEnd : a.id.compareTo(b.id);
-        });
-      final sequenceById = <String, int>{
-        for (var i = 0; i < orderedLines.length; i++) orderedLines[i].id: i + 1,
-      };
       final groups = <String, List<RhythmLine>>{};
       for (final line in visibleLines) {
-        final key = '${line.sourceKind.trim().toLowerCase()}->'
+        final key = '${line.parentKey}|'
+            '${line.sourceKind.trim().toLowerCase()}->'
             '${line.parentLevel.trim().toLowerCase()}|${line.roundRef}';
         groups.putIfAbsent(key, () => <RhythmLine>[]).add(line);
       }
@@ -1935,13 +1926,12 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         final sharedStart = lines.map((line) => line.x1).reduce(math.min);
         final style = _rhythmSettings.lineStyle(lines.first);
         for (final line in lines) {
-          final endRawIndex = _limitedRhythmEndRawIndex(snapshot, line);
           objects.add(DrawingObject(
             id: 'auto_${line.id}',
             tool: TradingViewDrawingTool.trendLine,
             anchors: <DrawingAnchor>[
               DrawingAnchor.chart(rawIndex: sharedStart, price: line.y1),
-              DrawingAnchor.chart(rawIndex: endRawIndex, price: line.y2),
+              DrawingAnchor.chart(rawIndex: line.x2, price: line.y2),
             ],
             style: style,
             text: line.displayLabel,
@@ -1956,9 +1946,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               DrawingAnchor.chart(rawIndex: sharedStart, price: line.y1),
             ],
             style: style,
-            text: _rhythmSettings.showSequenceNumbers
-                ? '${sequenceById[line.id]}'
-                : '',
+            text: _rhythmSettings.showSequenceNumbers ? line.labelLeft : '',
             locked: true,
             createdAt: now,
             updatedAt: now,
@@ -2003,38 +1991,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       }
     }
     return objects;
-  }
-
-  int _limitedRhythmEndRawIndex(ChanSnapshot snapshot, RhythmLine line) {
-    final source = line.sourceKind.trim().toLowerCase();
-    final parent = line.parentLevel.trim().toLowerCase();
-    if ((source == 'fx' || source == 'fract') && parent == 'bi') {
-      final parents = snapshot.bis;
-      for (var i = 0; i < parents.length; i++) {
-        final current = parents[i];
-        if (line.x1 < current.startRawIndex || line.x1 > current.endRawIndex) {
-          continue;
-        }
-        final cap = i + 1 < parents.length
-            ? parents[i + 1].endRawIndex
-            : current.endRawIndex;
-        return math.min(line.x2, cap);
-      }
-    }
-    if (source == 'bi' && parent == 'seg') {
-      final parents = snapshot.segs;
-      for (var i = 0; i < parents.length; i++) {
-        final current = parents[i];
-        if (line.x1 < current.startRawIndex || line.x1 > current.endRawIndex) {
-          continue;
-        }
-        final cap = i + 1 < parents.length
-            ? parents[i + 1].endRawIndex
-            : current.endRawIndex;
-        return math.min(line.x2, cap);
-      }
-    }
-    return line.x2;
   }
 
   _RhythmSummary _rhythmSummaryFor(ChanSnapshot? snapshot) {

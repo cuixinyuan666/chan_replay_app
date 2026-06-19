@@ -4,6 +4,7 @@ class RhythmLine {
   final String sourceKind;
   final String sourceLabel;
   final String parentLevel;
+  final String parentKey;
   final String calcMode;
   final String dir;
   final String displayLabel;
@@ -26,6 +27,7 @@ class RhythmLine {
     required this.sourceKind,
     required this.sourceLabel,
     this.parentLevel = '',
+    this.parentKey = '',
     required this.calcMode,
     required this.dir,
     required this.displayLabel,
@@ -51,7 +53,8 @@ class RhythmLine {
       sourceKind: '${json['source_kind'] ?? json['sourceKind'] ?? ''}',
       sourceLabel: '${json['source_label'] ?? json['sourceLabel'] ?? ''}',
       parentLevel: '${json['parent_level'] ?? json['parentLevel'] ?? ''}',
-      calcMode: '${json['calc_mode'] ?? json['calcMode'] ?? 'normal'}',
+      parentKey: '${json['parent_key'] ?? json['parentKey'] ?? ''}',
+      calcMode: '${json['calc_mode'] ?? json['calcMode'] ?? 'strict1382'}',
       dir: '${json['dir'] ?? ''}',
       displayLabel: '${json['display_label'] ?? json['displayLabel'] ?? '节奏线'}',
       labelLeft:

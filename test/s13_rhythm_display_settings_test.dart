@@ -14,7 +14,7 @@ RhythmLine line(
       sourceKind: source,
       sourceLabel: source,
       parentLevel: parent,
-      calcMode: 'normal',
+      calcMode: 'strict1382',
       dir: 'UP',
       displayLabel: 'line',
       labelLeft: 'A',
@@ -96,6 +96,14 @@ void main() {
       'enable_rhythm_1382': false,
       'rhythm_calc_mode': 'strict1382',
     });
+  });
+
+  test('defaults invalid and legacy normal modes to strict1382', () {
+    const defaults = S13RhythmDisplaySettings();
+    expect(defaults.calcMode, 'strict1382');
+    expect(defaults.copyWith(calcMode: 'normal').calcMode, 'strict1382');
+    expect(defaults.copyWith(calcMode: 'invalid').calcMode, 'strict1382');
+    expect(defaults.copyWith(calcMode: 'transition').calcMode, 'transition');
   });
 
   test('max layer zero keeps only current-round lines', () {

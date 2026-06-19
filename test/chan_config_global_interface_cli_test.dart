@@ -8,7 +8,9 @@ void main() {
     LevelPromoterSettings.setMaxLayer(LevelPromoterSettings.defaultMaxLayer);
   });
 
-  test('chan settings are global and override single-stock multi-level replay base config', () {
+  test(
+      'chan settings are global and override single-stock multi-level replay base config',
+      () {
     ChanConfigStore.reset();
 
     ChanConfigStore.setValue('bi_algo', 'fx');
@@ -24,7 +26,7 @@ void main() {
       'zs_algo': 'normal',
       'recursive_seg_max_level': 4,
       'enable_rhythm_1382': true,
-      'rhythm_calc_mode': 'normal',
+      'rhythm_calc_mode': 'strict1382',
       'rhythm_max_lines': 160,
       'rhythm_max_hits_per_line': 3,
     };
@@ -41,7 +43,7 @@ void main() {
     expect(effectiveConfig['seg_recursive_max_level'], 5);
 
     expect(effectiveConfig['enable_rhythm_1382'], true);
-    expect(effectiveConfig['rhythm_calc_mode'], 'normal');
+    expect(effectiveConfig['rhythm_calc_mode'], 'strict1382');
     expect(effectiveConfig['rhythm_max_lines'], 160);
     expect(effectiveConfig['rhythm_max_hits_per_line'], 3);
 

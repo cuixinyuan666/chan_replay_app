@@ -83,7 +83,7 @@ class S13RhythmDisplaySettings {
     this.segToSegsegEnabled = true,
     this.showSequenceNumbers = true,
     this.maxLayer = 9,
-    this.calcMode = 'normal',
+    this.calcMode = 'strict1382',
     this.groups = defaultGroups,
     this.hit = const S13RhythmHitStyle(),
   });
@@ -185,9 +185,8 @@ class S13RhythmDisplaySettings {
 
   static String _normalizeCalcMode(String value) {
     final v = value.trim();
-    return const {'normal', 'transition', 'strict1382'}.contains(v)
-        ? v
-        : 'normal';
+    if (v == 'transition') return 'transition';
+    return 'strict1382';
   }
 }
 
@@ -320,11 +319,11 @@ Widget _calcModeDropdown(
       ),
       style: const TextStyle(color: Colors.white),
       items: const <DropdownMenuItem<String>>[
-        DropdownMenuItem(value: 'normal', child: Text('normal')),
         DropdownMenuItem(value: 'transition', child: Text('transition')),
-        DropdownMenuItem(value: 'strict1382', child: Text('strict1382')),
+        DropdownMenuItem(
+            value: 'strict1382', child: Text('transition+strict1382')),
       ],
-      onChanged: (v) => onChanged(v ?? 'normal'),
+      onChanged: (v) => onChanged(v ?? 'strict1382'),
     );
 
 Widget _intSlider({
