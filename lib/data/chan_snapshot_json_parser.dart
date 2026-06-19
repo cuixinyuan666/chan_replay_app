@@ -110,6 +110,14 @@ class ChanSnapshotJsonParser {
       recursiveSegSw.elapsedMilliseconds,
     );
 
+    final recursiveSegBspSw = Stopwatch()..start();
+    final recursiveSegBsps = _parseRecursiveSegBspLayers(data);
+    _addTiming(
+      timing,
+      '$timingPrefix.recursive_seg_bsp_layers',
+      recursiveSegBspSw.elapsedMilliseconds,
+    );
+
     final zsSw = Stopwatch()..start();
     final zss = <ZS>[];
     final zsRows = data['zs'];
@@ -157,6 +165,7 @@ class ChanSnapshotJsonParser {
       bis: linkedBis,
       segs: segs,
       recursiveSegLayers: recursiveSegLayers,
+      recursiveSegBsps: recursiveSegBsps,
       zss: zss,
       bsps: bsps,
       indicators: indicators,
@@ -325,6 +334,52 @@ class ChanSnapshotJsonParser {
       result[layer] = parsed;
     }
     return result;
+  }
+
+  static Map<int, List<BspPoint>> _parseRecursiveSegBspLayers(
+      Map<String, dynamic> data) {
+    final result = <int, List<BspPoint>>{};
+
+    void putLayer(Object? rawLayer, Object? rawRows, {bool overwrite = false}) {
+      final layer = _int(rawLayer);
+      if (layer == null) return;
+      if (!overwrite && result.containsKey(layer) && result[layer]!.isNotEmpty) {
+        return;
+      }
+      if (rawRows is! List) {
+        result.putIfAbsent(layer, () => const <BspPoint>[]);
+        return;
+      }
+      final parsed = <BspPoint>[];
+      for (final row in rawRows) {
+        if (row is Map) {
+          final item = _parseBsp(row, parsed.length);
+          if (item != null) parsed.add(item);
+        }
+      }
+      result[layer] = parsed;
+    }
+
+    final grouped = data['seg_bsp_layers'] ?? data['segBspLayers'];
+    if (grouped is Map) {
+      for (final entry in grouped.entries) {
+        putLayer(entry.key, entry.value, overwrite: true);
+      }
+    }
+
+    for (final entry in data.entries) {
+      final layer = _segBspLayerFromKey(entry.key);
+      if (layer == null) continue;
+      putLayer(layer, entry.value);
+    }
+
+    return result;
+  }
+
+  static int? _segBspLayerFromKey(String key) {
+    final match = RegExp(r'^seg(\d+)_bsp$').firstMatch(key);
+    if (match == null) return null;
+    return int.tryParse(match.group(1)!);
   }
 
   static RecursiveSEG? _parseRecursiveSeg(
