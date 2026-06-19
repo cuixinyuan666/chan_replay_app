@@ -91,6 +91,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   bool _windowMaximized = false;
   final Map<String, Offset> _replayControlOffsets = <String, Offset>{};
   S13RhythmDisplaySettings _rhythmSettings = const S13RhythmDisplaySettings();
+  String _loadedRhythmCalcMode = 'not_loaded';
+  bool? _loadedRhythmEnabled;
   String _loadedChanConfigFingerprint = '';
   bool _chanConfigDirtySinceLoad = false;
   Timer? _chanConfigChangeSnackTimer;
@@ -652,23 +654,23 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final raw = [for (final l in _selectedLevels) l.trim().toUpperCase()];
     final n = _normalizedLevels;
     if (raw.isEmpty) {
-      return _LevelValidationResult(false, n, '????????');
+      return _LevelValidationResult(false, n, '请至少选择一个级别');
     }
     final bad =
         raw.where((l) => !_levelOptionSet.contains(l)).toList(growable: false);
     if (bad.isNotEmpty) {
-      return _LevelValidationResult(false, n, '??????: ${bad.join(',')}');
+      return _LevelValidationResult(false, n, '存在无效级别: ${bad.join(',')}');
     }
     if (raw.toSet().length != raw.length) {
-      return _LevelValidationResult(false, n, '??????');
+      return _LevelValidationResult(false, n, '级别不能重复');
     }
     if (n.length == 1) {
-      return _LevelValidationResult(true, n, '?????: ${n.first}');
+      return _LevelValidationResult(true, n, '单级别模式: ${n.first}');
     }
     if (n.length != raw.length) {
-      return _LevelValidationResult(true, n, '????????: ${n.join(',')}');
+      return _LevelValidationResult(true, n, '级别已规范化: ${n.join(',')}');
     }
-    return _LevelValidationResult(true, n, '??????: ${n.join(',')}');
+    return _LevelValidationResult(true, n, '级别组合有效: ${n.join(',')}');
   }
 
   String _requestModeFor(_LevelValidationResult lv) =>
@@ -700,6 +702,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       baseUrl: _backendUrlController.text.trim(),
     );
     final requestConfigFingerprint = _chanConfigFingerprint();
+    final requestRhythmSettings = _rhythmSettings;
     try {
       final a = await source.analyzeMulti(
           mode: requestMode,
@@ -717,14 +720,15 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             'seg_algo': 'chan',
             'zs_algo': 'normal',
             'recursive_seg_max_level': 4,
-            'enable_rhythm_1382': true,
-            'rhythm_calc_mode': 'normal',
+            ...requestRhythmSettings.backendCalculationConfig,
             'rhythm_max_lines': 160,
             'rhythm_max_hits_per_line': 3,
           });
       if (!mounted) return;
       setState(() {
         _analysis = a;
+        _loadedRhythmCalcMode = requestRhythmSettings.calcMode;
+        _loadedRhythmEnabled = requestRhythmSettings.enabled;
         _loadedChanConfigFingerprint = requestConfigFingerprint;
         _chanConfigDirtySinceLoad =
             _chanConfigFingerprint() != requestConfigFingerprint;
@@ -964,7 +968,129 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
 
   Widget _s13QuickSideToolbar() => S13QuickSideToolbar(
         sections: _s13ToolbarSections(),
+        currentSettingsTextBuilder: _currentS13SettingsEvidenceText,
       );
+
+  Future<void> _copyCurrentS13Settings() async {
+    await Clipboard.setData(
+      ClipboardData(text: _currentS13SettingsEvidenceText()),
+    );
+    if (!mounted) return;
+    _showMessage('当前全部设置已复制');
+  }
+
+  String _currentS13SettingsEvidenceText() {
+    final active = _activeSnapshot;
+    final current = _currentSnapshot;
+    final rhythm = _rhythmSummaryFor(active);
+    final startDate = _dateOrDefault(_startDate, _defaultStartDate);
+    final endDate = _dateOrDefault(_endDate, _defaultEndDate);
+    final chanEntries = ChanConfigStore.values.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
+    final buffer = StringBuffer()
+      ..writeln('S13_CURRENT_SETTINGS_EVIDENCE')
+      ..writeln('generated_at=${DateTime.now().toIso8601String()}')
+      ..writeln()
+      ..writeln('[状态]')
+      ..writeln('status=$_status')
+      ..writeln('last_level_validation=$_lastLevelValidation')
+      ..writeln('chan_config_dirty_since_load=$_chanConfigDirtySinceLoad')
+      ..writeln('loaded_chan_config_fingerprint=$_loadedChanConfigFingerprint')
+      ..writeln('current_chan_config_fingerprint=${_chanConfigFingerprint()}')
+      ..writeln()
+      ..writeln('[股票]')
+      ..writeln('backend=${_backendUrlController.text}')
+      ..writeln('symbol=${_symbolController.text}')
+      ..writeln('market=${_marketController.text}')
+      ..writeln('start=${_fmtDate(startDate)}')
+      ..writeln('end=${_fmtDate(endDate)}')
+      ..writeln('effective_window=$_effectiveWindowText')
+      ..writeln('runtime_path=${RuntimePathController.current.wireName}')
+      ..writeln()
+      ..writeln('[模式 / 级别]')
+      ..writeln('mode=$_mode')
+      ..writeln('selected_levels=${_normalizedLevels.join(',')}')
+      ..writeln('loaded_levels=${_loadedLevels.join(',')}')
+      ..writeln('active_level=$_activeLevel')
+      ..writeln()
+      ..writeln('[复盘]')
+      ..writeln('loading=$_loading')
+      ..writeln('playing=$_playing')
+      ..writeln('play_speed=$_playSpeed')
+      ..writeln('frame_index=$_frameIndex')
+      ..writeln('safe_frame_index=$_safeFrameIndex')
+      ..writeln('frame_count=$_frameCount')
+      ..writeln('step_frame_label=$_stepFrameLabel')
+      ..writeln('has_step_frames=$_hasStepFrames')
+      ..writeln('current_frame_source=$_currentFrameSource')
+      ..writeln()
+      ..writeln('[图表视口]')
+      ..writeln('window_size=$_windowSize')
+      ..writeln('view_end_index=${_viewEndIndex ?? 'auto'}')
+      ..writeln('crosshair_index=${_crosshairIndex ?? 'none'}')
+      ..writeln('price_scale=$_priceScale')
+      ..writeln()
+      ..writeln('[图层]')
+      ..writeln('show_bsp_candidate_trail=$_showBspCandidateTrail')
+      ..writeln('show_rhythm_lines=$_showRhythmLines')
+      ..writeln('show_1382_hits=$_show1382Hits')
+      ..writeln('show_chip_distribution=$_showChipDistribution')
+      ..writeln(
+          'easy_tdx_indicators=${_enabledEasyTdxIndicators.toList()..sort()}')
+      ..writeln()
+      ..writeln('[节奏线设置]')
+      ..writeln('loaded_rhythm_enabled=${_loadedRhythmEnabled ?? 'not_loaded'}')
+      ..writeln('loaded_rhythm_calc_mode=$_loadedRhythmCalcMode')
+      ..writeln('rhythm_enabled=${_rhythmSettings.enabled}')
+      ..writeln('rhythm_calc_mode=${_rhythmSettings.calcMode}')
+      ..writeln('rhythm_max_layer=${_rhythmSettings.maxLayer}')
+      ..writeln('rhythm_fract_to_bi=${_rhythmSettings.fractToBiEnabled}')
+      ..writeln('rhythm_bi_to_seg=${_rhythmSettings.biToSegEnabled}')
+      ..writeln('rhythm_seg_to_segseg=${_rhythmSettings.segToSegsegEnabled}')
+      ..writeln('hit_enabled=${_rhythmSettings.hit.enabled}')
+      ..writeln('hit_color=${_rhythmSettings.hit.color}')
+      ..writeln('hit_line_width=${_rhythmSettings.hit.lineWidth}')
+      ..writeln('hit_overflow_limit=${_rhythmSettings.hit.overflowLimit}')
+      ..writeln('hit_dashed=${_rhythmSettings.hit.dashed}')
+      ..writeln('hit_font_size=${_rhythmSettings.hit.fontSize}')
+      ..writeln('rhythm_line_count=${rhythm.lineCount}')
+      ..writeln('rhythm_hit_count=${rhythm.hitCount}')
+      ..writeln('rhythm_short=${rhythm.shortText}')
+      ..writeln()
+      ..writeln('[当前数据]')
+      ..writeln('has_analysis=${_analysis != null}')
+      ..writeln('has_current_snapshot=${current != null}')
+      ..writeln('has_active_snapshot=${active != null}')
+      ..writeln('active_raw_bars=${active?.rawBars.length ?? 0}')
+      ..writeln('active_bi_count=${active?.bis.length ?? 0}')
+      ..writeln('active_seg_count=${active?.segs.length ?? 0}')
+      ..writeln('active_zs_count=${active?.zss.length ?? 0}')
+      ..writeln('active_bsp_count=${active?.bsps.length ?? 0}')
+      ..writeln('nested_markers=${_nestedBspMarkers.length}')
+      ..writeln('candidate_trail=$_bspCandidateTrailCount')
+      ..writeln()
+      ..writeln('[缠论全局设置]')
+      ..writeln(
+          'level_promoter_max_layer=${LevelPromoterSettings.currentMaxLayer}');
+
+    for (var i = 0; i < _rhythmSettings.groups.length; i++) {
+      final group = _rhythmSettings.groups[i];
+      final number = i + 1;
+      buffer
+        ..writeln('rhythm_group_${number}_line_color=${group.lineColor}')
+        ..writeln('rhythm_group_${number}_line_width=${group.lineWidth}')
+        ..writeln('rhythm_group_${number}_dashed=${group.dashed}')
+        ..writeln(
+            'rhythm_group_${number}_text_font_size=${group.textFontSize}');
+    }
+
+    for (final entry in chanEntries) {
+      buffer.writeln('${entry.key}=${entry.value}');
+    }
+
+    return buffer.toString();
+  }
 
   List<SideToolbarSection> _s13ToolbarSections() => <SideToolbarSection>[
         SideToolbarSection(
@@ -983,7 +1109,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                 _dateButton('end', _endDate, () => _pickDate(isStart: false)),
                 _runtimePathButton(),
                 _infoButton('窗口', _effectiveWindowText),
-                _infoButton('状态', _status),
+                _currentSettingsCopyButton(),
               ],
             ),
           ],
@@ -1184,16 +1310,22 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   }
 
   Future<void> _openRhythmDisplaySettings() async {
+    final previous = _rhythmSettings;
     final next = await showS13RhythmDisplaySettingsDialog(
       context: context,
       initial: _rhythmSettings,
     );
     if (next == null || !mounted) return;
+    final calculationChanged = next.enabled != previous.enabled ||
+        next.calcMode != previous.calcMode;
     setState(() {
       _rhythmSettings = next;
       _showRhythmLines = next.enabled;
       _show1382Hits = next.hit.enabled;
     });
+    if (calculationChanged && _analysis != null) {
+      await _loadReplay();
+    }
   }
 
   Widget _settingsPanel() => _panelBox('工具栏', _unifiedToolPanel());
@@ -1216,7 +1348,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                 _dateButton('end', _endDate, () => _pickDate(isStart: false)),
                 _runtimePathButton(),
                 _infoButton('窗口', _effectiveWindowText),
-                _infoButton('状态', _status),
+                _currentSettingsCopyButton(),
               ],
             ),
             _sectionGap(),
@@ -1857,6 +1989,17 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.white70,
           side: const BorderSide(color: Colors.white24),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        ),
+      );
+
+  Widget _currentSettingsCopyButton() => OutlinedButton.icon(
+        onPressed: _copyCurrentS13Settings,
+        icon: const Icon(Icons.copy_all, size: 16),
+        label: const Text('状态 / 一键复制'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFFFFD54F),
+          side: const BorderSide(color: Color(0x88FFD54F)),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         ),
       );

@@ -259,6 +259,23 @@ def _retrace_allowed(mode: str, direction: str, *, b_val: float, d_val: float, t
     return True
 
 
+def _monotonic_rhythm_triplet(
+    direction: str,
+    *,
+    first_start: float,
+    first_end: float,
+    retrace_end: float,
+    current_end: float,
+) -> bool:
+    """Accept only rising UP-DOWN-UP or falling DOWN-UP-DOWN structures."""
+    eps = 1e-12
+    if direction == 'UP':
+        return retrace_end > first_start + eps and current_end > first_end + eps
+    if direction == 'DOWN':
+        return retrace_end < first_start - eps and current_end < first_end - eps
+    return False
+
+
 def _find_hits(
     bars: list[Any],
     *,
@@ -322,104 +339,124 @@ def _build_parent_entries(
     bars: list[Any],
     mode: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    parent_dir = parent.direction
-    seq = _alternating_sequence(children, parent_dir)
-    if len(seq) < 4:
-        return [], []
-    a0 = float(parent.begin_val)
     parent_key = _line_key(parent_level, parent)
     lines: list[dict[str, Any]] = []
     hits: list[dict[str, Any]] = []
-    max_round = max(0, (len(seq) - 2) // 2)
-
-    for round_current in range(1, max_round + 1):
-        d_line = seq[2 * round_current]
-        d_val = float(d_line.end_val)
-        gate_b = seq[2 * (round_current - 1)]
-        gate_c = seq[2 * (round_current - 1) + 1]
-        gate_threshold = _threshold(parent_dir, prev_same_val=gate_b.end_val, opposite_val=gate_c.end_val)
-        if not _finite(gate_threshold) or not _retrace_allowed(
-            mode,
-            parent_dir,
-            b_val=gate_b.end_val,
-            d_val=d_val,
-            threshold=gate_threshold,
-        ):
+    for rhythm_dir in ('UP', 'DOWN'):
+        seq = _alternating_sequence(children, rhythm_dir)
+        if len(seq) < 4:
             continue
+        a0 = float(seq[0].begin_val)
+        max_round = max(0, (len(seq) - 2) // 2)
 
-        line_start = seq[2 * round_current - 1]
-        line_end = seq[2 * round_current + 1]
-        self_line_id = ''
-        self_threshold = float(gate_threshold)
-        self_c = gate_c
-
-        for round_ref in range(1, round_current + 1):
-            b_line = seq[2 * (round_ref - 1)]
-            c_line = seq[2 * (round_ref - 1) + 1]
-            b_val = float(b_line.end_val)
-            c_val = float(c_line.end_val)
-            if parent_dir == 'UP':
-                denom = b_val - a0
-                if abs(denom) <= 1e-12:
-                    continue
-                ratio = (b_val - c_val) / denom
-                rhythm_price = d_val - (d_val - a0) * ratio
-            else:
-                denom = a0 - b_val
-                if abs(denom) <= 1e-12:
-                    continue
-                ratio = (c_val - b_val) / denom
-                rhythm_price = d_val + (a0 - d_val) * ratio
-            threshold = _threshold(parent_dir, prev_same_val=b_val, opposite_val=c_val)
-            if ratio < 0 or not (_finite(rhythm_price) and _finite(threshold)):
+        for round_current in range(1, max_round + 1):
+            d_line = seq[2 * round_current]
+            d_val = float(d_line.end_val)
+            gate_b = seq[2 * (round_current - 1)]
+            gate_c = seq[2 * (round_current - 1) + 1]
+            if not _monotonic_rhythm_triplet(
+                rhythm_dir,
+                first_start=gate_b.begin_val,
+                first_end=gate_b.end_val,
+                retrace_end=gate_c.end_val,
+                current_end=d_val,
+            ):
                 continue
-            layer = max(0, round_current - round_ref)
-            line_id = f'rhythm|{parent_key}|{child_level}|{round_current}|{round_ref}|{layer}'
-            lines.append({
-                'id': line_id,
-                'key': line_id,
-                'level': chart_level,
-                'structure_level': child_level,
-                'parent_level': parent_level,
-                'parent_key': parent_key,
-                'parent_label': _level_label(parent_level),
-                'source_kind': child_level,
-                'source_label': _level_label(child_level),
-                'calc_mode': mode,
-                'dir': parent_dir,
-                'ratio': float(ratio),
-                'threshold_ratio': RHYTHM_RATIO,
-                'threshold': float(threshold),
-                'price': float(rhythm_price),
-                'display_label': f'节奏线{round_ref}-{layer}',
-                'round_current': round_current,
-                'round_ref': round_ref,
-                'layer': layer,
-                'label_left': f'{round_ref}-{layer}',
-                'label_right': _ratio_text(float(ratio)),
-                'color_group': f'rhythm{round_ref}',
-                'x1': int(line_start.end_x),
-                'y1': float(rhythm_price),
-                'x2': int(line_end.end_x),
-                'y2': float(rhythm_price),
-                'backend_authority': 'python_backend_rhythm_overlay_replayed_from_a_replay_trainer_parent_child_logic',
-            })
-            if round_ref == round_current:
-                self_line_id = line_id
-                self_threshold = float(threshold)
-                self_c = c_line
+            gate_threshold = _threshold(
+                rhythm_dir,
+                prev_same_val=gate_b.end_val,
+                opposite_val=gate_c.end_val,
+            )
+            if not _finite(gate_threshold) or not _retrace_allowed(
+                mode,
+                rhythm_dir,
+                b_val=gate_b.end_val,
+                d_val=d_val,
+                threshold=gate_threshold,
+            ):
+                continue
 
-        if self_line_id:
-            hits.extend(_find_hits(
-                bars,
-                chart_level=chart_level,
-                source_kind=child_level,
-                parent_level=parent_level,
-                line_id=self_line_id,
-                direction=parent_dir,
-                start_raw_index=self_c.end_x,
-                threshold=self_threshold,
-            ))
+            line_end = seq[2 * round_current + 1]
+            self_line_id = ''
+            self_threshold = float(gate_threshold)
+            self_c = gate_c
+
+            for round_ref in range(1, round_current + 1):
+                b_line = seq[2 * (round_ref - 1)]
+                c_line = seq[2 * (round_ref - 1) + 1]
+                b_val = float(b_line.end_val)
+                c_val = float(c_line.end_val)
+                if rhythm_dir == 'UP':
+                    denom = b_val - a0
+                    if abs(denom) <= 1e-12:
+                        continue
+                    ratio = (b_val - c_val) / denom
+                    rhythm_price = d_val - (d_val - a0) * ratio
+                else:
+                    denom = a0 - b_val
+                    if abs(denom) <= 1e-12:
+                        continue
+                    ratio = (c_val - b_val) / denom
+                    rhythm_price = d_val + (a0 - d_val) * ratio
+                threshold = _threshold(
+                    rhythm_dir,
+                    prev_same_val=b_val,
+                    opposite_val=c_val,
+                )
+                if ratio < 0 or not (_finite(rhythm_price) and _finite(threshold)):
+                    continue
+                layer = max(0, round_current - round_ref)
+                line_id = (
+                    f'rhythm|{parent_key}|{child_level}|{rhythm_dir}|'
+                    f'{round_current}|{round_ref}|{layer}'
+                )
+                lines.append({
+                    'id': line_id,
+                    'key': line_id,
+                    'level': chart_level,
+                    'structure_level': child_level,
+                    'parent_level': parent_level,
+                    'parent_key': parent_key,
+                    'parent_label': _level_label(parent_level),
+                    'source_kind': child_level,
+                    'source_label': _level_label(child_level),
+                    'calc_mode': mode,
+                    'dir': rhythm_dir,
+                    'ratio': float(ratio),
+                    'threshold_ratio': RHYTHM_RATIO,
+                    'threshold': float(threshold),
+                    'price': float(rhythm_price),
+                    'display_label': f'节奏线{round_ref}-{layer}',
+                    'round_current': round_current,
+                    'round_ref': round_ref,
+                    'layer': layer,
+                    'label_left': f'{round_ref}-{layer}',
+                    'label_right': _ratio_text(float(ratio)),
+                    'color_group': f'{child_level}-{rhythm_dir}-rhythm{round_ref}',
+                    # Every line in one round_ref group shares its C-point time.
+                    'x1': int(c_line.end_x),
+                    'y1': float(rhythm_price),
+                    # Keep the existing current-round endpoint policy.
+                    'x2': int(line_end.end_x),
+                    'y2': float(rhythm_price),
+                    'backend_authority': 'python_backend_monotonic_rhythm_overlay',
+                })
+                if round_ref == round_current:
+                    self_line_id = line_id
+                    self_threshold = float(threshold)
+                    self_c = c_line
+
+            if self_line_id:
+                hits.extend(_find_hits(
+                    bars,
+                    chart_level=chart_level,
+                    source_kind=child_level,
+                    parent_level=parent_level,
+                    line_id=self_line_id,
+                    direction=rhythm_dir,
+                    start_raw_index=self_c.end_x,
+                    threshold=self_threshold,
+                ))
     return lines, hits
 
 
@@ -489,7 +526,8 @@ def with_level_rhythm_overlay(level: str, level_payload: dict[str, Any], config:
         'rhythm_line_count': len(lines),
         'rhythm_hit_count': len(hits),
         'rhythm_policy': 'backend parent-child rhythm overlay ported from chan_month5 full-optimization a_replay_trainer.py; Dart only parses/renders',
-        'rhythm_mapping_policy': 'fx->bi, bi->seg, seg->segseg when exported seg_layers[2] is available',
+        'rhythm_mapping_policy': 'fx->bi, bi->seg, seg->segseg; only rising UP-DOWN-UP or falling DOWN-UP-DOWN child structures qualify, independent of parent direction',
+        'rhythm_group_anchor_policy': 'same round_ref group shares the same x1; x2 keeps the current-round endpoint',
         'rhythm_level_field_policy': 'line.level/hit.level is chart timeframe; source_kind is structure kind',
         'rhythm_1382_cap_policy': 'trainer parity: backend rhythm export is uncapped; Flutter may still display a subset for performance',
     })

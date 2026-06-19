@@ -86,6 +86,11 @@ class S13RhythmDisplaySettings {
     this.hit = const S13RhythmHitStyle(),
   });
 
+  Map<String, dynamic> get backendCalculationConfig => <String, dynamic>{
+        'enable_rhythm_1382': enabled,
+        'rhythm_calc_mode': calcMode,
+      };
+
   static const defaultGroups = <S13RhythmGroupStyle>[
     S13RhythmGroupStyle(lineColor: 0xFF9333EA, lineWidth: 1.2, dashed: true, textFontSize: 12),
     S13RhythmGroupStyle(lineColor: 0xFF0F766E, lineWidth: 1.6, dashed: false, textFontSize: 13),
@@ -131,7 +136,7 @@ class S13RhythmDisplaySettings {
   bool hitVisible(RhythmHit hitRow) => hit.enabled;
 
   DrawingStyle lineStyle(RhythmLine line) {
-    final style = groupStyle(line.layer);
+    final style = groupStyle(line.roundRef);
     return DrawingStyle(
       colorValue: style.lineColor,
       strokeWidth: style.lineWidth,
@@ -151,9 +156,11 @@ class S13RhythmDisplaySettings {
 
   String hitText(RhythmHit hitRow) => '1.382 ${hitRow.displayLabel}';
 
-  S13RhythmGroupStyle groupStyle(int layer) {
+  S13RhythmGroupStyle groupStyle(int groupNumber) {
     if (groups.isEmpty) return defaultGroups.first;
-    final index = (layer <= 0 ? 0 : layer - 1).clamp(0, groups.length - 1).toInt();
+    final index = (groupNumber <= 0 ? 0 : groupNumber - 1)
+        .clamp(0, groups.length - 1)
+        .toInt();
     return groups[index];
   }
 
@@ -197,7 +204,7 @@ Future<S13RhythmDisplaySettings?> showS13RhythmDisplaySettingsDialog({
                 const Divider(color: Colors.white12),
                 _calcModeDropdown(draft, (v) => setState(() => draft = draft.copyWith(calcMode: v))),
                 _intSlider(
-                  label: '最大层级 maxLayer',
+                  label: '最大层级 maxLayer（包含 0 层；设为 0 仅显示本轮线）',
                   value: draft.maxLayer,
                   min: 0,
                   max: 9,

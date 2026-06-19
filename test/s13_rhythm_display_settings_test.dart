@@ -2,7 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:chan_replay_app/core/models/rhythm.dart';
 import 'package:chan_replay_app/ui/pages/s13_rhythm_display_settings.dart';
 
-RhythmLine line(String source, String parent, int layer) => RhythmLine(
+RhythmLine line(
+  String source,
+  String parent,
+  int layer, {
+  int roundRef = 1,
+}) => RhythmLine(
       id: '$source-$parent-$layer',
       level: 'DAILY',
       sourceKind: source,
@@ -21,7 +26,7 @@ RhythmLine line(String source, String parent, int layer) => RhythmLine(
       ratio: 0.5,
       thresholdRatio: 1.382,
       roundCurrent: 1,
-      roundRef: 1,
+      roundRef: roundRef,
       layer: layer,
     );
 
@@ -59,9 +64,42 @@ void main() {
     final style = settings.lineStyle(line('bi', 'seg', 2));
     final hitStyle = settings.hitStyle(hit());
 
-    expect(style.colorValue, S13RhythmDisplaySettings.defaultGroups[1].lineColor);
-    expect(style.dashed, S13RhythmDisplaySettings.defaultGroups[1].dashed);
+    expect(style.colorValue, S13RhythmDisplaySettings.defaultGroups[0].lineColor);
+    expect(style.dashed, S13RhythmDisplaySettings.defaultGroups[0].dashed);
     expect(hitStyle.colorValue, settings.hit.color);
     expect(settings.hitText(hit()), '1.382 hit');
+  });
+
+  test('uses one color and line style for the same rhythm group', () {
+    const settings = S13RhythmDisplaySettings();
+    final first = settings.lineStyle(
+      line('fx', 'bi', 0, roundRef: 2),
+    );
+    final laterLayer = settings.lineStyle(
+      line('fx', 'bi', 4, roundRef: 2),
+    );
+
+    expect(first.colorValue, laterLayer.colorValue);
+    expect(first.strokeWidth, laterLayer.strokeWidth);
+    expect(first.dashed, laterLayer.dashed);
+  });
+
+  test('exports the selected backend calculation mode and enable switch', () {
+    const settings = S13RhythmDisplaySettings(
+      enabled: false,
+      calcMode: 'strict1382',
+    );
+
+    expect(settings.backendCalculationConfig, <String, dynamic>{
+      'enable_rhythm_1382': false,
+      'rhythm_calc_mode': 'strict1382',
+    });
+  });
+
+  test('max layer zero keeps only current-round lines', () {
+    const settings = S13RhythmDisplaySettings(maxLayer: 0);
+
+    expect(settings.lineVisible(line('bi', 'seg', 0)), isTrue);
+    expect(settings.lineVisible(line('bi', 'seg', 1)), isFalse);
   });
 }
