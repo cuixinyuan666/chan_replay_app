@@ -39,12 +39,14 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
   final ValueChanged<TradingViewDrawingTool>? onToolboxQuickToolAdded;
   final int windowSize;
   final double priceScale;
+  final double priceOffset;
   final int? viewEndIndex;
   final int? crosshairIndex;
   final ValueChanged<int>? onCrosshairChanged;
   final ValueChanged<int>? onPanBars;
   final ValueChanged<int>? onWindowSizeChanged;
   final ValueChanged<double>? onPriceScaleChanged;
+  final ValueChanged<double>? onPriceOffsetChanged;
   final ValueChanged<int>? onEasyTdxSubPanelCountChanged;
   final ValueChanged<String>? onEasyTdxIndicatorToggled;
   final bool showRecursiveSegLayers;
@@ -79,12 +81,14 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
     this.onToolboxQuickToolAdded,
     required this.windowSize,
     this.priceScale = 1.0,
+    this.priceOffset = 0.0,
     this.viewEndIndex,
     this.crosshairIndex,
     this.onCrosshairChanged,
     this.onPanBars,
     this.onWindowSizeChanged,
     this.onPriceScaleChanged,
+    this.onPriceOffsetChanged,
     this.onEasyTdxSubPanelCountChanged,
     this.onEasyTdxIndicatorToggled,
     this.showRecursiveSegLayers = true,
@@ -120,7 +124,8 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
           id: 'hichan2_recursive_seg_L${layer}_${seg.index}_${seg.startRawIndex}_${seg.endRawIndex}',
           tool: TradingViewDrawingTool.trendLine,
           anchors: [
-            DrawingAnchor.chart(rawIndex: seg.startRawIndex, price: seg.startPrice),
+            DrawingAnchor.chart(
+                rawIndex: seg.startRawIndex, price: seg.startPrice),
             DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice),
           ],
           style: _styleForLayer(layer: layer, isSure: seg.isSure),
@@ -152,7 +157,9 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
           rows.add(DrawingObject(
             id: 'hichan2_seg${layer}_bsp_${bsp.index}_${bsp.rawIndex}',
             tool: TradingViewDrawingTool.priceLabel,
-            anchors: [DrawingAnchor.chart(rawIndex: bsp.rawIndex, price: bsp.price)],
+            anchors: [
+              DrawingAnchor.chart(rawIndex: bsp.rawIndex, price: bsp.price)
+            ],
             style: DrawingStyle(
               colorValue: _colorValueForLayer(layer),
               fontSize: 11.0,
@@ -188,7 +195,9 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
         rows.add(DrawingObject(
           id: 'hichan2_seg${layer}_bsp_fallback_${seg.index}_${seg.endRawIndex}',
           tool: TradingViewDrawingTool.priceLabel,
-          anchors: [DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice)],
+          anchors: [
+            DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice)
+          ],
           style: DrawingStyle(
             colorValue: _colorValueForLayer(layer),
             fontSize: 11.0,
@@ -213,7 +222,14 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
       2 => 2.2,
       3 => 2.8,
       4 => 3.4,
-      _ => 2.0 + (layer < 1 ? 1 : layer > 24 ? 24 : layer).toDouble() * 0.22,
+      _ => 2.0 +
+          (layer < 1
+                      ? 1
+                      : layer > 24
+                          ? 24
+                          : layer)
+                  .toDouble() *
+              0.22,
     };
     final opacity = isSure ? 0.92 : 0.46;
     return DrawingStyle(
@@ -235,7 +251,8 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
     };
   }
 
-  String _symbolLabelWithRecursiveSegSummary(String baseLabel, ChanSnapshot snapshot) {
+  String _symbolLabelWithRecursiveSegSummary(
+      String baseLabel, ChanSnapshot snapshot) {
     final layerCounts = <String>[];
     final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
     final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer
@@ -321,10 +338,9 @@ class _RecursiveSegOriginKlineChartState
   int? get _effectiveViewEndIndex =>
       _clampViewEnd(widget.viewEndIndex) ?? _clampViewEnd(_stickyViewEndIndex);
 
-  int get _effectiveWindowSize =>
-      _stickyWindowSize == null
-          ? _safeWindowSize(widget.windowSize)
-          : _safeWindowSize(_stickyWindowSize!);
+  int get _effectiveWindowSize => _stickyWindowSize == null
+      ? _safeWindowSize(widget.windowSize)
+      : _safeWindowSize(_stickyWindowSize!);
 
   double get _effectivePriceScale {
     if (_isExplicitPriceScale(widget.priceScale)) {
@@ -339,11 +355,13 @@ class _RecursiveSegOriginKlineChartState
         _stickyViewEndIndex != null &&
         widget.snapshot.rawBars.isNotEmpty;
     final hasStickyWindowSize = _stickyWindowSize != null &&
-        _safeWindowSize(widget.windowSize) != _safeWindowSize(_stickyWindowSize!);
+        _safeWindowSize(widget.windowSize) !=
+            _safeWindowSize(_stickyWindowSize!);
     final hasStickyPriceScale = !_isExplicitPriceScale(widget.priceScale) &&
         _stickyPriceScale != null &&
         _isExplicitPriceScale(_stickyPriceScale!);
-    if (!hasStickyViewEnd && !hasStickyWindowSize && !hasStickyPriceScale) return;
+    if (!hasStickyViewEnd && !hasStickyWindowSize && !hasStickyPriceScale)
+      return;
 
     _parentViewportSyncPending = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -437,12 +455,14 @@ class _RecursiveSegOriginKlineChartState
       onToolboxQuickToolAdded: widget.onToolboxQuickToolAdded,
       windowSize: _effectiveWindowSize,
       priceScale: _effectivePriceScale,
+      priceOffset: widget.priceOffset,
       viewEndIndex: _effectiveViewEndIndex,
       crosshairIndex: widget.crosshairIndex,
       onCrosshairChanged: widget.onCrosshairChanged,
       onPanBars: _handlePanBars,
       onWindowSizeChanged: _handleWindowSizeChanged,
       onPriceScaleChanged: _handlePriceScaleChanged,
+      onPriceOffsetChanged: widget.onPriceOffsetChanged,
       onEasyTdxSubPanelCountChanged: widget.onEasyTdxSubPanelCountChanged,
       onEasyTdxIndicatorToggled: widget.onEasyTdxIndicatorToggled,
     );

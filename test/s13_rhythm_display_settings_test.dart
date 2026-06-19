@@ -7,7 +7,8 @@ RhythmLine line(
   String parent,
   int layer, {
   int roundRef = 1,
-}) => RhythmLine(
+}) =>
+    RhythmLine(
       id: '$source-$parent-$layer',
       level: 'DAILY',
       sourceKind: source,
@@ -64,8 +65,9 @@ void main() {
     final style = settings.lineStyle(line('bi', 'seg', 2));
     final hitStyle = settings.hitStyle(hit());
 
-    expect(style.colorValue, S13RhythmDisplaySettings.defaultGroups[0].lineColor);
-    expect(style.dashed, S13RhythmDisplaySettings.defaultGroups[0].dashed);
+    expect(
+        style.colorValue, S13RhythmDisplaySettings.defaultGroups[1].lineColor);
+    expect(style.dashed, S13RhythmDisplaySettings.defaultGroups[1].dashed);
     expect(hitStyle.colorValue, settings.hit.color);
     expect(settings.hitText(hit()), '1.382 hit');
   });

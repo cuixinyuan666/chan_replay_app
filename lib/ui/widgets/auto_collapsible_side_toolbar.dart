@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -14,7 +12,7 @@ class SideToolbarSection {
   });
 }
 
-/// A left-side toolbar shell that can auto-collapse after user inactivity.
+/// A left-side toolbar shell that collapses only through its manual toggle.
 class AutoCollapsibleSideToolbar extends StatefulWidget {
   final List<SideToolbarSection> sections;
   final Widget? header;
@@ -47,56 +45,29 @@ class AutoCollapsibleSideToolbar extends StatefulWidget {
 class _AutoCollapsibleSideToolbarState
     extends State<AutoCollapsibleSideToolbar> {
   late bool _expanded;
-  Timer? _autoCollapseTimer;
   final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _expanded = widget.initiallyExpanded;
-    _restartAutoCollapseTimer();
   }
 
   @override
   void didUpdateWidget(covariant AutoCollapsibleSideToolbar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.autoCollapseDelay != widget.autoCollapseDelay) {
-      _restartAutoCollapseTimer();
-    }
   }
 
   @override
   void dispose() {
-    _autoCollapseTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
 
   void _setExpanded(bool value) {
-    if (_expanded == value) {
-      if (value) _restartAutoCollapseTimer();
-      return;
-    }
+    if (_expanded == value) return;
     setState(() => _expanded = value);
     widget.onExpandedChanged?.call(value);
-    if (value) {
-      _restartAutoCollapseTimer();
-    } else {
-      _autoCollapseTimer?.cancel();
-    }
-  }
-
-  void _markUserActivity() {
-    if (!_expanded) return;
-    _restartAutoCollapseTimer();
-  }
-
-  void _restartAutoCollapseTimer() {
-    _autoCollapseTimer?.cancel();
-    if (!_expanded || widget.autoCollapseDelay <= Duration.zero) return;
-    _autoCollapseTimer = Timer(widget.autoCollapseDelay, () {
-      if (mounted) _setExpanded(false);
-    });
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
@@ -107,7 +78,6 @@ class _AutoCollapsibleSideToolbarState
       _scrollController.position.maxScrollExtent,
     );
     _scrollController.jumpTo(next.toDouble());
-    _markUserActivity();
   }
 
   @override
@@ -121,12 +91,8 @@ class _AutoCollapsibleSideToolbarState
         curve: Curves.easeOutCubic,
         width: _expanded ? widget.expandedWidth : widget.collapsedWidth,
         child: MouseRegion(
-          onEnter: (_) => _markUserActivity(),
-          onHover: (_) => _markUserActivity(),
           child: Listener(
             behavior: HitTestBehavior.translucent,
-            onPointerDown: (_) => _markUserActivity(),
-            onPointerMove: (_) => _markUserActivity(),
             onPointerSignal: _handlePointerSignal,
             child: Material(
               color: Colors.transparent,

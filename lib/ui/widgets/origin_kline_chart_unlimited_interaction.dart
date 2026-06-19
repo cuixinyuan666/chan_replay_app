@@ -26,6 +26,7 @@ import 'origin_kline_chart.dart' as origin;
 /// - primary-button horizontal drag: real bar-window panning through onPanBars;
 /// - primary-button vertical drag: real price-scale adjustment through
 ///   onPriceScaleChanged.
+/// - middle-button vertical drag: translate the price viewport up or down.
 ///
 /// The original renderer remains the single source of truth for coordinates.
 class OriginKlineChart extends StatefulWidget {
@@ -54,12 +55,14 @@ class OriginKlineChart extends StatefulWidget {
   final ValueChanged<TradingViewDrawingTool>? onToolboxQuickToolAdded;
   final int windowSize;
   final double priceScale;
+  final double priceOffset;
   final int? viewEndIndex;
   final int? crosshairIndex;
   final ValueChanged<int>? onCrosshairChanged;
   final ValueChanged<int>? onPanBars;
   final ValueChanged<int>? onWindowSizeChanged;
   final ValueChanged<double>? onPriceScaleChanged;
+  final ValueChanged<double>? onPriceOffsetChanged;
   final ValueChanged<int>? onEasyTdxSubPanelCountChanged;
   final ValueChanged<String>? onEasyTdxIndicatorToggled;
 
@@ -90,12 +93,14 @@ class OriginKlineChart extends StatefulWidget {
     this.onToolboxQuickToolAdded,
     required this.windowSize,
     this.priceScale = 1.0,
+    this.priceOffset = 0.0,
     this.viewEndIndex,
     this.crosshairIndex,
     this.onCrosshairChanged,
     this.onPanBars,
     this.onWindowSizeChanged,
     this.onPriceScaleChanged,
+    this.onPriceOffsetChanged,
     this.onEasyTdxSubPanelCountChanged,
     this.onEasyTdxIndicatorToggled,
   });
@@ -120,6 +125,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   _DragAxis? _dragAxis;
   double _panRemainder = 0.0;
   bool _dragSessionActive = false;
+  bool _middleDragSession = false;
   TradingViewDrawingTool _selectedTool = TradingViewDrawingTool.cursor;
 
   @override
@@ -133,19 +139,22 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   @override
   void didUpdateWidget(covariant OriginKlineChart oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.toolboxSelectedToolSignal != widget.toolboxSelectedToolSignal) {
+    if (oldWidget.toolboxSelectedToolSignal !=
+        widget.toolboxSelectedToolSignal) {
       oldWidget.toolboxSelectedToolSignal
           ?.removeListener(_handleToolSelectionChanged);
       _selectedTool = widget.toolboxSelectedToolSignal?.value ??
           TradingViewDrawingTool.cursor;
-      widget.toolboxSelectedToolSignal?.addListener(_handleToolSelectionChanged);
+      widget.toolboxSelectedToolSignal
+          ?.addListener(_handleToolSelectionChanged);
       _clearDragState();
     }
   }
 
   @override
   void dispose() {
-    widget.toolboxSelectedToolSignal?.removeListener(_handleToolSelectionChanged);
+    widget.toolboxSelectedToolSignal
+        ?.removeListener(_handleToolSelectionChanged);
     super.dispose();
   }
 
@@ -280,19 +289,27 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
   void _handlePointerDown(PointerDownEvent event, _ChartRects rects) {
     _clearDragState();
     if (!_isViewportDragEnabled) return;
-    if ((event.buttons & kPrimaryMouseButton) == 0) return;
+    final middle = (event.buttons & kMiddleMouseButton) != 0;
+    if (!middle && (event.buttons & kPrimaryMouseButton) == 0) return;
     if (!rects.mainRect.contains(event.localPosition)) return;
     _dragSessionActive = true;
+    _middleDragSession = middle;
   }
 
   void _handlePointerMove(PointerMoveEvent event, _ChartRects rects) {
     if (!_dragSessionActive || !_isViewportDragEnabled) return;
-    if ((event.buttons & kPrimaryMouseButton) == 0) {
+    final requiredButton =
+        _middleDragSession ? kMiddleMouseButton : kPrimaryMouseButton;
+    if ((event.buttons & requiredButton) == 0) {
       _clearDragState();
       return;
     }
     final delta = event.delta;
     if (delta == Offset.zero) return;
+    if (_middleDragSession) {
+      _translatePriceViewport(delta.dy, rects.mainRect);
+      return;
+    }
     final axis = _dragAxis ?? _resolveDragAxis(delta);
     if (axis == null) return;
     _dragAxis = axis;
@@ -315,6 +332,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     _dragAxis = null;
     _panRemainder = 0.0;
     _dragSessionActive = false;
+    _middleDragSession = false;
   }
 
   _DragAxis? _resolveDragAxis(Offset delta) {
@@ -342,6 +360,19 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     final factor = 1 + (-dy / 240);
     if (!factor.isFinite || factor <= 0) return;
     _zoomVertical(factor);
+  }
+
+  void _translatePriceViewport(double dy, Rect mainRect) {
+    if (dy.abs() <= 0.2 || mainRect.height <= 0) return;
+    final bars = widget.snapshot.rawBars;
+    if (bars.isEmpty) return;
+    final visible = bars.sublist(_currentStartIndex, _currentEndIndex + 1);
+    final low = visible.map((bar) => bar.low).reduce(math.min);
+    final high = visible.map((bar) => bar.high).reduce(math.max);
+    final rawRange = math.max(high - low, high.abs() * 0.002);
+    final displayedRange = rawRange / _safePriceScale.clamp(0.35, 5.0);
+    final next = widget.priceOffset + dy / mainRect.height * displayedRange;
+    if (next.isFinite) widget.onPriceOffsetChanged?.call(next);
   }
 
   @override
@@ -384,6 +415,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
           onToolboxQuickToolAdded: widget.onToolboxQuickToolAdded,
           windowSize: _safeWindowSize,
           priceScale: _safePriceScale,
+          priceOffset: widget.priceOffset,
           viewEndIndex: widget.viewEndIndex,
           crosshairIndex: widget.crosshairIndex,
           onCrosshairChanged: widget.onCrosshairChanged,

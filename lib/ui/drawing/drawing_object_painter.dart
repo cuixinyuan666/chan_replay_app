@@ -77,6 +77,9 @@ class DrawingObjectPainter {
         _drawEllipse(canvas, chartRect, object, rawToX, priceToY,
             forceCircle: true);
         return;
+      case TradingViewDrawingTool.iconCircle:
+        _drawCircleMarker(canvas, chartRect, object, rawToX, priceToY);
+        return;
       case TradingViewDrawingTool.text:
       case TradingViewDrawingTool.anchoredText:
       case TradingViewDrawingTool.note:
@@ -129,10 +132,13 @@ class DrawingObjectPainter {
   }) {
     final anchor = _firstChartAnchor(object);
     if (anchor == null || anchor.price == null) return;
-    final y =
-        priceToY(anchor.price!).clamp(chartRect.top, chartRect.bottom).toDouble();
+    final y = priceToY(anchor.price!)
+        .clamp(chartRect.top, chartRect.bottom)
+        .toDouble();
     final startX = ray && anchor.rawIndex != null
-        ? rawToX(anchor.rawIndex!).clamp(chartRect.left, chartRect.right).toDouble()
+        ? rawToX(anchor.rawIndex!)
+            .clamp(chartRect.left, chartRect.right)
+            .toDouble()
         : chartRect.left;
     final p1 = Offset(startX, y);
     final p2 = Offset(chartRect.right, y);
@@ -171,7 +177,10 @@ class DrawingObjectPainter {
     final rect = Rect.fromPoints(p1, p2);
     if (object.style.filled) {
       canvas.drawRect(
-          rect, Paint()..color = object.style.fillColor..style = PaintingStyle.fill);
+          rect,
+          Paint()
+            ..color = object.style.fillColor
+            ..style = PaintingStyle.fill);
     }
     canvas.drawRect(rect, _linePaint(object)..style = PaintingStyle.stroke);
     if (object.selected) _drawHandles(canvas, [p1, p2]);
@@ -192,11 +201,15 @@ class DrawingObjectPainter {
     var rect = Rect.fromPoints(p1, p2);
     if (forceCircle) {
       final radius = math.min(rect.width.abs(), rect.height.abs()) / 2;
-      rect = Rect.fromCircle(center: rect.center, radius: math.max(2.0, radius));
+      rect =
+          Rect.fromCircle(center: rect.center, radius: math.max(2.0, radius));
     }
     if (object.style.filled) {
       canvas.drawOval(
-          rect, Paint()..color = object.style.fillColor..style = PaintingStyle.fill);
+          rect,
+          Paint()
+            ..color = object.style.fillColor
+            ..style = PaintingStyle.fill);
     }
     canvas.drawOval(rect, _linePaint(object)..style = PaintingStyle.stroke);
     if (object.selected) _drawHandles(canvas, [p1, p2]);
@@ -218,7 +231,8 @@ class DrawingObjectPainter {
     final painter = TextPainter(
       text: TextSpan(
           text: text,
-          style: TextStyle(color: object.style.color, fontSize: object.style.fontSize)),
+          style: TextStyle(
+              color: object.style.color, fontSize: object.style.fontSize)),
       textDirection: TextDirection.ltr,
       maxLines: 2,
     )..layout(maxWidth: math.max(80, chartRect.width * 0.45));
@@ -230,6 +244,43 @@ class DrawingObjectPainter {
     );
     painter.paint(canvas, Offset(offset.dx, offset.dy));
     if (object.selected) _drawHandles(canvas, [offset]);
+  }
+
+  static void _drawCircleMarker(
+    Canvas canvas,
+    Rect chartRect,
+    DrawingObject object,
+    double Function(int rawIndex) rawToX,
+    double Function(double price) priceToY,
+  ) {
+    final point = _firstPoint(object, rawToX, priceToY);
+    if (point == null || !chartRect.inflate(6).contains(point)) return;
+    final center = _clamp(point, chartRect);
+    final fill = Paint()
+      ..color = const Color(0xFF111722)
+      ..style = PaintingStyle.fill;
+    final stroke = _linePaint(object)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(1.4, object.style.strokeWidth);
+    canvas.drawCircle(center, 4.2, fill);
+    canvas.drawCircle(center, 4.2, stroke);
+    if (object.text.isEmpty) return;
+    final label = TextPainter(
+      text: TextSpan(
+        text: object.text,
+        style: TextStyle(
+          color: object.style.color,
+          fontSize: object.style.fontSize,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    label.paint(
+      canvas,
+      Offset(center.dx - label.width - 8, center.dy - label.height / 2),
+    );
   }
 
   static void _drawMeasure(
@@ -251,16 +302,22 @@ class DrawingObjectPainter {
         chartRect);
     final rect = Rect.fromPoints(p1, p2);
     final paint = _linePaint(object);
-    canvas.drawRect(rect, Paint()..color = object.style.fillColor..style = PaintingStyle.fill);
+    canvas.drawRect(
+        rect,
+        Paint()
+          ..color = object.style.fillColor
+          ..style = PaintingStyle.fill);
     canvas.drawRect(rect, paint..style = PaintingStyle.stroke);
     _drawStyledLine(canvas, p1, p2, _linePaint(object), object.style.dashed);
 
     final rawDelta = (anchors[1].rawIndex! - anchors[0].rawIndex!).abs();
     final priceDelta = anchors[1].price! - anchors[0].price!;
-    final pct = anchors[0].price == 0 ? 0.0 : priceDelta / anchors[0].price! * 100;
+    final pct =
+        anchors[0].price == 0 ? 0.0 : priceDelta / anchors[0].price! * 100;
     final label =
         '${rawDelta}K  Δ${priceDelta.toStringAsFixed(2)}  ${pct.toStringAsFixed(2)}%';
-    final labelOffset = Offset(rect.left + 4, math.max(chartRect.top + 2, rect.top - 18));
+    final labelOffset =
+        Offset(rect.left + 4, math.max(chartRect.top + 2, rect.top - 18));
     _paintSmallLabel(canvas, label, labelOffset, object.style.color);
     if (object.selected) _drawHandles(canvas, [p1, p2]);
   }
@@ -364,21 +421,28 @@ class DrawingObjectPainter {
     }
   }
 
-  static void _drawArrowHead(Canvas canvas, Offset from, Offset to, Paint paint) {
+  static void _drawArrowHead(
+      Canvas canvas, Offset from, Offset to, Paint paint) {
     final delta = to - from;
     if (delta.distance <= 0) return;
     final angle = math.atan2(delta.dy, delta.dx);
     const size = 9.0;
-    final p1 = to - Offset(math.cos(angle - math.pi / 6) * size,
-        math.sin(angle - math.pi / 6) * size);
-    final p2 = to - Offset(math.cos(angle + math.pi / 6) * size,
-        math.sin(angle + math.pi / 6) * size);
+    final p1 = to -
+        Offset(math.cos(angle - math.pi / 6) * size,
+            math.sin(angle - math.pi / 6) * size);
+    final p2 = to -
+        Offset(math.cos(angle + math.pi / 6) * size,
+            math.sin(angle + math.pi / 6) * size);
     final path = Path()
       ..moveTo(to.dx, to.dy)
       ..lineTo(p1.dx, p1.dy)
       ..lineTo(p2.dx, p2.dy)
       ..close();
-    canvas.drawPath(path, Paint()..color = paint.color..style = PaintingStyle.fill);
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = paint.color
+          ..style = PaintingStyle.fill);
   }
 
   static void _drawHandles(Canvas canvas, List<Offset> points) {

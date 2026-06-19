@@ -70,6 +70,7 @@ class S13RhythmDisplaySettings {
   final bool fractToBiEnabled;
   final bool biToSegEnabled;
   final bool segToSegsegEnabled;
+  final bool showSequenceNumbers;
   final int maxLayer;
   final String calcMode;
   final List<S13RhythmGroupStyle> groups;
@@ -80,6 +81,7 @@ class S13RhythmDisplaySettings {
     this.fractToBiEnabled = true,
     this.biToSegEnabled = true,
     this.segToSegsegEnabled = true,
+    this.showSequenceNumbers = true,
     this.maxLayer = 9,
     this.calcMode = 'normal',
     this.groups = defaultGroups,
@@ -92,11 +94,16 @@ class S13RhythmDisplaySettings {
       };
 
   static const defaultGroups = <S13RhythmGroupStyle>[
-    S13RhythmGroupStyle(lineColor: 0xFF9333EA, lineWidth: 1.2, dashed: true, textFontSize: 12),
-    S13RhythmGroupStyle(lineColor: 0xFF0F766E, lineWidth: 1.6, dashed: false, textFontSize: 13),
-    S13RhythmGroupStyle(lineColor: 0xFF2563EB, lineWidth: 2.0, dashed: true, textFontSize: 14),
-    S13RhythmGroupStyle(lineColor: 0xFFEA580C, lineWidth: 2.4, dashed: false, textFontSize: 15),
-    S13RhythmGroupStyle(lineColor: 0xFFBE123C, lineWidth: 2.8, dashed: true, textFontSize: 16),
+    S13RhythmGroupStyle(
+        lineColor: 0xFF9333EA, lineWidth: 1.2, dashed: true, textFontSize: 12),
+    S13RhythmGroupStyle(
+        lineColor: 0xFF0F766E, lineWidth: 1.6, dashed: false, textFontSize: 13),
+    S13RhythmGroupStyle(
+        lineColor: 0xFF2563EB, lineWidth: 2.0, dashed: true, textFontSize: 14),
+    S13RhythmGroupStyle(
+        lineColor: 0xFFEA580C, lineWidth: 2.4, dashed: false, textFontSize: 15),
+    S13RhythmGroupStyle(
+        lineColor: 0xFFBE123C, lineWidth: 2.8, dashed: true, textFontSize: 16),
   ];
 
   S13RhythmDisplaySettings copyWith({
@@ -104,6 +111,7 @@ class S13RhythmDisplaySettings {
     bool? fractToBiEnabled,
     bool? biToSegEnabled,
     bool? segToSegsegEnabled,
+    bool? showSequenceNumbers,
     int? maxLayer,
     String? calcMode,
     List<S13RhythmGroupStyle>? groups,
@@ -114,6 +122,7 @@ class S13RhythmDisplaySettings {
         fractToBiEnabled: fractToBiEnabled ?? this.fractToBiEnabled,
         biToSegEnabled: biToSegEnabled ?? this.biToSegEnabled,
         segToSegsegEnabled: segToSegsegEnabled ?? this.segToSegsegEnabled,
+        showSequenceNumbers: showSequenceNumbers ?? this.showSequenceNumbers,
         maxLayer: (maxLayer ?? this.maxLayer).clamp(0, 9).toInt(),
         calcMode: _normalizeCalcMode(calcMode ?? this.calcMode),
         groups: groups ?? this.groups,
@@ -136,7 +145,7 @@ class S13RhythmDisplaySettings {
   bool hitVisible(RhythmHit hitRow) => hit.enabled;
 
   DrawingStyle lineStyle(RhythmLine line) {
-    final style = groupStyle(line.roundRef);
+    final style = groupStyle(_styleGroupForTransition(line));
     return DrawingStyle(
       colorValue: style.lineColor,
       strokeWidth: style.lineWidth,
@@ -164,9 +173,21 @@ class S13RhythmDisplaySettings {
     return groups[index];
   }
 
+  int _styleGroupForTransition(RhythmLine line) {
+    final source = line.sourceKind.trim().toLowerCase();
+    final parent = line.parentLevel.trim().toLowerCase();
+    final transition = '$source->$parent';
+    if (transition == 'fx->bi' || transition == 'fract->bi') return 1;
+    if (transition == 'bi->seg') return 2;
+    if (transition == 'seg->segseg') return 3;
+    return line.layer.clamp(1, groups.isEmpty ? 1 : groups.length).toInt();
+  }
+
   static String _normalizeCalcMode(String value) {
     final v = value.trim();
-    return const {'normal', 'transition', 'strict1382'}.contains(v) ? v : 'normal';
+    return const {'normal', 'transition', 'strict1382'}.contains(v)
+        ? v
+        : 'normal';
   }
 }
 
@@ -190,46 +211,67 @@ Future<S13RhythmDisplaySettings?> showS13RhythmDisplaySettingsDialog({
                 SwitchListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
+                  value: draft.showSequenceNumbers,
+                  onChanged: (v) => setState(
+                      () => draft = draft.copyWith(showSequenceNumbers: v)),
+                  title: const Text('显示连接点序号',
+                      style: TextStyle(color: Colors.white70)),
+                ),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
                   value: draft.enabled,
-                  onChanged: (v) => setState(() => draft = draft.copyWith(enabled: v)),
-                  title: const Text('启用节奏线', style: TextStyle(color: Colors.white70)),
+                  onChanged: (v) =>
+                      setState(() => draft = draft.copyWith(enabled: v)),
+                  title: const Text('启用节奏线',
+                      style: TextStyle(color: Colors.white70)),
                 ),
                 SwitchListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   value: draft.hit.enabled,
-                  onChanged: (v) => setState(() => draft = draft.copyWith(hit: draft.hit.copyWith(enabled: v))),
-                  title: const Text('启用 1.382 命中', style: TextStyle(color: Colors.white70)),
+                  onChanged: (v) => setState(() => draft =
+                      draft.copyWith(hit: draft.hit.copyWith(enabled: v))),
+                  title: const Text('启用 1.382 命中',
+                      style: TextStyle(color: Colors.white70)),
                 ),
                 const Divider(color: Colors.white12),
-                _calcModeDropdown(draft, (v) => setState(() => draft = draft.copyWith(calcMode: v))),
+                _calcModeDropdown(draft,
+                    (v) => setState(() => draft = draft.copyWith(calcMode: v))),
                 _intSlider(
                   label: '最大层级 maxLayer（包含 0 层；设为 0 仅显示本轮线）',
                   value: draft.maxLayer,
                   min: 0,
                   max: 9,
-                  onChanged: (v) => setState(() => draft = draft.copyWith(maxLayer: v)),
+                  onChanged: (v) =>
+                      setState(() => draft = draft.copyWith(maxLayer: v)),
                 ),
                 CheckboxListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   value: draft.fractToBiEnabled,
-                  onChanged: (v) => setState(() => draft = draft.copyWith(fractToBiEnabled: v ?? true)),
-                  title: const Text('分型 -> 笔', style: TextStyle(color: Colors.white70)),
+                  onChanged: (v) => setState(() =>
+                      draft = draft.copyWith(fractToBiEnabled: v ?? true)),
+                  title: const Text('分型 -> 笔',
+                      style: TextStyle(color: Colors.white70)),
                 ),
                 CheckboxListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   value: draft.biToSegEnabled,
-                  onChanged: (v) => setState(() => draft = draft.copyWith(biToSegEnabled: v ?? true)),
-                  title: const Text('笔 -> 线段', style: TextStyle(color: Colors.white70)),
+                  onChanged: (v) => setState(
+                      () => draft = draft.copyWith(biToSegEnabled: v ?? true)),
+                  title: const Text('笔 -> 线段',
+                      style: TextStyle(color: Colors.white70)),
                 ),
                 CheckboxListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   value: draft.segToSegsegEnabled,
-                  onChanged: (v) => setState(() => draft = draft.copyWith(segToSegsegEnabled: v ?? true)),
-                  title: const Text('线段 -> 二段', style: TextStyle(color: Colors.white70)),
+                  onChanged: (v) => setState(() =>
+                      draft = draft.copyWith(segToSegsegEnabled: v ?? true)),
+                  title: const Text('线段 -> 二段',
+                      style: TextStyle(color: Colors.white70)),
                 ),
                 const Divider(color: Colors.white12),
                 for (var i = 0; i < draft.groups.length; i++)
@@ -239,7 +281,10 @@ Future<S13RhythmDisplaySettings?> showS13RhythmDisplaySettingsDialog({
                     setState(() => draft = draft.copyWith(groups: groups));
                   }),
                 const Divider(color: Colors.white12),
-                _hitTile(draft.hit, (next) => setState(() => draft = draft.copyWith(hit: next))),
+                _hitTile(
+                    draft.hit,
+                    (next) =>
+                        setState(() => draft = draft.copyWith(hit: next))),
               ],
             ),
           ),
@@ -250,7 +295,8 @@ Future<S13RhythmDisplaySettings?> showS13RhythmDisplaySettingsDialog({
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () => setState(() => draft = const S13RhythmDisplaySettings()),
+            onPressed: () =>
+                setState(() => draft = const S13RhythmDisplaySettings()),
             child: const Text('恢复默认'),
           ),
           FilledButton(
@@ -263,7 +309,8 @@ Future<S13RhythmDisplaySettings?> showS13RhythmDisplaySettingsDialog({
   );
 }
 
-Widget _calcModeDropdown(S13RhythmDisplaySettings draft, ValueChanged<String> onChanged) =>
+Widget _calcModeDropdown(
+        S13RhythmDisplaySettings draft, ValueChanged<String> onChanged) =>
     DropdownButtonFormField<String>(
       value: draft.calcMode,
       dropdownColor: const Color(0xFF20242E),
@@ -290,7 +337,8 @@ Widget _intSlider({
     Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('$label: $value', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        Text('$label: $value',
+            style: const TextStyle(color: Colors.white70, fontSize: 12)),
         Slider(
           value: value.toDouble(),
           min: min.toDouble(),
@@ -301,14 +349,19 @@ Widget _intSlider({
       ],
     );
 
-Widget _groupTile(int index, S13RhythmGroupStyle style, ValueChanged<S13RhythmGroupStyle> onChanged) =>
+Widget _groupTile(int index, S13RhythmGroupStyle style,
+        ValueChanged<S13RhythmGroupStyle> onChanged) =>
     ExpansionTile(
       tilePadding: EdgeInsets.zero,
-      title: Text('Group ${index + 1}', style: const TextStyle(color: Colors.white70)),
+      title: Text('Group ${index + 1}',
+          style: const TextStyle(color: Colors.white70)),
       children: <Widget>[
-        _colorDropdown('线颜色', style.lineColor, (v) => onChanged(style.copyWith(lineColor: v))),
-        _doubleSlider('线宽', style.lineWidth, 0.4, 5.0, (v) => onChanged(style.copyWith(lineWidth: v))),
-        _doubleSlider('文字大小', style.textFontSize, 9.0, 22.0, (v) => onChanged(style.copyWith(textFontSize: v))),
+        _colorDropdown('线颜色', style.lineColor,
+            (v) => onChanged(style.copyWith(lineColor: v))),
+        _doubleSlider('线宽', style.lineWidth, 0.4, 5.0,
+            (v) => onChanged(style.copyWith(lineWidth: v))),
+        _doubleSlider('文字大小', style.textFontSize, 9.0, 22.0,
+            (v) => onChanged(style.copyWith(textFontSize: v))),
         SwitchListTile(
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -319,16 +372,25 @@ Widget _groupTile(int index, S13RhythmGroupStyle style, ValueChanged<S13RhythmGr
       ],
     );
 
-Widget _hitTile(S13RhythmHitStyle style, ValueChanged<S13RhythmHitStyle> onChanged) =>
+Widget _hitTile(
+        S13RhythmHitStyle style, ValueChanged<S13RhythmHitStyle> onChanged) =>
     ExpansionTile(
       tilePadding: EdgeInsets.zero,
       initiallyExpanded: true,
       title: const Text('1.382 命中样式', style: TextStyle(color: Colors.white70)),
       children: <Widget>[
-        _colorDropdown('颜色', style.color, (v) => onChanged(style.copyWith(color: v))),
-        _doubleSlider('线宽', style.lineWidth, 0.4, 5.0, (v) => onChanged(style.copyWith(lineWidth: v))),
-        _doubleSlider('文字大小', style.fontSize, 9.0, 22.0, (v) => onChanged(style.copyWith(fontSize: v))),
-        _intSlider(label: 'overflowLimit', value: style.overflowLimit, min: 0, max: 12, onChanged: (v) => onChanged(style.copyWith(overflowLimit: v))),
+        _colorDropdown(
+            '颜色', style.color, (v) => onChanged(style.copyWith(color: v))),
+        _doubleSlider('线宽', style.lineWidth, 0.4, 5.0,
+            (v) => onChanged(style.copyWith(lineWidth: v))),
+        _doubleSlider('文字大小', style.fontSize, 9.0, 22.0,
+            (v) => onChanged(style.copyWith(fontSize: v))),
+        _intSlider(
+            label: 'overflowLimit',
+            value: style.overflowLimit,
+            min: 0,
+            max: 12,
+            onChanged: (v) => onChanged(style.copyWith(overflowLimit: v))),
         SwitchListTile(
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -339,12 +401,19 @@ Widget _hitTile(S13RhythmHitStyle style, ValueChanged<S13RhythmHitStyle> onChang
       ],
     );
 
-Widget _doubleSlider(String label, double value, double min, double max, ValueChanged<double> onChanged) =>
+Widget _doubleSlider(String label, double value, double min, double max,
+        ValueChanged<double> onChanged) =>
     Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('$label: ${value.toStringAsFixed(1)}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-        Slider(value: value, min: min, max: max, divisions: ((max - min) * 10).round(), onChanged: onChanged),
+        Text('$label: ${value.toStringAsFixed(1)}',
+            style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        Slider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: ((max - min) * 10).round(),
+            onChanged: onChanged),
       ],
     );
 
@@ -352,7 +421,8 @@ Widget _colorDropdown(String label, int value, ValueChanged<int> onChanged) =>
     DropdownButtonFormField<int>(
       value: value,
       dropdownColor: const Color(0xFF20242E),
-      decoration: InputDecoration(labelText: label, labelStyle: const TextStyle(color: Colors.white54)),
+      decoration: InputDecoration(
+          labelText: label, labelStyle: const TextStyle(color: Colors.white54)),
       style: const TextStyle(color: Colors.white),
       items: const <DropdownMenuItem<int>>[
         DropdownMenuItem(value: 0xFF9333EA, child: Text('紫色')),

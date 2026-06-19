@@ -16,6 +16,7 @@ import '../drawing/drawing_object_persistence.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import '../drawing/tradingview_toolbox_host.dart';
 import 'bsp_chart_label_adapter.dart';
+import 'chart_time_formatter.dart';
 import 'chart_label_layout.dart';
 
 class OriginKlineChart extends StatefulWidget {
@@ -44,6 +45,7 @@ class OriginKlineChart extends StatefulWidget {
   final ValueChanged<TradingViewDrawingTool>? onToolboxQuickToolAdded;
   final int windowSize;
   final double priceScale;
+  final double priceOffset;
   final int? viewEndIndex;
   final int? crosshairIndex;
   final ValueChanged<int>? onCrosshairChanged;
@@ -80,6 +82,7 @@ class OriginKlineChart extends StatefulWidget {
     this.onToolboxQuickToolAdded,
     required this.windowSize,
     this.priceScale = 1.0,
+    this.priceOffset = 0.0,
     this.viewEndIndex,
     this.crosshairIndex,
     this.onCrosshairChanged,
@@ -320,6 +323,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
                       drawingObjects: _effectiveDrawingObjects,
                       windowSize: widget.windowSize,
                       priceScale: widget.priceScale,
+                      priceOffset: widget.priceOffset,
                       viewEndIndex: widget.viewEndIndex,
                       crosshairIndex: _effectiveCrosshairIndex,
                       crosshairPrice: _effectiveCrosshairPrice,
@@ -941,6 +945,7 @@ class _OriginChartPainter extends CustomPainter {
   final List<DrawingObject> drawingObjects;
   final int windowSize;
   final double priceScale;
+  final double priceOffset;
   final int? viewEndIndex;
   final int? crosshairIndex;
   final double? crosshairPrice;
@@ -965,6 +970,7 @@ class _OriginChartPainter extends CustomPainter {
       required this.drawingObjects,
       required this.windowSize,
       required this.priceScale,
+      required this.priceOffset,
       this.viewEndIndex,
       this.crosshairIndex,
       this.crosshairPrice});
@@ -1011,7 +1017,7 @@ class _OriginChartPainter extends CustomPainter {
     final visible = bars.sublist(start, end + 1);
     final low = visible.map((e) => e.low).reduce(math.min);
     final high = visible.map((e) => e.high).reduce(math.max);
-    final center = (high + low) / 2;
+    final center = (high + low) / 2 + priceOffset;
     final rawRange = math.max(high - low, high.abs() * 0.002);
     final scaledRange = rawRange / priceScale.clamp(0.35, 5.0);
     final padding = math.max(scaledRange * 0.08, high.abs() * 0.001);
@@ -1758,8 +1764,10 @@ class _OriginChartPainter extends CustomPainter {
     painter.paint(canvas, offset);
   }
 
-  String _fmtDate(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String _fmtDate(DateTime d) => ChartTimeFormatter.format(
+        d,
+        snapshot.rawBars.map((bar) => bar.time),
+      );
   @override
   bool shouldRepaint(covariant _OriginChartPainter oldDelegate) => true;
 }

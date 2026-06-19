@@ -84,7 +84,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _panelOpen = false,
       _playing = false;
   int _frameIndex = 0, _windowSize = 90;
-  double _playSpeed = 1.0, _priceScale = 1.0;
+  double _playSpeed = 1.0, _priceScale = 1.0, _priceOffset = 0.0;
   int? _viewEndIndex, _crosshairIndex;
   DateTime? _startDate, _endDate;
   Timer? _playTimer;
@@ -738,6 +738,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         _viewEndIndex = null;
         _crosshairIndex = null;
         _priceScale = 1.0;
+        _priceOffset = 0.0;
         _status = _buildStatus(a, startDate, endDate);
       });
       _showMessage('S13 replay loaded');
@@ -763,6 +764,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _viewEndIndex = null;
       _crosshairIndex = null;
       _priceScale = 1.0;
+      _priceOffset = 0.0;
       final c = _currentSnapshot;
       if (c != null) {
         _activeLevel = c.snapshots.containsKey(_activeLevel)
@@ -786,6 +788,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _viewEndIndex = null;
       _crosshairIndex = null;
       _priceScale = 1.0;
+      _priceOffset = 0.0;
       final activeBiCount = f.of(level)?.bis.length ?? 0;
       _status =
           'S13 step frame ${next + 1}/${a.frames.length} active:$level active_bi:$activeBiCount loaded_config:{${_loadedChanConfigSummary(a)}} final_bi_counts:{${_biCountSummary(a.snapshot)}} current_bi_counts:{${_biCountSummary(f)}} relations:${f.relations.length} nested_markers:${_nestedBspMarkers.length} candidate_trail:$_bspCandidateTrailCount missing_edges:${_missingAdjacentRelationEdges().join(',')}';
@@ -855,6 +858,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _viewEndIndex = end;
       _crosshairIndex = rawIndex.clamp(0, max).toInt();
       _priceScale = 1.0;
+      _priceOffset = 0.0;
       _panelOpen = false;
     });
   }
@@ -873,6 +877,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _viewEndIndex = rawIndex.clamp(0, max).toInt();
       _crosshairIndex = rawIndex.clamp(0, max).toInt();
       _priceScale = 1.0;
+      _priceOffset = 0.0;
       _panelOpen = false;
     });
   }
@@ -953,14 +958,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                 ),
               _titleLevelSwitcher(),
               _s13QuickSideToolbar(),
-              PermanentWindowControls(
-                maximized: _windowMaximized,
-                onMinimize: _supportsWindowManager ? _minimizeWindow : null,
-                onMaximizeRestore: _supportsWindowManager
-                    ? _toggleWindowMaximizeRestore
-                    : null,
-                onClose: _supportsWindowManager ? _closeWindow : null,
-              ),
             ],
           ),
         ),
@@ -1030,6 +1027,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       ..writeln('view_end_index=${_viewEndIndex ?? 'auto'}')
       ..writeln('crosshair_index=${_crosshairIndex ?? 'none'}')
       ..writeln('price_scale=$_priceScale')
+      ..writeln('price_offset=$_priceOffset')
       ..writeln()
       ..writeln('[图层]')
       ..writeln('show_bsp_candidate_trail=$_showBspCandidateTrail')
@@ -1048,6 +1046,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       ..writeln('rhythm_fract_to_bi=${_rhythmSettings.fractToBiEnabled}')
       ..writeln('rhythm_bi_to_seg=${_rhythmSettings.biToSegEnabled}')
       ..writeln('rhythm_seg_to_segseg=${_rhythmSettings.segToSegsegEnabled}')
+      ..writeln(
+          'rhythm_show_sequence_numbers=${_rhythmSettings.showSequenceNumbers}')
       ..writeln('hit_enabled=${_rhythmSettings.hit.enabled}')
       ..writeln('hit_color=${_rhythmSettings.hit.color}')
       ..writeln('hit_line_width=${_rhythmSettings.hit.lineWidth}')
@@ -1287,6 +1287,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                 _viewEndIndex = null;
                 _crosshairIndex = null;
                 _priceScale = 1.0;
+                _priceOffset = 0.0;
               })
           : null,
       child: Container(
@@ -1316,8 +1317,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       initial: _rhythmSettings,
     );
     if (next == null || !mounted) return;
-    final calculationChanged = next.enabled != previous.enabled ||
-        next.calcMode != previous.calcMode;
+    final calculationChanged =
+        next.enabled != previous.enabled || next.calcMode != previous.calcMode;
     setState(() {
       _rhythmSettings = next;
       _showRhythmLines = next.enabled;
@@ -1486,12 +1487,14 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               symbolLabel: '${_symbolController.text.trim()} $_activeLevel',
               windowSize: _windowSize,
               priceScale: _priceScale,
+              priceOffset: _priceOffset,
               viewEndIndex: _viewEndIndex,
               crosshairIndex: _crosshairIndex,
               onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
               onPanBars: _panChartByBars,
               onWindowSizeChanged: (v) => setState(() => _windowSize = v),
-              onPriceScaleChanged: (v) => setState(() => _priceScale = v))),
+              onPriceScaleChanged: (v) => setState(() => _priceScale = v),
+              onPriceOffsetChanged: (v) => setState(() => _priceOffset = v))),
       S13ChipDistributionPanel(
         snapshot: _activeSnapshot,
         enabled: _showChipDistribution,
@@ -1502,10 +1505,20 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         visibleRightIndex: (_viewEndIndex ?? s.rawBars.length - 1)
             .clamp(0, s.rawBars.length - 1)
             .toInt(),
-        onClose: () => setState(() => _showChipDistribution = false),
+        windowSize: _windowSize,
+        priceScale: _priceScale,
+        priceOffset: _priceOffset,
+        easySubPanelCount: _enabledEasyTdxIndicators.isEmpty ? 0 : 2,
       ),
       _nestedBspMarkerOverlay(),
-      _replayControlOverlay()
+      _replayControlOverlay(),
+      PermanentWindowControls(
+        maximized: _windowMaximized,
+        onMinimize: _supportsWindowManager ? _minimizeWindow : null,
+        onMaximizeRestore:
+            _supportsWindowManager ? _toggleWindowMaximizeRestore : null,
+        onClose: _supportsWindowManager ? _closeWindow : null,
+      ),
     ]);
   }
 
@@ -1846,6 +1859,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                 _viewEndIndex = null;
                 _crosshairIndex = null;
                 _priceScale = 1.0;
+                _priceOffset = 0.0;
               })
           : null,
       selectedColor: const Color(0xFFFFD54F),
@@ -1898,20 +1912,75 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       windowSize: _windowSize,
     );
     if (_showRhythmLines) {
-      for (final line in selection.lines.where(_rhythmSettings.lineVisible)) {
-        objects.add(DrawingObject(
-          id: 'auto_${line.id}',
-          tool: TradingViewDrawingTool.trendLine,
-          anchors: <DrawingAnchor>[
-            DrawingAnchor.chart(rawIndex: line.x1, price: line.y1),
-            DrawingAnchor.chart(rawIndex: line.x2, price: line.y2),
-          ],
-          style: _rhythmSettings.lineStyle(line),
-          text: line.displayLabel,
-          locked: true,
-          createdAt: now,
-          updatedAt: now,
-        ));
+      final visibleLines =
+          selection.lines.where(_rhythmSettings.lineVisible).toList();
+      final orderedLines = List<RhythmLine>.from(visibleLines)
+        ..sort((a, b) {
+          final byStart = a.x1.compareTo(b.x1);
+          if (byStart != 0) return byStart;
+          final byEnd = a.x2.compareTo(b.x2);
+          return byEnd != 0 ? byEnd : a.id.compareTo(b.id);
+        });
+      final sequenceById = <String, int>{
+        for (var i = 0; i < orderedLines.length; i++) orderedLines[i].id: i + 1,
+      };
+      final groups = <String, List<RhythmLine>>{};
+      for (final line in visibleLines) {
+        final key = '${line.sourceKind.trim().toLowerCase()}->'
+            '${line.parentLevel.trim().toLowerCase()}|${line.roundRef}';
+        groups.putIfAbsent(key, () => <RhythmLine>[]).add(line);
+      }
+      for (final entry in groups.entries) {
+        final lines = entry.value;
+        final sharedStart = lines.map((line) => line.x1).reduce(math.min);
+        final style = _rhythmSettings.lineStyle(lines.first);
+        for (final line in lines) {
+          final endRawIndex = _limitedRhythmEndRawIndex(snapshot, line);
+          objects.add(DrawingObject(
+            id: 'auto_${line.id}',
+            tool: TradingViewDrawingTool.trendLine,
+            anchors: <DrawingAnchor>[
+              DrawingAnchor.chart(rawIndex: sharedStart, price: line.y1),
+              DrawingAnchor.chart(rawIndex: endRawIndex, price: line.y2),
+            ],
+            style: style,
+            text: line.displayLabel,
+            locked: true,
+            createdAt: now,
+            updatedAt: now,
+          ));
+          objects.add(DrawingObject(
+            id: 'auto_rhythm_point_${line.id}',
+            tool: TradingViewDrawingTool.iconCircle,
+            anchors: <DrawingAnchor>[
+              DrawingAnchor.chart(rawIndex: sharedStart, price: line.y1),
+            ],
+            style: style,
+            text: _rhythmSettings.showSequenceNumbers
+                ? '${sequenceById[line.id]}'
+                : '',
+            locked: true,
+            createdAt: now,
+            updatedAt: now,
+          ));
+        }
+        if (lines.length > 1) {
+          final prices = lines.map((line) => line.y1).toList();
+          objects.add(DrawingObject(
+            id: 'auto_rhythm_group_${entry.key}_$sharedStart',
+            tool: TradingViewDrawingTool.trendLine,
+            anchors: <DrawingAnchor>[
+              DrawingAnchor.chart(
+                  rawIndex: sharedStart, price: prices.reduce(math.min)),
+              DrawingAnchor.chart(
+                  rawIndex: sharedStart, price: prices.reduce(math.max)),
+            ],
+            style: style,
+            locked: true,
+            createdAt: now,
+            updatedAt: now,
+          ));
+        }
       }
     }
     if (_show1382Hits) {
@@ -1934,6 +2003,38 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       }
     }
     return objects;
+  }
+
+  int _limitedRhythmEndRawIndex(ChanSnapshot snapshot, RhythmLine line) {
+    final source = line.sourceKind.trim().toLowerCase();
+    final parent = line.parentLevel.trim().toLowerCase();
+    if ((source == 'fx' || source == 'fract') && parent == 'bi') {
+      final parents = snapshot.bis;
+      for (var i = 0; i < parents.length; i++) {
+        final current = parents[i];
+        if (line.x1 < current.startRawIndex || line.x1 > current.endRawIndex) {
+          continue;
+        }
+        final cap = i + 1 < parents.length
+            ? parents[i + 1].endRawIndex
+            : current.endRawIndex;
+        return math.min(line.x2, cap);
+      }
+    }
+    if (source == 'bi' && parent == 'seg') {
+      final parents = snapshot.segs;
+      for (var i = 0; i < parents.length; i++) {
+        final current = parents[i];
+        if (line.x1 < current.startRawIndex || line.x1 > current.endRawIndex) {
+          continue;
+        }
+        final cap = i + 1 < parents.length
+            ? parents[i + 1].endRawIndex
+            : current.endRawIndex;
+        return math.min(line.x2, cap);
+      }
+    }
+    return line.x2;
   }
 
   _RhythmSummary _rhythmSummaryFor(ChanSnapshot? snapshot) {
