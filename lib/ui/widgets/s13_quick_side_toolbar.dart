@@ -48,7 +48,7 @@ class S13QuickSideToolbar extends StatelessWidget {
       top: 44,
       bottom: 12,
       expandedWidth: 430,
-      initiallyExpanded: true,
+      initiallyExpanded: false,
       autoCollapseDelay: const Duration(seconds: 5),
       header: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -56,16 +56,60 @@ class S13QuickSideToolbar extends StatelessWidget {
           _header(),
           const SizedBox(height: 10),
           _appearanceControls(),
-          const SizedBox(height: 10),
-          FilledButton.tonalIcon(
-            onPressed: () => _copyCurrentToolbarSettings(context),
-            icon: const Icon(Icons.copy_all, size: 16),
-            label: const Text('复制当前工具栏设置'),
-          ),
         ],
       ),
-      sections: sections,
+      sections: _effectiveSections(),
     );
+  }
+
+  List<SideToolbarSection> _effectiveSections() {
+    return <SideToolbarSection>[
+      for (final section in sections)
+        if (section.title == '页面')
+          SideToolbarSection(
+            title: section.title,
+            children: _dedupePageChildren(section.children),
+          )
+        else
+          section,
+    ];
+  }
+
+  List<Widget> _dedupePageChildren(List<Widget> children) {
+    return <Widget>[
+      for (final child in children)
+        if (_filterDuplicatePageRouteButtons(child) != null)
+          _filterDuplicatePageRouteButtons(child)!,
+    ];
+  }
+
+  Widget? _filterDuplicatePageRouteButtons(Widget child) {
+    if (child is Wrap) {
+      final filtered = child.children
+          .where((item) => !_isDuplicateCurrentPageRoute(_textOf(item)))
+          .toList(growable: false);
+      if (filtered.isEmpty) return null;
+      return Wrap(
+        spacing: child.spacing,
+        runSpacing: child.runSpacing,
+        alignment: child.alignment,
+        runAlignment: child.runAlignment,
+        crossAxisAlignment: child.crossAxisAlignment,
+        textDirection: child.textDirection,
+        verticalDirection: child.verticalDirection,
+        clipBehavior: child.clipBehavior,
+        children: filtered,
+      );
+    }
+    return _isDuplicateCurrentPageRoute(_textOf(child)) ? null : child;
+  }
+
+  bool _isDuplicateCurrentPageRoute(String label) {
+    final compact = label.replaceAll(RegExp(r'\s+'), '');
+    return compact == '复盘' ||
+        compact == '单股多级别' ||
+        compact == '单股多级别复盘' ||
+        compact == 'K线图';
   }
 
   Widget _appearanceControls() {
@@ -257,7 +301,7 @@ class S13QuickSideToolbar extends StatelessWidget {
       ..writeln('[K线图外观]')
       ..writeln(KlineAppearanceController.current.toEvidenceText())
       ..writeln();
-    for (final section in sections) {
+    for (final section in _effectiveSections()) {
       buffer.writeln('[${section.title}]');
       final lines = <String>[];
       for (final child in section.children) {
