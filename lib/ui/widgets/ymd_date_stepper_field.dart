@@ -14,7 +14,7 @@ class YmdDateStepperField extends StatefulWidget {
   final DateTime minDate;
   final DateTime maxDate;
 
-  const YmdDateStepperField({
+  YmdDateStepperField({
     super.key,
     required this.controller,
     required this.label,
@@ -22,8 +22,8 @@ class YmdDateStepperField extends StatefulWidget {
     this.enabled = true,
     DateTime? minDate,
     DateTime? maxDate,
-  })  : minDate = minDate ?? const _ConstDate(1990, 1, 1).value,
-        maxDate = maxDate ?? const _ConstDate(2100, 12, 31).value;
+  })  : minDate = minDate ?? DateTime(1990, 1, 1),
+        maxDate = maxDate ?? DateTime(2100, 12, 31);
 
   @override
   State<YmdDateStepperField> createState() => _YmdDateStepperFieldState();
@@ -267,14 +267,4 @@ class _DateUnitStepper extends StatelessWidget {
           tooltip: null,
         ),
       );
-}
-
-class _ConstDate {
-  final int year;
-  final int month;
-  final int day;
-
-  const _ConstDate(this.year, this.month, this.day);
-
-  DateTime get value => DateTime(year, month, day);
 }
