@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'ashare_bsp_scanner_page.dart';
@@ -21,9 +22,23 @@ class _RootPageState extends State<RootPage> {
   static const int _multiLevelIndex = 1;
   static const int _settingsIndex = 6;
 
-  int _index = _multiLevelIndex;
+  late int _index;
   bool _settingsOpen = false;
-  final Set<int> _visited = <int>{_multiLevelIndex};
+  late final Set<int> _visited;
+
+  static int get _initialRouteIndex {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return _settingsIndex;
+    }
+    return _multiLevelIndex;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _index = _initialRouteIndex;
+    _visited = <int>{_index};
+  }
 
   void _closeSettings() {
     if (!_settingsOpen) return;
