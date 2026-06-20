@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../settings/kline_appearance_controller.dart';
 import 'auto_collapsible_side_toolbar.dart';
 
-/// S13-specific adapter for the reusable left side toolbar shell.
+/// K-line chart entry adapter for the reusable left side toolbar shell.
 class S13QuickSideToolbar extends StatelessWidget {
   final List<SideToolbarSection> sections;
   final String Function()? currentSettingsTextBuilder;
@@ -14,27 +15,270 @@ class S13QuickSideToolbar extends StatelessWidget {
     this.currentSettingsTextBuilder,
   });
 
+  static const List<Color> _klinePalette = <Color>[
+    Color(0xFFFFD54F),
+    Color(0xFF00E676),
+    Color(0xFFFF5252),
+    Color(0xFF40C4FF),
+    Color(0xFFB388FF),
+    Color(0xFFFFFFFF),
+  ];
+
+  static const List<Color> _backgroundPalette = <Color>[
+    Color(0xFF0D1117),
+    Color(0xFF000000),
+    Color(0xFF131722),
+    Color(0xFF1C2330),
+    Color(0xFF102027),
+    Color(0xFF21151A),
+  ];
+
+  static const List<Color> _themePalette = <Color>[
+    Color(0xFFFFD54F),
+    Color(0xFF40C4FF),
+    Color(0xFF00E676),
+    Color(0xFFFF7043),
+    Color(0xFFB388FF),
+    Color(0xFF26A69A),
+  ];
+
   @override
   Widget build(BuildContext context) {
     return AutoCollapsibleSideToolbar(
       top: 44,
       bottom: 12,
       expandedWidth: 430,
-      initiallyExpanded: true,
+      initiallyExpanded: false,
       autoCollapseDelay: const Duration(seconds: 5),
       header: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           _header(),
           const SizedBox(height: 10),
-          FilledButton.tonalIcon(
-            onPressed: () => _copyCurrentToolbarSettings(context),
-            icon: const Icon(Icons.copy_all, size: 16),
-            label: const Text('复制当前工具栏设置'),
-          ),
+          _appearanceControls(),
         ],
       ),
-      sections: sections,
+      sections: _effectiveSections(),
+    );
+  }
+
+  List<SideToolbarSection> _effectiveSections() {
+    return <SideToolbarSection>[
+      for (final section in sections)
+        if (section.title == '页面')
+          SideToolbarSection(
+            title: section.title,
+            children: _dedupePageChildren(section.children),
+          )
+        else
+          section,
+    ];
+  }
+
+  List<Widget> _dedupePageChildren(List<Widget> children) {
+    final filtered = <Widget>[];
+    for (final child in children) {
+      final next = _filterDuplicatePageRouteButtons(child);
+      if (next != null) filtered.add(next);
+    }
+    return filtered;
+  }
+
+  Widget? _filterDuplicatePageRouteButtons(Widget child) {
+    if (child is Wrap) {
+      final filtered = <Widget>[];
+      for (var i = 0; i < child.children.length; i++) {
+        final item = child.children[i];
+        final isCurrentPageSelfRoute = i == 0;
+        final hasDuplicateLabel = _isDuplicateCurrentPageRoute(_textOf(item));
+        if (!isCurrentPageSelfRoute && !hasDuplicateLabel) {
+          filtered.add(item);
+        }
+      }
+      if (filtered.isEmpty) return null;
+      return Wrap(
+        spacing: child.spacing,
+        runSpacing: child.runSpacing,
+        alignment: child.alignment,
+        runAlignment: child.runAlignment,
+        crossAxisAlignment: child.crossAxisAlignment,
+        textDirection: child.textDirection,
+        verticalDirection: child.verticalDirection,
+        clipBehavior: child.clipBehavior,
+        children: filtered,
+      );
+    }
+    return _isDuplicateCurrentPageRoute(_textOf(child)) ? null : child;
+  }
+
+  bool _isDuplicateCurrentPageRoute(String label) {
+    final compact = label.replaceAll(RegExp(r'\s+'), '');
+    return compact == '复盘' ||
+        compact == '单股多级别' ||
+        compact == '单股多级别复盘' ||
+        compact == 'K线图';
+  }
+
+  Widget _appearanceControls() {
+    return ValueListenableBuilder<KlineAppearanceSettings>(
+      valueListenable: KlineAppearanceController.selected,
+      builder: (context, settings, _) {
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0x661C2330),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    const Icon(Icons.palette, size: 16, color: Color(0xFFFFD54F)),
+                    const SizedBox(width: 6),
+                    const Expanded(
+                      child: Text(
+                        'K线图外观',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: KlineAppearanceController.reset,
+                      child: const Text('默认', style: TextStyle(fontSize: 11)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                _colorRow(
+                  label: 'K线颜色',
+                  colors: _klinePalette,
+                  selected: settings.klineColor,
+                  onSelected: KlineAppearanceController.setKlineColor,
+                ),
+                const SizedBox(height: 8),
+                _opacitySlider(settings.klineOpacity),
+                const SizedBox(height: 8),
+                _colorRow(
+                  label: '背景颜色',
+                  colors: _backgroundPalette,
+                  selected: settings.chartBackgroundColor,
+                  onSelected: KlineAppearanceController.setChartBackgroundColor,
+                ),
+                const SizedBox(height: 8),
+                _colorRow(
+                  label: 'App主题色',
+                  colors: _themePalette,
+                  selected: settings.appThemeColor,
+                  onSelected: KlineAppearanceController.setAppThemeColor,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  settings.toEvidenceText(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white38, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _opacitySlider(double opacity) {
+    return Row(
+      children: <Widget>[
+        const SizedBox(
+          width: 64,
+          child: Text('透明度', style: TextStyle(color: Colors.white70, fontSize: 11)),
+        ),
+        Expanded(
+          child: Slider(
+            value: opacity,
+            min: 0,
+            max: 0.65,
+            divisions: 13,
+            label: opacity.toStringAsFixed(2),
+            onChanged: KlineAppearanceController.setKlineOpacity,
+          ),
+        ),
+        SizedBox(
+          width: 38,
+          child: Text(
+            opacity.toStringAsFixed(2),
+            textAlign: TextAlign.right,
+            style: const TextStyle(color: Colors.white54, fontSize: 11),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _colorRow({
+    required String label,
+    required List<Color> colors,
+    required Color selected,
+    required ValueChanged<Color> onSelected,
+  }) {
+    return Row(
+      children: <Widget>[
+        SizedBox(
+          width: 64,
+          child: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+        ),
+        Expanded(
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: <Widget>[
+              for (final color in colors)
+                _colorButton(
+                  color: color,
+                  selected: color == selected,
+                  onPressed: () => onSelected(color),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _colorButton({
+    required Color color,
+    required bool selected,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: '#${color.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}',
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? Colors.white : Colors.white24,
+              width: selected ? 2.4 : 1,
+            ),
+            boxShadow: selected
+                ? const <BoxShadow>[
+                    BoxShadow(color: Color(0x88FFFFFF), blurRadius: 7),
+                  ]
+                : null,
+          ),
+        ),
+      ),
     );
   }
 
@@ -53,13 +297,18 @@ class S13QuickSideToolbar extends StatelessWidget {
 
   String _toolbarSettingsText() {
     final explicit = currentSettingsTextBuilder?.call().trim();
-    if (explicit != null && explicit.isNotEmpty) return explicit;
+    if (explicit != null && explicit.isNotEmpty) {
+      return '$explicit\n[K线图外观]\n${KlineAppearanceController.current.toEvidenceText()}';
+    }
 
     final buffer = StringBuffer()
-      ..writeln('S13_CURRENT_TOOLBAR_SETTINGS')
+      ..writeln('KLINE_CHART_CURRENT_TOOLBAR_SETTINGS')
       ..writeln('generated_at=${DateTime.now().toIso8601String()}')
+      ..writeln()
+      ..writeln('[K线图外观]')
+      ..writeln(KlineAppearanceController.current.toEvidenceText())
       ..writeln();
-    for (final section in sections) {
+    for (final section in _effectiveSections()) {
       buffer.writeln('[${section.title}]');
       final lines = <String>[];
       for (final child in section.children) {
@@ -212,11 +461,11 @@ class S13QuickSideToolbar extends StatelessWidget {
 
   Widget _header() => const Row(
         children: <Widget>[
-          Icon(Icons.account_tree, color: Color(0xFFFFD54F), size: 18),
+          Icon(Icons.candlestick_chart, color: Color(0xFFFFD54F), size: 18),
           SizedBox(width: 6),
           Expanded(
             child: Text(
-              '单股多级别复盘',
+              'K线图',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 13,
