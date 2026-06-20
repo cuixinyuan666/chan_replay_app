@@ -1,1 +1,1773 @@
-PLACEHOLDER
+import 'dart:math' as math;
+
+import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
+import '../../core/models/bsp.dart';
+import '../../core/models/chan_snapshot.dart';
+import '../../core/models/easy_tdx_indicator.dart';
+import '../../core/models/fx.dart';
+import '../../core/models/raw_bar.dart';
+import '../drawing/drawing_object.dart';
+import '../drawing/drawing_object_hit_test.dart';
+import '../drawing/drawing_object_painter.dart';
+import '../drawing/drawing_object_persistence.dart';
+import '../drawing/tradingview_drawing_tool.dart';
+import '../drawing/tradingview_toolbox_host.dart';
+import 'bsp_chart_label_adapter.dart';
+import 'chart_time_formatter.dart';
+import 'chart_label_layout.dart';
+
+class OriginKlineChart extends StatefulWidget {
+  final ChanSnapshot snapshot;
+  final bool showFx;
+  final bool showFxLine;
+  final bool showFxText;
+  final bool showBi;
+  final bool showBiText;
+  final bool showSeg;
+  final bool showSegText;
+  final bool showZs;
+  final bool showBiBsp;
+  final bool showSegBsp;
+  final bool showMergedBars;
+  final bool showEasyTdxIndicators;
+  final int easyTdxSubPanelCount;
+  final Set<String> enabledEasyTdxIndicators;
+  final List<DrawingObject> drawingObjects;
+  final String drawingStorageKey;
+  final String symbolLabel;
+  final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
+  final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
+  final ValueListenable<int>? toolboxOpenSignal;
+  final ValueListenable<TradingViewDrawingTool?>? toolboxSelectedToolSignal;
+  final ValueChanged<TradingViewDrawingTool>? onToolboxQuickToolAdded;
+  final int windowSize;
+  final double priceScale;
+  final double priceOffset;
+  final int? viewEndIndex;
+  final int? crosshairIndex;
+  final ValueChanged<int>? onCrosshairChanged;
+  final ValueChanged<int>? onPanBars;
+  final ValueChanged<int>? onWindowSizeChanged;
+  final ValueChanged<double>? onPriceScaleChanged;
+  final ValueChanged<int>? onEasyTdxSubPanelCountChanged;
+  final ValueChanged<String>? onEasyTdxIndicatorToggled;
+
+  const OriginKlineChart({
+    super.key,
+    required this.snapshot,
+    required this.showFx,
+    this.showFxLine = true,
+    this.showFxText = true,
+    required this.showBi,
+    this.showBiText = false,
+    required this.showSeg,
+    this.showSegText = true,
+    required this.showZs,
+    required this.showBiBsp,
+    required this.showSegBsp,
+    this.showMergedBars = false,
+    this.showEasyTdxIndicators = false,
+    this.easyTdxSubPanelCount = 2,
+    this.enabledEasyTdxIndicators = const {'MA', 'BOLL', 'VOL', 'MACD'},
+    this.drawingObjects = const [],
+    this.drawingStorageKey = '',
+    this.symbolLabel = '',
+    this.isChanOverlayVisible,
+    this.onChanOverlayToggled,
+    this.toolboxOpenSignal,
+    this.toolboxSelectedToolSignal,
+    this.onToolboxQuickToolAdded,
+    required this.windowSize,
+    this.priceScale = 1.0,
+    this.priceOffset = 0.0,
+    this.viewEndIndex,
+    this.crosshairIndex,
+    this.onCrosshairChanged,
+    this.onPanBars,
+    this.onWindowSizeChanged,
+    this.onPriceScaleChanged,
+    this.onEasyTdxSubPanelCountChanged,
+    this.onEasyTdxIndicatorToggled,
+  });
+
+  @override
+  State<OriginKlineChart> createState() => _OriginKlineChartState();
+}
+
+class _OriginKlineChartState extends State<OriginKlineChart> {
+  static const Set<TradingViewDrawingTool> _interactiveDrawingTools = {
+    TradingViewDrawingTool.trendLine,
+    TradingViewDrawingTool.infoLine,
+    TradingViewDrawingTool.arrow,
+    TradingViewDrawingTool.horizontalLine,
+    TradingViewDrawingTool.horizontalRay,
+    TradingViewDrawingTool.verticalLine,
+    TradingViewDrawingTool.rectangle,
+    TradingViewDrawingTool.text,
+    TradingViewDrawingTool.anchoredText,
+    TradingViewDrawingTool.note,
+    TradingViewDrawingTool.priceLabel,
+    TradingViewDrawingTool.priceNote,
+    TradingViewDrawingTool.ruler,
+    TradingViewDrawingTool.dateRange,
+    TradingViewDrawingTool.priceRange,
+    TradingViewDrawingTool.dateAndPriceRange,
+  };
+
+  int? _scaleStartWindow;
+  double _panRemainder = 0;
+  int _drawingSeq = 0;
+  TradingViewDrawingTool _selectedDrawingTool = TradingViewDrawingTool.cursor;
+  DrawingObjectCollection _drawings = const DrawingObjectCollection();
+  List<DrawingAnchor> _pendingAnchors = const [];
+  _DrawingDragState? _dragState;
+  String _loadedStorageKey = '';
+  bool _crosshairActive = false;
+  int? _localCrosshairIndex;
+  double? _localCrosshairPrice;
+
+  int? get _effectiveCrosshairIndex =>
+      _crosshairActive ? (_localCrosshairIndex ?? widget.crosshairIndex) : null;
+
+  double? get _effectiveCrosshairPrice =>
+      _crosshairActive ? _localCrosshairPrice : null;
+
+  String get _effectiveStorageKey {
+    final explicit = widget.drawingStorageKey.trim();
+    if (explicit.isNotEmpty) return explicit;
+    final bars = widget.snapshot.rawBars;
+    if (bars.isEmpty) return 'empty';
+    return 'snapshot_${bars.length}_${bars.first.time.toIso8601String()}_${bars.last.time.toIso8601String()}';
+  }
+
+  List<DrawingObject> get _effectiveDrawingObjects {
+    if (widget.drawingObjects.isEmpty) return _drawings.objects;
+    return [...widget.drawingObjects, ..._drawings.objects];
+  }
+
+  DrawingObject? get _selectedDrawing {
+    for (final object in _drawings.objects) {
+      if (object.selected) return object;
+    }
+    return null;
+  }
+
+  bool _isToolAvailable(TradingViewDrawingTool tool) {
+    return switch (tool) {
+      TradingViewDrawingTool.chanFx => widget.snapshot.fxs.isNotEmpty,
+      TradingViewDrawingTool.chanFxLine => widget.snapshot.fxs.length >= 2,
+      TradingViewDrawingTool.chanFxText => widget.snapshot.fxs.isNotEmpty,
+      TradingViewDrawingTool.chanBi ||
+      TradingViewDrawingTool.chanBiText =>
+        widget.snapshot.bis.isNotEmpty,
+      TradingViewDrawingTool.chanSeg ||
+      TradingViewDrawingTool.chanSegText =>
+        widget.snapshot.segs.isNotEmpty,
+      TradingViewDrawingTool.chanZs => widget.snapshot.zss.isNotEmpty,
+      TradingViewDrawingTool.chanBiBsp =>
+        widget.snapshot.bsps.any(_isBiBspLevel),
+      TradingViewDrawingTool.chanSegBsp =>
+        widget.snapshot.bsps.any(_isSegBspLevel),
+      TradingViewDrawingTool.chanMergedBars =>
+        widget.snapshot.mergedBars.isNotEmpty,
+      _ => true,
+    };
+  }
+
+  bool _isSegBspLevel(BspPoint bsp) {
+    final level = bsp.level.trim().toLowerCase();
+    return level == 'seg' || level == 'segment' || level.contains('seg');
+  }
+
+  bool _isBiBspLevel(BspPoint bsp) {
+    final level = bsp.level.trim().toLowerCase();
+    return level.isEmpty ||
+        level == 'bi' ||
+        (!level.contains('seg') && level != 'segment');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPersistedDrawings();
+    widget.toolboxSelectedToolSignal?.addListener(_handleExternalToolSelection);
+  }
+
+  @override
+  void didUpdateWidget(covariant OriginKlineChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_effectiveStorageKey != _loadedStorageKey) _loadPersistedDrawings();
+    if (oldWidget.toolboxSelectedToolSignal !=
+        widget.toolboxSelectedToolSignal) {
+      oldWidget.toolboxSelectedToolSignal
+          ?.removeListener(_handleExternalToolSelection);
+      widget.toolboxSelectedToolSignal
+          ?.addListener(_handleExternalToolSelection);
+    }
+    if (!_isSameBarRange(oldWidget.snapshot.rawBars, widget.snapshot.rawBars)) {
+      _clearLocalCrosshairState();
+    }
+  }
+
+  bool _isSameBarRange(List<RawBar> a, List<RawBar> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    if (a.isEmpty) return true;
+    return a.first.time == b.first.time && a.last.time == b.last.time;
+  }
+
+  void _clearLocalCrosshairState() {
+    _crosshairActive = false;
+    _localCrosshairIndex = null;
+    _localCrosshairPrice = null;
+  }
+
+  @override
+  void dispose() {
+    widget.toolboxSelectedToolSignal
+        ?.removeListener(_handleExternalToolSelection);
+    super.dispose();
+  }
+
+  void _handleExternalToolSelection() {
+    final tool = widget.toolboxSelectedToolSignal?.value;
+    if (tool != null) _selectDrawingTool(tool);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bars = widget.snapshot.rawBars;
+    if (bars.isEmpty) {
+      return const Center(
+          child: Text('暂无K线数据', style: TextStyle(color: Colors.white70)));
+    }
+    final selectedDrawing = _selectedDrawing;
+    return TradingViewToolboxHost(
+      hasBars: bars.isNotEmpty,
+      hasChanSnapshot: widget.snapshot.rawBars.isNotEmpty,
+      isToolAvailable: _isToolAvailable,
+      selectedTool: _selectedDrawingTool,
+      openSignal: widget.toolboxOpenSignal,
+      drawingCount: _drawings.objects.length,
+      onSelected: _selectDrawingTool,
+      onClearDrawings: _drawings.objects.isEmpty
+          ? null
+          : () {
+              _setDrawings(const DrawingObjectCollection());
+              _showDrawMessage('已清空手动画线');
+            },
+      onImportDrawings: _importDrawings,
+      onExportDrawings: _exportDrawings,
+      canExportDrawings: _drawings.objects.isNotEmpty,
+      isChanOverlayVisible: widget.isChanOverlayVisible,
+      onChanOverlayToggled: widget.onChanOverlayToggled,
+      easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
+      enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
+      onEasyTdxSubPanelCountChanged: widget.onEasyTdxSubPanelCountChanged,
+      onEasyTdxIndicatorToggled: widget.onEasyTdxIndicatorToggled,
+      onQuickToolAdded: widget.onToolboxQuickToolAdded,
+      child: Stack(
+        children: [
+          LayoutBuilder(builder: (context, constraints) {
+            final size = Size(constraints.maxWidth, constraints.maxHeight);
+            return Listener(
+              onPointerSignal: (event) {
+                if (event is PointerScrollEvent) _handleWheel(event, size);
+              },
+              child: MouseRegion(
+                cursor: _crosshairActive
+                    ? SystemMouseCursors.precise
+                    : SystemMouseCursors.basic,
+                onHover: (event) => _updateCrosshair(event.localPosition, size),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onDoubleTapDown: (details) =>
+                      _toggleCrosshair(details.localPosition, size),
+                  onTapDown: (details) =>
+                      _handleTap(details.localPosition, size),
+                  onLongPressStart: (details) =>
+                      _updateCrosshair(details.localPosition, size),
+                  onLongPressMoveUpdate: (details) =>
+                      _updateCrosshair(details.localPosition, size),
+                  onScaleStart: (details) {
+                    _scaleStartWindow = widget.windowSize;
+                    _panRemainder = 0;
+                    if (!_interactiveDrawingTools
+                        .contains(_selectedDrawingTool)) {
+                      _startDrawingDrag(details.localFocalPoint, size);
+                    }
+                  },
+                  onScaleUpdate: (details) => _handleScale(details, size),
+                  onScaleEnd: (_) => _endDrawingDrag(),
+                  child: CustomPaint(
+                    painter: _OriginChartPainter(
+                      snapshot: widget.snapshot,
+                      symbolLabel: widget.symbolLabel,
+                      showFx: widget.showFx,
+                      showFxLine: widget.showFxLine,
+                      showFxText: widget.showFxText,
+                      showBi: widget.showBi,
+                      showBiText: widget.showBiText,
+                      showSeg: widget.showSeg,
+                      showSegText: widget.showSegText,
+                      showZs: widget.showZs,
+                      showBiBsp: widget.showBiBsp,
+                      showSegBsp: widget.showSegBsp,
+                      showMergedBars: widget.showMergedBars,
+                      showEasyTdxIndicators: widget.showEasyTdxIndicators,
+                      easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
+                      enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
+                      drawingObjects: _effectiveDrawingObjects,
+                      windowSize: widget.windowSize,
+                      priceScale: widget.priceScale,
+                      priceOffset: widget.priceOffset,
+                      viewEndIndex: widget.viewEndIndex,
+                      crosshairIndex: _effectiveCrosshairIndex,
+                      crosshairPrice: _effectiveCrosshairPrice,
+                    ),
+                    size: Size.infinite,
+                  ),
+                ),
+              ),
+            );
+          }),
+          if (selectedDrawing != null)
+            Positioned(
+                right: 68,
+                top: 8,
+                child: _SelectedDrawingBar(
+                    object: selectedDrawing,
+                    onDelete: _deleteSelectedDrawing,
+                    onToggleLock: _toggleSelectedDrawingLock,
+                    onToggleHidden: _toggleSelectedDrawingHidden,
+                    onCancel: _clearDrawingSelection)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _loadPersistedDrawings() async {
+    final key = _effectiveStorageKey;
+    _loadedStorageKey = key;
+    final objects = await DrawingObjectPersistence.load(key);
+    if (!mounted || key != _effectiveStorageKey) return;
+    setState(() {
+      _drawings = DrawingObjectCollection(
+          objects:
+              objects.map((e) => e.selectOnly(false)).toList(growable: false));
+      _pendingAnchors = const [];
+      _dragState = null;
+    });
+  }
+
+  void _setDrawings(DrawingObjectCollection next, {bool persist = true}) {
+    setState(() {
+      _drawings = next;
+      _pendingAnchors = const [];
+      _dragState = null;
+    });
+    if (persist) _persistDrawings();
+  }
+
+  Future<void> _persistDrawings() async {
+    try {
+      await DrawingObjectPersistence.save(
+          _effectiveStorageKey, _drawings.objects);
+    } catch (e) {
+      _showDrawMessage('画线自动保存失败：$e');
+    }
+  }
+
+  Future<void> _importDrawings() async {
+    try {
+      final objects = await DrawingObjectPersistence.importFromFile();
+      if (objects == null) return;
+      _setDrawings(DrawingObjectCollection(
+          objects:
+              objects.map((e) => e.selectOnly(false)).toList(growable: false)));
+      _showDrawMessage('已导入 ${objects.length} 个手动画线对象');
+    } catch (e) {
+      _showDrawMessage('导入画线失败：$e');
+    }
+  }
+
+  Future<void> _exportDrawings() async {
+    if (_drawings.objects.isEmpty) {
+      _showDrawMessage('暂无手动画线可导出');
+      return;
+    }
+    try {
+      final path = await DrawingObjectPersistence.exportToFile(
+          storageKey: _effectiveStorageKey, objects: _drawings.objects);
+      if (path != null) _showDrawMessage('已导出手动画线 JSON');
+    } catch (e) {
+      _showDrawMessage('导出画线失败：$e');
+    }
+  }
+
+  void _selectDrawingTool(TradingViewDrawingTool tool) {
+    setState(() {
+      _selectedDrawingTool = tool;
+      _pendingAnchors = const [];
+      _dragState = null;
+    });
+  }
+
+  void _handleTap(Offset p, Size size) {
+    if (!_interactiveDrawingTools.contains(_selectedDrawingTool)) {
+      final hit = _hitTestDrawing(p, size);
+      if (hit != null) {
+        _selectExistingDrawing(hit);
+        return;
+      }
+      _clearDrawingSelection(updateStateOnly: true);
+      _updateCrosshair(p, size);
+      return;
+    }
+    final anchor = _chartAnchorAt(p, size);
+    if (anchor == null) return;
+    final meta = TradingViewDrawingToolRegistry.metaOf(_selectedDrawingTool);
+    if (meta.requiresChanSnapshot || meta.minPoints <= 0) {
+      _updateCrosshair(p, size);
+      return;
+    }
+    final needed = math.max(1, meta.minPoints);
+    final anchors = [..._pendingAnchors, anchor];
+    if (anchors.length < needed) {
+      setState(() => _pendingAnchors = anchors);
+      _showDrawMessage(
+          '${meta.label}：已记录第 ${anchors.length}/$needed 个锚点，请继续点击');
+      return;
+    }
+
+    final now = DateTime.now();
+    final object = DrawingObject(
+      id: 'draw_${now.microsecondsSinceEpoch}_${_drawingSeq++}',
+      tool: _selectedDrawingTool,
+      anchors: anchors.take(needed).toList(growable: false),
+      style: _defaultStyleFor(_selectedDrawingTool),
+      text: _defaultTextFor(_selectedDrawingTool, anchor),
+      selected: true,
+      createdAt: now,
+      updatedAt: now,
+    );
+    _setDrawings(_drawings.clearSelection().upsert(object));
+    _showDrawMessage('已创建：${meta.label}');
+  }
+
+  DrawingObject? _hitTestDrawing(Offset p, Size size) {
+    final meta = _visibleMeta(size);
+    if (meta == null || !meta.chartRect.contains(p)) return null;
+    return DrawingObjectHitTest.hitTest(
+        objects: _drawings.objects,
+        point: p,
+        chartRect: meta.chartRect,
+        startRawIndex: meta.startIndex,
+        endRawIndex: meta.endIndex,
+        rawToX: meta.rawToX,
+        priceToY: meta.priceToY);
+  }
+
+  void _selectExistingDrawing(DrawingObject object) {
+    setState(() {
+      _drawings = _drawings.select(object.id);
+      _pendingAnchors = const [];
+      _dragState = null;
+    });
+    final meta = TradingViewDrawingToolRegistry.metaOf(object.tool);
+    _showDrawMessage('已选中：${meta.label}${object.locked ? '（已锁定）' : ''}');
+  }
+
+  void _clearDrawingSelection({bool updateStateOnly = false}) {
+    final hasSelected = _selectedDrawing != null;
+    if (!hasSelected) return;
+    setState(() {
+      _drawings = _drawings.clearSelection();
+      _pendingAnchors = const [];
+      _dragState = null;
+    });
+    if (!updateStateOnly) _showDrawMessage('已取消选择');
+  }
+
+  void _deleteSelectedDrawing() {
+    final selected = _selectedDrawing;
+    if (selected == null || selected.locked) return;
+    _setDrawings(_drawings.remove(selected.id));
+    _showDrawMessage('已删除手动画线');
+  }
+
+  void _toggleSelectedDrawingLock() {
+    final selected = _selectedDrawing;
+    if (selected == null) return;
+    final next = selected.lock(!selected.locked);
+    _setDrawings(_drawings.upsert(next));
+    _showDrawMessage(next.locked ? '已锁定对象' : '已解锁对象');
+  }
+
+  void _toggleSelectedDrawingHidden() {
+    final selected = _selectedDrawing;
+    if (selected == null) return;
+    final next = selected.hide(!selected.hidden);
+    _setDrawings(_drawings.upsert(next));
+    _showDrawMessage(next.hidden ? '已隐藏对象，可在当前浮条恢复' : '已恢复显示对象');
+  }
+
+  void _startDrawingDrag(Offset p, Size size) {
+    final selected = _selectedDrawing;
+    final meta = _visibleMeta(size);
+    final pointerAnchor = _chartAnchorAt(p, size);
+    if (selected == null ||
+        meta == null ||
+        pointerAnchor == null ||
+        selected.locked ||
+        selected.hidden) {
+      _dragState = null;
+      return;
+    }
+    final handleIndex = _hitDrawingHandle(selected, p, meta);
+    if (handleIndex != null) {
+      _dragState = _DrawingDragState(
+          object: selected,
+          mode: _DrawingDragMode.anchor,
+          anchorIndex: handleIndex,
+          startPointerAnchor: pointerAnchor);
+      return;
+    }
+    final bodyHit = DrawingObjectHitTest.hitTest(
+        objects: [selected],
+        point: p,
+        chartRect: meta.chartRect,
+        startRawIndex: meta.startIndex,
+        endRawIndex: meta.endIndex,
+        rawToX: meta.rawToX,
+        priceToY: meta.priceToY,
+        tolerance: 10);
+    if (bodyHit != null) {
+      _dragState = _DrawingDragState(
+          object: selected,
+          mode: _DrawingDragMode.body,
+          startPointerAnchor: pointerAnchor);
+      return;
+    }
+    _dragState = null;
+  }
+
+  void _updateDrawingDrag(Offset p, Size size) {
+    final state = _dragState;
+    if (state == null) return;
+    final pointerAnchor = _chartAnchorAt(p, size);
+    if (pointerAnchor == null) return;
+    final nextAnchors = switch (state.mode) {
+      _DrawingDragMode.anchor => _anchorsWithMovedHandle(
+          state.object, state.anchorIndex ?? 0, pointerAnchor),
+      _DrawingDragMode.body => _anchorsWithMovedBody(
+          state.object, state.startPointerAnchor, pointerAnchor),
+    };
+    DrawingObject? current;
+    for (final object in _drawings.objects) {
+      if (object.id == state.object.id) {
+        current = object;
+        break;
+      }
+    }
+    if (current == null || current.locked) return;
+    setState(() {
+      _drawings = _drawings.upsert(current!.copyWith(
+          anchors: nextAnchors, selected: true, updatedAt: DateTime.now()));
+    });
+  }
+
+  void _endDrawingDrag() {
+    if (_dragState == null) return;
+    _dragState = null;
+    _persistDrawings();
+  }
+
+  int? _hitDrawingHandle(DrawingObject object, Offset p, _VisibleMeta meta) {
+    for (var i = 0; i < object.anchors.length; i++) {
+      final anchor = object.anchors[i];
+      if (!anchor.isChart || anchor.rawIndex == null || anchor.price == null)
+        continue;
+      final handle =
+          Offset(meta.rawToX(anchor.rawIndex!), meta.priceToY(anchor.price!));
+      if ((p - handle).distance <= 12) return i;
+    }
+    return null;
+  }
+
+  List<DrawingAnchor> _anchorsWithMovedHandle(
+          DrawingObject object, int index, DrawingAnchor pointerAnchor) =>
+      [
+        for (var i = 0; i < object.anchors.length; i++)
+          if (i == index && object.anchors[i].isChart)
+            pointerAnchor
+          else
+            object.anchors[i]
+      ];
+
+  List<DrawingAnchor> _anchorsWithMovedBody(DrawingObject object,
+      DrawingAnchor startPointerAnchor, DrawingAnchor pointerAnchor) {
+    final deltaRaw =
+        (pointerAnchor.rawIndex ?? 0) - (startPointerAnchor.rawIndex ?? 0);
+    final deltaPrice =
+        (pointerAnchor.price ?? 0) - (startPointerAnchor.price ?? 0);
+    final maxRaw = math.max(0, widget.snapshot.rawBars.length - 1);
+    return [
+      for (final anchor in object.anchors)
+        if (anchor.isChart && anchor.rawIndex != null && anchor.price != null)
+          DrawingAnchor.chart(
+              rawIndex: (anchor.rawIndex! + deltaRaw).clamp(0, maxRaw).toInt(),
+              price: anchor.price! + deltaPrice)
+        else
+          anchor
+    ];
+  }
+
+  DrawingAnchor? _chartAnchorAt(Offset p, Size size) {
+    final meta = _visibleMeta(size);
+    if (meta == null || !meta.chartRect.contains(p)) return null;
+    return meta.anchorAt(p);
+  }
+
+  DrawingStyle _defaultStyleFor(TradingViewDrawingTool tool) {
+    final isMeasure = tool == TradingViewDrawingTool.ruler ||
+        tool == TradingViewDrawingTool.dateRange ||
+        tool == TradingViewDrawingTool.priceRange ||
+        tool == TradingViewDrawingTool.dateAndPriceRange;
+    return switch (tool) {
+      TradingViewDrawingTool.rectangle => const DrawingStyle(
+          colorValue: 0xFF82B1FF,
+          strokeWidth: 1.2,
+          filled: true,
+          fillColorValue: 0x332962FF,
+          fillOpacity: 0.18),
+      TradingViewDrawingTool.horizontalLine ||
+      TradingViewDrawingTool.horizontalRay =>
+        const DrawingStyle(
+            colorValue: 0xFFFFD54F, strokeWidth: 1.2, dashed: true),
+      TradingViewDrawingTool.verticalLine => const DrawingStyle(
+          colorValue: 0xFFB0BEC5, strokeWidth: 1.1, dashed: true),
+      TradingViewDrawingTool.text ||
+      TradingViewDrawingTool.anchoredText ||
+      TradingViewDrawingTool.note ||
+      TradingViewDrawingTool.priceLabel ||
+      TradingViewDrawingTool.priceNote =>
+        const DrawingStyle(colorValue: 0xFFFFFFFF, fontSize: 12.5),
+      _ when isMeasure => const DrawingStyle(
+          colorValue: 0xFF90CAF9,
+          strokeWidth: 1.1,
+          filled: true,
+          fillColorValue: 0x2242A5F5,
+          fillOpacity: 0.16,
+          dashed: true),
+      _ => const DrawingStyle(colorValue: 0xFFFFFFFF, strokeWidth: 1.35),
+    };
+  }
+
+  String _defaultTextFor(TradingViewDrawingTool tool, DrawingAnchor anchor) =>
+      switch (tool) {
+        TradingViewDrawingTool.priceLabel ||
+        TradingViewDrawingTool.priceNote =>
+          anchor.price?.toStringAsFixed(2) ?? '价格',
+        TradingViewDrawingTool.text ||
+        TradingViewDrawingTool.anchoredText =>
+          '文本',
+        TradingViewDrawingTool.note => '备注',
+        _ => ''
+      };
+
+  void _showDrawMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF1E3A8A)));
+  }
+
+  int get _activeEasyTdxSubPanelCount {
+    if (!widget.showEasyTdxIndicators || widget.snapshot.indicators.isEmpty) {
+      return 0;
+    }
+    return widget.easyTdxSubPanelCount.clamp(0, 4).toInt();
+  }
+
+  _ChartLayout _chartLayout(Size size) =>
+      _OriginChartPainter.layoutFor(size, _activeEasyTdxSubPanelCount);
+
+  void _handleWheel(PointerScrollEvent event, Size size) {
+    final layout = _chartLayout(size);
+    if (layout.subRects.any((rect) => rect.contains(event.localPosition))) {
+      if (event.scrollDelta.dy == 0) return;
+      final delta = event.scrollDelta.dy < 0 ? 1 : -1;
+      final next = (widget.easyTdxSubPanelCount + delta).clamp(0, 4).toInt();
+      if (next != widget.easyTdxSubPanelCount) {
+        widget.onEasyTdxSubPanelCountChanged?.call(next);
+      }
+      return;
+    }
+    final meta = _visibleMeta(size);
+    if (meta == null ||
+        !meta.chartRect.contains(event.localPosition) ||
+        event.scrollDelta.dy == 0) return;
+    final factor = event.scrollDelta.dy < 0 ? 0.88 : 1.12;
+    final nextWindow =
+        (widget.windowSize * factor).round().clamp(24, 360).toInt();
+    if (nextWindow != widget.windowSize)
+      widget.onWindowSizeChanged?.call(nextWindow);
+  }
+
+  void _handleScale(ScaleUpdateDetails details, Size size) {
+    if (_dragState != null) {
+      _updateDrawingDrag(details.localFocalPoint, size);
+      return;
+    }
+    if ((details.scale - 1).abs() > 0.03) {
+      final nextWindow =
+          ((_scaleStartWindow ?? widget.windowSize) / details.scale)
+              .round()
+              .clamp(24, 360)
+              .toInt();
+      if (nextWindow != widget.windowSize)
+        widget.onWindowSizeChanged?.call(nextWindow);
+      return;
+    }
+    final dx = details.focalPointDelta.dx;
+    final dy = details.focalPointDelta.dy;
+    if (details.pointerCount == 1 &&
+        dy.abs() > dx.abs() * 1.4 &&
+        dy.abs() > 1.5) {
+      widget.onPriceScaleChanged?.call(
+          (widget.priceScale * (1 + (-dy / 240))).clamp(0.35, 5.0).toDouble());
+      return;
+    }
+    final visible = _visibleMeta(size);
+    if (visible == null || visible.step <= 0 || dx.abs() <= 0.2) return;
+    _panRemainder += -dx / visible.step;
+    final panBars = _panRemainder.truncate();
+    if (panBars != 0) {
+      widget.onPanBars?.call(panBars);
+      _panRemainder -= panBars;
+    }
+  }
+
+  void _toggleCrosshair(Offset p, Size size) {
+    if (_crosshairActive) {
+      setState(() => _clearLocalCrosshairState());
+      return;
+    }
+    _setCrosshairAt(p, size, activate: true);
+  }
+
+  void _updateCrosshair(Offset p, Size size) {
+    _setCrosshairAt(p, size, activate: false);
+  }
+
+  void _setCrosshairAt(Offset p, Size size, {required bool activate}) {
+    if (!_crosshairActive && !activate) return;
+    final meta = _visibleMeta(size);
+    if (meta == null || !meta.chartRect.contains(p)) return;
+    final local = ((p.dx - meta.chartRect.left) / meta.step).floor();
+    final rawIndex =
+        (meta.startIndex + local).clamp(meta.startIndex, meta.endIndex).toInt();
+    final price = meta.priceAtY(p.dy);
+    setState(() {
+      if (activate) _crosshairActive = true;
+      _localCrosshairIndex = rawIndex;
+      _localCrosshairPrice = price;
+    });
+    widget.onCrosshairChanged?.call(rawIndex);
+  }
+
+  _VisibleMeta? _visibleMeta(Size size) {
+    final bars = widget.snapshot.rawBars;
+    if (bars.isEmpty || size.width <= 0 || size.height <= 0) return null;
+    final rect = _chartLayout(size).mainRect;
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    final end = (widget.viewEndIndex ?? bars.length - 1)
+        .clamp(0, bars.length - 1)
+        .toInt();
+    final start = math.max(0, end - widget.windowSize + 1).toInt();
+    final visible = bars.sublist(start, end + 1);
+    final low = visible.map((e) => e.low).reduce(math.min);
+    final high = visible.map((e) => e.high).reduce(math.max);
+    final center = (high + low) / 2;
+    final rawRange = math.max(high - low, high.abs() * 0.002);
+    final scaledRange = rawRange / widget.priceScale.clamp(0.35, 5.0);
+    final padding = math.max(scaledRange * 0.08, high.abs() * 0.001);
+    final minPrice = center - scaledRange / 2 - padding;
+    final maxPrice = center + scaledRange / 2 + padding;
+    return _VisibleMeta(rect, start, end,
+        rect.width / math.max(1, end - start + 1), minPrice, maxPrice);
+  }
+}
+
+enum _DrawingDragMode { anchor, body }
+
+class _DrawingDragState {
+  final DrawingObject object;
+  final _DrawingDragMode mode;
+  final int? anchorIndex;
+  final DrawingAnchor startPointerAnchor;
+  const _DrawingDragState(
+      {required this.object,
+      required this.mode,
+      required this.startPointerAnchor,
+      this.anchorIndex});
+}
+
+class _SelectedDrawingBar extends StatelessWidget {
+  final DrawingObject object;
+  final VoidCallback onDelete;
+  final VoidCallback onToggleLock;
+  final VoidCallback onToggleHidden;
+  final VoidCallback onCancel;
+  const _SelectedDrawingBar(
+      {required this.object,
+      required this.onDelete,
+      required this.onToggleLock,
+      required this.onToggleHidden,
+      required this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    final meta = TradingViewDrawingToolRegistry.metaOf(object.tool);
+    return Material(
+      color: const Color(0xEE1F2937),
+      elevation: 12,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12))),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+              '${meta.label}${object.locked ? '（锁）' : ''}${object.hidden ? '（隐藏）' : ''}',
+              style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          const SizedBox(width: 8),
+          _miniButton(object.locked ? '解锁' : '锁定',
+              object.locked ? Icons.lock_open : Icons.lock, onToggleLock),
+          _miniButton(
+              object.hidden ? '恢复显示' : '隐藏',
+              object.hidden ? Icons.visibility : Icons.visibility_off,
+              onToggleHidden),
+          _miniButton(
+              '删除', Icons.delete_outline, object.locked ? null : onDelete),
+          _miniButton('取消选择', Icons.close, onCancel),
+        ]),
+      ),
+    );
+  }
+
+  Widget _miniButton(String tooltip, IconData icon, VoidCallback? onPressed) =>
+      Tooltip(
+          message: onPressed == null ? '$tooltip（已锁定）' : tooltip,
+          child: IconButton(
+              onPressed: onPressed,
+              icon: Icon(icon, size: 16),
+              color: Colors.white70,
+              disabledColor: Colors.white24,
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints:
+                  const BoxConstraints.tightFor(width: 28, height: 28)));
+}
+
+class _ChartLayout {
+  final Rect mainRect;
+  final List<Rect> subRects;
+
+  const _ChartLayout({
+    required this.mainRect,
+    required this.subRects,
+  });
+}
+
+enum _EasySubPanelSpec { vol, macd, amount, turnover }
+
+class _VisibleMeta {
+  final Rect chartRect;
+  final int startIndex;
+  final int endIndex;
+  final double step;
+  final double minPrice;
+  final double maxPrice;
+  const _VisibleMeta(this.chartRect, this.startIndex, this.endIndex, this.step,
+      this.minPrice, this.maxPrice);
+  double rawToX(int rawIndex) =>
+      chartRect.left + (rawIndex - startIndex + 0.5) * step;
+  double priceToY(double price) =>
+      chartRect.bottom -
+      (price - minPrice) /
+          math.max(maxPrice - minPrice, 0.0000001) *
+          chartRect.height;
+  DrawingAnchor anchorAt(Offset p) => DrawingAnchor.chart(
+      rawIndex: (startIndex + ((p.dx - chartRect.left) / step).floor())
+          .clamp(startIndex, endIndex)
+          .toInt(),
+      price: priceAtY(p.dy));
+  double priceAtY(double y) =>
+      minPrice +
+      (chartRect.bottom - y.clamp(chartRect.top, chartRect.bottom).toDouble()) /
+          chartRect.height *
+          math.max(maxPrice - minPrice, 0.0000001);
+}
+
+class _OriginChartPainter extends CustomPainter {
+  static const double _topPad = 32;
+  static const double _bottomPad = 28;
+  static const double _leftPad = 4;
+  static const double _rightPad = 58;
+  static const double _subPanelHeight = 74;
+  static const double _panelGap = 6;
+
+  final ChanSnapshot snapshot;
+  final String symbolLabel;
+  final bool showFx;
+  final bool showFxLine;
+  final bool showFxText;
+  final bool showBi;
+  final bool showBiText;
+  final bool showSeg;
+  final bool showSegText;
+  final bool showZs;
+  final bool showBiBsp;
+  final bool showSegBsp;
+  final bool showMergedBars;
+  final bool showEasyTdxIndicators;
+  final int easyTdxSubPanelCount;
+  final Set<String> enabledEasyTdxIndicators;
+  final List<DrawingObject> drawingObjects;
+  final int windowSize;
+  final double priceScale;
+  final double priceOffset;
+  final int? viewEndIndex;
+  final int? crosshairIndex;
+  final double? crosshairPrice;
+
+  _OriginChartPainter(
+      {required this.snapshot,
+      required this.symbolLabel,
+      required this.showFx,
+      required this.showFxLine,
+      required this.showFxText,
+      required this.showBi,
+      required this.showBiText,
+      required this.showSeg,
+      required this.showSegText,
+      required this.showZs,
+      required this.showBiBsp,
+      required this.showSegBsp,
+      required this.showMergedBars,
+      required this.showEasyTdxIndicators,
+      required this.easyTdxSubPanelCount,
+      required this.enabledEasyTdxIndicators,
+      required this.drawingObjects,
+      required this.windowSize,
+      required this.priceScale,
+      required this.priceOffset,
+      this.viewEndIndex,
+      this.crosshairIndex,
+      this.crosshairPrice});
+
+  static _ChartLayout layoutFor(Size size, int subPanelCount) {
+    final safeSubPanelCount = subPanelCount.clamp(0, 4).toInt();
+    final totalSubHeight = safeSubPanelCount == 0
+        ? 0.0
+        : safeSubPanelCount * _subPanelHeight +
+            (safeSubPanelCount - 1) * _panelGap;
+    final contentWidth = math.max(0.0, size.width - _leftPad - _rightPad);
+    final mainHeight = math.max(
+      0.0,
+      size.height -
+          _topPad -
+          _bottomPad -
+          totalSubHeight -
+          (safeSubPanelCount > 0 ? _panelGap : 0),
+    );
+    final mainRect = Rect.fromLTWH(_leftPad, _topPad, contentWidth, mainHeight);
+    final subRects = <Rect>[];
+    var top = mainRect.bottom + _panelGap;
+    for (var i = 0; i < safeSubPanelCount; i++) {
+      subRects.add(Rect.fromLTWH(_leftPad, top, contentWidth, _subPanelHeight));
+      top += _subPanelHeight + _panelGap;
+    }
+    return _ChartLayout(mainRect: mainRect, subRects: subRects);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bars = snapshot.rawBars;
+    if (bars.isEmpty) return;
+    final activeSubPanelCount =
+        showEasyTdxIndicators && !snapshot.indicators.isEmpty
+            ? easyTdxSubPanelCount.clamp(0, 4).toInt()
+            : 0;
+    final layout = layoutFor(size, activeSubPanelCount);
+    final rect = layout.mainRect;
+    if (rect.width <= 0 || rect.height <= 0) return;
+    final end =
+        (viewEndIndex ?? bars.length - 1).clamp(0, bars.length - 1).toInt();
+    final start = math.max(0, end - windowSize + 1).toInt();
+    final visible = bars.sublist(start, end + 1);
+    final low = visible.map((e) => e.low).reduce(math.min);
+    final high = visible.map((e) => e.high).reduce(math.max);
+    final center = (high + low) / 2 + priceOffset;
+    final rawRange = math.max(high - low, high.abs() * 0.002);
+    final scaledRange = rawRange / priceScale.clamp(0.35, 5.0);
+    final padding = math.max(scaledRange * 0.08, high.abs() * 0.001);
+    final minPrice = center - scaledRange / 2 - padding;
+    final maxPrice = center + scaledRange / 2 + padding;
+    double priceToY(double price) =>
+        rect.bottom - (price - minPrice) / (maxPrice - minPrice) * rect.height;
+    final step = rect.width / math.max(1, visible.length);
+    double rawToX(int rawIndex) => rect.left + (rawIndex - start + 0.5) * step;
+
+    final chartLabels = <ChartLabel>[];
+    const bspLabelAdapter = BspChartLabelAdapter();
+    final trimmedSymbolLabel = symbolLabel.trim();
+    if (trimmedSymbolLabel.isNotEmpty) {
+      chartLabels.add(ChartLabel(
+        text: trimmedSymbolLabel,
+        anchor: Offset(rect.left + 12, rect.top + 18),
+        side: ChartLabelSide.inside,
+        priority: ChartLabelPriority.grid,
+        color: Colors.white70,
+        fontSize: 12,
+        forceVisible: true,
+      ));
+    }
+
+    _drawGrid(canvas, rect, minPrice, maxPrice, visible);
+    _drawCandles(canvas, rect, visible, rawToX, priceToY, step);
+    if (showEasyTdxIndicators) {
+      _drawEasyTdxMainIndicators(canvas, rect, start, end, rawToX, priceToY);
+    }
+    if (showMergedBars)
+      _drawMergedBars(canvas, rect, start, end, rawToX, priceToY, step);
+    if (showZs) _drawZs(canvas, rect, start, end, rawToX, priceToY);
+    if (showFxLine) _drawFxLine(canvas, rect, start, end, rawToX, priceToY);
+    if (showBi)
+      _drawBi(canvas, rect, start, end, rawToX, priceToY, chartLabels);
+    if (showSeg)
+      _drawSeg(canvas, rect, start, end, rawToX, priceToY, chartLabels);
+    if (showBiBsp || showSegBsp)
+      _drawBsp(canvas, rect, start, end, rawToX, priceToY, chartLabels,
+          bspLabelAdapter);
+    if (showFx)
+      _drawFx(canvas, rect, start, end, rawToX, priceToY, chartLabels);
+    DrawingObjectPainter.paintObjects(
+        canvas: canvas,
+        chartRect: rect,
+        objects: drawingObjects,
+        startRawIndex: start,
+        endRawIndex: end,
+        rawToX: rawToX,
+        priceToY: priceToY);
+    final laidOutLabels = ChartLabelLayout(
+      chartRect: rect,
+      visibleCount: visible.length,
+      reserved: const [Rect.fromLTWH(0, 0, 520, 28)],
+    ).layout(chartLabels);
+    paintLaidOutChartLabels(canvas, laidOutLabels);
+    final cross = crosshairIndex;
+    if (cross != null && cross >= start && cross <= end) {
+      _drawCrosshair(
+          canvas, rect, bars[cross], rawToX, priceToY, crosshairPrice);
+    } else {
+      final biBspCnt = snapshot.bsps.where(_isBiBsp).length;
+      final segBspCnt = snapshot.bsps.where(_isSegBsp).length;
+      _drawText(
+          canvas,
+          'chan.py ${_fmtDate(visible.last.time)} | K:${bars.length} MB:${snapshot.mergedBars.length} FX:${snapshot.fxs.length} BI:${snapshot.bis.length} SEG:${snapshot.segs.length} ZS:${snapshot.zss.length} BSP:${snapshot.bsps.length} 笔BSP:$biBspCnt 段BSP:$segBspCnt',
+          const Offset(8, 4),
+          11,
+          Colors.white70);
+    }
+    if (showEasyTdxIndicators) {
+      _drawEasyTdxSubPanels(canvas, layout.subRects, start, end, rawToX);
+    }
+  }
+
+  bool _indicatorOn(String key) {
+    return enabledEasyTdxIndicators.contains(key) ||
+        enabledEasyTdxIndicators.contains(key.toLowerCase());
+  }
+
+  void _drawEasyTdxMainIndicators(
+    Canvas canvas,
+    Rect rect,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+    double Function(double price) priceToY,
+  ) {
+    if (snapshot.indicators.isEmpty) return;
+    canvas.save();
+    canvas.clipRect(rect);
+    if (_indicatorOn('MA')) {
+      _drawEasyMa(canvas, rect, start, end, rawToX, priceToY);
+    }
+    if (_indicatorOn('BOLL')) {
+      _drawEasyBoll(canvas, rect, start, end, rawToX, priceToY);
+    }
+    canvas.restore();
+  }
+
+  void _drawEasyMa(
+    Canvas canvas,
+    Rect rect,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+    double Function(double price) priceToY,
+  ) {
+    final colors = <int, Color>{
+      5: const Color(0xFFFFD54F),
+      10: const Color(0xFF64B5F6),
+      20: const Color(0xFFBA68C8),
+      60: const Color(0xFFFF8A65),
+    };
+    final visibleMa = snapshot.indicators.visibleMa(start, end);
+    final keys = visibleMa.keys.toList()..sort();
+    for (final period in keys) {
+      _drawEasyPointLine(
+        canvas,
+        rect,
+        visibleMa[period] ?? const <EasyIndicatorPoint>[],
+        rawToX,
+        priceToY,
+        colors[period] ?? const Color(0xFFB0BEC5),
+        strokeWidth: period <= 10 ? 1.05 : 0.95,
+      );
+    }
+    if (keys.isNotEmpty) _drawPanelText(canvas, rect, 'MA ${keys.join('/')}');
+  }
+
+  void _drawEasyBoll(
+    Canvas canvas,
+    Rect rect,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+    double Function(double price) priceToY,
+  ) {
+    final upper = <EasyIndicatorPoint>[];
+    final mid = <EasyIndicatorPoint>[];
+    final lower = <EasyIndicatorPoint>[];
+    for (final row in snapshot.indicators.visibleBoll(start, end)) {
+      upper.add(EasyIndicatorPoint(
+          time: row.time, rawIndex: row.rawIndex, value: row.upper));
+      mid.add(EasyIndicatorPoint(
+          time: row.time, rawIndex: row.rawIndex, value: row.mid));
+      lower.add(EasyIndicatorPoint(
+          time: row.time, rawIndex: row.rawIndex, value: row.lower));
+    }
+    _drawEasyPointLine(
+        canvas, rect, upper, rawToX, priceToY, const Color(0xFF90CAF9),
+        strokeWidth: 0.85);
+    _drawEasyPointLine(
+        canvas, rect, mid, rawToX, priceToY, const Color(0xFFE0E0E0),
+        strokeWidth: 0.75);
+    _drawEasyPointLine(
+        canvas, rect, lower, rawToX, priceToY, const Color(0xFF90CAF9),
+        strokeWidth: 0.85);
+    if (upper.isNotEmpty || mid.isNotEmpty || lower.isNotEmpty) {
+      _drawPanelText(canvas, rect, 'BOLL', dy: 15);
+    }
+  }
+
+  void _drawEasyPointLine(
+    Canvas canvas,
+    Rect rect,
+    List<EasyIndicatorPoint> rows,
+    double Function(int rawIndex) rawToX,
+    double Function(double price) priceToY,
+    Color color, {
+    double strokeWidth = 1.0,
+  }) {
+    final path = Path();
+    var started = false;
+    var hasPoint = false;
+    for (final row in rows) {
+      final value = row.value;
+      if (value == null) {
+        started = false;
+        continue;
+      }
+      final p = Offset(
+        rawToX(row.rawIndex).clamp(rect.left, rect.right).toDouble(),
+        priceToY(value).clamp(rect.top, rect.bottom).toDouble(),
+      );
+      if (!started) {
+        path.moveTo(p.dx, p.dy);
+        started = true;
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+      hasPoint = true;
+    }
+    if (!hasPoint) return;
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: 0.92)
+        ..strokeWidth = strokeWidth
+        ..style = PaintingStyle.stroke,
+    );
+  }
+
+  void _drawEasyTdxSubPanels(
+    Canvas canvas,
+    List<Rect> subRects,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+  ) {
+    if (subRects.isEmpty || snapshot.indicators.isEmpty) return;
+    final panels = <_EasySubPanelSpec>[
+      if (_indicatorOn('VOL')) _EasySubPanelSpec.vol,
+      if (_indicatorOn('MACD')) _EasySubPanelSpec.macd,
+      if (_indicatorOn('amount')) _EasySubPanelSpec.amount,
+      if (_indicatorOn('turnover')) _EasySubPanelSpec.turnover,
+    ];
+    for (var i = 0; i < math.min(subRects.length, panels.length); i++) {
+      final rect = subRects[i];
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      canvas.save();
+      canvas.clipRect(rect);
+      switch (panels[i]) {
+        case _EasySubPanelSpec.vol:
+          _drawEasyValueBars(canvas, rect, 'VOL',
+              snapshot.indicators.visibleVol(start, end), start, end, rawToX);
+          break;
+        case _EasySubPanelSpec.macd:
+          _drawEasyMacd(canvas, rect,
+              snapshot.indicators.visibleMacd(start, end), start, end, rawToX);
+          break;
+        case _EasySubPanelSpec.amount:
+          _drawEasyValueBars(
+              canvas,
+              rect,
+              'AMOUNT',
+              snapshot.indicators.visibleAmount(start, end),
+              start,
+              end,
+              rawToX);
+          break;
+        case _EasySubPanelSpec.turnover:
+          _drawEasyValueBars(
+              canvas,
+              rect,
+              'TURNOVER',
+              snapshot.indicators.visibleTurnover(start, end),
+              start,
+              end,
+              rawToX);
+          break;
+      }
+      canvas.restore();
+    }
+  }
+
+  void _drawEasyValueBars(
+    Canvas canvas,
+    Rect rect,
+    String title,
+    List<EasyIndicatorPoint> rows,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+  ) {
+    _drawSubPanelBackground(canvas, rect, title);
+    final values = rows.where((row) => row.value != null).toList();
+    if (values.isEmpty) return;
+    final maxValue = values.map((row) => row.value!.abs()).reduce(math.max);
+    if (maxValue <= 0) return;
+    final barWidth =
+        math.max(1.0, rect.width / math.max(1, end - start + 1) * 0.58);
+    final paint = Paint()
+      ..color = const Color(0xFF78909C).withValues(alpha: 0.76);
+    for (final row in values) {
+      final x = rawToX(row.rawIndex).clamp(rect.left, rect.right).toDouble();
+      final h = row.value!.abs() / maxValue * (rect.height - 18);
+      canvas.drawRect(
+        Rect.fromLTWH(x - barWidth / 2, rect.bottom - h - 2, barWidth, h),
+        paint,
+      );
+    }
+  }
+
+  void _drawEasyMacd(
+    Canvas canvas,
+    Rect rect,
+    List<EasyMacdPoint> rows,
+    int start,
+    int end,
+    double Function(int rawIndex) rawToX,
+  ) {
+    _drawSubPanelBackground(canvas, rect, 'MACD');
+    if (rows.isEmpty) return;
+    final values = <double>[];
+    for (final row in rows) {
+      if (row.dif != null) values.add(row.dif!);
+      if (row.dea != null) values.add(row.dea!);
+      if (row.hist != null) values.add(row.hist!);
+    }
+    if (values.isEmpty) return;
+    final maxAbs = math.max(
+        values.map((value) => value.abs()).reduce(math.max), 0.0000001);
+    final zeroY = rect.center.dy;
+    double valueToY(double value) =>
+        zeroY - value / maxAbs * (rect.height * 0.42);
+    final barWidth =
+        math.max(1.0, rect.width / math.max(1, end - start + 1) * 0.52);
+    final histPos = Paint()
+      ..color = const Color(0xFFE53935).withValues(alpha: 0.58);
+    final histNeg = Paint()
+      ..color = const Color(0xFF26A69A).withValues(alpha: 0.58);
+    for (final row in rows) {
+      final hist = row.hist;
+      if (hist == null) continue;
+      final x = rawToX(row.rawIndex).clamp(rect.left, rect.right).toDouble();
+      final y = valueToY(hist);
+      canvas.drawRect(
+        Rect.fromLTRB(
+          x - barWidth / 2,
+          math.min(zeroY, y),
+          x + barWidth / 2,
+          math.max(zeroY, y),
+        ),
+        hist >= 0 ? histPos : histNeg,
+      );
+    }
+    _drawEasyMacdLine(canvas, rect, rows, rawToX, valueToY, (row) => row.dif,
+        const Color(0xFFFFD54F));
+    _drawEasyMacdLine(canvas, rect, rows, rawToX, valueToY, (row) => row.dea,
+        const Color(0xFF64B5F6));
+    canvas.drawLine(
+      Offset(rect.left, zeroY),
+      Offset(rect.right, zeroY),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.16)
+        ..strokeWidth = 0.8,
+    );
+  }
+
+  void _drawEasyMacdLine(
+    Canvas canvas,
+    Rect rect,
+    List<EasyMacdPoint> rows,
+    double Function(int rawIndex) rawToX,
+    double Function(double value) valueToY,
+    double? Function(EasyMacdPoint row) selector,
+    Color color,
+  ) {
+    final path = Path();
+    var started = false;
+    var hasPoint = false;
+    for (final row in rows) {
+      final value = selector(row);
+      if (value == null) {
+        started = false;
+        continue;
+      }
+      final p = Offset(
+        rawToX(row.rawIndex).clamp(rect.left, rect.right).toDouble(),
+        valueToY(value).clamp(rect.top, rect.bottom).toDouble(),
+      );
+      if (!started) {
+        path.moveTo(p.dx, p.dy);
+        started = true;
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+      hasPoint = true;
+    }
+    if (!hasPoint) return;
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: 0.88)
+        ..strokeWidth = 0.9
+        ..style = PaintingStyle.stroke,
+    );
+  }
+
+  void _drawSubPanelBackground(Canvas canvas, Rect rect, String title) {
+    canvas.drawRect(rect, Paint()..color = const Color(0xAA0B1220));
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.10)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8,
+    );
+    _drawPanelText(canvas, rect, title);
+  }
+
+  void _drawPanelText(Canvas canvas, Rect rect, String text, {double dy = 0}) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.58),
+          fontSize: 10.5,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(maxWidth: math.max(0, rect.width - 12));
+    painter.paint(canvas, Offset(rect.left + 8, rect.top + 6 + dy));
+  }
+
+  void _drawGrid(Canvas canvas, Rect rect, double minPrice, double maxPrice,
+      List<RawBar> visible) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.08)
+      ..strokeWidth = 0.7;
+    for (var i = 0; i <= 4; i++) {
+      final y = rect.top + rect.height * i / 4;
+      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
+      _drawText(
+          canvas,
+          (maxPrice - (maxPrice - minPrice) * i / 4).toStringAsFixed(2),
+          Offset(rect.right + 5, y - 7),
+          10,
+          Colors.white54);
+    }
+    _drawText(canvas, _fmtDate(visible.first.time),
+        Offset(rect.left, rect.bottom + 6), 10, Colors.white38);
+    _drawText(canvas, _fmtDate(visible.last.time),
+        Offset(rect.right - 62, rect.bottom + 6), 10, Colors.white38);
+  }
+
+  void _drawCandles(
+      Canvas canvas,
+      Rect rect,
+      List<RawBar> visible,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
+      double step) {
+    final up = Paint()..color = const Color(0xFF26A69A);
+    final down = Paint()..color = const Color(0xFFEF5350);
+    final wick = Paint()..strokeWidth = math.max(1.0, step * 0.08);
+    final bodyWidth = math.max(1.0, math.min(step * 0.68, step - 1));
+    for (final bar in visible) {
+      final x = rawToX(bar.index);
+      final paint = bar.close >= bar.open ? up : down;
+      wick.color = paint.color;
+      canvas.drawLine(
+          Offset(x, priceToY(bar.high).clamp(rect.top, rect.bottom).toDouble()),
+          Offset(x, priceToY(bar.low).clamp(rect.top, rect.bottom).toDouble()),
+          wick);
+      final openY = priceToY(bar.open).clamp(rect.top, rect.bottom).toDouble();
+      final closeY =
+          priceToY(bar.close).clamp(rect.top, rect.bottom).toDouble();
+      canvas.drawRect(
+          Rect.fromLTRB(
+              x - bodyWidth / 2,
+              math.min(openY, closeY),
+              x + bodyWidth / 2,
+              math.max(math.min(openY, closeY) + 1, math.max(openY, closeY))),
+          paint);
+    }
+  }
+
+  void _drawMergedBars(
+      Canvas canvas,
+      Rect rect,
+      int start,
+      int end,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
+      double step) {
+    final stroke = Paint()
+      ..color = const Color(0xFFFFD54F).withValues(alpha: 0.72)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(1.0, step * 0.05);
+    for (final merged in snapshot.mergedBars) {
+      if (merged.endRawIndex < start || merged.startRawIndex > end) continue;
+      final leftRaw = math.max(merged.startRawIndex, start);
+      final rightRaw = math.min(merged.endRawIndex, end);
+      final left = (rawToX(leftRaw) - step * 0.44)
+          .clamp(rect.left, rect.right)
+          .toDouble();
+      final right = (rawToX(rightRaw) + step * 0.44)
+          .clamp(rect.left, rect.right)
+          .toDouble();
+      if (right <= left) continue;
+      final top = priceToY(merged.high).clamp(rect.top, rect.bottom).toDouble();
+      final bottom =
+          priceToY(merged.low).clamp(rect.top, rect.bottom).toDouble();
+      canvas.drawRect(
+          Rect.fromLTRB(
+              left, math.min(top, bottom), right, math.max(top, bottom)),
+          stroke);
+    }
+  }
+
+  void _drawFxLine(Canvas canvas, Rect rect, int start, int end,
+      double Function(int) rawToX, double Function(double) priceToY) {
+    final rows = snapshot.fxs
+        .where((e) => e.rawIndex >= start && e.rawIndex <= end)
+        .toList()
+      ..sort((a, b) => a.rawIndex.compareTo(b.rawIndex));
+    if (rows.length < 2) return;
+    final path = Path();
+    for (var i = 0; i < rows.length; i++) {
+      final p = Offset(
+          rawToX(rows[i].rawIndex).clamp(rect.left, rect.right).toDouble(),
+          priceToY(rows[i].price).clamp(rect.top, rect.bottom).toDouble());
+      if (i == 0)
+        path.moveTo(p.dx, p.dy);
+      else
+        path.lineTo(p.dx, p.dy);
+    }
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.46)
+          ..strokeWidth = 1.15
+          ..style = PaintingStyle.stroke);
+  }
+
+  void _drawFx(
+      Canvas canvas,
+      Rect rect,
+      int start,
+      int end,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
+      List<ChartLabel> chartLabels) {
+    for (final fx in snapshot.fxs) {
+      if (fx.rawIndex < start || fx.rawIndex > end) continue;
+      final color = fx.type == FxType.top
+          ? const Color(0xFFFFCA28)
+          : const Color(0xFF42A5F5);
+      final p = Offset(
+          rawToX(fx.rawIndex).clamp(rect.left, rect.right).toDouble(),
+          priceToY(fx.price).clamp(rect.top, rect.bottom).toDouble());
+      canvas.drawCircle(p, 4, Paint()..color = color);
+      if (showFxText) {
+        chartLabels.add(ChartLabel(
+          text: fx.isTop ? '顶' : '底',
+          anchor: p,
+          side: fx.isTop ? ChartLabelSide.top : ChartLabelSide.bottom,
+          priority: ChartLabelPriority.fx,
+          rawIndex: fx.rawIndex,
+          color: color,
+          fontSize: 11,
+          visibleWhenWindowLe: 240,
+        ));
+      }
+    }
+  }
+
+  void _drawBi(
+      Canvas canvas,
+      Rect rect,
+      int start,
+      int end,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
+      List<ChartLabel> chartLabels) {
+    final paint = Paint()
+      ..color = const Color(0xFFE53935)
+      ..strokeWidth = 1.45;
+    for (final bi in snapshot.bis) {
+      if (bi.endRawIndex < start || bi.startRawIndex > end) continue;
+      final p1 = Offset(
+          rawToX(bi.startRawIndex).clamp(rect.left, rect.right).toDouble(),
+          priceToY(bi.startPrice).clamp(rect.top, rect.bottom).toDouble());
+      final p2 = Offset(
+          rawToX(bi.endRawIndex).clamp(rect.left, rect.right).toDouble(),
+          priceToY(bi.endPrice).clamp(rect.top, rect.bottom).toDouble());
+      canvas.drawLine(p1, p2, paint);
+      if (showBiText) {
+        chartLabels.add(ChartLabel(
+          text: 'B${bi.index + 1}',
+          anchor: p2,
+          side: bi.isUp ? ChartLabelSide.top : ChartLabelSide.bottom,
+          priority: ChartLabelPriority.bi,
+          rawIndex: bi.endRawIndex,
+          color: const Color(0xFFFF8A80),
+          fontSize: 10,
+          visibleWhenWindowLe: 240,
+        ));
+      }
+    }
+  }
+
+  void _drawSeg(
+      Canvas canvas,
+      Rect rect,
+      int start,
+      int end,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
+      List<ChartLabel> chartLabels) {
+    for (final seg in snapshot.segs) {
+      if (seg.endRawIndex < start || seg.startRawIndex > end) continue;
+      final paint = Paint()
+        ..color =
+            (seg.isSure ? const Color(0xFF00E676) : const Color(0xFFB2FF59))
+                .withValues(alpha: seg.isSure ? 0.92 : 0.62)
+        ..strokeWidth = seg.isSure ? 2.6 : 1.6;
+      final p1 = Offset(
+          rawToX(seg.startRawIndex).clamp(rect.left, rect.right).toDouble(),
+          priceToY(seg.startPrice).clamp(rect.top, rect.bottom).toDouble());
+      final p2 = Offset(
+          rawToX(seg.endRawIndex).clamp(rect.left, rect.right).toDouble(),
+          priceToY(seg.endPrice).clamp(rect.top, rect.bottom).toDouble());
+      canvas.drawLine(p1, p2, paint);
+      if (showSegText) {
+        chartLabels.add(ChartLabel(
+          text: 'S${seg.index + 1}${seg.isSure ? '' : '?'}',
+          anchor: p2,
+          side: seg.isUp ? ChartLabelSide.top : ChartLabelSide.bottom,
+          priority: ChartLabelPriority.seg,
+          rawIndex: seg.endRawIndex,
+          color: Colors.white70,
+          fontSize: 10,
+          visibleWhenWindowLe: 360,
+        ));
+      }
+    }
+  }
+
+  void _drawZs(Canvas canvas, Rect rect, int start, int end,
+      double Function(int) rawToX, double Function(double) priceToY) {
+    final fill = Paint()
+      ..color = const Color(0xFF2962FF).withValues(alpha: 0.10)
+      ..style = PaintingStyle.fill;
+    final stroke = Paint()
+      ..color = const Color(0xFF5B8DFF).withValues(alpha: 0.85)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1;
+    for (final zs in snapshot.zss) {
+      if (zs.endRawIndex < start || zs.startRawIndex > end) continue;
+      final left =
+          rawToX(zs.startRawIndex).clamp(rect.left, rect.right).toDouble();
+      final right =
+          rawToX(zs.endRawIndex).clamp(rect.left, rect.right).toDouble();
+      final top = priceToY(zs.zg).clamp(rect.top, rect.bottom).toDouble();
+      final bottom = priceToY(zs.zd).clamp(rect.top, rect.bottom).toDouble();
+      final area = Rect.fromLTRB(math.min(left, right), math.min(top, bottom),
+          math.max(left, right), math.max(top, bottom));
+      canvas.drawRect(area, fill);
+      canvas.drawRect(area, stroke);
+      _drawText(canvas, 'ZS${zs.index + 1}',
+          Offset(area.left + 3, area.top + 3), 10, const Color(0xFF82B1FF));
+    }
+  }
+
+  void _drawBsp(
+      Canvas canvas,
+      Rect rect,
+      int start,
+      int end,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
+      List<ChartLabel> chartLabels,
+      BspChartLabelAdapter bspLabelAdapter) {
+    for (final bsp in snapshot.bsps) {
+      if (bsp.rawIndex < start || bsp.rawIndex > end) continue;
+      final isSegLevel = _isSegBsp(bsp);
+      if (isSegLevel && !showSegBsp) continue;
+      if (!isSegLevel && !showBiBsp) continue;
+      final isCandidateTrail = bsp.type.contains('候选轨迹');
+      final baseColor =
+          bsp.isSell ? const Color(0xFFFF7043) : const Color(0xFF00E676);
+      final color = isCandidateTrail
+          ? baseColor.withValues(alpha: bsp.confirmed ? 0.60 : 0.34)
+          : baseColor.withValues(alpha: bsp.confirmed ? 1.0 : 0.82);
+      final x = rawToX(bsp.rawIndex).clamp(rect.left, rect.right).toDouble();
+      final y = priceToY(bsp.price).clamp(rect.top, rect.bottom).toDouble();
+      final halfWidth = isSegLevel ? 8.0 : 6.0;
+      final tipOffset = isSegLevel ? 9.0 : 7.0;
+      final baseOffset = isSegLevel ? 6.0 : 5.0;
+      final path = Path();
+      if (bsp.isSell) {
+        path.moveTo(x, y - tipOffset);
+        path.lineTo(x - halfWidth, y + baseOffset);
+        path.lineTo(x + halfWidth, y + baseOffset);
+      } else {
+        path.moveTo(x, y + tipOffset);
+        path.lineTo(x - halfWidth, y - baseOffset);
+        path.lineTo(x + halfWidth, y - baseOffset);
+      }
+      path.close();
+      canvas.drawPath(path, Paint()..color = color);
+      chartLabels.add(bspLabelAdapter.buildLabel(
+        bsp: bsp,
+        anchor: Offset(x, y),
+        isSegLevel: isSegLevel,
+        color: color,
+        visibleWhenWindowLe: windowSize,
+      ));
+    }
+  }
+
+  bool _isSegBsp(BspPoint bsp) {
+    final level = bsp.level.trim().toLowerCase();
+    return level == 'seg' || level == 'segment' || level.contains('seg');
+  }
+
+  bool _isBiBsp(BspPoint bsp) {
+    final level = bsp.level.trim().toLowerCase();
+    return level.isEmpty ||
+        level == 'bi' ||
+        (!level.contains('seg') && level != 'segment');
+  }
+
+  void _drawCrosshair(
+      Canvas canvas,
+      Rect rect,
+      RawBar bar,
+      double Function(int) rawToX,
+      double Function(double) priceToY,
+      double? pointerPrice) {
+    final x = rawToX(bar.index).clamp(rect.left, rect.right).toDouble();
+    final price = pointerPrice ?? bar.close;
+    final y = priceToY(price).clamp(rect.top, rect.bottom).toDouble();
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.52)
+      ..strokeWidth = 0.8;
+    canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), paint);
+    canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
+    _drawText(canvas, _fmtDate(bar.time), Offset(rect.left + 6, rect.top + 6),
+        12, Colors.white);
+    _drawText(
+        canvas,
+        'O:${bar.open.toStringAsFixed(2)} H:${bar.high.toStringAsFixed(2)} L:${bar.low.toStringAsFixed(2)} C:${bar.close.toStringAsFixed(2)} 光标:${price.toStringAsFixed(2)} V:${bar.volume.toStringAsFixed(0)}',
+        Offset(rect.left + 6, rect.top - 20),
+        11,
+        Colors.white);
+    _drawText(canvas, price.toStringAsFixed(2), Offset(rect.right + 5, y - 7),
+        10, Colors.white);
+  }
+
+  void _drawText(
+      Canvas canvas, String text, Offset offset, double fontSize, Color color) {
+    final painter = TextPainter(
+        text: TextSpan(
+            text: text, style: TextStyle(color: color, fontSize: fontSize)),
+        textDirection: TextDirection.ltr,
+        maxLines: 1)
+      ..layout(maxWidth: 520);
+    painter.paint(canvas, offset);
+  }
+
+  String _fmtDate(DateTime d) => ChartTimeFormatter.format(
+        d,
+        snapshot.rawBars.map((bar) => bar.time),
+      );
+  @override
+  bool shouldRepaint(covariant _OriginChartPainter oldDelegate) => true;
+}
