@@ -19,9 +19,11 @@ class KlineAppearanceSettings {
     Color? chartBackgroundColor,
     Color? appThemeColor,
   }) {
+    final safeOpacity =
+        (klineOpacity ?? this.klineOpacity).clamp(0.0, 0.85).toDouble();
     return KlineAppearanceSettings(
       klineColor: klineColor ?? this.klineColor,
-      klineOpacity: (klineOpacity ?? this.klineOpacity).clamp(0.0, 0.85),
+      klineOpacity: safeOpacity,
       chartBackgroundColor: chartBackgroundColor ?? this.chartBackgroundColor,
       appThemeColor: appThemeColor ?? this.appThemeColor,
     );
