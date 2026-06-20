@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'ashare_bsp_scanner_page.dart';
 import 'chan_settings_page.dart';
 import 'chip_distribution_page.dart';
+import 'kline_chart_page.dart';
 import 'level_promoter_page.dart';
 import 'research_backtest_page.dart';
 import 'run_log_page.dart';
 import 's8_strategy_batch_page.dart';
-import 's13_single_stock_replay_page.dart';
 
 class RootPage extends StatefulWidget {
   const RootPage({super.key});
@@ -19,7 +19,7 @@ class RootPage extends StatefulWidget {
 
 class _RootPageState extends State<RootPage> {
   static const int _removedLegacyReplayIndex = 0;
-  static const int _multiLevelIndex = 1;
+  static const int _klineChartIndex = 1;
   static const int _settingsIndex = 6;
 
   late int _index;
@@ -30,7 +30,7 @@ class _RootPageState extends State<RootPage> {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return _settingsIndex;
     }
-    return _multiLevelIndex;
+    return _klineChartIndex;
   }
 
   @override
@@ -47,7 +47,7 @@ class _RootPageState extends State<RootPage> {
 
   void _open(int index) {
     final target =
-        index == _removedLegacyReplayIndex ? _multiLevelIndex : index;
+        index == _removedLegacyReplayIndex ? _klineChartIndex : index;
     if (target == _settingsIndex) {
       setState(() => _settingsOpen = !_settingsOpen);
       return;
@@ -71,7 +71,7 @@ class _RootPageState extends State<RootPage> {
             builders: <_RouteBuilder>[
               const _RouteBuilder(child: SizedBox.shrink()),
               _RouteBuilder(
-                child: S13SingleStockReplayPage(
+                child: KlineChartPage(
                   currentRouteIndex: _index,
                   onOpenRoute: _open,
                 ),
