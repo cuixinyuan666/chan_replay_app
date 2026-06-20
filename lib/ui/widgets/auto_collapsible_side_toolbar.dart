@@ -12,7 +12,7 @@ class SideToolbarSection {
   });
 }
 
-/// A left-side toolbar shell that collapses only through its manual toggle.
+/// A left-side toolbar shell that expands manually and collapses on outside tap.
 class AutoCollapsibleSideToolbar extends StatefulWidget {
   final List<SideToolbarSection> sections;
   final Widget? header;
@@ -82,54 +82,67 @@ class _AutoCollapsibleSideToolbarState
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      left: 0,
-      top: widget.top,
-      bottom: widget.bottom,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        width: _expanded ? widget.expandedWidth : widget.collapsedWidth,
-        child: MouseRegion(
-          child: Listener(
-            behavior: HitTestBehavior.translucent,
-            onPointerSignal: _handlePointerSignal,
-            child: Material(
-              color: Colors.transparent,
-              child: Stack(
-                children: <Widget>[
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onTap: _expanded ? null : () => _setExpanded(true),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      ignoring: !_expanded,
-                      child: AnimatedOpacity(
-                        opacity: _expanded ? 1 : 0,
-                        duration: const Duration(milliseconds: 120),
-                        child: _ToolbarBody(
-                          header: widget.header,
-                          sections: widget.sections,
-                          scrollController: _scrollController,
+    return Positioned.fill(
+      child: Stack(
+        children: <Widget>[
+          if (_expanded)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => _setExpanded(false),
+              ),
+            ),
+          Positioned(
+            left: 0,
+            top: widget.top,
+            bottom: widget.bottom,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              width: _expanded ? widget.expandedWidth : widget.collapsedWidth,
+              child: MouseRegion(
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerSignal: _handlePointerSignal,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Stack(
+                      children: <Widget>[
+                        Positioned.fill(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: _expanded ? null : () => _setExpanded(true),
+                          ),
                         ),
-                      ),
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            ignoring: !_expanded,
+                            child: AnimatedOpacity(
+                              opacity: _expanded ? 1 : 0,
+                              duration: const Duration(milliseconds: 120),
+                              child: _ToolbarBody(
+                                header: widget.header,
+                                sections: widget.sections,
+                                scrollController: _scrollController,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: _ToolbarToggleButton(
+                            expanded: _expanded,
+                            onPressed: () => _setExpanded(!_expanded),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: _ToolbarToggleButton(
-                      expanded: _expanded,
-                      onPressed: () => _setExpanded(!_expanded),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
