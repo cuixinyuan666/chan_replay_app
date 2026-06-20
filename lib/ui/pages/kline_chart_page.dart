@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../settings/kline_appearance_controller.dart';
 import 's13_single_stock_replay_page.dart';
 
 /// Unified K-line chart entry.
@@ -19,8 +20,49 @@ class KlineChartPage extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => S13SingleStockReplayPage(
-        currentRouteIndex: currentRouteIndex,
-        onOpenRoute: onOpenRoute,
-      );
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<KlineAppearanceSettings>(
+      valueListenable: KlineAppearanceController.selected,
+      builder: (context, appearance, _) {
+        final baseTheme = Theme.of(context);
+        final themed = baseTheme.copyWith(
+          scaffoldBackgroundColor: appearance.chartBackgroundColor,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: appearance.appThemeColor,
+            brightness: Brightness.dark,
+          ),
+          sliderTheme: baseTheme.sliderTheme.copyWith(
+            activeTrackColor: appearance.appThemeColor,
+            thumbColor: appearance.appThemeColor,
+          ),
+        );
+        return Theme(
+          data: themed,
+          child: Stack(
+            children: <Widget>[
+              ColoredBox(
+                color: appearance.chartBackgroundColor,
+                child: S13SingleStockReplayPage(
+                  currentRouteIndex: currentRouteIndex,
+                  onOpenRoute: onOpenRoute,
+                ),
+              ),
+              if (appearance.klineOpacity > 0)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: appearance.klineColor.withValues(
+                          alpha: appearance.klineOpacity,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
