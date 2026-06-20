@@ -1226,21 +1226,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             ),
           ],
         ),
-        SideToolbarSection(
-          title: '页面',
-          children: <Widget>[
-            Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
-              _routeButton('单股多级别复盘', Icons.account_tree, 1),
-              _routeButton('扫描器', Icons.radar, 2),
-              _routeButton('级别推进器', Icons.double_arrow, 3),
-              _routeButton('S8批量候选', Icons.view_list, 4),
-              _routeButton('研究', Icons.science, 5),
-              _routeButton('设置', Icons.settings, 6),
-              _routeButton('运行日志', Icons.receipt_long, 7),
-              _routeButton('筹码分布', Icons.stacked_bar_chart, 8),
-            ]),
-          ],
-        ),
       ];
 
   Widget _titleLevelSwitcher() => Positioned(
@@ -1445,14 +1430,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                     icon: const Icon(Icons.architecture, size: 18),
                     label: const Text('打开画线工具'))),
             _sectionGap(),
-            _sectionTitle('页面'),
-            Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
-              _routeButton('复盘', Icons.candlestick_chart, 0),
-              _routeButton('单股多级别', Icons.account_tree, 1),
-              _routeButton('扫描器', Icons.radar, 2),
-              _routeButton('批量候选', Icons.view_list, 3),
-              _routeButton('研究', Icons.science, 4),
-            ]),
           ]);
   Widget _chartPanel(ChanSnapshot? s) {
     if (s == null || s.rawBars.isEmpty)

@@ -5,6 +5,7 @@ import '../../core/models/chan_snapshot.dart';
 import '../../core/settings/level_promoter_settings.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
+import '../drawing/tradingview_toolbox_host.dart';
 import 'origin_kline_chart_unlimited_interaction.dart' as base;
 
 /// Display-only adapter for hichan2 recursive segment layers.
@@ -275,6 +276,8 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
 class _RecursiveSegOriginKlineChartState
     extends State<RecursiveSegOriginKlineChart> {
   String _viewportScopeKey = '';
+  final Set<TradingViewDrawingTool> _hiddenChanOverlays = {};
+  final Set<String> _hiddenRecursiveOverlays = {};
   int? _stickyViewEndIndex;
   int? _stickyWindowSize;
   double? _stickyPriceScale;
@@ -420,27 +423,31 @@ class _RecursiveSegOriginKlineChartState
 
   @override
   Widget build(BuildContext context) {
+    final recursiveEntries = _recursiveOverlayEntries();
     return base.OriginKlineChart(
       snapshot: widget.snapshot,
-      showFx: widget.showFx,
-      showFxLine: widget.showFxLine,
-      showFxText: widget.showFxText,
-      showBi: widget.showBi,
-      showBiText: widget.showBiText,
-      showSeg: widget.showSeg,
-      showSegText: widget.showSegText,
-      showZs: widget.showZs,
-      showBiBsp: widget.showBiBsp,
-      showSegBsp: widget.showSegBsp,
-      showMergedBars: widget.showMergedBars,
+      showFx: _standardOverlayVisible(TradingViewDrawingTool.chanFx),
+      showFxLine: _standardOverlayVisible(TradingViewDrawingTool.chanFxLine),
+      showFxText: _standardOverlayVisible(TradingViewDrawingTool.chanFxText),
+      showBi: _standardOverlayVisible(TradingViewDrawingTool.chanBi),
+      showBiText: _standardOverlayVisible(TradingViewDrawingTool.chanBiText),
+      showSeg: _standardOverlayVisible(TradingViewDrawingTool.chanSeg),
+      showSegText: _standardOverlayVisible(TradingViewDrawingTool.chanSegText),
+      showZs: _standardOverlayVisible(TradingViewDrawingTool.chanZs),
+      showBiBsp: _standardOverlayVisible(TradingViewDrawingTool.chanBiBsp),
+      showSegBsp: _standardOverlayVisible(TradingViewDrawingTool.chanSegBsp),
+      showMergedBars:
+          _standardOverlayVisible(TradingViewDrawingTool.chanMergedBars),
       showEasyTdxIndicators: widget.showEasyTdxIndicators,
       easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
       enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
       drawingObjects: [
         if (widget.showRecursiveSegLayers)
-          ...widget._recursiveSegDrawingObjects(widget.snapshot),
+          ...widget._recursiveSegDrawingObjects(widget.snapshot).where(
+              (object) => !_isRecursiveObjectHidden(object.id, bsp: false)),
         if (widget.showRecursiveSegBsp)
-          ...widget._recursiveSegBspDrawingObjects(widget.snapshot),
+          ...widget._recursiveSegBspDrawingObjects(widget.snapshot).where(
+              (object) => !_isRecursiveObjectHidden(object.id, bsp: true)),
         ...widget.drawingObjects,
       ],
       drawingStorageKey: widget.drawingStorageKey,
@@ -448,8 +455,9 @@ class _RecursiveSegOriginKlineChartState
         widget.symbolLabel,
         widget.snapshot,
       ),
-      isChanOverlayVisible: widget.isChanOverlayVisible,
-      onChanOverlayToggled: widget.onChanOverlayToggled,
+      isChanOverlayVisible: _standardOverlayVisible,
+      onChanOverlayToggled: _toggleStandardOverlay,
+      additionalChanOverlays: recursiveEntries,
       toolboxOpenSignal: widget.toolboxOpenSignal,
       toolboxSelectedToolSignal: widget.toolboxSelectedToolSignal,
       onToolboxQuickToolAdded: widget.onToolboxQuickToolAdded,
@@ -466,5 +474,97 @@ class _RecursiveSegOriginKlineChartState
       onEasyTdxSubPanelCountChanged: widget.onEasyTdxSubPanelCountChanged,
       onEasyTdxIndicatorToggled: widget.onEasyTdxIndicatorToggled,
     );
+  }
+
+  bool _standardOverlayVisible(TradingViewDrawingTool tool) {
+    final external = widget.isChanOverlayVisible;
+    if (external != null) return external(tool);
+    if (_hiddenChanOverlays.contains(tool)) return false;
+    return switch (tool) {
+      TradingViewDrawingTool.chanFx => widget.showFx,
+      TradingViewDrawingTool.chanFxLine => widget.showFxLine,
+      TradingViewDrawingTool.chanFxText => widget.showFxText,
+      TradingViewDrawingTool.chanBi => widget.showBi,
+      TradingViewDrawingTool.chanBiText => widget.showBiText,
+      TradingViewDrawingTool.chanSeg => widget.showSeg,
+      TradingViewDrawingTool.chanSegText => widget.showSegText,
+      TradingViewDrawingTool.chanZs => widget.showZs,
+      TradingViewDrawingTool.chanBiBsp => widget.showBiBsp,
+      TradingViewDrawingTool.chanSegBsp => widget.showSegBsp,
+      TradingViewDrawingTool.chanMergedBars => widget.showMergedBars,
+      TradingViewDrawingTool.easyTdxIndicators => widget.showEasyTdxIndicators,
+      _ => true,
+    };
+  }
+
+  void _toggleStandardOverlay(TradingViewDrawingTool tool) {
+    if (widget.onChanOverlayToggled != null) {
+      widget.onChanOverlayToggled!(tool);
+      return;
+    }
+    setState(() {
+      if (_standardOverlayVisible(tool)) {
+        _hiddenChanOverlays.add(tool);
+      } else {
+        _hiddenChanOverlays.remove(tool);
+      }
+    });
+  }
+
+  List<ChanOverlayToggleEntry> _recursiveOverlayEntries() {
+    final maxLayer = widget._effectiveMaxRecursiveSegLayer;
+    final entries = <ChanOverlayToggleEntry>[];
+    final minLayer =
+        widget.minRecursiveSegLayer < 2 ? 2 : widget.minRecursiveSegLayer;
+    for (var layer = minLayer; layer <= maxLayer; layer++) {
+      final segId = 'seg_$layer';
+      final bspId = 'seg_${layer}_bsp';
+      final hasSeg =
+          widget.snapshot.recursiveSegLayers[layer]?.isNotEmpty ?? false;
+      final hasBsp =
+          widget.snapshot.recursiveSegBsps[layer]?.isNotEmpty ?? hasSeg;
+      entries.add(ChanOverlayToggleEntry(
+        id: segId,
+        label: '${layer}段',
+        description: '显示级别推进器第$layer段线段',
+        available: hasSeg,
+        visible: widget.showRecursiveSegLayers &&
+            hasSeg &&
+            !_hiddenRecursiveOverlays.contains(segId),
+        onToggle: () => _toggleRecursiveOverlay(segId),
+      ));
+      entries.add(ChanOverlayToggleEntry(
+        id: bspId,
+        label: '${layer}段买卖点',
+        description: '显示后端返回的 seg$layer 买卖点',
+        available: hasBsp,
+        visible: widget.showRecursiveSegBsp &&
+            hasBsp &&
+            !_hiddenRecursiveOverlays.contains(bspId),
+        onToggle: () => _toggleRecursiveOverlay(bspId),
+      ));
+    }
+    return entries;
+  }
+
+  void _toggleRecursiveOverlay(String id) {
+    setState(() {
+      if (!_hiddenRecursiveOverlays.add(id))
+        _hiddenRecursiveOverlays.remove(id);
+    });
+  }
+
+  bool _isRecursiveObjectHidden(String objectId, {required bool bsp}) {
+    final maxLayer = widget._effectiveMaxRecursiveSegLayer;
+    for (var layer = 2; layer <= maxLayer; layer++) {
+      final belongsToLayer = bsp
+          ? objectId.contains('hichan2_seg${layer}_bsp_')
+          : objectId.contains('_L${layer}_');
+      if (belongsToLayer) {
+        final id = bsp ? 'seg_${layer}_bsp' : 'seg_$layer';
+        return _hiddenRecursiveOverlays.contains(id);
+      }
+    }
+    return false;
   }
 }

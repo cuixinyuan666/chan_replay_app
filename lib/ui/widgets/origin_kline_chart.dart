@@ -40,9 +40,11 @@ class OriginKlineChart extends StatefulWidget {
   final String symbolLabel;
   final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
   final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
+  final List<ChanOverlayToggleEntry> additionalChanOverlays;
   final ValueListenable<int>? toolboxOpenSignal;
   final ValueListenable<TradingViewDrawingTool?>? toolboxSelectedToolSignal;
   final ValueChanged<TradingViewDrawingTool>? onToolboxQuickToolAdded;
+  final ValueChanged<TradingViewDrawingTool>? onDrawingToolSelected;
   final int windowSize;
   final double priceScale;
   final double priceOffset;
@@ -77,9 +79,11 @@ class OriginKlineChart extends StatefulWidget {
     this.symbolLabel = '',
     this.isChanOverlayVisible,
     this.onChanOverlayToggled,
+    this.additionalChanOverlays = const [],
     this.toolboxOpenSignal,
     this.toolboxSelectedToolSignal,
     this.onToolboxQuickToolAdded,
+    this.onDrawingToolSelected,
     required this.windowSize,
     this.priceScale = 1.0,
     this.priceOffset = 0.0,
@@ -98,25 +102,6 @@ class OriginKlineChart extends StatefulWidget {
 }
 
 class _OriginKlineChartState extends State<OriginKlineChart> {
-  static const Set<TradingViewDrawingTool> _interactiveDrawingTools = {
-    TradingViewDrawingTool.trendLine,
-    TradingViewDrawingTool.infoLine,
-    TradingViewDrawingTool.arrow,
-    TradingViewDrawingTool.horizontalLine,
-    TradingViewDrawingTool.horizontalRay,
-    TradingViewDrawingTool.verticalLine,
-    TradingViewDrawingTool.rectangle,
-    TradingViewDrawingTool.text,
-    TradingViewDrawingTool.anchoredText,
-    TradingViewDrawingTool.note,
-    TradingViewDrawingTool.priceLabel,
-    TradingViewDrawingTool.priceNote,
-    TradingViewDrawingTool.ruler,
-    TradingViewDrawingTool.dateRange,
-    TradingViewDrawingTool.priceRange,
-    TradingViewDrawingTool.dateAndPriceRange,
-  };
-
   int? _scaleStartWindow;
   double _panRemainder = 0;
   int _drawingSeq = 0;
@@ -264,6 +249,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       canExportDrawings: _drawings.objects.isNotEmpty,
       isChanOverlayVisible: widget.isChanOverlayVisible,
       onChanOverlayToggled: widget.onChanOverlayToggled,
+      additionalChanOverlays: widget.additionalChanOverlays,
       easyTdxSubPanelCount: widget.easyTdxSubPanelCount,
       enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
       onEasyTdxSubPanelCountChanged: widget.onEasyTdxSubPanelCountChanged,
@@ -295,8 +281,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
                   onScaleStart: (details) {
                     _scaleStartWindow = widget.windowSize;
                     _panRemainder = 0;
-                    if (!_interactiveDrawingTools
-                        .contains(_selectedDrawingTool)) {
+                    if (!_isInteractiveDrawingTool(_selectedDrawingTool)) {
                       _startDrawingDrag(details.localFocalPoint, size);
                     }
                   },
@@ -414,10 +399,16 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       _pendingAnchors = const [];
       _dragState = null;
     });
+    widget.onDrawingToolSelected?.call(tool);
+  }
+
+  bool _isInteractiveDrawingTool(TradingViewDrawingTool tool) {
+    final meta = TradingViewDrawingToolRegistry.metaOf(tool);
+    return !meta.requiresChanSnapshot && meta.minPoints > 0;
   }
 
   void _handleTap(Offset p, Size size) {
-    if (!_interactiveDrawingTools.contains(_selectedDrawingTool)) {
+    if (!_isInteractiveDrawingTool(_selectedDrawingTool)) {
       final hit = _hitTestDrawing(p, size);
       if (hit != null) {
         _selectExistingDrawing(hit);

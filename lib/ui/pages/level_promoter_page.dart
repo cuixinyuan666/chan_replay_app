@@ -44,7 +44,8 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
     }
     LevelPromoterSettings.setMaxLayer(parsed);
     setState(() {
-      _status = '已保存：全局级别推进器 N=${LevelPromoterSettings.currentMaxLayer}。后续单股多级别复盘、扫描器、S8 等请求会自动携带该值。';
+      _status =
+          '已保存：全局级别推进器 N=${LevelPromoterSettings.currentMaxLayer}。后续单股多级别复盘、扫描器、S8 等请求会自动携带该值。';
     });
     _show('级别推进器全局 N=${LevelPromoterSettings.currentMaxLayer}');
   }
@@ -70,7 +71,7 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
       backgroundColor: const Color(0xFF0D1117),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(52, 10, 10, 10),
+          padding: const EdgeInsets.all(10),
           child: Align(
             alignment: Alignment.topLeft,
             child: SizedBox(
@@ -85,7 +86,8 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
                     children: <Widget>[
                       const Text(
                         '这里只设置全局 N 段数量；不再单独输入股票代码、市场、K线级别或显示图表。',
-                        style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.35),
+                        style: TextStyle(
+                            color: Colors.white70, fontSize: 12, height: 1.35),
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
@@ -96,7 +98,8 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
                           inputFormatters: <TextInputFormatter>[
                             FilteringTextInputFormatter.digitsOnly,
                           ],
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 14),
                           decoration: const InputDecoration(
                             labelText: 'N段数量',
                             helperText: '默认 2；最小 2',
@@ -130,7 +133,8 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
                       const SizedBox(height: 10),
                       Text(
                         _status,
-                        style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.35),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12, height: 1.35),
                       ),
                     ],
                   ),
@@ -155,7 +159,9 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            Text(title,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             child,
           ],
@@ -167,13 +173,18 @@ class _LevelPromoterPageState extends State<LevelPromoterPage> {
         decoration: BoxDecoration(
           color: const Color(0xFF2962FF).withValues(alpha: 0.16),
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0xFF8AB4FF).withValues(alpha: 0.50)),
+          border: Border.all(
+              color: const Color(0xFF8AB4FF).withValues(alpha: 0.50)),
         ),
         child: Text(
           '$label: $value',
-          style: const TextStyle(color: Color(0xFF8AB4FF), fontSize: 12, fontWeight: FontWeight.w700),
+          style: const TextStyle(
+              color: Color(0xFF8AB4FF),
+              fontSize: 12,
+              fontWeight: FontWeight.w700),
         ),
       );
 
-  void _show(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  void _show(String message) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(message)));
 }

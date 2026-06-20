@@ -5,6 +5,24 @@ import 'tradingview_drawing_tool.dart';
 
 const Duration _tooltipWait = Duration(seconds: 3);
 
+class ChanOverlayToggleEntry {
+  final String id;
+  final String label;
+  final String description;
+  final bool visible;
+  final bool available;
+  final VoidCallback onToggle;
+
+  const ChanOverlayToggleEntry({
+    required this.id,
+    required this.label,
+    required this.description,
+    required this.visible,
+    required this.onToggle,
+    this.available = true,
+  });
+}
+
 const List<String> _defaultIndicatorKeys = [
   'MA',
   'BOLL',
@@ -55,6 +73,7 @@ class TradingViewToolboxHost extends StatefulWidget {
   final bool canExportDrawings;
   final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
   final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
+  final List<ChanOverlayToggleEntry> additionalChanOverlays;
   final ValueChanged<TradingViewDrawingTool>? onQuickToolAdded;
   final ValueListenable<int>? openSignal;
   final int drawingCount;
@@ -78,6 +97,7 @@ class TradingViewToolboxHost extends StatefulWidget {
     this.canExportDrawings = false,
     this.isChanOverlayVisible,
     this.onChanOverlayToggled,
+    this.additionalChanOverlays = const [],
     this.onQuickToolAdded,
     this.openSignal,
     this.drawingCount = 0,
@@ -218,6 +238,7 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
                     onExportDrawings: widget.onExportDrawings,
                     isChanOverlayVisible: widget.isChanOverlayVisible,
                     onChanOverlayToggled: widget.onChanOverlayToggled,
+                    additionalChanOverlays: widget.additionalChanOverlays,
                     onClose: () => setState(() => _open = false),
                     onSelected: _selectTool,
                     onQuickToolAdded: _handleQuickToolAdded,
@@ -379,6 +400,7 @@ class _ToolboxPanel extends StatelessWidget {
   final VoidCallback? onExportDrawings;
   final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
   final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
+  final List<ChanOverlayToggleEntry> additionalChanOverlays;
   final VoidCallback onClose;
   final ValueChanged<TradingViewDrawingTool> onSelected;
   final ValueChanged<TradingViewDrawingTool> onQuickToolAdded;
@@ -400,6 +422,7 @@ class _ToolboxPanel extends StatelessWidget {
     required this.onExportDrawings,
     required this.isChanOverlayVisible,
     required this.onChanOverlayToggled,
+    required this.additionalChanOverlays,
     required this.onClose,
     required this.onSelected,
     required this.onQuickToolAdded,
@@ -511,6 +534,10 @@ class _ToolboxPanel extends StatelessWidget {
                         isToolAvailable: isToolAvailable,
                         isChanOverlayVisible: isChanOverlayVisible,
                         onChanOverlayToggled: onChanOverlayToggled,
+                        additionalChanOverlays:
+                            group == TradingViewDrawingGroup.chanOverlay
+                                ? additionalChanOverlays
+                                : const [],
                         onSelected: onSelected,
                         onQuickToolAdded: onQuickToolAdded,
                         indicatorKeys: indicatorKeys,
@@ -558,6 +585,7 @@ class _ToolGroupTile extends StatelessWidget {
   final bool Function(TradingViewDrawingTool tool)? isToolAvailable;
   final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
   final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
+  final List<ChanOverlayToggleEntry> additionalChanOverlays;
   final ValueChanged<TradingViewDrawingTool> onSelected;
   final ValueChanged<TradingViewDrawingTool> onQuickToolAdded;
   final List<String> indicatorKeys;
@@ -576,6 +604,7 @@ class _ToolGroupTile extends StatelessWidget {
     required this.isToolAvailable,
     required this.isChanOverlayVisible,
     required this.onChanOverlayToggled,
+    required this.additionalChanOverlays,
     required this.onSelected,
     required this.onQuickToolAdded,
     required this.indicatorKeys,
@@ -618,6 +647,8 @@ class _ToolGroupTile extends StatelessWidget {
             easyTdxSubPanelCount: easyTdxSubPanelCount,
             onSubPanelCountChanged: onSubPanelCountChanged,
           ),
+        for (final entry in additionalChanOverlays)
+          _AdditionalChanOverlayTile(entry: entry),
       ],
     );
   }
@@ -703,16 +734,20 @@ class _ToolTile extends StatelessWidget {
                       color:
                           Colors.white.withValues(alpha: enabled ? 0.50 : 0.36),
                       fontSize: 11)),
-              trailing: isChanSwitch
-                  ? Switch.adaptive(
-                      value: visible,
-                      onChanged: enabled
-                          ? (_) => onChanOverlayToggled?.call(meta.tool)
-                          : null,
-                    )
-                  : Text(_pointLabel(meta),
-                      style:
-                          const TextStyle(color: Colors.white30, fontSize: 10)),
+              trailing: Switch.adaptive(
+                value: isChanSwitch ? visible : selected,
+                onChanged: enabled
+                    ? (value) {
+                        if (isChanSwitch) {
+                          onChanOverlayToggled?.call(meta.tool);
+                        } else {
+                          onSelected(value
+                              ? meta.tool
+                              : TradingViewDrawingTool.cursor);
+                        }
+                      }
+                    : null,
+              ),
               onTap: enabled
                   ? () {
                       if (isChanSwitch) {
@@ -760,6 +795,44 @@ class _ToolTile extends StatelessWidget {
       ),
       childWhenDragging: Opacity(opacity: 0.35, child: tile),
       child: tile,
+    );
+  }
+}
+
+class _AdditionalChanOverlayTile extends StatelessWidget {
+  final ChanOverlayToggleEntry entry;
+
+  const _AdditionalChanOverlayTile({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: entry.available ? 1 : 0.42,
+      child: ListTile(
+        key: ValueKey('chan_overlay_${entry.id}'),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+        enabled: entry.available,
+        selected: entry.visible,
+        selectedTileColor: const Color(0x332962FF),
+        leading: Icon(Icons.multiline_chart,
+            size: 18,
+            color: entry.visible ? const Color(0xFF8AB4FF) : Colors.white60),
+        title: Text(entry.label,
+            style: TextStyle(
+                color: entry.available ? Colors.white : Colors.white60,
+                fontSize: 13)),
+        subtitle: Text(
+            entry.available ? entry.description : '当前后端快照未返回${entry.label}数据',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white54, fontSize: 11)),
+        trailing: Switch.adaptive(
+          value: entry.visible,
+          onChanged: entry.available ? (_) => entry.onToggle() : null,
+        ),
+        onTap: entry.available ? entry.onToggle : null,
+      ),
     );
   }
 }

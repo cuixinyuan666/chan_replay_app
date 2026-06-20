@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
+import '../drawing/tradingview_toolbox_host.dart';
 import 'origin_kline_chart.dart' as origin;
 
 /// Mouse/trackpad interaction adapter for [origin.OriginKlineChart].
@@ -50,6 +51,7 @@ class OriginKlineChart extends StatefulWidget {
   final String symbolLabel;
   final bool Function(TradingViewDrawingTool tool)? isChanOverlayVisible;
   final ValueChanged<TradingViewDrawingTool>? onChanOverlayToggled;
+  final List<ChanOverlayToggleEntry> additionalChanOverlays;
   final ValueListenable<int>? toolboxOpenSignal;
   final ValueListenable<TradingViewDrawingTool?>? toolboxSelectedToolSignal;
   final ValueChanged<TradingViewDrawingTool>? onToolboxQuickToolAdded;
@@ -88,6 +90,7 @@ class OriginKlineChart extends StatefulWidget {
     this.symbolLabel = '',
     this.isChanOverlayVisible,
     this.onChanOverlayToggled,
+    this.additionalChanOverlays = const [],
     this.toolboxOpenSignal,
     this.toolboxSelectedToolSignal,
     this.onToolboxQuickToolAdded,
@@ -410,9 +413,15 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
           symbolLabel: widget.symbolLabel,
           isChanOverlayVisible: widget.isChanOverlayVisible,
           onChanOverlayToggled: widget.onChanOverlayToggled,
+          additionalChanOverlays: widget.additionalChanOverlays,
           toolboxOpenSignal: widget.toolboxOpenSignal,
           toolboxSelectedToolSignal: widget.toolboxSelectedToolSignal,
           onToolboxQuickToolAdded: widget.onToolboxQuickToolAdded,
+          onDrawingToolSelected: (tool) {
+            if (tool == _selectedTool) return;
+            setState(() => _selectedTool = tool);
+            _clearDragState();
+          },
           windowSize: _safeWindowSize,
           priceScale: _safePriceScale,
           priceOffset: widget.priceOffset,
