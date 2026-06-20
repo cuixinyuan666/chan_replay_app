@@ -40,11 +40,13 @@ class KlineChartPage extends StatelessWidget {
           data: themed,
           child: Stack(
             children: <Widget>[
-              ColoredBox(
-                color: appearance.chartBackgroundColor,
-                child: S13SingleStockReplayPage(
-                  currentRouteIndex: currentRouteIndex,
-                  onOpenRoute: onOpenRoute,
+              Positioned.fill(
+                child: ColoredBox(
+                  color: appearance.chartBackgroundColor,
+                  child: S13SingleStockReplayPage(
+                    currentRouteIndex: currentRouteIndex,
+                    onOpenRoute: onOpenRoute,
+                  ),
                 ),
               ),
               if (appearance.klineOpacity > 0)
