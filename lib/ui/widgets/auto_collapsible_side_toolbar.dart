@@ -12,7 +12,7 @@ class SideToolbarSection {
   });
 }
 
-/// A left-side toolbar shell that expands manually and collapses on outside tap.
+/// A left-side toolbar shell that stays behind its `>` toggle until opened.
 class AutoCollapsibleSideToolbar extends StatefulWidget {
   final List<SideToolbarSection> sections;
   final Widget? header;
@@ -28,7 +28,7 @@ class AutoCollapsibleSideToolbar extends StatefulWidget {
     super.key,
     required this.sections,
     this.header,
-    this.initiallyExpanded = true,
+    this.initiallyExpanded = false,
     this.autoCollapseDelay = const Duration(seconds: 5),
     this.expandedWidth = 286,
     this.collapsedWidth = 52,
