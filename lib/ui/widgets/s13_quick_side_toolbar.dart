@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'auto_collapsible_side_toolbar.dart';
 
-/// S13-specific adapter for the reusable left side toolbar shell.
+/// K-line chart entry adapter for the reusable left side toolbar shell.
 class S13QuickSideToolbar extends StatelessWidget {
   final List<SideToolbarSection> sections;
   final String Function()? currentSettingsTextBuilder;
@@ -56,7 +56,7 @@ class S13QuickSideToolbar extends StatelessWidget {
     if (explicit != null && explicit.isNotEmpty) return explicit;
 
     final buffer = StringBuffer()
-      ..writeln('S13_CURRENT_TOOLBAR_SETTINGS')
+      ..writeln('KLINE_CHART_CURRENT_TOOLBAR_SETTINGS')
       ..writeln('generated_at=${DateTime.now().toIso8601String()}')
       ..writeln();
     for (final section in sections) {
@@ -212,11 +212,11 @@ class S13QuickSideToolbar extends StatelessWidget {
 
   Widget _header() => const Row(
         children: <Widget>[
-          Icon(Icons.account_tree, color: Color(0xFFFFD54F), size: 18),
+          Icon(Icons.candlestick_chart, color: Color(0xFFFFD54F), size: 18),
           SizedBox(width: 6),
           Expanded(
             child: Text(
-              '单股多级别复盘',
+              'K线图',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 13,
