@@ -76,18 +76,25 @@ class S13QuickSideToolbar extends StatelessWidget {
   }
 
   List<Widget> _dedupePageChildren(List<Widget> children) {
-    return <Widget>[
-      for (final child in children)
-        if (_filterDuplicatePageRouteButtons(child) != null)
-          _filterDuplicatePageRouteButtons(child)!,
-    ];
+    final filtered = <Widget>[];
+    for (final child in children) {
+      final next = _filterDuplicatePageRouteButtons(child);
+      if (next != null) filtered.add(next);
+    }
+    return filtered;
   }
 
   Widget? _filterDuplicatePageRouteButtons(Widget child) {
     if (child is Wrap) {
-      final filtered = child.children
-          .where((item) => !_isDuplicateCurrentPageRoute(_textOf(item)))
-          .toList(growable: false);
+      final filtered = <Widget>[];
+      for (var i = 0; i < child.children.length; i++) {
+        final item = child.children[i];
+        final isCurrentPageSelfRoute = i == 0;
+        final hasDuplicateLabel = _isDuplicateCurrentPageRoute(_textOf(item));
+        if (!isCurrentPageSelfRoute && !hasDuplicateLabel) {
+          filtered.add(item);
+        }
+      }
       if (filtered.isEmpty) return null;
       return Wrap(
         spacing: child.spacing,
