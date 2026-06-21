@@ -138,3 +138,118 @@ def _timed_export_level(exporter: Any, level_obj: Any, timing: dict[str, Any]) -
         'zs': zs,
         'bsp': bsp,
     }
+
+
+def _visible_count_for_level(level_obj: Any, bars: list[dict[str, Any]]) -> int:
+    indices = [idx for idx in (_idx(klu) for klu in _raw_klu_iter(level_obj)) if idx is not None]
+    if not indices:
+        return 0
+    return min(max(indices) + 1, len(bars))
+
+
+def _compact_level_payload(*, visible_count: int, structures: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'visible_count': visible_count,
+        'merged_bars': structures.get('merged_bars', []),
+        'fx': structures.get('fx', []),
+        'bi': structures.get('bi', []),
+        'seg': structures.get('seg', []),
+        'zs': structures.get('zs', []),
+        'bsp': structures.get('bsp', []),
+        'meta': {
+            'compact_frame_level': True,
+            'frame_bars_omitted': True,
+            'frame_indicators_omitted': True,
+        },
+    }
+
+
+def _compact_frame_current_time(
+    frame: dict[str, Any],
+    main: str,
+    bars_by_level: dict[str, list[dict[str, Any]]],
+) -> str | None:
+    level = frame.get('levels', {}).get(main) if isinstance(frame.get('levels'), dict) else None
+    if not isinstance(level, dict):
+        return None
+    try:
+        visible_count = int(level.get('visible_count') or 0)
+    except (TypeError, ValueError):
+        visible_count = 0
+    bars = bars_by_level.get(main) or []
+    if visible_count <= 0 or visible_count > len(bars):
+        return None
+    last = bars[visible_count - 1]
+    if not isinstance(last, dict):
+        return None
+    value = last.get('dt') or last.get('time') or last.get('date')
+    return None if value is None else str(value)
+
+
+def _timed_compact_snapshot_from_chan(
+    *,
+    exporter: Any,
+    chan: Any,
+    kl_types: list[Any],
+    level_order: list[str],
+    bars_by_level: dict[str, list[dict[str, Any]]],
+    main: str,
+    clock: str,
+    mode_name: str,
+    timing: dict[str, Any],
+    cursor: int | None = None,
+) -> dict[str, Any]:
+    level_results: dict[str, dict[str, Any]] = {}
+    total_bsp_count = 0
+    for level, kl_type in zip(level_order, kl_types):
+        level_start = perf_counter()
+        level_obj = exporter.get_level(chan, kl_type)
+
+        structures = _timed_export_level(exporter, level_obj, timing)
+        total_bsp_count += len(structures.get('bsp', []) if isinstance(structures, dict) else [])
+
+        visible_start = perf_counter()
+        visible_count = _visible_count_for_level(level_obj, bars_by_level[level])
+        _add_elapsed_ms(timing, 'backend_step_export_visible_bars_ms', visible_start)
+
+        payload_start = perf_counter()
+        level_results[level] = _compact_level_payload(
+            visible_count=visible_count,
+            structures=structures,
+        )
+        _add_elapsed_ms(timing, 'backend_step_export_level_payload_ms', payload_start)
+        _add_elapsed_ms(timing, 'backend_step_export_level_snapshot_ms', level_start)
+
+    relation_start = perf_counter()
+    relations = _native_relations(
+        level_order=level_order,
+        kl_types=kl_types,
+        chan=chan,
+        exporter=exporter,
+    )
+    _add_elapsed_ms(timing, 'backend_step_export_relation_ms', relation_start)
+    timing['backend_step_export_bsp_count'] = (
+        int(timing.get('backend_step_export_bsp_count') or 0) + total_bsp_count
+    )
+
+    meta = {
+        'engine': 'chan.py',
+        'source': 'origin_vespa_tdx.backend.a_multilevel_native_timed_engine',
+        'mode': mode_name,
+        'levels': level_order,
+        'main_level': main,
+        'clock_level': clock,
+        'native_cchan_lv_list': True,
+        'level_relation_mode': 'chan_parent_child',
+        'chan_py_polluted': False,
+        'step_frame_format': 'compact_v1',
+        'compact_first_step_frame_export': True,
+    }
+    if cursor is not None:
+        meta['cursor'] = cursor
+    return {
+        'main_level': main,
+        'levels': level_results,
+        'relations': relations,
+        'meta': meta,
+    }
