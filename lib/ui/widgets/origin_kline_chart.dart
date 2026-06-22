@@ -1018,7 +1018,6 @@ class _OriginChartPainter extends CustomPainter {
     double rawToX(int rawIndex) => rect.left + (rawIndex - start + 0.5) * step;
 
     final chartLabels = <ChartLabel>[];
-    const bspLabelAdapter = BspChartLabelAdapter();
     final trimmedSymbolLabel = symbolLabel.trim();
     if (trimmedSymbolLabel.isNotEmpty) {
       chartLabels.add(ChartLabel(
@@ -1045,9 +1044,7 @@ class _OriginChartPainter extends CustomPainter {
       _drawBi(canvas, rect, start, end, rawToX, priceToY, chartLabels);
     if (showSeg)
       _drawSeg(canvas, rect, start, end, rawToX, priceToY, chartLabels);
-    if (showBiBsp || showSegBsp)
-      _drawBsp(canvas, rect, start, end, rawToX, priceToY, chartLabels,
-          bspLabelAdapter);
+    // Near-candle BSP triangles and text are hidden; use the bottom BSP band.
     if (showFx)
       _drawFx(canvas, rect, start, end, rawToX, priceToY, chartLabels);
     DrawingObjectPainter.paintObjects(

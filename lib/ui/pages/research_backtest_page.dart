@@ -474,6 +474,7 @@ class _SegRuleCondition {
 class _SegCompositeRuleEditor extends StatelessWidget {
   static const _levels = ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY'];
   static const _types = ['1', '1p', '2', '2s', '3a', '3b'];
+  static const _otherLayerValue = -1;
 
   final TextEditingController symbolController;
   final TextEditingController marketController;
@@ -628,20 +629,49 @@ class _SegCompositeRuleEditor extends StatelessWidget {
     return Row(
       children: [
         SizedBox(
-          width: 105,
-          child: DropdownButtonFormField<int>(
-            initialValue: row.layer,
-            decoration: const InputDecoration(labelText: '结构层'),
-            items: [
-              for (var layer = 2; layer <= 6; layer++)
-                DropdownMenuItem(value: layer, child: Text('$layer段')),
+          width: row.layer > 6 ? 190 : 105,
+          child: Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<int>(
+                  initialValue:
+                      row.layer >= 2 && row.layer <= 6 ? row.layer : _otherLayerValue,
+                  decoration: const InputDecoration(labelText: '结构层'),
+                  items: [
+                    for (var layer = 2; layer <= 6; layer++)
+                      DropdownMenuItem(value: layer, child: Text('$layer段')),
+                    const DropdownMenuItem(value: _otherLayerValue, child: Text('other')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      row.layer = value == _otherLayerValue
+                          ? (row.layer > 6 ? row.layer : 7)
+                          : value;
+                      onChanged();
+                    }
+                  },
+                ),
+              ),
+              if (row.layer > 6) const SizedBox(width: 8),
+              if (row.layer > 6)
+                SizedBox(
+                  width: 72,
+                  child: TextFormField(
+                    key: ValueKey('seg-layer-${row.hashCode}-${row.layer}'),
+                    initialValue: '${row.layer}',
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(labelText: 'N段'),
+                    onChanged: (value) {
+                      final next = int.tryParse(value.trim());
+                      if (next != null && next >= 2) {
+                        row.layer = next;
+                        onChanged();
+                      }
+                    },
+                  ),
+                ),
             ],
-            onChanged: (value) {
-              if (value != null) {
-                row.layer = value;
-                onChanged();
-              }
-            },
           ),
         ),
         const Padding(

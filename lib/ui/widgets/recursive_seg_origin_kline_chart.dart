@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/bsp.dart';
 import '../../core/models/chan_snapshot.dart';
-import '../../core/settings/level_promoter_settings.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import '../drawing/tradingview_toolbox_host.dart';
@@ -136,7 +135,16 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
   int get _effectiveMaxRecursiveSegLayer {
     final explicit = maxRecursiveSegLayer;
     if (explicit != null && explicit >= 2) return explicit;
-    return LevelPromoterSettings.currentMaxLayer;
+    var discovered = 1;
+    for (final layer in <int>[
+      ...snapshot.recursiveSegLayers.keys,
+      ...snapshot.recursiveSegBsps.keys,
+      ...snapshot.recursiveSegBspCandidates.keys,
+      ...snapshot.recursiveSegZss.keys,
+    ]) {
+      if (layer > discovered) discovered = layer;
+    }
+    return discovered >= 2 ? discovered : 2;
   }
 
   List<DrawingObject> _recursiveSegDrawingObjects(ChanSnapshot snapshot) {

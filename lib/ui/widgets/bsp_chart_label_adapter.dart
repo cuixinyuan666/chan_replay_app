@@ -57,18 +57,29 @@ class BspChartLabelAdapter {
     var text = bsp.type.replaceAll('候选轨迹', '').trim();
     if (text.isEmpty) return bsp.isSell ? 'S' : 'B';
 
+    final lower = text.toLowerCase();
+    if (lower.startsWith('buy')) {
+      final body = text.substring(3).trim();
+      return body.isEmpty ? 'B' : 'B$body';
+    }
+    if (lower.startsWith('sell')) {
+      final body = text.substring(4).trim();
+      return body.isEmpty ? 'S' : 'S$body';
+    }
+    if (text.startsWith('买')) {
+      final body = text.substring(1).trim();
+      return body.isEmpty ? 'B' : 'B$body';
+    }
+    if (text.startsWith('卖')) {
+      final body = text.substring(1).trim();
+      return body.isEmpty ? 'S' : 'S$body';
+    }
+
     final first = text.substring(0, 1);
     if (first.toLowerCase() == 'b' || first.toLowerCase() == 's') {
       return first.toUpperCase() + text.substring(1).trim();
     }
 
-    text = text
-        .replaceFirst(RegExp(r'^buy', caseSensitive: false), '')
-        .replaceFirst(RegExp(r'^sell', caseSensitive: false), '')
-        .replaceFirst(RegExp(r'^买'), '')
-        .replaceFirst(RegExp(r'^卖'), '')
-        .trim();
-    if (text.isEmpty) return bsp.isSell ? 'S' : 'B';
     return '${bsp.isSell ? 'S' : 'B'}$text';
   }
 
