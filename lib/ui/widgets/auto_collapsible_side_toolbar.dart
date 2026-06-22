@@ -73,11 +73,21 @@ class _AutoCollapsibleSideToolbarState
   void _handlePointerSignal(PointerSignalEvent event) {
     if (!_expanded || event is! PointerScrollEvent) return;
     if (!_scrollController.hasClients) return;
-    final next = (_scrollController.offset + event.scrollDelta.dy).clamp(
-      _scrollController.position.minScrollExtent,
-      _scrollController.position.maxScrollExtent,
-    );
-    _scrollController.jumpTo(next.toDouble());
+    final position = _scrollController.position;
+    final min = position.minScrollExtent;
+    final max = position.maxScrollExtent;
+    if (max <= min) return;
+
+    final rawNext = _scrollController.offset + event.scrollDelta.dy;
+    double next;
+    if (rawNext > max) {
+      next = min;
+    } else if (rawNext < min) {
+      next = max;
+    } else {
+      next = rawNext;
+    }
+    _scrollController.jumpTo(next);
   }
 
   @override
