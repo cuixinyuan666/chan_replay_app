@@ -11,7 +11,16 @@ import 'bsp_chart_label_adapter.dart';
 import 'origin_kline_chart_unlimited_interaction.dart' as base;
 
 @visibleForTesting
-String recursiveSegBspLabel(int layer, BspPoint bsp) {
+String recursiveSegBspLabel(int layer, Object raw) {
+  final bsp = raw is BspPoint
+      ? raw
+      : BspPoint(
+          index: -1,
+          rawIndex: -1,
+          price: 0,
+          type: raw.toString(),
+          level: 'seg',
+        );
   return BspChartLabelAdapter.labelTextFor(
     levelPrefix: '${layer}段',
     bsp: bsp,
