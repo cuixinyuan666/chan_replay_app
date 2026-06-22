@@ -1188,6 +1188,15 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     return levelIndex == activeIndex;
   }
 
+  void _openDrawingToolbox({
+    TradingViewDrawingTool tool = TradingViewDrawingTool.trendLine,
+  }) {
+    _toolboxSelectedToolSignal.value = tool;
+    _toolboxOpenSignal.value++;
+    final label = tool == TradingViewDrawingTool.trendLine ? '趋势线' : tool.name;
+    _showMessage('已打开画线工具：$label，请在K线图上点击锚点。');
+  }
+
   DateTime _dateOrDefault(DateTime? value, DateTime fallback) =>
       value ?? fallback;
   String _fmtDate(DateTime v) => v.toIso8601String().split('T').first;
@@ -1894,11 +1903,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             Align(
               alignment: Alignment.centerLeft,
               child: FilledButton.tonalIcon(
-                onPressed: () {
-                  _toolboxSelectedToolSignal.value =
-                      TradingViewDrawingTool.trendLine;
-                  _toolboxOpenSignal.value++;
-                },
+                onPressed: _openDrawingToolbox,
                 icon: const Icon(Icons.architecture, size: 18),
                 label: const Text('打开画线工具'),
               ),
@@ -2141,7 +2146,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             Align(
                 alignment: Alignment.centerLeft,
                 child: FilledButton.tonalIcon(
-                    onPressed: () => _toolboxOpenSignal.value++,
+                    onPressed: _openDrawingToolbox,
                     icon: const Icon(Icons.architecture, size: 18),
                     label: const Text('打开画线工具'))),
             _sectionGap(),
@@ -2175,7 +2180,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               onEasyTdxIndicatorToggled: _toggleEasyTdxIndicator,
               toolboxOpenSignal: _toolboxOpenSignal,
               toolboxSelectedToolSignal: _toolboxSelectedToolSignal,
-              onToolboxQuickToolAdded: (_) {},
               drawingObjects: _rhythmDrawingObjects(s),
               drawingStorageKey: 's13_${_symbolController.text}_$_activeLevel',
               symbolLabel: '${_symbolController.text.trim()} $_activeLevel',
