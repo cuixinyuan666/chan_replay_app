@@ -65,6 +65,53 @@ class BspReviewStats {
   });
 }
 
+class BspReviewBucketStats {
+  final String key;
+  final String level;
+  final String side;
+  final String label;
+  final int appeared;
+  final int judged;
+  final int correct;
+  final int wrong;
+  final double? rate;
+
+  const BspReviewBucketStats({
+    required this.key,
+    required this.level,
+    required this.side,
+    required this.label,
+    this.appeared = 0,
+    this.judged = 0,
+    this.correct = 0,
+    this.wrong = 0,
+    this.rate,
+  });
+
+  BspReviewBucketStats copyWith({
+    int? appeared,
+    int? judged,
+    int? correct,
+    int? wrong,
+  }) {
+    final nextAppeared = appeared ?? this.appeared;
+    final nextJudged = judged ?? this.judged;
+    final nextCorrect = correct ?? this.correct;
+    final nextWrong = wrong ?? this.wrong;
+    return BspReviewBucketStats(
+      key: key,
+      level: level,
+      side: side,
+      label: label,
+      appeared: nextAppeared,
+      judged: nextJudged,
+      correct: nextCorrect,
+      wrong: nextWrong,
+      rate: nextJudged == 0 ? null : nextCorrect / nextJudged,
+    );
+  }
+}
+
 class BspBottomLabel {
   final int rawIndex;
   final int anchorRawIndex;
