@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../core/models/bsp.dart';
+import '../../core/models/bsp_step_review.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../core/models/level_relation.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
@@ -22,6 +23,7 @@ import 's13_nested_marker_numbering_policy.dart';
 import 's13_rhythm_display_settings.dart';
 import 's13_rhythm_viewport_selector.dart';
 import '../widgets/auto_collapsible_side_toolbar.dart';
+import '../widgets/bsp_bottom_label_overlay.dart';
 import '../widgets/four_way_granular_sidebar_shell.dart';
 import '../widgets/permanent_window_controls.dart';
 import '../widgets/recursive_seg_origin_kline_chart.dart';
@@ -105,6 +107,10 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   Timer? _playTimer;
   bool _windowMaximized = false;
   final Map<String, Offset> _replayControlOffsets = <String, Offset>{};
+  final Map<String, BspStepReviewItem> _bspStepReviewItems =
+      <String, BspStepReviewItem>{};
+  final Set<String> _bspStepReviewCorrectKeys = <String>{};
+  final Set<String> _bspStepReviewWrongKeys = <String>{};
   S13RhythmDisplaySettings _rhythmSettings = const S13RhythmDisplaySettings(
     biToSegEnabled: false,
     segToSegsegEnabled: false,
@@ -437,6 +443,145 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   int get _bspCandidateTrailCount {
     final s = _activeSnapshot;
     return s == null ? 0 : _bspCandidateTrail(s).length;
+  }
+
+  String _bspReviewSide(BspPoint p) =>
+      p.isSell ? 'sell' : (p.isBuy ? 'buy' : 'bsp');
+
+  String _bspReviewSideText(BspPoint p) =>
+      p.isSell ? '卖' : (p.isBuy ? '买' : '点');
+
+  String _bspReviewJudgeKey(String level, BspPoint p) =>
+      '${level.trim().toUpperCase()}|${p.rawIndex}|${_bspReviewSide(p)}';
+
+  BspReviewStatus _bspReviewStatusFor(String judgeKey) {
+    if (_bspStepReviewCorrectKeys.contains(judgeKey)) {
+      return BspReviewStatus.correct;
+    }
+    if (_bspStepReviewWrongKeys.contains(judgeKey)) {
+      return BspReviewStatus.wrong;
+    }
+    return BspReviewStatus.pending;
+  }
+
+  List<BspStepReviewItem> get _currentBspStepReviewItems {
+    if (!_hasStepFrames) return const <BspStepReviewItem>[];
+    final rows = <BspStepReviewItem>[];
+    for (final observation in _snapshotBspObservationsWithTrail(_activeLevel)) {
+      final bsp = observation.bsp;
+      final judgeKey = _bspReviewJudgeKey(_activeLevel, bsp);
+      final baseType = _baseBspType(bsp);
+      final item = _bspStepReviewItems.putIfAbsent(
+        judgeKey,
+        () => BspStepReviewItem(
+          key: '${observation.bspKey}|${observation.bspSourceFrame}',
+          judgeKey: judgeKey,
+          level: _activeLevel,
+          anchorRawIndex: bsp.rawIndex,
+          displayRawIndex: bsp.rawIndex,
+          isBuy: !bsp.isSell,
+          label: baseType,
+          displayLabel: '${_bspReviewSideText(bsp)}$baseType',
+          firstFrameIndex: observation.bspSourceFrame < 0
+              ? _safeFrameIndex
+              : observation.bspSourceFrame,
+        ),
+      );
+      rows.add(item.copyWith(status: _bspReviewStatusFor(judgeKey)));
+    }
+    rows.sort((a, b) {
+      if (a.displayRawIndex != b.displayRawIndex) {
+        return a.displayRawIndex.compareTo(b.displayRawIndex);
+      }
+      return a.judgeKey.compareTo(b.judgeKey);
+    });
+    return rows;
+  }
+
+  List<BspBottomLabel> get _bspBottomLabels => <BspBottomLabel>[
+        for (final item in _currentBspStepReviewItems)
+          BspBottomLabel(
+            rawIndex: item.displayRawIndex,
+            anchorRawIndex: item.anchorRawIndex,
+            text: '${_bspReviewStatusPrefix(item.status)}${item.displayLabel}',
+            isBuy: item.isBuy,
+            status: item.status,
+            level: item.level,
+          ),
+      ];
+
+  String _bspReviewStatusPrefix(BspReviewStatus status) => switch (status) {
+        BspReviewStatus.correct => '✓',
+        BspReviewStatus.wrong => '×',
+        BspReviewStatus.pending => '?',
+      };
+
+  BspReviewStats get _bspReviewStats {
+    final items = _currentBspStepReviewItems;
+    final judged = items
+        .where((item) => item.status != BspReviewStatus.pending)
+        .length;
+    final correct =
+        items.where((item) => item.status == BspReviewStatus.correct).length;
+    final wrong = items.where((item) => item.status == BspReviewStatus.wrong).length;
+    return BspReviewStats(
+      appeared: items.length,
+      judged: judged,
+      correct: correct,
+      wrong: wrong,
+      rate: judged == 0 ? null : correct / judged,
+      fromFrame: items.isEmpty
+          ? _safeFrameIndex
+          : items.map((item) => item.firstFrameIndex).reduce(math.min),
+      toFrame: _safeFrameIndex,
+      fromTime: _activeSnapshot?.rawBars.isEmpty == false
+          ? _activeSnapshot!.rawBars.first.time
+          : null,
+      toTime: _activeSnapshot?.rawBars.isEmpty == false
+          ? _activeSnapshot!.rawBars.last.time
+          : null,
+      reason: _hasStepFrames ? 'manual_current_frame' : 'not_step_mode',
+    );
+  }
+
+  String _bspReviewStatsText() {
+    final stats = _bspReviewStats;
+    final rate = stats.rate == null
+        ? 'N/A'
+        : '${(stats.rate! * 100).toStringAsFixed(1)}%';
+    return 'appeared=${stats.appeared} judged=${stats.judged} correct=${stats.correct} wrong=${stats.wrong} rate=$rate frame=${stats.fromFrame + 1}~${stats.toFrame + 1} reason=${stats.reason}';
+  }
+
+  void _judgeCurrentBspStepReviews() {
+    if (!_hasStepFrames) {
+      _showInfo('请先以 step 模式载入复盘数据。');
+      return;
+    }
+    final finalSnapshot = _analysis?.snapshot.of(_activeLevel);
+    if (finalSnapshot == null || finalSnapshot.bsps.isEmpty) {
+      _showInfo('最终快照没有可用于对照的 BSP。');
+      return;
+    }
+    final items = _currentBspStepReviewItems;
+    if (items.isEmpty) {
+      _showInfo('当前帧没有可检查的 BSP。');
+      return;
+    }
+    final finalJudgeKeys = <String>{
+      for (final p in finalSnapshot.bsps) _bspReviewJudgeKey(_activeLevel, p),
+    };
+    setState(() {
+      for (final item in items) {
+        if (finalJudgeKeys.contains(item.judgeKey)) {
+          _bspStepReviewCorrectKeys.add(item.judgeKey);
+          _bspStepReviewWrongKeys.remove(item.judgeKey);
+        } else {
+          _bspStepReviewWrongKeys.add(item.judgeKey);
+          _bspStepReviewCorrectKeys.remove(item.judgeKey);
+        }
+      }
+    });
+    _showInfo('当前买卖点检查完成\n${_bspReviewStatsText()}');
   }
 
   List<BspPoint> _bspCandidateTrail(ChanSnapshot current) {
@@ -1376,6 +1521,12 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                     : const Icon(Icons.play_arrow, size: 16),
                 label: const Text('载入复盘'),
               ),
+              OutlinedButton.icon(
+                onPressed: _hasStepFrames ? _judgeCurrentBspStepReviews : null,
+                icon: const Icon(Icons.fact_check, size: 16),
+                label: const Text('检查当前买卖点'),
+              ),
+              _infoButton('BSP统计', _bspReviewStatsText()),
             ]),
           ],
         ),
@@ -1613,6 +1764,12 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                 label: const Text('载入复盘'),
               ),
               OutlinedButton.icon(
+                onPressed: _hasStepFrames ? _judgeCurrentBspStepReviews : null,
+                icon: const Icon(Icons.fact_check, size: 16),
+                label: const Text('检查当前买卖点'),
+              ),
+              _infoButton('BSP统计', _bspReviewStatsText()),
+              OutlinedButton.icon(
                 onPressed: _copyS13IntervalNestMarkerEvidence,
                 icon: const Icon(Icons.copy, size: 16),
                 label: const Text('复制 marker 证据'),
@@ -1744,6 +1901,14 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         windowSize: _windowSize,
         priceScale: _priceScale,
         priceOffset: _priceOffset,
+        easySubPanelCount: _enabledEasyTdxIndicators.isEmpty ? 0 : 2,
+      ),
+      BspBottomLabelOverlay(
+        enabled: _hasStepFrames,
+        labels: _bspBottomLabels,
+        totalBars: s.rawBars.length,
+        windowSize: _windowSize,
+        viewEndIndex: _viewEndIndex,
         easySubPanelCount: _enabledEasyTdxIndicators.isEmpty ? 0 : 2,
       ),
       if (_showIntervalNest) _nestedBspMarkerOverlay(),
