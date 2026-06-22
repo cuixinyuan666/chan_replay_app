@@ -26,6 +26,10 @@ class ChipOnlineReplayAdapter {
     ];
   }
 
+  /// 统一筹码分布目标 K 选择。
+  ///
+  /// once 模式：crosshairIndex > viewEndIndex > lastBarIndex。
+  /// step 模式：优先十字线，但不能超过当前 stepIndex；超过则 clamp 到 stepIndex。
   static int resolveTargetIndex({
     required int total,
     required bool isStepMode,
@@ -33,12 +37,14 @@ class ChipOnlineReplayAdapter {
     required int? crosshairIndex,
     required int? viewEndIndex,
   }) {
-    return const ChipTargetResolver().resolve(
-      total: total,
-      isStepping: isStepMode,
-      stepIndex: isStepMode ? stepIndex : null,
-      crosshairIndex: isStepMode ? null : crosshairIndex,
-      visibleRightIndex: isStepMode ? null : viewEndIndex,
-    );
+    if (total <= 0) return 0;
+    final last = total - 1;
+    if (isStepMode) {
+      final maxAllowed = stepIndex.clamp(0, last).toInt();
+      final requested = crosshairIndex ?? maxAllowed;
+      return requested.clamp(0, maxAllowed).toInt();
+    }
+    final requested = crosshairIndex ?? viewEndIndex ?? last;
+    return requested.clamp(0, last).toInt();
   }
 }
