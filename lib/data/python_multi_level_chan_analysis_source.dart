@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 
 import 'app_bundled_python_backend.dart';
 import '../core/models/interval_nest_signal.dart';
@@ -184,6 +185,8 @@ class _LazyMultiLevelFrameList extends ListBase<MultiLevelChanSnapshot> {
 }
 
 class PythonMultiLevelChanAnalysisSource {
+  static const MethodChannel _androidChanChannel =
+      MethodChannel('chan_replay_app/python_chan');
   static AppBundledPythonBackendProcess? _sharedLocalProcess;
   static Future<AppBundledPythonBackendProcess>? _sharedStartup;
 
@@ -241,8 +244,27 @@ class PythonMultiLevelChanAnalysisSource {
     stages['frontend.request_build'] = requestBuildSw.elapsedMilliseconds;
 
     if (Platform.isAndroid) {
-      throw UnsupportedError(
-        'Multi-level analyze_multi is not wired to Android MethodChannel yet.',
+      final raw = await _androidChanChannel.invokeMethod<String>(
+        'analyzeMulti',
+        <String, String>{'payload': jsonEncode(payload)},
+      );
+      if (raw == null || raw.isEmpty) {
+        throw Exception('Android Chaquopy analyze_multi 返回为空');
+      }
+      return _decodeResponse(
+        http.Response(raw, 200),
+        sourceBaseUrl: 'android://chaquopy',
+        traceId: traceId,
+        totalSw: totalSw,
+        stages: stages,
+        requestContext: <String, dynamic>{
+          'mode': mode,
+          'symbol': code,
+          'market': market,
+          'levels': normalizedLevels,
+          ...runtimeDiagnostics,
+        },
+        responseBytes: utf8.encode(raw).length,
       );
     }
 

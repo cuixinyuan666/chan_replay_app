@@ -650,3 +650,37 @@ def analyze_json(payload_json: str) -> str:
         return _result(True, bars=bars, code=code, market=market, freq=freq, adjust=adjust, mode=mode, structures=structures, config=config)
     except Exception as exc:
         return _result(True, bars=bars, code=code, market=market, freq=freq, adjust=adjust, mode=mode, warning=f'Android chan.py 导出失败，已降级仅显示K线: {type(exc).__name__}: {exc}', config=config)
+
+
+def analyze_multi_json(payload_json: str) -> str:
+    payload = json.loads(payload_json or '{}')
+    levels = payload.get('lv_list') or payload.get('levels') or ['DAILY']
+    if not isinstance(levels, list) or not levels:
+        levels = ['DAILY']
+    level_results: dict[str, Any] = {}
+    for level in levels:
+        one = dict(payload)
+        one['freq'] = str(level).upper()
+        decoded = json.loads(analyze_json(json.dumps(one, ensure_ascii=False)))
+        if not decoded.get('ok', False):
+            return json.dumps(decoded, ensure_ascii=False)
+        level_results[str(level).upper()] = decoded
+    main_level = str(payload.get('main_level') or levels[0]).upper()
+    main = level_results.get(main_level) or next(iter(level_results.values()))
+    frames: list[dict[str, Any]] = []
+    if str(payload.get('mode') or 'once').lower() == 'step':
+        main_frames = main.get('frames') or []
+        for index in range(len(main_frames)):
+            frame_levels: dict[str, Any] = {}
+            for level, result in level_results.items():
+                source_frames = result.get('frames') or []
+                frame_levels[level] = source_frames[min(index, len(source_frames) - 1)] if source_frames else result
+            frames.append({'main_level': main_level, 'levels': frame_levels, 'relations': [], 'meta': {'platform': 'android-chaquopy'}})
+    return json.dumps({
+        'ok': True,
+        'main_level': main_level,
+        'levels': level_results,
+        'relations': [],
+        'frames': frames,
+        'meta': {'platform': 'android-chaquopy', 'engine': 'chan.py', 'multi_level': True},
+    }, ensure_ascii=False)

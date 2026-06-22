@@ -46,6 +46,17 @@ class MainActivity : FlutterActivity() {
                         result.error("PYTHON_CHAN_ERROR", e.message, e.stackTraceToString())
                     }
                 }
+                "analyzeMulti" -> {
+                    val payload = call.argument<String>("payload") ?: "{}"
+                    try {
+                        val py = ensurePython()
+                        val module = py.getModule("chanpy_runtime")
+                        val response = module.callAttr("analyze_multi_json", payload).toString()
+                        result.success(response)
+                    } catch (e: Exception) {
+                        result.error("PYTHON_CHAN_MULTI_ERROR", e.message, e.stackTraceToString())
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

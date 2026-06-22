@@ -9,9 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from .a_backtest_engine import run_bsp_backtest
+from .a_chip_distribution_service import calculate_chip_distribution
 from .a_bsp_feature_engine import extract_bsp_features
 from .a_bsp_scanner import scan_bsp, scan_bsp_events
-from .a_indicator_export import build_display_indicators, indicator_source_meta
+from .a_easy_tdx_indicators import build_easy_tdx_indicators, easy_tdx_indicator_meta
 from .a_ml_bridge import score_bsp_features
 from .a_multilevel_engine_timed import analyze_multi
 from .a_replay_contract_hardening import apply_analyze_multi_contracts
@@ -87,10 +88,11 @@ def _with_display_indicators(result: dict[str, object], config: dict[str, Any] |
     bars = result.get('bars')
     if isinstance(bars, list):
         result = dict(result)
-        result['indicators'] = build_display_indicators(bars, config)
+        result['indicators'] = build_easy_tdx_indicators(bars)
         meta = dict(result.get('meta')) if isinstance(result.get('meta'), dict) else {}
         sources = dict(meta.get('indicator_sources')) if isinstance(meta.get('indicator_sources'), dict) else {}
-        sources.update(indicator_source_meta())
+        easy_meta = easy_tdx_indicator_meta()
+        sources.update(easy_meta.get('indicator_sources', {}))
         meta['indicator_sources'] = sources
         result['meta'] = meta
         frames = result.get('frames')
@@ -103,7 +105,7 @@ def _with_display_indicators(result: dict[str, object], config: dict[str, Any] |
                 next_frame = dict(frame)
                 frame_bars = next_frame.get('bars')
                 if isinstance(frame_bars, list):
-                    next_frame['indicators'] = build_display_indicators(frame_bars, config)
+                    next_frame['indicators'] = build_easy_tdx_indicators(frame_bars)
                 patched_frames.append(next_frame)
             result['frames'] = patched_frames
     return result
@@ -330,6 +332,7 @@ def root() -> dict[str, object]:
             '/api/chan/analyze',
             '/api/chan/analyze_bars',
             '/api/chan/analyze_multi',
+            '/api/chip/distribution',
             '/api/research/bsp/features',
             '/api/research/ml/score',
             '/api/research/backtest',
@@ -445,6 +448,12 @@ def chan_analyze_multi(payload: dict[str, Any] = Body(...)) -> dict[str, object]
         'backend_route_total_before_response_ms': _elapsed_ms(route_start),
     })
     return result
+
+
+@app.post('/api/chip/distribution')
+def chip_distribution(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
+    """Same-level, no-future chip state served from backend checkpoints/cache."""
+    return calculate_chip_distribution(payload, load_bars=load_easy_tdx_bars)
 
 
 @app.post('/api/research/bsp/features')

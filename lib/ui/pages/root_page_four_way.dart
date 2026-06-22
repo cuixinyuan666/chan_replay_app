@@ -24,7 +24,6 @@ class _RootPageState extends State<RootPage> {
   static const int _settingsIndex = 6;
 
   late int _index;
-  bool _settingsOpen = false;
   late final Set<int> _visited;
 
   static int get _initialRouteIndex {
@@ -41,21 +40,11 @@ class _RootPageState extends State<RootPage> {
     _visited = <int>{_index};
   }
 
-  void _closeSettings() {
-    if (!_settingsOpen) return;
-    setState(() => _settingsOpen = false);
-  }
-
   void _open(int index) {
     final target =
         index == _removedLegacyReplayIndex ? _klineChartIndex : index;
-    if (target == _settingsIndex) {
-      setState(() => _settingsOpen = !_settingsOpen);
-      return;
-    }
-    if (_index == target && !_settingsOpen) return;
+    if (_index == target) return;
     setState(() {
-      _settingsOpen = false;
       _index = target;
       _visited.add(target);
     });
@@ -65,37 +54,36 @@ class _RootPageState extends State<RootPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: FourWayGranularSidebarShell(
-        selectedRouteIndex: _settingsOpen ? _settingsIndex : _index,
+        selectedRouteIndex: _index,
         onOpenRoute: _open,
-        child: Stack(
-          children: <Widget>[
-            _LazyRouteStack(
-              index: _index,
-              visited: _visited,
-              builders: <_RouteBuilder>[
-                const _RouteBuilder(child: SizedBox.shrink()),
-                _RouteBuilder(
-                  child: KlineChartPage(
-                    currentRouteIndex: _index,
-                    onOpenRoute: _open,
-                  ),
-                ),
-                const _RouteBuilder(child: AshareBspScannerPage()),
-                const _RouteBuilder(child: LevelPromoterPage()),
-                const _RouteBuilder(child: S8StrategyBatchPage()),
-                _RouteBuilder(child: ResearchBacktestPage(onOpenRoute: _open)),
-                const _RouteBuilder(child: ChanSettingsPage()),
-                const _RouteBuilder(child: RunLogPage()),
-                const _RouteBuilder(child: ChipDistributionPage()),
-              ],
-            ),
-            if (_settingsOpen)
-              Positioned.fill(
-                child: ChanSettingsPage(
-                  overlayMode: true,
-                  onClose: _closeSettings,
-                ),
+        additionalRegistrations: <SidebarRegistration>[
+          SidebarRegistration(
+            id: 'system-settings',
+            label: '系统设置',
+            category: '系统页面',
+            icon: Icons.settings,
+            edge: SidebarEdge.left,
+            panelBuilder: (_) => const ChanSettingsPage(compactMode: true),
+          ),
+        ],
+        child: _LazyRouteStack(
+          index: _index,
+          visited: _visited,
+          builders: <_RouteBuilder>[
+            const _RouteBuilder(child: SizedBox.shrink()),
+            _RouteBuilder(
+              child: KlineChartPage(
+                currentRouteIndex: _index,
+                onOpenRoute: _open,
               ),
+            ),
+            const _RouteBuilder(child: AshareBspScannerPage()),
+            const _RouteBuilder(child: LevelPromoterPage()),
+            const _RouteBuilder(child: S8StrategyBatchPage()),
+            _RouteBuilder(child: ResearchBacktestPage(onOpenRoute: _open)),
+            const _RouteBuilder(child: ChanSettingsPage()),
+            const _RouteBuilder(child: RunLogPage()),
+            const _RouteBuilder(child: ChipDistributionPage()),
           ],
         ),
       ),

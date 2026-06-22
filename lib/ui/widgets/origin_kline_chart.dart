@@ -879,8 +879,6 @@ class _ChartLayout {
   });
 }
 
-enum _EasySubPanelSpec { vol, macd, amount, turnover }
-
 class _VisibleMeta {
   final Rect chartRect;
   final int startIndex;
@@ -1221,11 +1219,13 @@ class _OriginChartPainter extends CustomPainter {
     double Function(int rawIndex) rawToX,
   ) {
     if (subRects.isEmpty || snapshot.indicators.isEmpty) return;
-    final panels = <_EasySubPanelSpec>[
-      if (_indicatorOn('VOL')) _EasySubPanelSpec.vol,
-      if (_indicatorOn('MACD')) _EasySubPanelSpec.macd,
-      if (_indicatorOn('amount')) _EasySubPanelSpec.amount,
-      if (_indicatorOn('turnover')) _EasySubPanelSpec.turnover,
+    final panels = <String>[
+      if (_indicatorOn('VOL')) 'VOL',
+      if (_indicatorOn('MACD')) 'MACD',
+      if (_indicatorOn('amount')) 'AMOUNT',
+      if (_indicatorOn('turnover')) 'TURNOVER',
+      for (final key in snapshot.indicators.namedSeries.keys)
+        if (_indicatorOn(key)) key,
     ];
     for (var i = 0; i < math.min(subRects.length, panels.length); i++) {
       final rect = subRects[i];
@@ -1233,15 +1233,15 @@ class _OriginChartPainter extends CustomPainter {
       canvas.save();
       canvas.clipRect(rect);
       switch (panels[i]) {
-        case _EasySubPanelSpec.vol:
+        case 'VOL':
           _drawEasyValueBars(canvas, rect, 'VOL',
               snapshot.indicators.visibleVol(start, end), start, end, rawToX);
           break;
-        case _EasySubPanelSpec.macd:
+        case 'MACD':
           _drawEasyMacd(canvas, rect,
               snapshot.indicators.visibleMacd(start, end), start, end, rawToX);
           break;
-        case _EasySubPanelSpec.amount:
+        case 'AMOUNT':
           _drawEasyValueBars(
               canvas,
               rect,
@@ -1251,7 +1251,7 @@ class _OriginChartPainter extends CustomPainter {
               end,
               rawToX);
           break;
-        case _EasySubPanelSpec.turnover:
+        case 'TURNOVER':
           _drawEasyValueBars(
               canvas,
               rect,
@@ -1261,8 +1261,76 @@ class _OriginChartPainter extends CustomPainter {
               end,
               rawToX);
           break;
+        default:
+          _drawEasyNamed(
+            canvas,
+            rect,
+            panels[i],
+            snapshot.indicators.visibleNamed(panels[i], start, end),
+            rawToX,
+          );
       }
       canvas.restore();
+    }
+  }
+
+  void _drawEasyNamed(
+    Canvas canvas,
+    Rect rect,
+    String title,
+    List<EasyNamedIndicatorPoint> rows,
+    double Function(int rawIndex) rawToX,
+  ) {
+    _drawSubPanelBackground(canvas, rect, title);
+    if (rows.isEmpty) return;
+    final keys = <String>{
+      for (final row in rows) ...row.values.keys,
+    }.take(4).toList();
+    final values = <double>[
+      for (final row in rows)
+        for (final key in keys)
+          if (row.values[key] != null) row.values[key]!,
+    ];
+    if (values.isEmpty) return;
+    var minValue = values.reduce(math.min);
+    var maxValue = values.reduce(math.max);
+    if ((maxValue - minValue).abs() < 1e-9) {
+      minValue -= 1;
+      maxValue += 1;
+    }
+    const colors = <Color>[
+      Color(0xFFFFD54F),
+      Color(0xFF42A5F5),
+      Color(0xFFEF5350),
+      Color(0xFF66BB6A),
+    ];
+    double valueToY(double value) => rect.bottom -
+        3 -
+        (value - minValue) / (maxValue - minValue) * (rect.height - 18);
+    for (var ki = 0; ki < keys.length; ki++) {
+      final path = Path();
+      var started = false;
+      for (final row in rows) {
+        final value = row.values[keys[ki]];
+        if (value == null) {
+          started = false;
+          continue;
+        }
+        final point = Offset(rawToX(row.rawIndex), valueToY(value));
+        if (!started) {
+          path.moveTo(point.dx, point.dy);
+          started = true;
+        } else {
+          path.lineTo(point.dx, point.dy);
+        }
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = colors[ki]
+          ..strokeWidth = 1.1
+          ..style = PaintingStyle.stroke,
+      );
     }
   }
 

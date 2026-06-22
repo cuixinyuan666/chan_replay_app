@@ -22,10 +22,10 @@ import 's13_nested_marker_numbering_policy.dart';
 import 's13_rhythm_display_settings.dart';
 import 's13_rhythm_viewport_selector.dart';
 import '../widgets/auto_collapsible_side_toolbar.dart';
+import '../widgets/four_way_granular_sidebar_shell.dart';
 import '../widgets/permanent_window_controls.dart';
 import '../widgets/recursive_seg_origin_kline_chart.dart';
 import '../widgets/s13_chip_distribution_panel.dart';
-import '../widgets/s13_quick_side_toolbar.dart';
 
 class S13SingleStockReplayPage extends StatefulWidget {
   final int currentRouteIndex;
@@ -64,6 +64,12 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   static final _defaultEndDateValue = DateTime(2026, 6, 18);
   static const String _rhythmPolicy =
       'backend exports rhythm_lines/rhythm_hits; Dart only parses and renders DrawingObject overlays';
+  static const List<String> _easyTdxIndicatorOptions = <String>[
+    'MA', 'BOLL', 'VOL', 'MACD', 'KDJ', 'RSI', 'DMI', 'ATR', 'WR', 'CCI',
+    'BIAS', 'OBV', 'PSY', 'TRIX', 'DPO', 'MTM', 'ROC', 'EXPMA', 'BBI',
+    'DFMA', 'CR', 'KTN', 'XSII', 'VR', 'EMV', 'MASS', 'MFI', 'BRAR',
+    'ASI', 'ZHUOYAO', 'BIAS_SIGNAL', 'TAQ',
+  ];
   final _backendUrlController =
           TextEditingController(text: 'app-managed bundled Python'),
       _symbolController = TextEditingController(text: '600340'),
@@ -71,6 +77,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   final _selectedLevels = <String>['MIN5'];
   final _enabledEasyTdxIndicators = <String>{};
   final ValueNotifier<int> _toolboxOpenSignal = ValueNotifier<int>(0);
+  final ValueNotifier<TradingViewDrawingTool?> _toolboxSelectedToolSignal =
+      ValueNotifier<TradingViewDrawingTool?>(null);
+  final ValueNotifier<int> _sidebarRevision = ValueNotifier<int>(0);
   final _nestedNumberingPolicy = const S13NestedMarkerNumberingPolicy();
 
   PythonMultiLevelChanAnalysis? _analysis;
@@ -83,6 +92,10 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _showRhythmLines = true,
       _show1382Hits = false,
       _showChipDistribution = false,
+      _showIntervalNest = true,
+      _showNativeZs = true,
+      _showSeg2Zs = true,
+      _showSegNZs = true,
       _panelOpen = false,
       _playing = false;
   int _frameIndex = 0, _windowSize = 90, _chartGeneration = 0;
@@ -111,11 +124,17 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     ChanConfigStore.notifier.addListener(_handleGlobalChanConfigChanged);
     LevelPromoterSettings.maxLayer.addListener(_handleGlobalChanConfigChanged);
     ReplayAnalysisStore.klineLocation.addListener(_handleKlineLocationRequest);
-    _syncWindowMaximizedState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        fourWaySidebarRegistry.register(this, _sidebarRegistrations());
+      }
+      _syncWindowMaximizedState();
+    });
   }
 
   @override
   void dispose() {
+    fourWaySidebarRegistry.unregister(this);
     ChanConfigStore.notifier.removeListener(_handleGlobalChanConfigChanged);
     LevelPromoterSettings.maxLayer
         .removeListener(_handleGlobalChanConfigChanged);
@@ -126,8 +145,76 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     _symbolController.dispose();
     _marketController.dispose();
     _toolboxOpenSignal.dispose();
+    _toolboxSelectedToolSignal.dispose();
+    _sidebarRevision.dispose();
     _playTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _sidebarRevision.value++;
+  }
+
+  List<SidebarRegistration> _sidebarRegistrations() {
+    SidebarRegistration section({
+      required String id,
+      required String label,
+      required String category,
+      required IconData icon,
+      required SidebarEdge edge,
+      required int index,
+    }) =>
+        SidebarRegistration(
+          id: id,
+          label: label,
+          category: category,
+          icon: icon,
+          edge: edge,
+          panelBuilder: (_) => _S13RegisteredSectionPanel(
+            revision: _sidebarRevision,
+            sectionBuilder: () => _s13ToolbarSections()[index],
+          ),
+        );
+
+    return <SidebarRegistration>[
+      section(
+          id: 's13-stock',
+          label: '股票与数据',
+          category: '数据',
+          icon: Icons.query_stats,
+          edge: SidebarEdge.right,
+          index: 0),
+      section(
+          id: 's13-levels',
+          label: '级别',
+          category: '数据',
+          icon: Icons.tune,
+          edge: SidebarEdge.top,
+          index: 1),
+      section(
+          id: 's13-replay-marker',
+          label: '复盘与标记',
+          category: '复盘',
+          icon: Icons.play_circle_outline,
+          edge: SidebarEdge.top,
+          index: 2),
+      section(
+          id: 's13-display-indicators',
+          label: '显示 / 指标',
+          category: '显示',
+          icon: Icons.analytics_outlined,
+          edge: SidebarEdge.right,
+          index: 3),
+      section(
+          id: 's13-drawing',
+          label: '画线工具',
+          category: '工具',
+          icon: Icons.architecture,
+          edge: SidebarEdge.right,
+          index: 4),
+    ];
   }
 
   void _handleKlineLocationRequest() {
@@ -1038,15 +1125,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                   ),
                 ),
               _titleLevelSwitcher(),
-              _s13QuickSideToolbar(),
             ],
           ),
         ),
-      );
-
-  Widget _s13QuickSideToolbar() => S13QuickSideToolbar(
-        sections: _s13ToolbarSections(),
-        currentSettingsTextBuilder: _currentS13SettingsEvidenceText,
       );
 
   Future<void> _copyCurrentS13Settings() async {
@@ -1250,15 +1331,12 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               spacing: 8,
               runSpacing: 8,
               children: <Widget>[
-                _input(_backendUrlController, 'backend',
-                    width: 210, enabled: false),
                 _input(_symbolController, 'symbol', width: 104),
                 _input(_marketController, 'market', width: 78),
                 _dateButton(
                     'start', _startDate, () => _pickDate(isStart: true)),
                 _dateButton('end', _endDate, () => _pickDate(isStart: false)),
                 _runtimePathButton(),
-                _infoButton('窗口', _effectiveWindowText),
                 _currentSettingsCopyButton(),
               ],
             ),
@@ -1298,56 +1376,40 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                     : const Icon(Icons.play_arrow, size: 16),
                 label: const Text('载入复盘'),
               ),
-              OutlinedButton.icon(
-                onPressed: _copyS13IntervalNestMarkerEvidence,
-                icon: const Icon(Icons.copy, size: 16),
-                label: const Text('复制 marker 证据'),
-              ),
-              _infoButton('step', _stepFrameLabel),
-              _infoButton('marker', '${_nestedBspMarkers.length}'),
-              _infoButton(
-                  '1.382', _rhythmSummaryFor(_activeSnapshot).shortText),
             ]),
-          ],
-        ),
-        SideToolbarSection(
-          title: 'segN 真实买卖点',
-          children: <Widget>[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: <Widget>[
-                OutlinedButton.icon(
-                  onPressed:
-                      _activeSnapshot == null ? null : _resetChartToLatest,
-                  icon: const Icon(Icons.last_page, size: 16),
-                  label: const Text('回到最新'),
-                ),
-                for (final result in _recursiveRealBspResults.take(24))
-                  FilledButton.tonal(
-                    onPressed: () =>
-                        _jumpToRecursiveBsp(result.layer, result.bsp),
-                    child: Text(
-                        '${result.layer}段 ${result.bsp.type} @${result.bsp.rawIndex}'),
-                  ),
-              ],
-            ),
-            if (_recursiveRealBspResults.isEmpty)
-              const Text(
-                '当前快照没有 CBSPointList 真实买卖点；橙色候选端点不参与策略组合。',
-                style: TextStyle(color: Colors.white54, fontSize: 11),
-              ),
           ],
         ),
         SideToolbarSection(
           title: '图层',
           children: <Widget>[
             Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
-              for (final n in const <String>['MA', 'BOLL', 'VOL', 'MACD'])
+              for (final n in _easyTdxIndicatorOptions)
                 _indicatorChip(n),
             ]),
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
+              FilterChip(
+                label: const Text('区间套'),
+                selected: _showIntervalNest,
+                onSelected: _loading
+                    ? null
+                    : (v) => setState(() => _showIntervalNest = v),
+              ),
+              FilterChip(
+                label: const Text('段中枢'),
+                selected: _showNativeZs,
+                onSelected: (v) => setState(() => _showNativeZs = v),
+              ),
+              FilterChip(
+                label: const Text('2段中枢'),
+                selected: _showSeg2Zs,
+                onSelected: (v) => setState(() => _showSeg2Zs = v),
+              ),
+              FilterChip(
+                label: const Text('N段中枢'),
+                selected: _showSegNZs,
+                onSelected: (v) => setState(() => _showSegNZs = v),
+              ),
               FilterChip(
                 label: const Text('节奏线'),
                 selected: _showRhythmLines,
@@ -1398,7 +1460,11 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             Align(
               alignment: Alignment.centerLeft,
               child: FilledButton.tonalIcon(
-                onPressed: () => _toolboxOpenSignal.value++,
+                onPressed: () {
+                  _toolboxSelectedToolSignal.value =
+                      TradingViewDrawingTool.trendLine;
+                  _toolboxOpenSignal.value++;
+                },
                 icon: const Icon(Icons.architecture, size: 18),
                 label: const Text('打开画线工具'),
               ),
@@ -1629,7 +1695,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               showBiText: false,
               showSeg: true,
               showSegText: true,
-              showZs: true,
+              showZs: _showNativeZs,
               showBiBsp: true,
               showSegBsp: true,
               showMergedBars: false,
@@ -1638,6 +1704,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               enabledEasyTdxIndicators: _enabledEasyTdxIndicators,
               onEasyTdxIndicatorToggled: _toggleEasyTdxIndicator,
               toolboxOpenSignal: _toolboxOpenSignal,
+              toolboxSelectedToolSignal: _toolboxSelectedToolSignal,
               onToolboxQuickToolAdded: (_) {},
               drawingObjects: _rhythmDrawingObjects(s),
               drawingStorageKey: 's13_${_symbolController.text}_$_activeLevel',
@@ -1647,7 +1714,19 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               priceOffset: _priceOffset,
               viewEndIndex: _viewEndIndex,
               crosshairIndex: _crosshairIndex,
-              onCrosshairChanged: (v) => setState(() => _crosshairIndex = v),
+              onCrosshairChanged: (v) {
+                if (_crosshairIndex != v) {
+                  setState(() => _crosshairIndex = v);
+                }
+              },
+              visibleRecursiveSegZsLayers: <int>{
+                if (_showSeg2Zs) 2,
+                if (_showSegNZs)
+                  for (var layer = 3;
+                      layer <= LevelPromoterSettings.currentMaxLayer;
+                      layer++)
+                    layer,
+              },
               onPanBars: _panChartByBars,
               onWindowSizeChanged: (v) => setState(() => _windowSize = v),
               onPriceScaleChanged: (v) => setState(() => _priceScale = v),
@@ -1667,7 +1746,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         priceOffset: _priceOffset,
         easySubPanelCount: _enabledEasyTdxIndicators.isEmpty ? 0 : 2,
       ),
-      _nestedBspMarkerOverlay(),
+      if (_showIntervalNest) _nestedBspMarkerOverlay(),
       _replayControlOverlay(),
       PermanentWindowControls(
         maximized: _windowMaximized,
@@ -2597,4 +2676,44 @@ class _NestedBspMarkerRow {
     required this.triggerState,
     required this.anchorKind,
   });
+}
+
+class _S13RegisteredSectionPanel extends StatelessWidget {
+  final ValueListenable<int> revision;
+  final SideToolbarSection Function() sectionBuilder;
+
+  const _S13RegisteredSectionPanel({
+    required this.revision,
+    required this.sectionBuilder,
+  });
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+        valueListenable: revision,
+        builder: (context, _, __) {
+          final section = sectionBuilder();
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            children: <Widget>[
+              Row(children: <Widget>[
+                const Expanded(child: Divider(color: Colors.white24)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    section.title,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Expanded(child: Divider(color: Colors.white24)),
+              ]),
+              const SizedBox(height: 8),
+              ...section.children,
+            ],
+          );
+        },
+      );
 }

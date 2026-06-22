@@ -75,6 +75,7 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
   final ValueChanged<String>? onEasyTdxIndicatorToggled;
   final bool showRecursiveSegLayers;
   final bool showRecursiveSegZs;
+  final Set<int>? visibleRecursiveSegZsLayers;
   final bool showRecursiveSegBsp;
   final int minRecursiveSegLayer;
   final int? maxRecursiveSegLayer;
@@ -118,6 +119,7 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
     this.onEasyTdxIndicatorToggled,
     this.showRecursiveSegLayers = true,
     this.showRecursiveSegZs = true,
+    this.visibleRecursiveSegZsLayers,
     this.showRecursiveSegBsp = true,
     this.minRecursiveSegLayer = 2,
     this.maxRecursiveSegLayer,
@@ -246,6 +248,8 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
         : _effectiveMaxRecursiveSegLayer;
     for (final entry in snapshot.recursiveSegZss.entries) {
       final layer = entry.key;
+      final visibleLayers = visibleRecursiveSegZsLayers;
+      if (visibleLayers != null && !visibleLayers.contains(layer)) continue;
       if (layer < minLayer || layer > maxLayer) continue;
       for (final zs in entry.value) {
         rows.add(DrawingObject(

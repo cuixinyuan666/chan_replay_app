@@ -48,7 +48,7 @@ class S13QuickSideToolbar extends StatelessWidget {
       top: 44,
       bottom: 12,
       expandedWidth: 430,
-      initiallyExpanded: false,
+      initiallyExpanded: true,
       autoCollapseDelay: const Duration(seconds: 5),
       header: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -134,11 +134,11 @@ class S13QuickSideToolbar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Row(
+                const Row(
                   children: <Widget>[
-                    const Icon(Icons.palette, size: 16, color: Color(0xFFFFD54F)),
-                    const SizedBox(width: 6),
-                    const Expanded(
+                    Icon(Icons.palette, size: 16, color: Color(0xFFFFD54F)),
+                    SizedBox(width: 6),
+                    Expanded(
                       child: Text(
                         'K线图外观',
                         style: TextStyle(
@@ -150,7 +150,7 @@ class S13QuickSideToolbar extends StatelessWidget {
                     ),
                     TextButton(
                       onPressed: KlineAppearanceController.reset,
-                      child: const Text('默认', style: TextStyle(fontSize: 11)),
+                      child: Text('默认', style: TextStyle(fontSize: 11)),
                     ),
                   ],
                 ),
@@ -197,7 +197,8 @@ class S13QuickSideToolbar extends StatelessWidget {
       children: <Widget>[
         const SizedBox(
           width: 64,
-          child: Text('透明度', style: TextStyle(color: Colors.white70, fontSize: 11)),
+          child: Text('透明度',
+              style: TextStyle(color: Colors.white70, fontSize: 11)),
         ),
         Expanded(
           child: Slider(
@@ -231,7 +232,8 @@ class S13QuickSideToolbar extends StatelessWidget {
       children: <Widget>[
         SizedBox(
           width: 64,
-          child: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+          child: Text(label,
+              style: const TextStyle(color: Colors.white70, fontSize: 11)),
         ),
         Expanded(
           child: Wrap(
@@ -257,7 +259,8 @@ class S13QuickSideToolbar extends StatelessWidget {
     required VoidCallback onPressed,
   }) {
     return Tooltip(
-      message: '#${color.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}',
+      message:
+          '#${color.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}',
       child: InkWell(
         onTap: onPressed,
         borderRadius: BorderRadius.circular(999),
@@ -338,7 +341,9 @@ class S13QuickSideToolbar extends StatelessWidget {
       return;
     }
     if (widget is TextField) {
-      final label = widget.decoration?.labelText ?? widget.decoration?.hintText ?? 'TextField';
+      final label = widget.decoration?.labelText ??
+          widget.decoration?.hintText ??
+          'TextField';
       out.add('$indent- $label=${widget.controller?.text ?? ''}');
       return;
     }

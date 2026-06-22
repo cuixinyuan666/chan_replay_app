@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 /// Compact YYYY-MM-DD date editor with per-year/month/day step buttons.
@@ -86,10 +84,12 @@ class _YmdDateStepperFieldState extends State<YmdDateStepperField> {
 
   DateTime _safeDate(int year, int month, int day) {
     final normalizedMonth = month.clamp(1, 12).toInt();
-    final normalizedDay = day.clamp(
-      1,
-      _daysInMonth(year, normalizedMonth),
-    ).toInt();
+    final normalizedDay = day
+        .clamp(
+          1,
+          _daysInMonth(year, normalizedMonth),
+        )
+        .toInt();
     return _clampDate(DateTime(year, normalizedMonth, normalizedDay));
   }
 
@@ -225,7 +225,8 @@ class _DateUnitStepper extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF111722),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: enabled ? Colors.white12 : Colors.transparent),
+        border:
+            Border.all(color: enabled ? Colors.white12 : Colors.transparent),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
