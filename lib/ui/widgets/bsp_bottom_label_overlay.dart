@@ -55,6 +55,8 @@ class _BspBottomLabelPainter extends CustomPainter {
   static const double _rightPad = 58.0;
   static const double _subPanelHeight = 74.0;
   static const double _panelGap = 6.0;
+  static const double _labelHeight = 17.0;
+  static const double _laneHeight = 18.0;
 
   final List<BspBottomLabel> labels;
   final int totalBars;
@@ -87,41 +89,41 @@ class _BspBottomLabelPainter extends CustomPainter {
         .where((label) => label.rawIndex >= start && label.rawIndex <= end)
         .toList(growable: false)
       ..sort((a, b) {
+        final rank = _levelRank(a.level).compareTo(_levelRank(b.level));
+        if (rank != 0) return rank;
         if (a.rawIndex != b.rawIndex) return a.rawIndex.compareTo(b.rawIndex);
         return a.text.compareTo(b.text);
       });
     if (visible.isEmpty) return;
 
-    final occupied = <Rect>[];
     for (final label in visible) {
       final x = rawToX(label.rawIndex).clamp(rect.left, rect.right).toDouble();
       final painter = TextPainter(
         text: TextSpan(
           text: label.text,
           style: TextStyle(
-            color: _textColor(label.status),
-            fontSize: 10.5,
+            color: _textColor(label),
+            fontSize: _fontSize(label.level),
             fontWeight: FontWeight.w700,
           ),
         ),
         textDirection: TextDirection.ltr,
         maxLines: 1,
-        ellipsis: '…',
-      )..layout(maxWidth: 88);
+      )..layout();
 
-      var box = Rect.fromLTWH(
-        x - painter.width / 2 - 5,
-        rect.bottom - 22,
-        painter.width + 10,
-        17,
+      final lane = _levelRank(label.level);
+      final y = (rect.bottom - 22 - lane * _laneHeight)
+          .clamp(rect.top + 4, rect.bottom - _labelHeight)
+          .toDouble();
+      final box = _clampBox(
+        Rect.fromLTWH(
+          x - painter.width / 2 - 5,
+          y,
+          painter.width + 10,
+          _labelHeight,
+        ),
+        rect,
       );
-      box = _clampBox(box, rect);
-      var row = 0;
-      while (occupied.any((r) => r.overlaps(box)) && row < 4) {
-        row++;
-        box = _clampBox(box.translate(0, -18), rect);
-      }
-      occupied.add(box);
 
       final bg = RRect.fromRectAndRadius(box, const Radius.circular(5));
       canvas.drawRRect(
@@ -133,8 +135,8 @@ class _BspBottomLabelPainter extends CustomPainter {
       canvas.drawRRect(
         bg,
         Paint()
-          ..color = _strokeColor(label.status)
-          ..strokeWidth = 0.9
+          ..color = _strokeColor(label)
+          ..strokeWidth = _strokeWidth(label.level)
           ..style = PaintingStyle.stroke,
       );
       painter.paint(canvas, Offset(box.left + 5, box.top + 2));
@@ -171,17 +173,42 @@ class _BspBottomLabelPainter extends CustomPainter {
     return box.translate(dx, dy);
   }
 
-  Color _textColor(BspReviewStatus status) => switch (status) {
-        BspReviewStatus.correct => const Color(0xFF69F0AE),
-        BspReviewStatus.wrong => const Color(0xFFFF8A80),
-        BspReviewStatus.pending => const Color(0xFFFFD54F),
-      };
+  int _levelRank(String level) {
+    final text = level.trim();
+    if (text == '笔') return 0;
+    if (text == '段') return 1;
+    final match = RegExp(r'^(\d+)段$').firstMatch(text);
+    if (match != null) return int.tryParse(match.group(1) ?? '') ?? 2;
+    if (text.contains('段')) return 1;
+    return 0;
+  }
 
-  Color _strokeColor(BspReviewStatus status) => switch (status) {
-        BspReviewStatus.correct => const Color(0xFF00C853),
-        BspReviewStatus.wrong => const Color(0xFFE53935),
-        BspReviewStatus.pending => const Color(0xFFFFB300),
-      };
+  double _fontSize(String level) => _levelRank(level) >= 2 ? 10.8 : 10.2;
+  double _strokeWidth(String level) => _levelRank(level) >= 2 ? 1.15 : 0.9;
+
+  Color _textColor(BspBottomLabel label) {
+    final levelColor = _levelColor(label.level);
+    if (label.status == BspReviewStatus.wrong) return const Color(0xFFFF8A80);
+    if (label.status == BspReviewStatus.correct) return const Color(0xFF69F0AE);
+    return levelColor;
+  }
+
+  Color _strokeColor(BspBottomLabel label) {
+    if (label.status == BspReviewStatus.wrong) return const Color(0xFFE53935);
+    if (label.status == BspReviewStatus.correct) return const Color(0xFF00C853);
+    return _levelColor(label.level).withValues(alpha: 0.92);
+  }
+
+  Color _levelColor(String level) {
+    return switch (_levelRank(level)) {
+      0 => const Color(0xFFFFD54F),
+      1 => const Color(0xFF69F0AE),
+      2 => const Color(0xFF00E5FF),
+      3 => const Color(0xFFFF8A65),
+      4 => const Color(0xFFCE93D8),
+      _ => const Color(0xFFFFFFFF),
+    };
+  }
 
   @override
   bool shouldRepaint(covariant _BspBottomLabelPainter oldDelegate) {
