@@ -30,7 +30,8 @@ class LatestAnalysisJson {
 
   Map<String, dynamic> toPayload() => {'analysis': analysis};
 
-  String toPrettyPayloadJson() => const JsonEncoder.withIndent('  ').convert(toPayload());
+  String toPrettyPayloadJson() =>
+      const JsonEncoder.withIndent('  ').convert(toPayload());
 }
 
 class BacktestRecord {
@@ -70,9 +71,12 @@ class BacktestRecord {
     return BacktestRecord(
       id: createdAt.microsecondsSinceEpoch.toString(),
       createdAt: createdAt,
-      symbol: latestAnalysis?.displaySymbol ?? _string(summary['symbol'], fallback: '--'),
-      period: latestAnalysis?.period ?? _string(summary['period'], fallback: '--'),
-      tradeCount: _int(summary['trade_count']) ?? _rows(backtest['trades']).length,
+      symbol: latestAnalysis?.displaySymbol ??
+          _string(summary['symbol'], fallback: '--'),
+      period:
+          latestAnalysis?.period ?? _string(summary['period'], fallback: '--'),
+      tradeCount:
+          _int(summary['trade_count']) ?? _rows(backtest['trades']).length,
       winRate: _double(summary['win_rate']),
       totalReturn: _double(summary['total_return']),
       finalEquity: _double(summary['final_equity']),
@@ -81,11 +85,37 @@ class BacktestRecord {
   }
 }
 
+class KlineLocationRequest {
+  final int nonce;
+  final String symbol;
+  final String market;
+  final String level;
+  final int rawIndex;
+  final DateTime? time;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final String label;
+
+  const KlineLocationRequest({
+    required this.nonce,
+    required this.symbol,
+    required this.market,
+    required this.level,
+    required this.rawIndex,
+    this.time,
+    this.startDate,
+    this.endDate,
+    this.label = '',
+  });
+}
+
 class ReplayAnalysisStore {
   static final ValueNotifier<LatestAnalysisJson?> latestAnalysis =
       ValueNotifier<LatestAnalysisJson?>(null);
   static final ValueNotifier<List<BacktestRecord>> backtestRecords =
       ValueNotifier<List<BacktestRecord>>(const []);
+  static final ValueNotifier<KlineLocationRequest?> klineLocation =
+      ValueNotifier<KlineLocationRequest?>(null);
 
   static void saveLatestAnalysis(Map<String, dynamic> analysis) {
     latestAnalysis.value = LatestAnalysisJson(
@@ -118,6 +148,29 @@ class ReplayAnalysisStore {
 
   static void clearBacktestRecords() {
     backtestRecords.value = const [];
+  }
+
+  static void requestKlineLocation({
+    required String symbol,
+    required String market,
+    required String level,
+    required int rawIndex,
+    DateTime? time,
+    DateTime? startDate,
+    DateTime? endDate,
+    String label = '',
+  }) {
+    klineLocation.value = KlineLocationRequest(
+      nonce: DateTime.now().microsecondsSinceEpoch,
+      symbol: symbol,
+      market: market,
+      level: level,
+      rawIndex: rawIndex,
+      time: time,
+      startDate: startDate,
+      endDate: endDate,
+      label: label,
+    );
   }
 }
 

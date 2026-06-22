@@ -16,6 +16,10 @@ from .a_ml_bridge import score_bsp_features
 from .a_multilevel_engine_timed import analyze_multi
 from .a_replay_contract_hardening import apply_analyze_multi_contracts
 from .a_rhythm_overlay import with_multilevel_rhythm_overlay
+from .a_seg_composite_strategy import (
+    run_seg_composite_backtest,
+    run_seg_composite_stream_backtest,
+)
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
 
@@ -330,6 +334,7 @@ def root() -> dict[str, object]:
             '/api/research/ml/score',
             '/api/research/backtest',
             '/api/research/pipeline',
+            '/api/research/seg-composite/backtest',
             '/api/scanner/bsp/scan',
             '/api/scanner/bsp/scan_stream',
             '/docs',
@@ -475,6 +480,39 @@ def research_backtest(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
         fee_rate=float(payload.get('fee_rate', 0.0005) or 0.0),
         slippage=float(payload.get('slippage', 0.0) or 0.0),
         initial_cash=float(payload.get('initial_cash', 100000.0) or 100000.0),
+    )
+
+
+@app.post('/api/research/seg-composite/backtest')
+def research_seg_composite_backtest(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    analysis = payload.get('analysis') if isinstance(payload.get('analysis'), dict) else None
+    entry_rule = payload.get('entry_rule') if isinstance(payload.get('entry_rule'), dict) else {}
+    exit_rule = payload.get('exit_rule') if isinstance(payload.get('exit_rule'), dict) else None
+    options = payload.get('options') if isinstance(payload.get('options'), dict) else None
+    if analysis is not None and isinstance(analysis.get('frames'), list):
+        return run_seg_composite_backtest(
+            analysis,
+            level=str(payload.get('level') or analysis.get('main_level') or 'MIN5').upper(),
+            entry_rule=entry_rule,
+            exit_rule=exit_rule,
+            options=options,
+        )
+
+    requested_level = str(payload.get('level') or payload.get('main_level') or 'MIN5').upper()
+    levels = payload.get('levels') or payload.get('lv_list') or [requested_level]
+    return run_seg_composite_stream_backtest(
+        symbol=str(payload.get('symbol') or ''),
+        market=str(payload.get('market') or '') or None,
+        levels=levels,
+        level=requested_level,
+        adjust=str(payload.get('adjust') or 'QFQ'),
+        start=str(payload.get('start') or '') or None,
+        end=str(payload.get('end') or '') or None,
+        count=_payload_int(payload, 'count', 50000, minimum=1, maximum=500000),
+        config=payload.get('config') if isinstance(payload.get('config'), dict) else None,
+        entry_rule=entry_rule,
+        exit_rule=exit_rule,
+        options=options,
     )
 
 

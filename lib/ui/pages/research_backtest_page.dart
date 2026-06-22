@@ -7,7 +7,9 @@ import '../../core/services/replay_analysis_store.dart';
 import '../../data/research_backend_client.dart';
 
 class ResearchBacktestPage extends StatefulWidget {
-  const ResearchBacktestPage({super.key});
+  final ValueChanged<int>? onOpenRoute;
+
+  const ResearchBacktestPage({super.key, this.onOpenRoute});
 
   @override
   State<ResearchBacktestPage> createState() => _ResearchBacktestPageState();
@@ -21,8 +23,30 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
 }''');
   final ScrollController _resultScrollController = ScrollController();
   final ScrollController _recordScrollController = ScrollController();
+  final TextEditingController _segSymbolController =
+      TextEditingController(text: '600340');
+  final TextEditingController _segMarketController =
+      TextEditingController(text: 'SH');
+  final TextEditingController _segStartController =
+      TextEditingController(text: '2025-09-01');
+  final TextEditingController _segEndController =
+      TextEditingController(text: '2026-06-18');
+  final TextEditingController _holdDaysController =
+      TextEditingController(text: '10');
+
+  final List<_SegRuleCondition> _entryConditions = [
+    _SegRuleCondition(layer: 2, side: 'buy', type: '1'),
+    _SegRuleCondition(layer: 3, side: 'buy', type: '3a'),
+  ];
+  final List<_SegRuleCondition> _exitConditions = [
+    _SegRuleCondition(layer: 2, side: 'sell', type: '1'),
+  ];
 
   bool _running = false;
+  bool _segVisualMode = false;
+  bool _useExitConditions = true;
+  bool _useHoldDays = true;
+  String _segLevel = 'MIN5';
   String _status = '粘贴 chan.py analysis JSON，或点击“使用当前复盘数据”。';
   Map<String, dynamic>? _lastResult;
   ResearchBackendClient? _backendClient;
@@ -34,6 +58,11 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     _jsonController.dispose();
     _resultScrollController.dispose();
     _recordScrollController.dispose();
+    _segSymbolController.dispose();
+    _segMarketController.dispose();
+    _segStartController.dispose();
+    _segEndController.dispose();
+    _holdDaysController.dispose();
     super.dispose();
   }
 
@@ -45,19 +74,68 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     }
     _jsonController.text = latest.toPrettyPayloadJson();
     setState(() {
+      _segVisualMode = false;
       _status =
           '已载入当前复盘数据：${latest.displaySymbol} ${latest.period}，保存时间 ${_timeText(latest.savedAt)}。';
     });
   }
 
-  Future<void> _call(String endpoint) async {
+  void _useSegCompositeTemplate() {
+    setState(() {
+      _segVisualMode = true;
+      _status = '已载入 segN 组合模板：条件之间为 AND；信号按 step 当时状态计算。';
+    });
+  }
+
+  Map<String, dynamic> _segCompositePayload() {
+    final allLayers = <int>{
+      for (final condition in _entryConditions) condition.layer,
+      for (final condition in _exitConditions) condition.layer,
+    };
+    final maxLayer = allLayers.isEmpty
+        ? 2
+        : allLayers.reduce((left, right) => left > right ? left : right);
+    Map<String, dynamic> ruleOf(List<_SegRuleCondition> conditions) => {
+          'conditions': [
+            for (final condition in conditions) condition.toJson()
+          ],
+          'dedupe': true,
+        };
+    return {
+      'symbol': _segSymbolController.text.trim(),
+      'market': _segMarketController.text.trim().toUpperCase(),
+      'levels': [_segLevel],
+      'level': _segLevel,
+      'adjust': 'QFQ',
+      'start': _segStartController.text.trim(),
+      'end': _segEndController.text.trim(),
+      'count': 50000,
+      'config': {
+        'bi_algo': 'fx',
+        'seg_algo': 'chan',
+        'zs_algo': 'normal',
+        'recursive_seg_max_level': maxLayer,
+      },
+      'entry_rule': ruleOf(_entryConditions),
+      if (_useExitConditions) 'exit_rule': ruleOf(_exitConditions),
+      'options': {
+        if (_useHoldDays)
+          'max_hold_days': int.tryParse(_holdDaysController.text.trim()) ?? 10,
+        'fee_bps': 3,
+        'slippage_bps': 2,
+      },
+    };
+  }
+
+  Future<void> _call(String endpoint,
+      {Map<String, dynamic>? overridePayload}) async {
     if (_running) return;
     setState(() {
       _running = true;
       _status = '请求 $endpoint ...';
     });
     try {
-      final payload = _parsePayload();
+      final payload = overridePayload ?? _parsePayload();
       final baseUrl = _backendUrlController.text.trim();
       final client = _backendClient;
       if (client == null || client.baseUrl != baseUrl) {
@@ -85,6 +163,28 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     }
   }
 
+  void _locateResult(Map<String, dynamic> row, {String label = '回测结果'}) {
+    final raw = row['raw_index'] ??
+        row['entry_signal_raw_index'] ??
+        row['entry_raw_index'] ??
+        row['exit_raw_index'];
+    final rawIndex = raw is num ? raw.toInt() : int.tryParse('$raw');
+    if (rawIndex == null) return;
+    final timeText =
+        '${row['time'] ?? row['entry_signal_time'] ?? row['entry_time'] ?? ''}';
+    ReplayAnalysisStore.requestKlineLocation(
+      symbol: _segSymbolController.text.trim(),
+      market: _segMarketController.text.trim().toUpperCase(),
+      level: _segLevel,
+      rawIndex: rawIndex,
+      time: DateTime.tryParse(timeText.replaceFirst(' ', 'T')),
+      startDate: DateTime.tryParse(_segStartController.text.trim()),
+      endDate: DateTime.tryParse(_segEndController.text.trim()),
+      label: label,
+    );
+    widget.onOpenRoute?.call(1);
+  }
+
   Map<String, dynamic> _parsePayload() {
     final text = _jsonController.text.trim();
     if (text.isEmpty) return {'analysis': {}};
@@ -109,6 +209,15 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     }
     if (endpoint.endsWith('/score')) {
       return 'ML 打分完成：${_rowsFrom(result['scores'], nestedKey: 'scores').length} 行。';
+    }
+    if (endpoint.endsWith('/seg-composite/backtest')) {
+      final summary = result['summary'];
+      final meta = result['meta'];
+      if (summary is Map) {
+        final frames = meta is Map ? meta['evaluated_step_frames'] : null;
+        return 'segN 组合回测完成：逐帧 ${frames ?? '--'}，入场信号 ${_rowsFrom(result['entry_events']).length}，交易 ${summary['trade_count'] ?? 0}，胜率 ${_pct(summary['win_rate'])}，总收益 ${_pct(summary['total_return'])}';
+      }
+      return 'segN 组合回测完成。';
     }
     if (endpoint.endsWith('/backtest')) {
       final summary = result['summary'];
@@ -230,6 +339,18 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                   running: _running,
                   onPressed: () => _call('/api/research/backtest'),
                 ),
+                OutlinedButton.icon(
+                  onPressed: _running ? null : _useSegCompositeTemplate,
+                  icon: const Icon(Icons.rule, size: 18),
+                  label: const Text('载入 segN 模板'),
+                ),
+                _ActionButton(
+                  label: 'segN 组合回测',
+                  icon: Icons.layers,
+                  running: _running,
+                  onPressed: () => _call('/api/research/seg-composite/backtest',
+                      overridePayload: _segCompositePayload()),
+                ),
                 _ActionButton(
                   label: '一键 Pipeline',
                   icon: Icons.account_tree,
@@ -245,24 +366,49 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
               child: Row(
                 children: [
                   Expanded(
-                    child: _JsonPanel(
-                      title: '输入 analysis JSON',
-                      child: TextField(
-                        controller: _jsonController,
-                        expands: true,
-                        maxLines: null,
-                        minLines: null,
-                        keyboardType: TextInputType.multiline,
-                        textAlignVertical: TextAlignVertical.top,
-                        style: const TextStyle(
-                            fontFamily: 'monospace', fontSize: 12),
-                        decoration: const InputDecoration(
-                          alignLabelWithHint: true,
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.all(12),
-                        ),
-                      ),
-                    ),
+                    child: _segVisualMode
+                        ? _JsonPanel(
+                            title: 'segN 多级联组合规则（同组条件为 AND）',
+                            child: _SegCompositeRuleEditor(
+                              symbolController: _segSymbolController,
+                              marketController: _segMarketController,
+                              startController: _segStartController,
+                              endController: _segEndController,
+                              holdDaysController: _holdDaysController,
+                              level: _segLevel,
+                              entryConditions: _entryConditions,
+                              exitConditions: _exitConditions,
+                              useExitConditions: _useExitConditions,
+                              useHoldDays: _useHoldDays,
+                              onLevelChanged: (value) =>
+                                  setState(() => _segLevel = value),
+                              onUseExitConditionsChanged: (value) =>
+                                  setState(() => _useExitConditions = value),
+                              onUseHoldDaysChanged: (value) =>
+                                  setState(() => _useHoldDays = value),
+                              onChanged: () => setState(() {}),
+                              onShowJson: () =>
+                                  setState(() => _segVisualMode = false),
+                            ),
+                          )
+                        : _JsonPanel(
+                            title: '输入 analysis JSON',
+                            child: TextField(
+                              controller: _jsonController,
+                              expands: true,
+                              maxLines: null,
+                              minLines: null,
+                              keyboardType: TextInputType.multiline,
+                              textAlignVertical: TextAlignVertical.top,
+                              style: const TextStyle(
+                                  fontFamily: 'monospace', fontSize: 12),
+                              decoration: const InputDecoration(
+                                alignLabelWithHint: true,
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.all(12),
+                              ),
+                            ),
+                          ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -280,6 +426,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                               pctText: _pct,
                               rowsFrom: _rowsFrom,
                               mapFrom: _mapFrom,
+                              onLocate: _locateResult,
                             ),
                           ),
                         ),
@@ -307,6 +454,439 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       ),
     );
   }
+}
+
+class _SegRuleCondition {
+  int layer;
+  String side;
+  String type;
+
+  _SegRuleCondition(
+      {required this.layer, required this.side, required this.type});
+
+  Map<String, dynamic> toJson() => {
+        'layer': layer,
+        'side': side,
+        'types': [type],
+      };
+}
+
+class _SegCompositeRuleEditor extends StatelessWidget {
+  static const _levels = ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY'];
+  static const _types = ['1', '1p', '2', '2s', '3a', '3b'];
+
+  final TextEditingController symbolController;
+  final TextEditingController marketController;
+  final TextEditingController startController;
+  final TextEditingController endController;
+  final TextEditingController holdDaysController;
+  final String level;
+  final List<_SegRuleCondition> entryConditions;
+  final List<_SegRuleCondition> exitConditions;
+  final bool useExitConditions;
+  final bool useHoldDays;
+  final ValueChanged<String> onLevelChanged;
+  final ValueChanged<bool> onUseExitConditionsChanged;
+  final ValueChanged<bool> onUseHoldDaysChanged;
+  final VoidCallback onChanged;
+  final VoidCallback onShowJson;
+
+  const _SegCompositeRuleEditor({
+    required this.symbolController,
+    required this.marketController,
+    required this.startController,
+    required this.endController,
+    required this.holdDaysController,
+    required this.level,
+    required this.entryConditions,
+    required this.exitConditions,
+    required this.useExitConditions,
+    required this.useHoldDays,
+    required this.onLevelChanged,
+    required this.onUseExitConditionsChanged,
+    required this.onUseHoldDaysChanged,
+    required this.onChanged,
+    required this.onShowJson,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _field(symbolController, '标的', 120),
+              _field(marketController, '市场', 90),
+              SizedBox(
+                width: 130,
+                child: DropdownButtonFormField<String>(
+                  initialValue: level,
+                  decoration: const InputDecoration(labelText: 'K线周期'),
+                  items: [
+                    for (final value in _levels)
+                      DropdownMenuItem(value: value, child: Text(value)),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) onLevelChanged(value);
+                  },
+                ),
+              ),
+              _field(startController, '开始日期', 140),
+              _field(endController, '结束日期', 140),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _ruleSection(
+            title: '入场组合',
+            subtitle: '每行依次选择 N段 → 买/卖 → 买卖点类型；所有行同时满足才入场。',
+            rows: entryConditions,
+            allowEmpty: false,
+          ),
+          const Divider(height: 26),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: useExitConditions,
+            onChanged: onUseExitConditionsChanged,
+            title: const Text('启用买卖点组合出场'),
+          ),
+          if (useExitConditions)
+            _ruleSection(
+              title: '出场组合',
+              subtitle: '入场后按 step 当时状态判断；与 N 天退出取先发生者。',
+              rows: exitConditions,
+              allowEmpty: false,
+            ),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: useHoldDays,
+            onChanged: onUseHoldDaysChanged,
+            title: const Text('启用入场后 N 天退出'),
+          ),
+          if (useHoldDays) _field(holdDaysController, '持有天数', 130),
+          const SizedBox(height: 12),
+          const Text(
+            '数据口径：仅使用 CBSPointList 真实买卖点；候选端点不参与。信号在首次识别 K 线冻结，下一根 K 线成交。',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: onShowJson,
+            icon: const Icon(Icons.code),
+            label: const Text('切换到通用 JSON 工具'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ruleSection({
+    required String title,
+    required String subtitle,
+    required List<_SegRuleCondition> rows,
+    required bool allowEmpty,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title,
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 3),
+        Text(subtitle,
+            style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        const SizedBox(height: 8),
+        for (var index = 0; index < rows.length; index++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _conditionRow(rows, index, allowEmpty: allowEmpty),
+          ),
+        OutlinedButton.icon(
+          onPressed: () {
+            rows.add(_SegRuleCondition(
+              layer:
+                  rows.isEmpty ? 2 : (rows.last.layer + 1).clamp(2, 6).toInt(),
+              side: title.contains('入场') ? 'buy' : 'sell',
+              type: '1',
+            ));
+            onChanged();
+          },
+          icon: const Icon(Icons.add, size: 17),
+          label: const Text('增加 AND 条件'),
+        ),
+      ],
+    );
+  }
+
+  Widget _conditionRow(List<_SegRuleCondition> rows, int index,
+      {required bool allowEmpty}) {
+    final row = rows[index];
+    return Row(
+      children: [
+        SizedBox(
+          width: 105,
+          child: DropdownButtonFormField<int>(
+            initialValue: row.layer,
+            decoration: const InputDecoration(labelText: '结构层'),
+            items: [
+              for (var layer = 2; layer <= 6; layer++)
+                DropdownMenuItem(value: layer, child: Text('$layer段')),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                row.layer = value;
+                onChanged();
+              }
+            },
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 5),
+          child: Icon(Icons.chevron_right, color: Colors.white38),
+        ),
+        SizedBox(
+          width: 100,
+          child: DropdownButtonFormField<String>(
+            initialValue: row.side,
+            decoration: const InputDecoration(labelText: '方向'),
+            items: const [
+              DropdownMenuItem(value: 'buy', child: Text('买点')),
+              DropdownMenuItem(value: 'sell', child: Text('卖点')),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                row.side = value;
+                onChanged();
+              }
+            },
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 5),
+          child: Icon(Icons.chevron_right, color: Colors.white38),
+        ),
+        Expanded(
+          child: DropdownButtonFormField<String>(
+            initialValue: row.type,
+            decoration: const InputDecoration(labelText: '类型'),
+            items: [
+              for (final type in _types)
+                DropdownMenuItem(
+                  value: type,
+                  child: Text('${row.side == 'buy' ? 'B' : 'S'}$type'),
+                ),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                row.type = value;
+                onChanged();
+              }
+            },
+          ),
+        ),
+        IconButton(
+          tooltip: '删除条件',
+          onPressed: rows.length == 1 && !allowEmpty
+              ? null
+              : () {
+                  rows.removeAt(index);
+                  onChanged();
+                },
+          icon: const Icon(Icons.remove_circle_outline),
+        ),
+      ],
+    );
+  }
+
+  static Widget _field(
+      TextEditingController controller, String label, double width) {
+    return SizedBox(
+      width: width,
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(labelText: label),
+      ),
+    );
+  }
+}
+
+class _BacktestCharts extends StatelessWidget {
+  final List<Map<String, dynamic>> equityCurve;
+  final List<Map<String, dynamic>> trades;
+
+  const _BacktestCharts({required this.equityCurve, required this.trades});
+
+  @override
+  Widget build(BuildContext context) {
+    final equity = [
+      for (final row in equityCurve)
+        if (row['equity'] is num) (row['equity'] as num).toDouble(),
+    ];
+    final drawdown = [
+      for (final row in equityCurve)
+        if (row['drawdown'] is num) (row['drawdown'] as num).toDouble(),
+    ];
+    final returns = [
+      for (final row in trades)
+        if (row['net_return'] is num) (row['net_return'] as num).toDouble(),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          _MiniSeriesChart(
+            title: '权益曲线',
+            values: equity,
+            color: const Color(0xFF4ADE80),
+          ),
+          _MiniSeriesChart(
+            title: '回撤曲线',
+            values: drawdown,
+            color: const Color(0xFFF87171),
+            baseline: 0,
+          ),
+          _MiniSeriesChart(
+            title: '单笔收益',
+            values: returns,
+            color: const Color(0xFF60A5FA),
+            baseline: 0,
+            bars: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniSeriesChart extends StatelessWidget {
+  final String title;
+  final List<double> values;
+  final Color color;
+  final double? baseline;
+  final bool bars;
+
+  const _MiniSeriesChart({
+    required this.title,
+    required this.values,
+    required this.color,
+    this.baseline,
+    this.bars = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 250,
+      height: 150,
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 5),
+          Expanded(
+            child: values.isEmpty
+                ? const Center(
+                    child: Text('无数据',
+                        style: TextStyle(color: Colors.white38, fontSize: 11)))
+                : CustomPaint(
+                    painter: _SeriesPainter(
+                      values: values,
+                      color: color,
+                      baseline: baseline,
+                      bars: bars,
+                    ),
+                    size: Size.infinite,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SeriesPainter extends CustomPainter {
+  final List<double> values;
+  final Color color;
+  final double? baseline;
+  final bool bars;
+
+  const _SeriesPainter({
+    required this.values,
+    required this.color,
+    required this.baseline,
+    required this.bars,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var minValue = values.reduce((a, b) => a < b ? a : b);
+    var maxValue = values.reduce((a, b) => a > b ? a : b);
+    if (baseline != null) {
+      minValue = minValue < baseline! ? minValue : baseline!;
+      maxValue = maxValue > baseline! ? maxValue : baseline!;
+    }
+    if ((maxValue - minValue).abs() < 1e-12) maxValue = minValue + 1;
+    double yOf(double value) =>
+        size.height - (value - minValue) / (maxValue - minValue) * size.height;
+    final grid = Paint()
+      ..color = Colors.white12
+      ..strokeWidth = 1;
+    if (baseline != null) {
+      final y = yOf(baseline!);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+    }
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    final step =
+        values.length <= 1 ? size.width : size.width / (values.length - 1);
+    if (bars) {
+      final zeroY = yOf(baseline ?? 0);
+      final barPaint = Paint()
+        ..color = color.withValues(alpha: 0.75)
+        ..style = PaintingStyle.fill;
+      for (var index = 0; index < values.length; index++) {
+        final x = values.length == 1 ? size.width / 2 : index * step;
+        canvas.drawLine(Offset(x, zeroY), Offset(x, yOf(values[index])),
+            barPaint..strokeWidth = (step * 0.55).clamp(2, 10));
+      }
+      return;
+    }
+    final path = Path();
+    for (var index = 0; index < values.length; index++) {
+      final point = Offset(index * step, yOf(values[index]));
+      if (index == 0) {
+        path.moveTo(point.dx, point.dy);
+      } else {
+        path.lineTo(point.dx, point.dy);
+      }
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SeriesPainter oldDelegate) =>
+      oldDelegate.values != values ||
+      oldDelegate.color != color ||
+      oldDelegate.baseline != baseline ||
+      oldDelegate.bars != bars;
 }
 
 class _BacktestRecordList extends StatelessWidget {
@@ -420,6 +1000,7 @@ class _ResearchResultView extends StatelessWidget {
   final List<Map<String, dynamic>> Function(Object? value, {String? nestedKey})
       rowsFrom;
   final Map<String, dynamic> Function(Object? value) mapFrom;
+  final void Function(Map<String, dynamic> row, {String label}) onLocate;
 
   const _ResearchResultView({
     required this.result,
@@ -429,6 +1010,7 @@ class _ResearchResultView extends StatelessWidget {
     required this.pctText,
     required this.rowsFrom,
     required this.mapFrom,
+    required this.onLocate,
   });
 
   @override
@@ -443,6 +1025,9 @@ class _ResearchResultView extends StatelessWidget {
     final scores = rowsFrom(data['scores'], nestedKey: 'scores');
     final backtest = data['backtest'] is Map ? mapFrom(data['backtest']) : data;
     final trades = rowsFrom(backtest['trades'], nestedKey: 'trades');
+    final entryEvents = rowsFrom(backtest['entry_events']);
+    final exitEvents = rowsFrom(backtest['exit_events']);
+    final equityCurve = rowsFrom(backtest['equity_curve']);
     final summary = mapFrom(backtest['summary']);
 
     return Scrollbar(
@@ -474,8 +1059,45 @@ class _ResearchResultView extends StatelessWidget {
                     'Final equity',
                     valueText(summary['final_equity']),
                     Icons.account_balance_wallet),
+                _SummaryCardData('Payoff', valueText(summary['payoff_ratio']),
+                    Icons.balance),
+                _SummaryCardData('Profit factor',
+                    valueText(summary['profit_factor']), Icons.functions),
+                _SummaryCardData('Max drawdown',
+                    pctText(summary['max_drawdown']), Icons.trending_down),
               ]),
               const SizedBox(height: 12),
+              if (equityCurve.length > 1 || trades.isNotEmpty)
+                _BacktestCharts(
+                  equityCurve: equityCurve,
+                  trades: trades,
+                ),
+              if (entryEvents.isNotEmpty)
+                _PreviewTable(
+                  title: '入场信号（点击定位K线）',
+                  rows: entryEvents,
+                  columns: const [
+                    'time',
+                    'raw_index',
+                    'signature',
+                    'level',
+                  ],
+                  valueText: valueText,
+                  onRowTap: (row) => onLocate(row, label: '入场信号'),
+                ),
+              if (exitEvents.isNotEmpty)
+                _PreviewTable(
+                  title: '出场信号（点击定位K线）',
+                  rows: exitEvents,
+                  columns: const [
+                    'time',
+                    'raw_index',
+                    'signature',
+                    'level',
+                  ],
+                  valueText: valueText,
+                  onRowTap: (row) => onLocate(row, label: '出场信号'),
+                ),
               if (features.isNotEmpty)
                 _PreviewTable(
                   title: 'BSP 特征预览',
@@ -519,8 +1141,13 @@ class _ResearchResultView extends StatelessWidget {
                     'ml_score'
                   ],
                   valueText: valueText,
+                  onRowTap: (row) => onLocate(row, label: '交易入场'),
                 ),
-              if (features.isEmpty && scores.isEmpty && trades.isEmpty)
+              if (features.isEmpty &&
+                  scores.isEmpty &&
+                  trades.isEmpty &&
+                  entryEvents.isEmpty &&
+                  exitEvents.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 18),
                   child: Text('接口已返回 JSON，但没有可表格化的 features / scores / trades。',
@@ -625,12 +1252,14 @@ class _PreviewTable extends StatelessWidget {
   final List<Map<String, dynamic>> rows;
   final List<String> columns;
   final String Function(Object? value) valueText;
+  final ValueChanged<Map<String, dynamic>>? onRowTap;
 
   const _PreviewTable({
     required this.title,
     required this.rows,
     required this.columns,
     required this.valueText,
+    this.onRowTap,
   });
 
   @override
@@ -666,12 +1295,15 @@ class _PreviewTable extends StatelessWidget {
                   ],
                   rows: [
                     for (final row in previewRows)
-                      DataRow(cells: [
-                        for (final col in columns)
-                          DataCell(Text(valueText(row[col]),
-                              style: const TextStyle(
-                                  color: Colors.white60, fontSize: 12))),
-                      ]),
+                      DataRow(
+                          onSelectChanged:
+                              onRowTap == null ? null : (_) => onRowTap!(row),
+                          cells: [
+                            for (final col in columns)
+                              DataCell(Text(valueText(row[col]),
+                                  style: const TextStyle(
+                                      color: Colors.white60, fontSize: 12))),
+                          ]),
                   ],
                 ),
               ),

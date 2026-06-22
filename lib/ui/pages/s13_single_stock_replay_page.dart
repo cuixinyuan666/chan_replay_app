@@ -12,6 +12,7 @@ import '../../core/models/level_relation.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
 import '../../core/models/rhythm.dart';
 import '../../core/runtime/runtime_path.dart';
+import '../../core/services/replay_analysis_store.dart';
 import '../../core/settings/chan_config_store.dart';
 import '../../core/settings/level_promoter_settings.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
@@ -60,37 +61,43 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   };
   static const _evidenceHeader = 'S13_INTERVAL_NEST_MARKER_EVIDENCE';
   static final _defaultStartDate = DateTime(2026, 1, 1);
+  static final _defaultEndDateValue = DateTime(2026, 6, 18);
   static const String _rhythmPolicy =
       'backend exports rhythm_lines/rhythm_hits; Dart only parses and renders DrawingObject overlays';
   final _backendUrlController =
           TextEditingController(text: 'app-managed bundled Python'),
       _symbolController = TextEditingController(text: '600340'),
       _marketController = TextEditingController(text: 'SH');
-  final _selectedLevels = <String>['DAILY', 'MIN30', 'MIN5'];
+  final _selectedLevels = <String>['MIN5'];
   final _enabledEasyTdxIndicators = <String>{};
   final ValueNotifier<int> _toolboxOpenSignal = ValueNotifier<int>(0);
   final _nestedNumberingPolicy = const S13NestedMarkerNumberingPolicy();
 
   PythonMultiLevelChanAnalysis? _analysis;
-  String _mode = 'step',
-      _activeLevel = 'DAILY',
+  String _mode = 'once',
+      _activeLevel = 'MIN5',
       _status = '未加载',
       _lastLevelValidation = '级别组合待校验';
   bool _loading = false,
       _showBspCandidateTrail = true,
       _showRhythmLines = true,
-      _show1382Hits = true,
+      _show1382Hits = false,
       _showChipDistribution = false,
       _panelOpen = false,
       _playing = false;
-  int _frameIndex = 0, _windowSize = 90;
+  int _frameIndex = 0, _windowSize = 90, _chartGeneration = 0;
   double _playSpeed = 1.0, _priceScale = 1.0, _priceOffset = 0.0;
   int? _viewEndIndex, _crosshairIndex;
-  DateTime? _startDate, _endDate;
+  DateTime? _startDate = _defaultStartDate, _endDate = _defaultEndDateValue;
   Timer? _playTimer;
   bool _windowMaximized = false;
   final Map<String, Offset> _replayControlOffsets = <String, Offset>{};
-  S13RhythmDisplaySettings _rhythmSettings = const S13RhythmDisplaySettings();
+  S13RhythmDisplaySettings _rhythmSettings = const S13RhythmDisplaySettings(
+    biToSegEnabled: false,
+    segToSegsegEnabled: false,
+    maxLayer: 0,
+    hit: S13RhythmHitStyle(enabled: false),
+  );
   String _loadedRhythmCalcMode = 'not_loaded';
   bool? _loadedRhythmEnabled;
   String _loadedChanConfigFingerprint = '';
@@ -103,6 +110,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     _loadedChanConfigFingerprint = _chanConfigFingerprint();
     ChanConfigStore.notifier.addListener(_handleGlobalChanConfigChanged);
     LevelPromoterSettings.maxLayer.addListener(_handleGlobalChanConfigChanged);
+    ReplayAnalysisStore.klineLocation.addListener(_handleKlineLocationRequest);
     _syncWindowMaximizedState();
   }
 
@@ -111,6 +119,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     ChanConfigStore.notifier.removeListener(_handleGlobalChanConfigChanged);
     LevelPromoterSettings.maxLayer
         .removeListener(_handleGlobalChanConfigChanged);
+    ReplayAnalysisStore.klineLocation
+        .removeListener(_handleKlineLocationRequest);
     _chanConfigChangeSnackTimer?.cancel();
     _backendUrlController.dispose();
     _symbolController.dispose();
@@ -118,6 +128,63 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     _toolboxOpenSignal.dispose();
     _playTimer?.cancel();
     super.dispose();
+  }
+
+  void _handleKlineLocationRequest() {
+    final request = ReplayAnalysisStore.klineLocation.value;
+    if (request == null || !mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _applyKlineLocationRequest(request);
+    });
+  }
+
+  Future<void> _applyKlineLocationRequest(KlineLocationRequest request) async {
+    final requestedLevel = request.level.trim().toUpperCase();
+    final loadedSymbol = _symbolController.text.trim().toUpperCase();
+    final loadedMarket = _marketController.text.trim().toUpperCase();
+    final hasRequestedData = _analysis != null &&
+        loadedSymbol == request.symbol.trim().toUpperCase() &&
+        loadedMarket == request.market.trim().toUpperCase() &&
+        (_analysis?.snapshot.snapshots.containsKey(requestedLevel) ?? false);
+    if (!hasRequestedData) {
+      setState(() {
+        _symbolController.text = request.symbol;
+        _marketController.text = request.market;
+        _selectedLevels
+          ..clear()
+          ..add(requestedLevel);
+        _activeLevel = requestedLevel;
+        _startDate = request.startDate ?? _startDate;
+        _endDate = request.endDate ?? _endDate;
+        _mode = 'once';
+      });
+      await _loadReplay();
+      if (!mounted) return;
+    }
+    final snapshot = _analysis?.snapshot.of(requestedLevel);
+    if (snapshot == null || snapshot.rawBars.isEmpty) {
+      _showMessage('无法定位：$requestedLevel 没有K线数据');
+      return;
+    }
+    var index = _barListIndexForRawIndex(snapshot, request.rawIndex);
+    if (request.time != null) {
+      final byTime = snapshot.rawBars.indexWhere(
+        (bar) => !bar.time.isBefore(request.time!),
+      );
+      if (byTime >= 0) index = byTime;
+    }
+    final max = snapshot.rawBars.length - 1;
+    setState(() {
+      _activeLevel = requestedLevel;
+      _windowSize = math.min(180, snapshot.rawBars.length);
+      _viewEndIndex = (index + _windowSize ~/ 3).clamp(0, max).toInt();
+      _crosshairIndex = index;
+      _priceScale = 1.0;
+      _priceOffset = 0.0;
+      _chartGeneration++;
+    });
+    _showMessage(
+        '${request.label.isEmpty ? '回测结果' : request.label}：已定位到 $requestedLevel raw=${request.rawIndex}');
   }
 
   bool get _supportsWindowManager =>
@@ -203,8 +270,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     });
   }
 
-  DateTime get _defaultEndDate =>
-      DateTime.now().subtract(const Duration(days: 2));
+  DateTime get _defaultEndDate => _defaultEndDateValue;
   int get _frameCount => _analysis?.frames.length ?? 0;
   bool get _isStepMode => _mode == 'step';
   bool get _hasStepFrames => _isStepMode && _frameCount > 0;
@@ -266,12 +332,18 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       fxs: s.fxs,
       bis: s.bis,
       segs: s.segs,
+      recursiveSegLayers: s.recursiveSegLayers,
+      recursiveSegBsps: s.recursiveSegBsps,
+      recursiveSegBspCandidates: s.recursiveSegBspCandidates,
+      recursiveSegZss: s.recursiveSegZss,
       zss: s.zss,
       bsps: <BspPoint>[...trail, ...s.bsps],
       segZss: s.segZss,
       eigenBoxes: s.eigenBoxes,
       segEigenBoxes: s.segEigenBoxes,
       indicators: s.indicators,
+      rhythmLines: s.rhythmLines,
+      rhythmHits: s.rhythmHits,
     );
   }
 
@@ -374,6 +446,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       segIndex: p.segIndex,
       zsIndex: p.zsIndex,
       confirmed: p.confirmed,
+      buy: p.buy,
+      source: p.source,
+      derived: p.derived,
     );
   }
 
@@ -673,8 +748,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     return _LevelValidationResult(true, n, '级别组合有效: ${n.join(',')}');
   }
 
-  String _requestModeFor(_LevelValidationResult lv) =>
-      lv.normalizedLevels.length == 1 ? 'once' : _mode;
+  String _requestModeFor(_LevelValidationResult lv) => _mode;
 
   Future<void> _loadReplay() async {
     if (_loading) return;
@@ -735,10 +809,17 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         _frameIndex = 0;
         final init = _currentSnapshot ?? a.snapshot;
         _activeLevel = init.safeActiveLevel;
-        _viewEndIndex = null;
+        final initialActive = init.of(_activeLevel);
+        _viewEndIndex = initialActive == null || initialActive.rawBars.isEmpty
+            ? null
+            : initialActive.rawBars.length - 1;
+        _windowSize = initialActive == null
+            ? 90
+            : math.min(240, initialActive.rawBars.length);
         _crosshairIndex = null;
         _priceScale = 1.0;
         _priceOffset = 0.0;
+        _chartGeneration++;
         _status = _buildStatus(a, startDate, endDate);
       });
       _showMessage('S13 replay loaded');
@@ -976,6 +1057,51 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     _showMessage('当前全部设置已复制');
   }
 
+  List<({int layer, BspPoint bsp})> get _recursiveRealBspResults {
+    final snapshot = _activeSnapshot;
+    if (snapshot == null) return const [];
+    final rows = <({int layer, BspPoint bsp})>[
+      for (final entry in snapshot.recursiveSegBsps.entries)
+        for (final bsp in entry.value) (layer: entry.key, bsp: bsp),
+    ];
+    rows.sort((a, b) => b.bsp.rawIndex.compareTo(a.bsp.rawIndex));
+    return rows;
+  }
+
+  int _barListIndexForRawIndex(ChanSnapshot snapshot, int rawIndex) {
+    for (var i = 0; i < snapshot.rawBars.length; i++) {
+      if (snapshot.rawBars[i].index == rawIndex) return i;
+    }
+    return rawIndex.clamp(0, snapshot.rawBars.length - 1).toInt();
+  }
+
+  void _jumpToRecursiveBsp(int layer, BspPoint bsp) {
+    final snapshot = _activeSnapshot;
+    if (snapshot == null || snapshot.rawBars.isEmpty) return;
+    final index = _barListIndexForRawIndex(snapshot, bsp.rawIndex);
+    final max = snapshot.rawBars.length - 1;
+    setState(() {
+      _windowSize = math.min(180, snapshot.rawBars.length);
+      _viewEndIndex = (index + _windowSize ~/ 3).clamp(0, max).toInt();
+      _crosshairIndex = index;
+      _priceScale = 1.0;
+      _priceOffset = 0.0;
+    });
+    _showMessage('$layer段 ${bsp.type}：已定位 raw=${bsp.rawIndex}');
+  }
+
+  void _resetChartToLatest() {
+    final snapshot = _activeSnapshot;
+    if (snapshot == null || snapshot.rawBars.isEmpty) return;
+    setState(() {
+      _windowSize = math.min(240, snapshot.rawBars.length);
+      _viewEndIndex = snapshot.rawBars.length - 1;
+      _crosshairIndex = null;
+      _priceScale = 1.0;
+      _priceOffset = 0.0;
+    });
+  }
+
   String _currentS13SettingsEvidenceText() {
     final active = _activeSnapshot;
     final current = _currentSnapshot;
@@ -984,6 +1110,21 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final endDate = _dateOrDefault(_endDate, _defaultEndDate);
     final chanEntries = ChanConfigStore.values.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
+    final recursiveLayers = <int>{
+      ...?active?.recursiveSegLayers.keys,
+      ...?active?.recursiveSegZss.keys,
+      ...?active?.recursiveSegBsps.keys,
+      ...?active?.recursiveSegBspCandidates.keys,
+    }.toList()
+      ..sort();
+    String recursiveCounts<T>(Map<int, List<T>>? values) => recursiveLayers
+        .map((layer) => '$layer:${values?[layer]?.length ?? 0}')
+        .join(',');
+    final recursiveBspSample = <String>[
+      for (final layer in recursiveLayers)
+        for (final bsp in active?.recursiveSegBsps[layer] ?? const <BspPoint>[])
+          '$layer段@${bsp.rawIndex}:${bsp.type}',
+    ].take(12).join(',');
 
     final buffer = StringBuffer()
       ..writeln('S13_CURRENT_SETTINGS_EVIDENCE')
@@ -1067,6 +1208,15 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       ..writeln('active_seg_count=${active?.segs.length ?? 0}')
       ..writeln('active_zs_count=${active?.zss.length ?? 0}')
       ..writeln('active_bsp_count=${active?.bsps.length ?? 0}')
+      ..writeln(
+          'recursive_seg_counts=${recursiveCounts(active?.recursiveSegLayers)}')
+      ..writeln(
+          'recursive_zs_counts=${recursiveCounts(active?.recursiveSegZss)}')
+      ..writeln(
+          'recursive_real_bsp_counts=${recursiveCounts(active?.recursiveSegBsps)}')
+      ..writeln(
+          'recursive_candidate_bsp_counts=${recursiveCounts(active?.recursiveSegBspCandidates)}')
+      ..writeln('recursive_real_bsp_sample=$recursiveBspSample')
       ..writeln('nested_markers=${_nestedBspMarkers.length}')
       ..writeln('candidate_trail=$_bspCandidateTrailCount')
       ..writeln()
@@ -1158,6 +1308,35 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               _infoButton(
                   '1.382', _rhythmSummaryFor(_activeSnapshot).shortText),
             ]),
+          ],
+        ),
+        SideToolbarSection(
+          title: 'segN 真实买卖点',
+          children: <Widget>[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                OutlinedButton.icon(
+                  onPressed:
+                      _activeSnapshot == null ? null : _resetChartToLatest,
+                  icon: const Icon(Icons.last_page, size: 16),
+                  label: const Text('回到最新'),
+                ),
+                for (final result in _recursiveRealBspResults.take(24))
+                  FilledButton.tonal(
+                    onPressed: () =>
+                        _jumpToRecursiveBsp(result.layer, result.bsp),
+                    child: Text(
+                        '${result.layer}段 ${result.bsp.type} @${result.bsp.rawIndex}'),
+                  ),
+              ],
+            ),
+            if (_recursiveRealBspResults.isEmpty)
+              const Text(
+                '当前快照没有 CBSPointList 真实买卖点；橙色候选端点不参与策略组合。',
+                style: TextStyle(color: Colors.white54, fontSize: 11),
+              ),
           ],
         ),
         SideToolbarSection(
@@ -1441,6 +1620,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     return Stack(children: <Widget>[
       Positioned.fill(
           child: RecursiveSegOriginKlineChart(
+              key: ValueKey('s13-chart-$_chartGeneration-$_activeLevel'),
               snapshot: s,
               showFx: true,
               showFxLine: true,

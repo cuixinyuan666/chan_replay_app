@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 /// build chan.py config should pass [configFields] so the backend recursive
 /// segment exporter receives one consistent N value.
 class LevelPromoterSettings {
-  static const int defaultMaxLayer = 2;
+  static const int defaultMaxLayer = 3;
 
   static final ValueNotifier<int> maxLayer = ValueNotifier<int>(defaultMaxLayer);
 

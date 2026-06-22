@@ -53,9 +53,9 @@ class ChanConfigStore {
 
   static const Map<String, Object?> defaultValues = <String, Object?>{
     'skip_step': 0,
-    'bi_algo': 'normal',
+    'bi_algo': 'fx',
     'bi_strict': true,
-    'bi_fx_check': 'strict',
+    'bi_fx_check': 'loss',
     'gap_as_kl': false,
     'bi_end_is_peak': true,
     'bi_allow_sub_peak': true,

@@ -54,13 +54,16 @@ class ResearchBackendClient {
       String endpoint, Map<String, dynamic> payload) async {
     await _assertCompatibleBackend(sourceBaseUrl);
     final uri = Uri.parse(_join(sourceBaseUrl, endpoint));
+    final timeout = endpoint.endsWith('/seg-composite/backtest')
+        ? const Duration(minutes: 5)
+        : const Duration(seconds: 60);
     final response = await _client
         .post(
           uri,
           headers: const {'content-type': 'application/json'},
           body: jsonEncode(payload),
         )
-        .timeout(const Duration(seconds: 60));
+        .timeout(timeout);
     final body = utf8.decode(response.bodyBytes);
     if (response.statusCode == 404 && _canAutoFallback(sourceBaseUrl)) {
       throw _ResearchBackendMismatch(

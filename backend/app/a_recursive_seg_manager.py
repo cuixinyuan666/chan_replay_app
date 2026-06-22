@@ -196,28 +196,22 @@ def _empty_bsp_list(bsp_conf: Any) -> Any:
 
 def build_level_zs(base_lines: Any, upper_lines: Any, zs_conf: Any) -> Any:
     """Calculate ZS for one recursive level using chan.py CZSList."""
-    try:
-        from KLine.KLine_List import update_zs_in_seg  # type: ignore
-        from ZS.ZSList import CZSList  # type: ignore
+    from KLine.KLine_List import update_zs_in_seg  # type: ignore
+    from ZS.ZSList import CZSList  # type: ignore
 
-        zs_list = CZSList(zs_config=zs_conf)
-        zs_list.cal_bi_zs(base_lines, upper_lines)
-        update_zs_in_seg(base_lines, upper_lines, zs_list)
-        return zs_list
-    except Exception:  # noqa: BLE001 - export-only layer must not break native result
-        return _empty_zs_list(zs_conf)
+    zs_list = CZSList(zs_config=zs_conf)
+    zs_list.cal_bi_zs(base_lines, upper_lines)
+    update_zs_in_seg(base_lines, upper_lines, zs_list)
+    return zs_list
 
 
 def build_level_bsp(base_lines: Any, upper_lines: Any, bsp_conf: Any) -> Any:
     """Calculate BSP for one recursive level using chan.py CBSPointList."""
-    try:
-        from BuySellPoint.BSPointList import CBSPointList  # type: ignore
+    from BuySellPoint.BSPointList import CBSPointList  # type: ignore
 
-        bsp_list = CBSPointList(bs_point_config=bsp_conf)
-        bsp_list.cal(base_lines, upper_lines)
-        return bsp_list
-    except Exception:  # noqa: BLE001 - export-only layer must not break native result
-        return _empty_bsp_list(bsp_conf)
+    bsp_list = CBSPointList(bs_point_config=bsp_conf)
+    bsp_list.cal(base_lines, upper_lines)
+    return bsp_list
 
 
 def ensure_recursive_seg_klc_anchors(line: Any) -> None:
@@ -255,12 +249,9 @@ def build_hidden_seg_layer(source_lines: Any, conf: Any) -> Any:
     from KLine.KLine_List import cal_seg, get_seglist_instance  # type: ignore
 
     hidden_seg_list = get_seglist_instance(seg_config=conf.seg_conf, lv=SEG_TYPE.SEG)
-    try:
-        prepare_recursive_seg_source(source_lines)
-        cal_seg(source_lines, hidden_seg_list, -1)
-        return hidden_seg_list
-    except Exception:  # noqa: BLE001 - return an empty compatible list
-        return get_seglist_instance(seg_config=conf.seg_conf, lv=SEG_TYPE.SEG)
+    prepare_recursive_seg_source(source_lines)
+    cal_seg(source_lines, hidden_seg_list, -1)
+    return hidden_seg_list
 
 
 def build_extra_seg_chain(base_segseg: Any, conf: Any, max_extra_level: int) -> dict[str, Any]:
@@ -433,8 +424,8 @@ def _export_zs_list(zs_list: Any, *, layer: int) -> list[dict[str, Any]]:
     for i, zs in enumerate(_as_list(zs_list)):
         begin_line = _attr(zs, ('begin_bi', 'start_bi', 'bi_in'), None)
         end_line = _attr(zs, ('end_bi', 'bi_out'), None)
-        begin = _attr(zs, ('begin',), None)
-        end = _attr(zs, ('end',), None)
+        begin = _begin_klu(begin_line) or _attr(zs, ('begin',), None)
+        end = _end_klu(end_line) or _attr(zs, ('end',), None)
         is_one_bi_zs = False
         fn = getattr(zs, 'is_one_bi_zs', None)
         if callable(fn):
@@ -523,6 +514,175 @@ def _export_all_endpoint_bsp(layers: dict[str, list[dict[str, Any]]], max_level:
     return result
 
 
+class RecursiveSegRuntimeState:
+    """Persistent seg2..segN calculation state shared by replay frames.
+
+    Native chan.py already keeps incremental state for seg1/seg2. This object
+    extends the same contract to higher recursive layers and preserves each
+    layer's last confirmed boundary, ZS list and CBSPointList across step frames.
+    """
+
+    def __init__(self, max_level: int = DEFAULT_RECURSIVE_SEG_MAX_LEVEL, config: dict[str, Any] | None = None):
+        self.max_level = max(2, int(max_level))
+        self.internal_max_level = _max_extra_level_needed(config, self.max_level)
+        self.conf: Any | None = None
+        self.line_objects: dict[int, Any] = {}
+        self.last_sure_seg_start: dict[int, int] = {}
+        self.zs_objects: dict[int, Any] = {}
+        self.bsp_objects: dict[int, Any] = {}
+        self.bsp_history: dict[int, dict[tuple[int, bool], dict[str, Any]]] = {}
+        self.bsp_delta: dict[int, list[dict[str, Any]]] = {}
+        self.errors: dict[str, str] = {}
+        self.update_count = 0
+
+    def capture_bsp_history(
+        self,
+        *,
+        layer: int,
+        rows: list[dict[str, Any]],
+        recognized_raw_index: int | None,
+        recognized_time: str | None,
+        materialize: bool = True,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        history = self.bsp_history.setdefault(layer, {})
+        delta: list[dict[str, Any]] = []
+        if recognized_raw_index is not None:
+            for row in rows:
+                anchor = _int_value(row, 'anchor_raw_index', 'raw_index', 'rawIndex')
+                if anchor is None:
+                    continue
+                key = (anchor, bool(row.get('is_buy', False)))
+                if key in history:
+                    continue
+                frozen = dict(row)
+                frozen.update({
+                    'index': len(history),
+                    'anchor_raw_index': anchor,
+                    'anchor_time': row.get('time'),
+                    'recognized_raw_index': recognized_raw_index,
+                    'recognized_time': recognized_time,
+                    'raw_index': recognized_raw_index,
+                    'time': recognized_time or row.get('time'),
+                    'first_recognition': True,
+                    'as_of_step': True,
+                    'source': 'recursive_seg_bsp_step_history',
+                })
+                history[key] = frozen
+                delta.append(dict(frozen))
+        self.bsp_delta[layer] = delta
+        if not materialize:
+            return [], delta
+        ordered = sorted(
+            (dict(row) for row in history.values()),
+            key=lambda row: (
+                _int_value(row, 'recognized_raw_index', 'raw_index') or -1,
+                _int_value(row, 'anchor_raw_index') or -1,
+                str(row.get('type') or ''),
+            ),
+        )
+        for index, row in enumerate(ordered):
+            row['index'] = index
+        return ordered, delta
+
+    def _new_seg_list(self) -> Any:
+        from Common.CEnum import SEG_TYPE  # type: ignore
+        from KLine.KLine_List import get_seglist_instance  # type: ignore
+
+        return get_seglist_instance(seg_config=self.conf.seg_conf, lv=SEG_TYPE.SEG)
+
+    def _record_error(self, key: str, exc: Exception) -> None:
+        self.errors[key] = f'{type(exc).__name__}: {exc}'
+
+    def _update_recursive_lines(self) -> None:
+        from KLine.KLine_List import cal_seg  # type: ignore
+
+        for level_num in range(3, self.internal_max_level + 1):
+            source = self.line_objects.get(level_num - 1)
+            if source is None:
+                break
+            target = self.line_objects.get(level_num)
+            if target is None:
+                target = self._new_seg_list()
+                self.line_objects[level_num] = target
+                self.last_sure_seg_start[level_num] = -1
+            try:
+                prepare_recursive_seg_source(source)
+                self.last_sure_seg_start[level_num] = cal_seg(
+                    source,
+                    target,
+                    self.last_sure_seg_start.get(level_num, -1),
+                )
+                self.errors.pop(f'seg{level_num}', None)
+            except Exception as exc:  # noqa: BLE001 - preserve last valid state and report it
+                self._record_error(f'seg{level_num}', exc)
+                break
+
+    def _update_zs_and_bsp(self) -> None:
+        from KLine.KLine_List import update_zs_in_seg  # type: ignore
+
+        for level_num in range(2, self.max_level + 1):
+            base = self.line_objects.get(level_num)
+            upper = self.line_objects.get(level_num + 1)
+            if base is None or upper is None:
+                continue
+
+            zs_list = self.zs_objects.get(level_num)
+            if zs_list is None:
+                zs_list = _empty_zs_list(self.conf.zs_conf)
+                self.zs_objects[level_num] = zs_list
+            try:
+                zs_list.cal_bi_zs(base, upper)
+                update_zs_in_seg(base, upper, zs_list)
+                self.errors.pop(f'seg{level_num}_zs', None)
+            except Exception as exc:  # noqa: BLE001 - retain prior confirmed state and report it
+                self._record_error(f'seg{level_num}_zs', exc)
+
+            bsp_list = self.bsp_objects.get(level_num)
+            if bsp_list is None:
+                bsp_list = _empty_bsp_list(self.conf.seg_bs_point_conf)
+                self.bsp_objects[level_num] = bsp_list
+            try:
+                bsp_list.cal(base, upper)
+                self.errors.pop(f'seg{level_num}_bsp', None)
+            except Exception as exc:  # noqa: BLE001 - retain prior confirmed state and report it
+                self._record_error(f'seg{level_num}_bsp', exc)
+
+    def update(self, level_obj: Any) -> None:
+        self.conf = _chan_config(level_obj)
+        if self.conf is None:
+            self.errors['config'] = 'level object does not expose chan.py config/conf'
+            return
+        self.errors.pop('config', None)
+
+        native_seg = _native_container(level_obj, ('seg_list', 'seg_lst'))
+        native_segseg = _native_container(level_obj, ('segseg_list', 'seg_seg_list', 'segseg_lst'))
+        self.line_objects[1] = native_seg if native_seg is not None else []
+        if native_segseg is not None:
+            self.line_objects[2] = native_segseg
+        else:
+            layer2 = self.line_objects.get(2)
+            if layer2 is None:
+                layer2 = self._new_seg_list()
+                self.line_objects[2] = layer2
+                self.last_sure_seg_start[2] = -1
+            try:
+                from KLine.KLine_List import cal_seg  # type: ignore
+
+                prepare_recursive_seg_source(self.line_objects[1])
+                self.last_sure_seg_start[2] = cal_seg(
+                    self.line_objects[1],
+                    layer2,
+                    self.last_sure_seg_start.get(2, -1),
+                )
+                self.errors.pop('seg2', None)
+            except Exception as exc:  # noqa: BLE001
+                self._record_error('seg2', exc)
+
+        self._update_recursive_lines()
+        self._update_zs_and_bsp()
+        self.update_count += 1
+
+
 class RecursiveSegManager:
     """Export classic chan.py recursive segment, ZS, and BSP layers.
 
@@ -532,9 +692,17 @@ class RecursiveSegManager:
     the same CChanConfig zs_conf / seg_bs_point_conf.
     """
 
-    def __init__(self, max_level: int = DEFAULT_RECURSIVE_SEG_MAX_LEVEL):
+    def __init__(
+        self,
+        max_level: int = DEFAULT_RECURSIVE_SEG_MAX_LEVEL,
+        *,
+        runtime_state: RecursiveSegRuntimeState | None = None,
+        config: dict[str, Any] | None = None,
+    ):
         self.max_level = max(2, int(max_level))
         self.internal_max_level = self.max_level + 1
+        self.track_step_history = runtime_state is not None
+        self.runtime_state = runtime_state or RecursiveSegRuntimeState(self.max_level, config)
 
     def _payload(
         self,
@@ -543,6 +711,8 @@ class RecursiveSegManager:
         hidden_line_rows: dict[str, list[dict[str, Any]]],
         zs_rows: dict[str, list[dict[str, Any]]],
         bsp_rows: dict[str, list[dict[str, Any]]],
+        bsp_history_rows: dict[str, list[dict[str, Any]]],
+        bsp_delta_rows: dict[str, list[dict[str, Any]]],
         status: dict[str, Any],
     ) -> dict[str, Any]:
         endpoint_bsp_layers = _export_all_endpoint_bsp(line_rows, self.max_level)
@@ -551,6 +721,8 @@ class RecursiveSegManager:
             'seg_hidden_layers': hidden_line_rows,
             'seg_zs_layers': zs_rows,
             'seg_bsp_layers': bsp_rows,
+            'seg_bsp_history_layers': bsp_history_rows,
+            'seg_bsp_delta_layers': bsp_delta_rows,
             'seg_endpoint_bsp_layers': endpoint_bsp_layers,
             'recursive_seg_meta': status,
         }
@@ -562,94 +734,119 @@ class RecursiveSegManager:
             result[f'seg{layer}_endpoint_bsp'] = rows
         return result
 
-    def export(self, level_obj: Any, native_seg_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-        native_seg_list = _native_container(level_obj, ('seg_list', 'seg_lst'))
-        native_segseg_list = _native_container(level_obj, ('segseg_list', 'seg_seg_list', 'segseg_lst'))
-        conf = _chan_config(level_obj)
-        if conf is None:
-            return self._payload(
-                line_rows={'1': list(native_seg_rows or [])},
-                hidden_line_rows={},
-                zs_rows={},
-                bsp_rows={},
-                status={
-                    'max_level': self.max_level,
-                    'errors': {'config': 'level object does not expose chan.py config/conf; recursive ZS/BSP skipped'},
-                    'classic_recursive_enabled': False,
-                },
-            )
-
-        self.internal_max_level = _max_extra_level_needed({}, self.max_level)
-        line_objects: dict[int, Any] = {}
+    def export(
+        self,
+        level_obj: Any,
+        native_seg_rows: list[dict[str, Any]] | None = None,
+        *,
+        recognized_raw_index: int | None = None,
+        recognized_time: str | None = None,
+    ) -> dict[str, Any]:
+        state = self.runtime_state
+        state.update(level_obj)
+        self.internal_max_level = state.internal_max_level
         line_rows: dict[str, list[dict[str, Any]]] = {}
         hidden_line_rows: dict[str, list[dict[str, Any]]] = {}
+        native_segseg = _native_container(level_obj, ('segseg_list', 'seg_seg_list', 'segseg_lst'))
+
+        line_rows['1'] = list(
+            native_seg_rows
+            or _export_line_list(state.line_objects.get(1), layer=1, input_layer=0)
+        )
+        for level_num in range(2, self.internal_max_level + 1):
+            rows = _export_line_list(
+                state.line_objects.get(level_num),
+                layer=level_num,
+                input_layer=level_num - 1,
+            )
+            if level_num <= self.max_level:
+                line_rows[str(level_num)] = rows
+            else:
+                hidden_line_rows[str(level_num)] = rows
+
+        zs_rows = {
+            str(level_num): _export_zs_list(state.zs_objects.get(level_num), layer=level_num)
+            for level_num in range(2, self.max_level + 1)
+        }
+        bsp_rows = {
+            str(level_num): _export_bsp_list(state.bsp_objects.get(level_num), layer=level_num)
+            for level_num in range(2, self.max_level + 1)
+        }
+        if self.track_step_history:
+            bsp_history_rows: dict[str, list[dict[str, Any]]] = {}
+            bsp_delta_rows: dict[str, list[dict[str, Any]]] = {}
+            for level_num in range(2, self.max_level + 1):
+                history, delta = state.capture_bsp_history(
+                    layer=level_num,
+                    rows=bsp_rows.get(str(level_num), []),
+                    recognized_raw_index=recognized_raw_index,
+                    recognized_time=recognized_time,
+                )
+                bsp_history_rows[str(level_num)] = history
+                bsp_delta_rows[str(level_num)] = delta
+        else:
+            bsp_history_rows = {}
+            bsp_delta_rows = {}
         status: dict[str, Any] = {
             'max_level': self.max_level,
             'internal_max_level': self.internal_max_level,
-            'native_layers': ['1'],
-            'generated_layers': [],
-            'hidden_layers': [],
-            'errors': {},
-            'classic_recursive_enabled': True,
+            'native_layers': ['1', *(['2'] if native_segseg is not None else [])],
+            'generated_layers': [
+                str(level_num)
+                for level_num in range(2 if native_segseg is None else 3, self.max_level + 1)
+            ],
+            'hidden_layers': [
+                str(level_num)
+                for level_num in range(self.max_level + 1, self.internal_max_level + 1)
+            ],
+            'errors': dict(state.errors),
+            'classic_recursive_enabled': state.conf is not None,
+            'stateful_incremental': True,
+            'step_history_enabled': self.track_step_history,
+            'bsp_history_policy': 'same layer/anchor/side freezes first recognized label; anchor and recognized raw indexes are both retained',
+            'state_update_count': state.update_count,
+            'last_sure_seg_start': {
+                str(level): value
+                for level, value in sorted(state.last_sure_seg_start.items())
+            },
+            'last_sure_zs_pos': {
+                str(level): int(getattr(value, 'last_sure_pos', -1))
+                for level, value in sorted(state.zs_objects.items())
+            },
+            'last_sure_zs_seg_idx': {
+                str(level): int(getattr(value, 'last_seg_idx', 0))
+                for level, value in sorted(state.zs_objects.items())
+            },
+            'last_sure_bsp_pos': {
+                str(level): int(getattr(value, 'last_sure_pos', -1))
+                for level, value in sorted(state.bsp_objects.items())
+            },
+            'last_sure_bsp_seg_idx': {
+                str(level): int(getattr(value, 'last_sure_seg_idx', 0))
+                for level, value in sorted(state.bsp_objects.items())
+            },
             'line_policy': 'layer1=native seg_list, layer2=native segseg_list when available, layer>=3=chan.py cal_seg(previous_layer)',
             'zs_policy': 'seg2_zs..segN_zs are calculated by CZSList.cal_bi_zs(base_layer, upper_layer) with conf.zs_conf',
             'bsp_policy': 'seg2_bsp..segN_bsp are calculated by CBSPointList.cal(base_layer, upper_layer) with conf.seg_bs_point_conf',
             'endpoint_candidate_policy': 'old endpoint-derived candidates are kept under seg_endpoint_bsp_layers / seg{N}_endpoint_bsp only',
         }
-
-        line_objects[1] = native_seg_list
-        line_rows['1'] = list(native_seg_rows or _export_line_list(native_seg_list, layer=1, input_layer=0))
-        if not line_rows['1']:
-            line_rows['2'] = []
-            status['errors']['1'] = 'native seg_list not available or empty; recursive promotion cannot start'
-            return self._payload(line_rows=line_rows, hidden_line_rows=hidden_line_rows, zs_rows={}, bsp_rows={}, status=status)
-
-        if native_segseg_list is not None:
-            line_objects[2] = native_segseg_list
-            line_rows['2'] = _export_line_list(native_segseg_list, layer=2, input_layer=1)
-            status['native_layers'].append('2')
-        else:
-            try:
-                layer2 = build_hidden_seg_layer(native_seg_list, conf)
-                line_objects[2] = layer2
-                line_rows['2'] = _export_line_list(layer2, layer=2, input_layer=1)
-                status['generated_layers'].append('2')
-                status['errors']['2_native'] = 'native segseg_list not available; layer2 generated from native seg_list with chan.py cal_seg'
-            except Exception as exc:  # noqa: BLE001
-                line_objects[2] = []
-                line_rows['2'] = []
-                status['errors']['2'] = f'{type(exc).__name__}: {exc}'
-                return self._payload(line_rows=line_rows, hidden_line_rows=hidden_line_rows, zs_rows={}, bsp_rows={}, status=status)
-
-        extra_objects = build_extra_seg_chain(line_objects[2], conf, self.internal_max_level)
-        for level_id, obj in extra_objects.items():
-            level_num = custom_seg_level_num(level_id)
-            if level_num is None:
-                continue
-            line_objects[level_num] = obj
-            rows = _export_line_list(obj, layer=level_num, input_layer=level_num - 1)
-            if level_num <= self.max_level:
-                line_rows[str(level_num)] = rows
-                status['generated_layers'].append(str(level_num))
-            else:
-                hidden_line_rows[str(level_num)] = rows
-                status['hidden_layers'].append(str(level_num))
-
-        # Ensure visible empty keys exist for a stable schema.
-        for level_num in range(2, self.max_level + 1):
-            line_rows.setdefault(str(level_num), [])
-
-        calc_lines = {seg_level_id(num): obj for num, obj in line_objects.items() if num >= 2}
-        extra_zs, extra_bsp = build_extra_zs_and_bsp(calc_lines, conf, min_level=2, max_level=self.max_level)
-        zs_rows: dict[str, list[dict[str, Any]]] = {}
-        bsp_rows: dict[str, list[dict[str, Any]]] = {}
-        for level_num in range(2, self.max_level + 1):
-            level_id = seg_level_id(level_num)
-            zs_rows[str(level_num)] = _export_zs_list(extra_zs.get(level_id), layer=level_num) if level_id in extra_zs else []
-            bsp_rows[str(level_num)] = _export_bsp_list(extra_bsp.get(level_id), layer=level_num) if level_id in extra_bsp else []
         status['seg_zs_layer_counts'] = {key: len(rows) for key, rows in zs_rows.items()}
         status['seg_bsp_layer_counts'] = {key: len(rows) for key, rows in bsp_rows.items()}
-        return self._payload(line_rows=line_rows, hidden_line_rows=hidden_line_rows, zs_rows=zs_rows, bsp_rows=bsp_rows, status=status)
+        status['seg_bsp_history_layer_counts'] = {
+            key: len(rows) for key, rows in bsp_history_rows.items()
+        }
+        status['seg_bsp_delta_layer_counts'] = {
+            key: len(rows) for key, rows in bsp_delta_rows.items()
+        }
+        return self._payload(
+            line_rows=line_rows,
+            hidden_line_rows=hidden_line_rows,
+            zs_rows=zs_rows,
+            bsp_rows=bsp_rows,
+            bsp_history_rows=bsp_history_rows,
+            bsp_delta_rows=bsp_delta_rows,
+            status=status,
+        )
 
 
 def build_recursive_seg_payload(
@@ -657,7 +854,19 @@ def build_recursive_seg_payload(
     level_obj: Any,
     structures: dict[str, Any],
     config: dict[str, Any] | None,
+    runtime_state: RecursiveSegRuntimeState | None = None,
+    recognized_raw_index: int | None = None,
+    recognized_time: str | None = None,
 ) -> dict[str, Any]:
-    manager = RecursiveSegManager(max_level=_max_level_from_config(config))
+    manager = RecursiveSegManager(
+        max_level=_max_level_from_config(config),
+        runtime_state=runtime_state,
+        config=config,
+    )
     native_seg_rows = structures.get('seg') if isinstance(structures.get('seg'), list) else []
-    return manager.export(level_obj, native_seg_rows=native_seg_rows)
+    return manager.export(
+        level_obj,
+        native_seg_rows=native_seg_rows,
+        recognized_raw_index=recognized_raw_index,
+        recognized_time=recognized_time,
+    )

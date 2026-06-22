@@ -36,6 +36,8 @@ class _LazyMultiLevelFrameList extends ListBase<MultiLevelChanSnapshot> {
   final Map<String, dynamic> timeLog;
   final Map<int, MultiLevelChanSnapshot> _cache =
       <int, MultiLevelChanSnapshot>{};
+  final Map<int, Map<String, dynamic>> _historyFrameCache =
+      <int, Map<String, dynamic>>{};
 
   _LazyMultiLevelFrameList({
     required this.rawFrames,
@@ -63,7 +65,7 @@ class _LazyMultiLevelFrameList extends ListBase<MultiLevelChanSnapshot> {
     }
     final sw = Stopwatch()..start();
     final parsed = MultiLevelChanAnalysisParser.parseFrame(
-      rawFrames[index],
+      _frameWithAccumulatedBspHistory(index),
       baseLevels: baseLevels,
       parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
     );
@@ -85,6 +87,74 @@ class _LazyMultiLevelFrameList extends ListBase<MultiLevelChanSnapshot> {
     timeLog['lazy_frame_last_index'] = index;
     timeLog['lazy_frame_last_parse_ms'] = sw.elapsedMilliseconds;
     return enriched;
+  }
+
+  Map<String, dynamic> _frameWithAccumulatedBspHistory(int index) {
+    final cached = _historyFrameCache[index];
+    if (cached != null) return cached;
+    final raw = rawFrames[index];
+    final frame =
+        raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    final rawLevels = frame['levels'];
+    if (rawLevels is! Map) return frame;
+    final previous =
+        index > 0 ? _frameWithAccumulatedBspHistory(index - 1) : null;
+    final previousLevels = previous?['levels'];
+    final nextLevels = <String, dynamic>{};
+    for (final entry in rawLevels.entries) {
+      final levelName = '${entry.key}';
+      final source = entry.value;
+      if (source is! Map) {
+        nextLevels[levelName] = source;
+        continue;
+      }
+      final payload = Map<String, dynamic>.from(source);
+      final isSeed = payload['bsp_history_seed'] == true || index == 0;
+      if (!isSeed && previousLevels is Map) {
+        final previousRaw =
+            previousLevels[levelName] ?? previousLevels[entry.key];
+        final previousPayload = previousRaw is Map ? previousRaw : const {};
+        final baseHistory =
+            previousPayload['bsp_history'] ?? previousPayload['bsp'];
+        final baseDelta =
+            payload['bsp_delta'] ?? payload['bsp_history'] ?? payload['bsp'];
+        final mergedBase = <dynamic>[
+          if (baseHistory is List) ...baseHistory,
+          if (baseDelta is List) ...baseDelta,
+        ];
+        payload['bsp_history'] = mergedBase;
+        payload['bsp'] = mergedBase;
+
+        final previousRecursive = previousPayload['seg_bsp_history_layers'];
+        final deltaRecursive = payload['seg_bsp_delta_layers'] ??
+            payload['seg_bsp_history_layers'];
+        final mergedRecursive = <String, dynamic>{};
+        final layerNames = <String>{
+          if (previousRecursive is Map)
+            for (final key in previousRecursive.keys) '$key',
+          if (deltaRecursive is Map)
+            for (final key in deltaRecursive.keys) '$key',
+        };
+        for (final layer in layerNames) {
+          final before = previousRecursive is Map
+              ? previousRecursive[layer] ??
+                  previousRecursive[int.tryParse(layer)]
+              : null;
+          final delta = deltaRecursive is Map
+              ? deltaRecursive[layer] ?? deltaRecursive[int.tryParse(layer)]
+              : null;
+          mergedRecursive[layer] = <dynamic>[
+            if (before is List) ...before,
+            if (delta is List) ...delta,
+          ];
+        }
+        payload['seg_bsp_history_layers'] = mergedRecursive;
+      }
+      nextLevels[levelName] = payload;
+    }
+    frame['levels'] = nextLevels;
+    _historyFrameCache[index] = frame;
+    return frame;
   }
 
   @override

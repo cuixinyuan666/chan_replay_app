@@ -83,7 +83,9 @@ class _RootPageState extends State<RootPage> {
                     const _RouteBuilder(child: AshareBspScannerPage()),
                     const _RouteBuilder(child: LevelPromoterPage()),
                     const _RouteBuilder(child: S8StrategyBatchPage()),
-                    const _RouteBuilder(child: ResearchBacktestPage()),
+                    _RouteBuilder(
+                      child: ResearchBacktestPage(onOpenRoute: _open),
+                    ),
                     const _RouteBuilder(child: ChanSettingsPage()),
                     const _RouteBuilder(child: RunLogPage()),
                     const _RouteBuilder(child: ChipDistributionPage()),

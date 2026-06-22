@@ -48,7 +48,9 @@ void main() {
     expect(effectiveConfig['rhythm_max_hits_per_line'], 3);
 
     expect(effectiveConfig.containsKey('bsp_advanced'), false);
-    expect(ChanConfigStore.changedCount, greaterThanOrEqualTo(4));
+    // bi_algo=fx is now the captured app default; the other three settings
+    // remain user changes.
+    expect(ChanConfigStore.changedCount, 3);
   });
 
   test('bsp_advanced is expanded to backend override fields', () {

@@ -112,6 +112,9 @@ class ChanSnapshotJsonParser {
 
     final recursiveSegBspSw = Stopwatch()..start();
     final recursiveSegBsps = _parseRecursiveSegBspLayers(data);
+    final recursiveSegBspCandidates =
+        _parseRecursiveSegBspCandidateLayers(data);
+    final recursiveSegZss = _parseRecursiveSegZsLayers(data);
     _addTiming(
       timing,
       '$timingPrefix.recursive_seg_bsp_layers',
@@ -166,6 +169,8 @@ class ChanSnapshotJsonParser {
       segs: segs,
       recursiveSegLayers: recursiveSegLayers,
       recursiveSegBsps: recursiveSegBsps,
+      recursiveSegBspCandidates: recursiveSegBspCandidates,
+      recursiveSegZss: recursiveSegZss,
       zss: zss,
       bsps: bsps,
       indicators: indicators,
@@ -343,7 +348,9 @@ class ChanSnapshotJsonParser {
     void putLayer(Object? rawLayer, Object? rawRows, {bool overwrite = false}) {
       final layer = _int(rawLayer);
       if (layer == null) return;
-      if (!overwrite && result.containsKey(layer) && result[layer]!.isNotEmpty) {
+      if (!overwrite &&
+          result.containsKey(layer) &&
+          result[layer]!.isNotEmpty) {
         return;
       }
       if (rawRows is! List) {
@@ -360,7 +367,10 @@ class ChanSnapshotJsonParser {
       result[layer] = parsed;
     }
 
-    final grouped = data['seg_bsp_layers'] ?? data['segBspLayers'];
+    final grouped = data['seg_bsp_history_layers'] ??
+        data['segBspHistoryLayers'] ??
+        data['seg_bsp_layers'] ??
+        data['segBspLayers'];
     if (grouped is Map) {
       for (final entry in grouped.entries) {
         putLayer(entry.key, entry.value, overwrite: true);
@@ -373,6 +383,67 @@ class ChanSnapshotJsonParser {
       putLayer(layer, entry.value);
     }
 
+    return result;
+  }
+
+  static Map<int, List<BspPoint>> _parseRecursiveSegBspCandidateLayers(
+      Map<String, dynamic> data) {
+    final result = <int, List<BspPoint>>{};
+
+    void putLayer(Object? rawLayer, Object? rawRows) {
+      final layer = _int(rawLayer);
+      if (layer == null || rawRows is! List) return;
+      final parsed = <BspPoint>[];
+      for (final row in rawRows) {
+        if (row is Map) {
+          final item = _parseBsp(row, parsed.length);
+          if (item != null) parsed.add(item);
+        }
+      }
+      result[layer] = parsed;
+    }
+
+    final grouped =
+        data['seg_endpoint_bsp_layers'] ?? data['segEndpointBspLayers'];
+    if (grouped is Map) {
+      for (final entry in grouped.entries) {
+        putLayer(entry.key, entry.value);
+      }
+    }
+    for (final entry in data.entries) {
+      final match = RegExp(r'^seg(\d+)_endpoint_bsp$').firstMatch(entry.key);
+      if (match != null) putLayer(match.group(1), entry.value);
+    }
+    return result;
+  }
+
+  static Map<int, List<ZS>> _parseRecursiveSegZsLayers(
+      Map<String, dynamic> data) {
+    final result = <int, List<ZS>>{};
+
+    void putLayer(Object? rawLayer, Object? rawRows) {
+      final layer = _int(rawLayer);
+      if (layer == null || rawRows is! List) return;
+      final parsed = <ZS>[];
+      for (final row in rawRows) {
+        if (row is Map) {
+          final item = _parseZs(row, parsed.length);
+          if (item != null) parsed.add(item);
+        }
+      }
+      result[layer] = parsed;
+    }
+
+    final grouped = data['seg_zs_layers'] ?? data['segZsLayers'];
+    if (grouped is Map) {
+      for (final entry in grouped.entries) {
+        putLayer(entry.key, entry.value);
+      }
+    }
+    for (final entry in data.entries) {
+      final match = RegExp(r'^seg(\d+)_zs$').firstMatch(entry.key);
+      if (match != null) putLayer(match.group(1), entry.value);
+    }
     return result;
   }
 
@@ -419,8 +490,14 @@ class ChanSnapshotJsonParser {
   }
 
   static ZS? _parseZs(Map row, int index) {
-    final startBi = _int(row['start_bi_index'] ?? row['startBiIndex']);
-    final endBi = _int(row['end_bi_index'] ?? row['endBiIndex']);
+    final startBi = _int(row['start_bi_index'] ??
+        row['startBiIndex'] ??
+        row['start_parent_index'] ??
+        row['startParentIndex']);
+    final endBi = _int(row['end_bi_index'] ??
+        row['endBiIndex'] ??
+        row['end_parent_index'] ??
+        row['endParentIndex']);
     final zg = _num(row['zg']);
     final zd = _num(row['zd']);
     final gg = _num(row['gg']);
@@ -442,7 +519,7 @@ class ChanSnapshotJsonParser {
         zd: zd,
         gg: gg,
         dd: dd,
-        confirmed: row['confirmed'] == true,
+        confirmed: _bool(row['confirmed'] ?? row['is_sure'], fallback: true),
         biInIndex: _int(row['bi_in_index'] ?? row['biInIndex']),
         biOutIndex: _int(row['bi_out_index'] ?? row['biOutIndex']),
         startSegIndex: _int(row['start_seg_index'] ?? row['startSegIndex']),
@@ -456,6 +533,9 @@ class ChanSnapshotJsonParser {
     return BspPoint(
       index: _int(row['index']) ?? index,
       rawIndex: rawIndex,
+      anchorRawIndex: _int(row['anchor_raw_index'] ?? row['anchorRawIndex']),
+      recognizedRawIndex:
+          _int(row['recognized_raw_index'] ?? row['recognizedRawIndex']),
       time: _parseTime(row['time']),
       price: price,
       type: '${row['type'] ?? 'BSP'}',
@@ -464,6 +544,11 @@ class ChanSnapshotJsonParser {
       segIndex: _int(row['seg_index'] ?? row['segIndex']),
       zsIndex: _int(row['zs_index'] ?? row['zsIndex']),
       confirmed: _bool(row['confirmed'] ?? row['is_sure'], fallback: true),
+      buy: row.containsKey('is_buy')
+          ? _bool(row['is_buy'], fallback: false)
+          : null,
+      source: '${row['source'] ?? ''}',
+      derived: _bool(row['derived'], fallback: false),
     );
   }
 

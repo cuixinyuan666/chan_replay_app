@@ -1,12 +1,35 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/models/bsp.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../core/settings/level_promoter_settings.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import '../drawing/tradingview_toolbox_host.dart';
 import 'origin_kline_chart_unlimited_interaction.dart' as base;
+
+@visibleForTesting
+String recursiveSegBspLabel(int layer, String rawType) {
+  var type = rawType.trim();
+  if (type.toLowerCase().startsWith('buy')) {
+    type = type.substring(3);
+  } else if (type.toLowerCase().startsWith('sell')) {
+    type = type.substring(4);
+  } else if (RegExp(r'^[bBsS]').hasMatch(type)) {
+    type = type.substring(1);
+  }
+  type = type.trim().toLowerCase();
+  return '$layer段${type.isEmpty ? '买卖点' : type}';
+}
+
+@visibleForTesting
+bool recursiveSegCandidateIsSuperseded(
+  Map<int, List<BspPoint>> realByLayer,
+  int layer,
+  int rawIndex,
+) =>
+    realByLayer[layer]?.any((bsp) => bsp.rawIndex == rawIndex) ?? false;
 
 /// Display-only adapter for hichan2 recursive segment layers.
 ///
@@ -51,6 +74,7 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
   final ValueChanged<int>? onEasyTdxSubPanelCountChanged;
   final ValueChanged<String>? onEasyTdxIndicatorToggled;
   final bool showRecursiveSegLayers;
+  final bool showRecursiveSegZs;
   final bool showRecursiveSegBsp;
   final int minRecursiveSegLayer;
   final int? maxRecursiveSegLayer;
@@ -93,6 +117,7 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
     this.onEasyTdxSubPanelCountChanged,
     this.onEasyTdxIndicatorToggled,
     this.showRecursiveSegLayers = true,
+    this.showRecursiveSegZs = true,
     this.showRecursiveSegBsp = true,
     this.minRecursiveSegLayer = 2,
     this.maxRecursiveSegLayer,
@@ -150,54 +175,48 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
         ? minLayer
         : _effectiveMaxRecursiveSegLayer;
 
-    if (snapshot.recursiveSegBsps.isNotEmpty) {
-      for (final entry in snapshot.recursiveSegBsps.entries) {
-        final layer = entry.key;
-        if (layer < minLayer || layer > maxLayer) continue;
-        for (final bsp in entry.value) {
-          rows.add(DrawingObject(
-            id: 'hichan2_seg${layer}_bsp_${bsp.index}_${bsp.rawIndex}',
-            tool: TradingViewDrawingTool.priceLabel,
-            anchors: [
-              DrawingAnchor.chart(rawIndex: bsp.rawIndex, price: bsp.price)
-            ],
-            style: DrawingStyle(
-              colorValue: _colorValueForLayer(layer),
-              fontSize: 11.0,
-              filled: true,
-              fillColorValue: 0x33131722,
-              fillOpacity: 0.25,
-            ),
-            text: bsp.type,
-            locked: true,
-            hidden: false,
-            selected: false,
-            createdAt: now,
-            updatedAt: now,
-          ));
-        }
-      }
-      return rows;
-    }
-
-    // Backward compatible display fallback: older parsers may not expose
-    // recursiveSegBsps yet, so the chart can still show segN endpoint labels
-    // from already parsed recursiveSegLayers without changing chan.py data.
-    for (final entry in snapshot.recursiveSegLayers.entries) {
+    // Candidates are context only. Hide a candidate when CBSPointList produced
+    // a real BSP at the same layer/bar, and paint all remaining candidates
+    // before real points so they can never cover an authoritative label.
+    for (final entry in snapshot.recursiveSegBspCandidates.entries) {
       final layer = entry.key;
-      if (layer < minLayer || layer > maxLayer || layer < 2) continue;
-      for (final seg in entry.value) {
-        if (!seg.isVisibleRangeValid) continue;
-        final type = seg.isDown
-            ? 'SEG${layer}_B'
-            : seg.isUp
-                ? 'SEG${layer}_S'
-                : 'SEG${layer}_BSP';
+      if (layer < minLayer || layer > maxLayer) continue;
+      for (final bsp in entry.value) {
+        if (recursiveSegCandidateIsSuperseded(
+            snapshot.recursiveSegBsps, layer, bsp.rawIndex)) continue;
         rows.add(DrawingObject(
-          id: 'hichan2_seg${layer}_bsp_fallback_${seg.index}_${seg.endRawIndex}',
+          id: 'hichan2_seg${layer}_candidate_${bsp.index}_${bsp.rawIndex}',
           tool: TradingViewDrawingTool.priceLabel,
           anchors: [
-            DrawingAnchor.chart(rawIndex: seg.endRawIndex, price: seg.endPrice)
+            DrawingAnchor.chart(rawIndex: bsp.rawIndex, price: bsp.price)
+          ],
+          style: const DrawingStyle(
+            colorValue: 0xFFFFA726,
+            fontSize: 9.5,
+            opacity: 0.65,
+            filled: true,
+            fillColorValue: 0x33131722,
+            fillOpacity: 0.2,
+          ),
+          text: '$layer段候选${bsp.isBuy ? '买' : '卖'}',
+          locked: true,
+          hidden: false,
+          selected: false,
+          createdAt: now,
+          updatedAt: now,
+        ));
+      }
+    }
+
+    for (final entry in snapshot.recursiveSegBsps.entries) {
+      final layer = entry.key;
+      if (layer < minLayer || layer > maxLayer) continue;
+      for (final bsp in entry.value) {
+        rows.add(DrawingObject(
+          id: 'hichan2_seg${layer}_bsp_${bsp.index}_${bsp.rawIndex}',
+          tool: TradingViewDrawingTool.priceLabel,
+          anchors: [
+            DrawingAnchor.chart(rawIndex: bsp.rawIndex, price: bsp.price)
           ],
           style: DrawingStyle(
             colorValue: _colorValueForLayer(layer),
@@ -206,7 +225,46 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
             fillColorValue: 0x33131722,
             fillOpacity: 0.25,
           ),
-          text: type,
+          text: recursiveSegBspLabel(layer, bsp.type),
+          locked: true,
+          hidden: false,
+          selected: false,
+          createdAt: now,
+          updatedAt: now,
+        ));
+      }
+    }
+    return rows;
+  }
+
+  List<DrawingObject> _recursiveSegZsDrawingObjects(ChanSnapshot snapshot) {
+    final rows = <DrawingObject>[];
+    final now = DateTime.fromMillisecondsSinceEpoch(0);
+    final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
+    final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer
+        ? minLayer
+        : _effectiveMaxRecursiveSegLayer;
+    for (final entry in snapshot.recursiveSegZss.entries) {
+      final layer = entry.key;
+      if (layer < minLayer || layer > maxLayer) continue;
+      for (final zs in entry.value) {
+        rows.add(DrawingObject(
+          id: 'hichan2_seg${layer}_zs_${zs.index}_${zs.startRawIndex}_${zs.endRawIndex}',
+          tool: TradingViewDrawingTool.rectangle,
+          anchors: [
+            DrawingAnchor.chart(rawIndex: zs.startRawIndex, price: zs.zg),
+            DrawingAnchor.chart(rawIndex: zs.endRawIndex, price: zs.zd),
+          ],
+          style: DrawingStyle(
+            colorValue: _colorValueForLayer(layer),
+            strokeWidth: 1.0,
+            opacity: zs.confirmed ? 0.72 : 0.38,
+            dashed: !zs.confirmed,
+            filled: true,
+            fillColorValue: _colorValueForLayer(layer),
+            fillOpacity: zs.confirmed ? 0.08 : 0.04,
+          ),
+          text: '$layer段中枢',
           locked: true,
           hidden: false,
           selected: false,
@@ -261,9 +319,13 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
         : _effectiveMaxRecursiveSegLayer;
     for (var layer = minLayer; layer <= maxLayer; layer++) {
       final segCount = snapshot.recursiveSegLayers[layer]?.length ?? 0;
-      final bspCount = snapshot.recursiveSegBsps[layer]?.length ?? segCount;
-      if (segCount > 0 || bspCount > 0) {
-        layerCounts.add('L$layer:$segCount/B$bspCount');
+      final zsCount = snapshot.recursiveSegZss[layer]?.length ?? 0;
+      final bspCount = snapshot.recursiveSegBsps[layer]?.length ?? 0;
+      final candidateCount =
+          snapshot.recursiveSegBspCandidates[layer]?.length ?? 0;
+      if (segCount > 0 || zsCount > 0 || bspCount > 0 || candidateCount > 0) {
+        layerCounts
+            .add('L$layer:$segCount/Z$zsCount/B$bspCount/C$candidateCount');
       }
     }
     if (layerCounts.isEmpty) return baseLabel;
@@ -298,7 +360,9 @@ class _RecursiveSegOriginKlineChartState
       _scheduleParentViewportSync();
       return;
     }
-    if (widget.viewEndIndex != null) {
+    if (widget.viewEndIndex == null && oldWidget.viewEndIndex != null) {
+      _stickyViewEndIndex = null;
+    } else if (widget.viewEndIndex != null) {
       _stickyViewEndIndex = _clampViewEnd(widget.viewEndIndex);
     }
     if (_isExplicitPriceScale(widget.priceScale)) {
@@ -310,7 +374,8 @@ class _RecursiveSegOriginKlineChartState
   String _scopeKeyFor(RecursiveSegOriginKlineChart widget) {
     final bars = widget.snapshot.rawBars;
     final first = bars.isEmpty ? 'empty' : bars.first.time.toIso8601String();
-    return '${widget.drawingStorageKey}|${widget.symbolLabel}|$first';
+    final last = bars.isEmpty ? 'empty' : bars.last.time.toIso8601String();
+    return '${widget.drawingStorageKey}|${widget.symbolLabel}|${bars.length}|$first|$last';
   }
 
   void _resetStickyViewportForScope() {
@@ -443,11 +508,17 @@ class _RecursiveSegOriginKlineChartState
       enabledEasyTdxIndicators: widget.enabledEasyTdxIndicators,
       drawingObjects: [
         if (widget.showRecursiveSegLayers)
-          ...widget._recursiveSegDrawingObjects(widget.snapshot).where(
-              (object) => !_isRecursiveObjectHidden(object.id, bsp: false)),
+          ...widget
+              ._recursiveSegDrawingObjects(widget.snapshot)
+              .where((object) => !_isRecursiveObjectHidden(object.id, 'seg')),
+        if (widget.showRecursiveSegZs)
+          ...widget
+              ._recursiveSegZsDrawingObjects(widget.snapshot)
+              .where((object) => !_isRecursiveObjectHidden(object.id, 'zs')),
         if (widget.showRecursiveSegBsp)
-          ...widget._recursiveSegBspDrawingObjects(widget.snapshot).where(
-              (object) => !_isRecursiveObjectHidden(object.id, bsp: true)),
+          ...widget
+              ._recursiveSegBspDrawingObjects(widget.snapshot)
+              .where((object) => !_isRecursiveObjectHidden(object.id, 'bsp')),
         ...widget.drawingObjects,
       ],
       drawingStorageKey: widget.drawingStorageKey,
@@ -518,11 +589,15 @@ class _RecursiveSegOriginKlineChartState
         widget.minRecursiveSegLayer < 2 ? 2 : widget.minRecursiveSegLayer;
     for (var layer = minLayer; layer <= maxLayer; layer++) {
       final segId = 'seg_$layer';
+      final zsId = 'seg_${layer}_zs';
       final bspId = 'seg_${layer}_bsp';
       final hasSeg =
           widget.snapshot.recursiveSegLayers[layer]?.isNotEmpty ?? false;
+      final hasZs = widget.snapshot.recursiveSegZss[layer]?.isNotEmpty ?? false;
       final hasBsp =
-          widget.snapshot.recursiveSegBsps[layer]?.isNotEmpty ?? hasSeg;
+          (widget.snapshot.recursiveSegBsps[layer]?.isNotEmpty ?? false) ||
+              (widget.snapshot.recursiveSegBspCandidates[layer]?.isNotEmpty ??
+                  false);
       entries.add(ChanOverlayToggleEntry(
         id: segId,
         label: '${layer}段',
@@ -532,6 +607,16 @@ class _RecursiveSegOriginKlineChartState
             hasSeg &&
             !_hiddenRecursiveOverlays.contains(segId),
         onToggle: () => _toggleRecursiveOverlay(segId),
+      ));
+      entries.add(ChanOverlayToggleEntry(
+        id: zsId,
+        label: '${layer}段中枢',
+        description: '显示第$layer段递归中枢',
+        available: hasZs,
+        visible: widget.showRecursiveSegZs &&
+            hasZs &&
+            !_hiddenRecursiveOverlays.contains(zsId),
+        onToggle: () => _toggleRecursiveOverlay(zsId),
       ));
       entries.add(ChanOverlayToggleEntry(
         id: bspId,
@@ -554,14 +639,21 @@ class _RecursiveSegOriginKlineChartState
     });
   }
 
-  bool _isRecursiveObjectHidden(String objectId, {required bool bsp}) {
+  bool _isRecursiveObjectHidden(String objectId, String category) {
     final maxLayer = widget._effectiveMaxRecursiveSegLayer;
     for (var layer = 2; layer <= maxLayer; layer++) {
-      final belongsToLayer = bsp
-          ? objectId.contains('hichan2_seg${layer}_bsp_')
-          : objectId.contains('_L${layer}_');
+      final belongsToLayer = switch (category) {
+        'bsp' => objectId.contains('hichan2_seg${layer}_bsp_') ||
+            objectId.contains('hichan2_seg${layer}_candidate_'),
+        'zs' => objectId.contains('hichan2_seg${layer}_zs_'),
+        _ => objectId.contains('_L${layer}_'),
+      };
       if (belongsToLayer) {
-        final id = bsp ? 'seg_${layer}_bsp' : 'seg_$layer';
+        final id = switch (category) {
+          'bsp' => 'seg_${layer}_bsp',
+          'zs' => 'seg_${layer}_zs',
+          _ => 'seg_$layer',
+        };
         return _hiddenRecursiveOverlays.contains(id);
       }
     }

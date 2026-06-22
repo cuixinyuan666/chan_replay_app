@@ -393,8 +393,6 @@ def _export_bsp(level: Any) -> list[dict[str, Any]]:
     containers = [
         ('bi', _attr(level, ('bs_point_lst', 'bs_point_list'), None)),
         ('seg', _attr(level, ('seg_bs_point_lst', 'seg_bs_point_list'), None)),
-        ('seg', _line_bsp_items(_attr(level, ('seg_list',), None))),
-        ('seg', _line_bsp_items(_attr(level, ('segseg_list',), None))),
     ]
     seen: set[tuple[int, str, str]] = set()
     for level_name, container in containers:
