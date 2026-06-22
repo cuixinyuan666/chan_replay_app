@@ -13,6 +13,65 @@ def _replace_exact(text: str, old: str, new: str, label: str, expected: int = 1)
     return text.replace(old, new, expected)
 
 
+def _replace_between(text: str, start: str, end: str, new: str, label: str) -> str:
+    start_index = text.find(start)
+    if start_index < 0:
+        raise SystemExit(f'[abort] {label}: start marker not found')
+    end_index = text.find(end, start_index)
+    if end_index < 0:
+        raise SystemExit(f'[abort] {label}: end marker not found')
+    return text[:start_index] + new + text[end_index:]
+
+
+AUTO_REVIEW_FUNCTIONS = """  int _updateCurrentBspStepReviews({required bool notify}) {
+    if (!_hasStepFrames) {
+      if (notify) _showInfo('请先以 step 模式载入复盘数据。');
+      return 0;
+    }
+    final finalSnapshot = _analysis?.snapshot.of(_activeLevel);
+    if (finalSnapshot == null || finalSnapshot.bsps.isEmpty) {
+      if (notify) _showInfo('最终快照没有可用于对照的 BSP。');
+      return 0;
+    }
+    final items = _currentBspStepReviewItems;
+    if (items.isEmpty) {
+      if (notify) _showInfo('当前帧没有可检查的 BSP。');
+      return 0;
+    }
+    final finalJudgeKeys = <String>{
+      for (final p in finalSnapshot.bsps) _bspReviewJudgeKey(_activeLevel, p),
+    };
+    var changed = 0;
+    setState(() {
+      for (final item in items) {
+        final wasCorrect = _bspStepReviewCorrectKeys.contains(item.judgeKey);
+        final wasWrong = _bspStepReviewWrongKeys.contains(item.judgeKey);
+        final isCorrect = finalJudgeKeys.contains(item.judgeKey);
+        if (isCorrect) {
+          _bspStepReviewCorrectKeys.add(item.judgeKey);
+          _bspStepReviewWrongKeys.remove(item.judgeKey);
+        } else {
+          _bspStepReviewWrongKeys.add(item.judgeKey);
+          _bspStepReviewCorrectKeys.remove(item.judgeKey);
+        }
+        final nowCorrect = _bspStepReviewCorrectKeys.contains(item.judgeKey);
+        final nowWrong = _bspStepReviewWrongKeys.contains(item.judgeKey);
+        if (wasCorrect != nowCorrect || wasWrong != nowWrong) changed++;
+      }
+    });
+    if (notify) {
+      _showInfo(
+          '当前买卖点检查完成\\n${_bspReviewStatsText()}\\n${_bspReviewBucketStatsText()}');
+    }
+    return changed;
+  }
+
+  void _judgeCurrentBspStepReviews() =>
+      _updateCurrentBspStepReviews(notify: true);
+
+"""
+
+
 def main() -> None:
     text = S13.read_text(encoding='utf-8')
     original = text
@@ -90,89 +149,12 @@ def main() -> None:
         'insert bucket stats helpers',
     )
 
-    text = _replace_exact(
+    text = _replace_between(
         text,
-        """  void _judgeCurrentBspStepReviews() {
-    if (!_hasStepFrames) {
-      _showInfo('请先以 step 模式载入复盘数据。');
-      return;
-    }
-    final finalSnapshot = _analysis?.snapshot.of(_activeLevel);
-    if (finalSnapshot == null || finalSnapshot.bsps.isEmpty) {
-      _showInfo('最终快照没有可用于对照的 BSP。');
-      return;
-    }
-    final items = _currentBspStepReviewItems;
-    if (items.isEmpty) {
-      _showInfo('当前帧没有可检查的 BSP。');
-      return;
-    }
-    final finalJudgeKeys = <String>{
-      for (final p in finalSnapshot.bsps) _bspReviewJudgeKey(_activeLevel, p),
-    };
-    setState(() {
-      for (final item in items) {
-        if (finalJudgeKeys.contains(item.judgeKey)) {
-          _bspStepReviewCorrectKeys.add(item.judgeKey);
-          _bspStepReviewWrongKeys.remove(item.judgeKey);
-        } else {
-          _bspStepReviewWrongKeys.add(item.judgeKey);
-          _bspStepReviewCorrectKeys.remove(item.judgeKey);
-        }
-      }
-    });
-    _showInfo('当前买卖点检查完成\n${_bspReviewStatsText()}');
-  }
-
-""",
-        """  int _updateCurrentBspStepReviews({required bool notify}) {
-    if (!_hasStepFrames) {
-      if (notify) _showInfo('请先以 step 模式载入复盘数据。');
-      return 0;
-    }
-    final finalSnapshot = _analysis?.snapshot.of(_activeLevel);
-    if (finalSnapshot == null || finalSnapshot.bsps.isEmpty) {
-      if (notify) _showInfo('最终快照没有可用于对照的 BSP。');
-      return 0;
-    }
-    final items = _currentBspStepReviewItems;
-    if (items.isEmpty) {
-      if (notify) _showInfo('当前帧没有可检查的 BSP。');
-      return 0;
-    }
-    final finalJudgeKeys = <String>{
-      for (final p in finalSnapshot.bsps) _bspReviewJudgeKey(_activeLevel, p),
-    };
-    var changed = 0;
-    setState(() {
-      for (final item in items) {
-        final wasCorrect = _bspStepReviewCorrectKeys.contains(item.judgeKey);
-        final wasWrong = _bspStepReviewWrongKeys.contains(item.judgeKey);
-        final isCorrect = finalJudgeKeys.contains(item.judgeKey);
-        if (isCorrect) {
-          _bspStepReviewCorrectKeys.add(item.judgeKey);
-          _bspStepReviewWrongKeys.remove(item.judgeKey);
-        } else {
-          _bspStepReviewWrongKeys.add(item.judgeKey);
-          _bspStepReviewCorrectKeys.remove(item.judgeKey);
-        }
-        final nowCorrect = _bspStepReviewCorrectKeys.contains(item.judgeKey);
-        final nowWrong = _bspStepReviewWrongKeys.contains(item.judgeKey);
-        if (wasCorrect != nowCorrect || wasWrong != nowWrong) changed++;
-      }
-    });
-    if (notify) {
-      _showInfo(
-          '当前买卖点检查完成\n${_bspReviewStatsText()}\n${_bspReviewBucketStatsText()}');
-    }
-    return changed;
-  }
-
-  void _judgeCurrentBspStepReviews() =>
-      _updateCurrentBspStepReviews(notify: true);
-
-""",
-        'refactor manual judge into reusable updater',
+        """  void _judgeCurrentBspStepReviews() {""",
+        """  List<BspPoint> _bspCandidateTrail(ChanSnapshot current) {""",
+        AUTO_REVIEW_FUNCTIONS,
+        'replace manual review function by markers',
     )
 
     text = _replace_exact(
