@@ -50,24 +50,18 @@ void main() {
       );
     });
 
-    test('绘图层：原生段中枢必须使用 segZss，而不是只画笔中枢 zss', () {
-      final chart = _read('lib/ui/widgets/origin_kline_chart.dart');
+    test('适配层：原生段中枢使用 segZss 生成 DrawingObject', () {
+      final recursiveChart =
+          _read('lib/ui/widgets/recursive_seg_origin_kline_chart.dart');
 
-      final drawZsStart = chart.indexOf('void _drawZs(');
-      expect(drawZsStart, isNonNegative, reason: '未找到 _drawZs，无法判断原生中枢绘制来源。');
-      final drawZsBody = chart.substring(drawZsStart);
-
-      expect(
-        drawZsBody,
-        contains('snapshot.segZss'),
-        reason: '当前问题定位点：_drawZs 只遍历 snapshot.zss；snapshot.zss 是笔组成的中枢。'
-            '如果“段中枢”仍映射到 showZs，就必须改为绘制 snapshot.segZss，'
-            '或者新增独立 showSegZs/_drawSegZs 链路。',
-      );
+      expect(recursiveChart, contains('_nativeSegZsDrawingObjects'));
+      expect(recursiveChart, contains('snapshot.segZss'));
+      expect(recursiveChart, contains("text: '段中枢'"));
     });
 
     test('递归层：2段/N段中枢链路存在，用于对照', () {
-      final recursiveChart = _read('lib/ui/widgets/recursive_seg_origin_kline_chart.dart');
+      final recursiveChart =
+          _read('lib/ui/widgets/recursive_seg_origin_kline_chart.dart');
 
       expect(recursiveChart, contains('_recursiveSegZsDrawingObjects'));
       expect(recursiveChart, contains('snapshot.recursiveSegZss.entries'));

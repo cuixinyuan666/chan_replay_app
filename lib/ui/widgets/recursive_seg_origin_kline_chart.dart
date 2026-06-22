@@ -187,6 +187,37 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
     return const <DrawingObject>[];
   }
 
+  List<DrawingObject> _nativeSegZsDrawingObjects(ChanSnapshot snapshot) {
+    final rows = <DrawingObject>[];
+    final now = DateTime.fromMillisecondsSinceEpoch(0);
+    for (final zs in snapshot.segZss) {
+      rows.add(DrawingObject(
+        id: 'hichan_native_seg_zs_${zs.index}_${zs.startRawIndex}_${zs.endRawIndex}',
+        tool: TradingViewDrawingTool.rectangle,
+        anchors: [
+          DrawingAnchor.chart(rawIndex: zs.startRawIndex, price: zs.zg),
+          DrawingAnchor.chart(rawIndex: zs.endRawIndex, price: zs.zd),
+        ],
+        style: DrawingStyle(
+          colorValue: 0xFF5B8DFF,
+          strokeWidth: 1.1,
+          opacity: zs.confirmed ? 0.76 : 0.42,
+          dashed: !zs.confirmed,
+          filled: true,
+          fillColorValue: 0xFF5B8DFF,
+          fillOpacity: zs.confirmed ? 0.09 : 0.045,
+        ),
+        text: '段中枢',
+        locked: true,
+        hidden: false,
+        selected: false,
+        createdAt: now,
+        updatedAt: now,
+      ));
+    }
+    return rows;
+  }
+
   List<DrawingObject> _recursiveSegZsDrawingObjects(ChanSnapshot snapshot) {
     final rows = <DrawingObject>[];
     final now = DateTime.fromMillisecondsSinceEpoch(0);
@@ -463,6 +494,8 @@ class _RecursiveSegOriginKlineChartState
           ...widget
               ._recursiveSegDrawingObjects(widget.snapshot)
               .where((object) => !_isRecursiveObjectHidden(object.id, 'seg')),
+        if (_standardOverlayVisible(TradingViewDrawingTool.chanZs))
+          ...widget._nativeSegZsDrawingObjects(widget.snapshot),
         if (widget.showRecursiveSegZs)
           ...widget
               ._recursiveSegZsDrawingObjects(widget.snapshot)

@@ -115,6 +115,7 @@ class ChanSnapshotJsonParser {
     final recursiveSegBspCandidates =
         _parseRecursiveSegBspCandidateLayers(data);
     final recursiveSegZss = _parseRecursiveSegZsLayers(data);
+    final segZss = _parseSegZss(data);
     _addTiming(
       timing,
       '$timingPrefix.recursive_seg_bsp_layers',
@@ -172,6 +173,7 @@ class ChanSnapshotJsonParser {
       recursiveSegBspCandidates: recursiveSegBspCandidates,
       recursiveSegZss: recursiveSegZss,
       zss: zss,
+      segZss: segZss,
       bsps: bsps,
       indicators: indicators,
       rhythmLines: rhythmLines,
@@ -415,6 +417,25 @@ class ChanSnapshotJsonParser {
       if (match != null) putLayer(match.group(1), entry.value);
     }
     return result;
+  }
+
+  static List<ZS> _parseSegZss(Map<String, dynamic> data) {
+    final rawRows = data['seg_zs'] ??
+        data['segZs'] ??
+        data['seg_zss'] ??
+        data['segZss'] ??
+        data['segment_zs'] ??
+        data['segmentZs'];
+    if (rawRows is! List) return const <ZS>[];
+
+    final parsed = <ZS>[];
+    for (final row in rawRows) {
+      if (row is Map) {
+        final item = _parseZs(row, parsed.length);
+        if (item != null) parsed.add(item);
+      }
+    }
+    return parsed;
   }
 
   static Map<int, List<ZS>> _parseRecursiveSegZsLayers(
