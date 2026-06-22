@@ -99,6 +99,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _showSeg2Zs = true,
       _showSegNZs = true,
       _panelOpen = false,
+      _autoJudgeBspStepReview = true,
       _playing = false;
   int _frameIndex = 0, _windowSize = 90, _chartGeneration = 0;
   double _playSpeed = 1.0, _priceScale = 1.0, _priceOffset = 0.0;
@@ -540,8 +541,52 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       toTime: _activeSnapshot?.rawBars.isEmpty == false
           ? _activeSnapshot!.rawBars.last.time
           : null,
-      reason: _hasStepFrames ? 'manual_current_frame' : 'not_step_mode',
+      reason: _hasStepFrames
+          ? (_autoJudgeBspStepReview ? 'auto_step' : 'manual_current_frame')
+          : 'not_step_mode',
     );
+  }
+
+  List<BspReviewBucketStats> get _bspReviewBucketStats {
+    final buckets = <String, BspReviewBucketStats>{};
+    for (final item in _bspStepReviewItems.values) {
+      final status = _bspReviewStatusFor(item.judgeKey);
+      final side = item.isBuy ? 'buy' : 'sell';
+      final key = '${item.level}|$side|${item.label}';
+      final current = buckets[key] ??
+          BspReviewBucketStats(
+            key: key,
+            level: item.level,
+            side: side,
+            label: item.label,
+          );
+      buckets[key] = current.copyWith(
+        appeared: current.appeared + 1,
+        judged: current.judged +
+            (status == BspReviewStatus.pending ? 0 : 1),
+        correct: current.correct +
+            (status == BspReviewStatus.correct ? 1 : 0),
+        wrong: current.wrong + (status == BspReviewStatus.wrong ? 1 : 0),
+      );
+    }
+    final rows = buckets.values.toList(growable: false);
+    rows.sort((a, b) {
+      if (a.level != b.level) return a.level.compareTo(b.level);
+      if (a.side != b.side) return a.side.compareTo(b.side);
+      return a.label.compareTo(b.label);
+    });
+    return rows;
+  }
+
+  String _bspReviewBucketStatsText() {
+    final rows = _bspReviewBucketStats;
+    if (rows.isEmpty) return 'bucket=none';
+    return rows.map((row) {
+      final rate = row.rate == null
+          ? 'N/A'
+          : '${(row.rate! * 100).toStringAsFixed(1)}%';
+      return '${row.level}/${row.side}/${row.label}:${row.correct}/${row.judged}/$rate';
+    }).join(' | ');
   }
 
   String _bspReviewStatsText() {
@@ -552,37 +597,51 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     return 'appeared=${stats.appeared} judged=${stats.judged} correct=${stats.correct} wrong=${stats.wrong} rate=$rate frame=${stats.fromFrame + 1}~${stats.toFrame + 1} reason=${stats.reason}';
   }
 
-  void _judgeCurrentBspStepReviews() {
+  int _updateCurrentBspStepReviews({required bool notify}) {
     if (!_hasStepFrames) {
-      _showInfo('请先以 step 模式载入复盘数据。');
-      return;
+      if (notify) _showInfo('请先以 step 模式载入复盘数据。');
+      return 0;
     }
     final finalSnapshot = _analysis?.snapshot.of(_activeLevel);
     if (finalSnapshot == null || finalSnapshot.bsps.isEmpty) {
-      _showInfo('最终快照没有可用于对照的 BSP。');
-      return;
+      if (notify) _showInfo('最终快照没有可用于对照的 BSP。');
+      return 0;
     }
     final items = _currentBspStepReviewItems;
     if (items.isEmpty) {
-      _showInfo('当前帧没有可检查的 BSP。');
-      return;
+      if (notify) _showInfo('当前帧没有可检查的 BSP。');
+      return 0;
     }
     final finalJudgeKeys = <String>{
       for (final p in finalSnapshot.bsps) _bspReviewJudgeKey(_activeLevel, p),
     };
+    var changed = 0;
     setState(() {
       for (final item in items) {
-        if (finalJudgeKeys.contains(item.judgeKey)) {
+        final wasCorrect = _bspStepReviewCorrectKeys.contains(item.judgeKey);
+        final wasWrong = _bspStepReviewWrongKeys.contains(item.judgeKey);
+        final isCorrect = finalJudgeKeys.contains(item.judgeKey);
+        if (isCorrect) {
           _bspStepReviewCorrectKeys.add(item.judgeKey);
           _bspStepReviewWrongKeys.remove(item.judgeKey);
         } else {
           _bspStepReviewWrongKeys.add(item.judgeKey);
           _bspStepReviewCorrectKeys.remove(item.judgeKey);
         }
+        final nowCorrect = _bspStepReviewCorrectKeys.contains(item.judgeKey);
+        final nowWrong = _bspStepReviewWrongKeys.contains(item.judgeKey);
+        if (wasCorrect != nowCorrect || wasWrong != nowWrong) changed++;
       }
     });
-    _showInfo('当前买卖点检查完成\n${_bspReviewStatsText()}');
+    if (notify) {
+      _showInfo(
+          '当前买卖点检查完成\n${_bspReviewStatsText()}\n${_bspReviewBucketStatsText()}');
+    }
+    return changed;
   }
+
+  void _judgeCurrentBspStepReviews() =>
+      _updateCurrentBspStepReviews(notify: true);
 
   List<BspPoint> _bspCandidateTrail(ChanSnapshot current) {
     return _bspCandidateTrailObservationsForLevel(_activeLevel, current)
@@ -1051,9 +1110,15 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         _crosshairIndex = null;
         _priceScale = 1.0;
         _priceOffset = 0.0;
+        _bspStepReviewItems.clear();
+        _bspStepReviewCorrectKeys.clear();
+        _bspStepReviewWrongKeys.clear();
         _chartGeneration++;
         _status = _buildStatus(a, startDate, endDate);
       });
+      if (_autoJudgeBspStepReview) {
+        _updateCurrentBspStepReviews(notify: false);
+      }
       _showMessage('S13 replay loaded');
     } catch (e) {
       if (!mounted) return;
@@ -1078,6 +1143,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _crosshairIndex = null;
       _priceScale = 1.0;
       _priceOffset = 0.0;
+      _bspStepReviewItems.clear();
+      _bspStepReviewCorrectKeys.clear();
+      _bspStepReviewWrongKeys.clear();
       final c = _currentSnapshot;
       if (c != null) {
         _activeLevel = c.snapshots.containsKey(_activeLevel)
@@ -1104,8 +1172,11 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _priceOffset = 0.0;
       final activeBiCount = f.of(level)?.bis.length ?? 0;
       _status =
-          'S13 step frame ${next + 1}/${a.frames.length} active:$level active_bi:$activeBiCount loaded_config:{${_loadedChanConfigSummary(a)}} final_bi_counts:{${_biCountSummary(a.snapshot)}} current_bi_counts:{${_biCountSummary(f)}} relations:${f.relations.length} nested_markers:${_nestedBspMarkers.length} candidate_trail:$_bspCandidateTrailCount missing_edges:${_missingAdjacentRelationEdges().join(',')}';
+          'S13 step frame ${next + 1}/${a.frames.length} active:$level active_bi:$activeBiCount loaded_config:{${_loadedChanConfigSummary(a)}} final_bi_counts:{${_biCountSummary(a.snapshot)}} current_bi_counts:{${_biCountSummary(f)}} relations:${f.relations.length} nested_markers:${_nestedBspMarkers.length} candidate_trail:$_bspCandidateTrailCount missing_edges:${_missingAdjacentRelationEdges().join(',')} bsp_review:{${_bspReviewStatsText()}}';
     });
+    if (_autoJudgeBspStepReview) {
+      _updateCurrentBspStepReviews(notify: false);
+    }
   }
 
   void _stepFrameBy(int delta) => _setFrameIndex(_safeFrameIndex + delta);
@@ -1527,6 +1598,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                 label: const Text('检查当前买卖点'),
               ),
               _infoButton('BSP统计', _bspReviewStatsText()),
+              _infoButton('BSP分组', _bspReviewBucketStatsText()),
             ]),
           ],
         ),
@@ -1587,6 +1659,25 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                 label: const Text('节奏线设置'),
               ),
             ]),
+            SwitchListTile(
+              value: _autoJudgeBspStepReview,
+              onChanged: _loading
+                  ? null
+                  : (v) {
+                      setState(() => _autoJudgeBspStepReview = v);
+                      if (v) _updateCurrentBspStepReviews(notify: false);
+                    },
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: const Text(
+                '自动检查 BSP',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
             SwitchListTile(
               value: _showBspCandidateTrail,
               onChanged: _loading
@@ -1769,6 +1860,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                 label: const Text('检查当前买卖点'),
               ),
               _infoButton('BSP统计', _bspReviewStatsText()),
+              _infoButton('BSP分组', _bspReviewBucketStatsText()),
               OutlinedButton.icon(
                 onPressed: _copyS13IntervalNestMarkerEvidence,
                 icon: const Icon(Icons.copy, size: 16),
@@ -1811,6 +1903,21 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                       ? null
                       : (v) => setState(() => _showChipDistribution = v)),
             ]),
+            SwitchListTile(
+                value: _autoJudgeBspStepReview,
+                onChanged: _loading
+                    ? null
+                    : (v) {
+                        setState(() => _autoJudgeBspStepReview = v);
+                        if (v) _updateCurrentBspStepReviews(notify: false);
+                      },
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('自动检查 BSP',
+                    style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700))),
             SwitchListTile(
                 value: _showBspCandidateTrail,
                 onChanged: _loading
