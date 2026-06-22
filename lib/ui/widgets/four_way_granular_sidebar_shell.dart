@@ -15,6 +15,7 @@ class SidebarRegistration {
   final SidebarEdge edge;
   final int? routeIndex;
   final WidgetBuilder? panelBuilder;
+  final VoidCallback? onActivate;
 
   const SidebarRegistration({
     required this.id,
@@ -24,7 +25,10 @@ class SidebarRegistration {
     required this.edge,
     this.routeIndex,
     this.panelBuilder,
-  }) : assert(routeIndex != null || panelBuilder != null);
+    this.onActivate,
+  }) : assert(
+          routeIndex != null || panelBuilder != null || onActivate != null,
+        );
 }
 
 class FourWaySidebarRegistry {
@@ -210,6 +214,14 @@ class _FourWayGranularSidebarShellState
   }
 
   void _activate(SidebarRegistration item) {
+    if (item.onActivate != null) {
+      item.onActivate!();
+      setState(() {
+        _activeItem = null;
+        _openEdge = null;
+      });
+      return;
+    }
     if (item.routeIndex != null) {
       widget.onOpenRoute(item.routeIndex!);
       setState(() {

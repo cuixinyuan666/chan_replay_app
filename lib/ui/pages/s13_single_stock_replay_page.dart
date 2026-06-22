@@ -71,10 +71,38 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   static const String _rhythmPolicy =
       'backend exports rhythm_lines/rhythm_hits; Dart only parses and renders DrawingObject overlays';
   static const List<String> _easyTdxIndicatorOptions = <String>[
-    'MA', 'BOLL', 'VOL', 'MACD', 'KDJ', 'RSI', 'DMI', 'ATR', 'WR', 'CCI',
-    'BIAS', 'OBV', 'PSY', 'TRIX', 'DPO', 'MTM', 'ROC', 'EXPMA', 'BBI',
-    'DFMA', 'CR', 'KTN', 'XSII', 'VR', 'EMV', 'MASS', 'MFI', 'BRAR',
-    'ASI', 'ZHUOYAO', 'BIAS_SIGNAL', 'TAQ',
+    'MA',
+    'BOLL',
+    'VOL',
+    'MACD',
+    'KDJ',
+    'RSI',
+    'DMI',
+    'ATR',
+    'WR',
+    'CCI',
+    'BIAS',
+    'OBV',
+    'PSY',
+    'TRIX',
+    'DPO',
+    'MTM',
+    'ROC',
+    'EXPMA',
+    'BBI',
+    'DFMA',
+    'CR',
+    'KTN',
+    'XSII',
+    'VR',
+    'EMV',
+    'MASS',
+    'MFI',
+    'BRAR',
+    'ASI',
+    'ZHUOYAO',
+    'BIAS_SIGNAL',
+    'TAQ',
   ];
   final _backendUrlController =
           TextEditingController(text: 'app-managed bundled Python'),
@@ -218,13 +246,14 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           icon: Icons.analytics_outlined,
           edge: SidebarEdge.right,
           index: 3),
-      section(
-          id: 's13-drawing',
-          label: '画线工具',
-          category: '工具',
-          icon: Icons.architecture,
-          edge: SidebarEdge.right,
-          index: 4),
+      SidebarRegistration(
+        id: 's13-drawing',
+        label: '画线工具',
+        category: '工具',
+        icon: Icons.architecture,
+        edge: SidebarEdge.right,
+        onActivate: _openDrawingToolbox,
+      ),
     ];
   }
 
@@ -567,12 +596,12 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
 
   BspReviewStats get _bspReviewStats {
     final items = _currentBspStepReviewItems;
-    final judged = items
-        .where((item) => item.status != BspReviewStatus.pending)
-        .length;
+    final judged =
+        items.where((item) => item.status != BspReviewStatus.pending).length;
     final correct =
         items.where((item) => item.status == BspReviewStatus.correct).length;
-    final wrong = items.where((item) => item.status == BspReviewStatus.wrong).length;
+    final wrong =
+        items.where((item) => item.status == BspReviewStatus.wrong).length;
     return BspReviewStats(
       appeared: items.length,
       judged: judged,
@@ -610,10 +639,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           );
       buckets[key] = current.copyWith(
         appeared: current.appeared + 1,
-        judged: current.judged +
-            (status == BspReviewStatus.pending ? 0 : 1),
-        correct: current.correct +
-            (status == BspReviewStatus.correct ? 1 : 0),
+        judged: current.judged + (status == BspReviewStatus.pending ? 0 : 1),
+        correct: current.correct + (status == BspReviewStatus.correct ? 1 : 0),
         wrong: current.wrong + (status == BspReviewStatus.wrong ? 1 : 0),
       );
     }
@@ -630,9 +657,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final rows = _bspReviewBucketStats;
     if (rows.isEmpty) return 'bucket=none';
     return rows.map((row) {
-      final rate = row.rate == null
-          ? 'N/A'
-          : '${(row.rate! * 100).toStringAsFixed(1)}%';
+      final rate =
+          row.rate == null ? 'N/A' : '${(row.rate! * 100).toStringAsFixed(1)}%';
       return '${row.level}/${row.side}/${row.label}:${row.correct}/${row.judged}/$rate';
     }).join(' | ');
   }
@@ -693,7 +719,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
 
   List<BspStepReviewItem> get _allBspStepReviewItems {
     final rows = _bspStepReviewItems.values
-        .map((item) => item.copyWith(status: _bspReviewStatusFor(item.judgeKey)))
+        .map(
+            (item) => item.copyWith(status: _bspReviewStatusFor(item.judgeKey)))
         .toList(growable: false);
     rows.sort((a, b) {
       if (a.level != b.level) return a.level.compareTo(b.level);
@@ -777,11 +804,13 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       ..writeln('frame=${_safeFrameIndex + 1}/$_frameCount')
       ..writeln('auto_judge=$_autoJudgeBspStepReview')
       ..writeln('judge_key=level|rawIndex|side')
-      ..writeln('stats appeared=${stats.appeared} judged=${stats.judged} correct=${stats.correct} wrong=${stats.wrong} rate=$rate')
+      ..writeln(
+          'stats appeared=${stats.appeared} judged=${stats.judged} correct=${stats.correct} wrong=${stats.wrong} rate=$rate')
       ..writeln('buckets=${_bspReviewBucketStatsText()}')
       ..writeln('items:');
     for (final item in _allBspStepReviewItems) {
-      buffer.writeln('${item.status.name} ${item.level} raw=${item.displayRawIndex} ${item.isBuy ? 'buy' : 'sell'} ${item.label} ${item.judgeKey}');
+      buffer.writeln(
+          '${item.status.name} ${item.level} raw=${item.displayRawIndex} ${item.isBuy ? 'buy' : 'sell'} ${item.label} ${item.judgeKey}');
     }
     return buffer.toString();
   }
@@ -808,9 +837,14 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       final symbol = _symbolController.text.trim().isEmpty
           ? 'UNKNOWN'
           : _symbolController.text.trim();
-      final stamp = DateTime.now().toIso8601String().replaceAll(':', '').replaceAll('.', '');
-      final file = File('${dir.path}/bsp_review_${symbol}_${_activeLevel}_$stamp.json');
-      final jsonText = const JsonEncoder.withIndent('  ').convert(_bspReviewReportJson());
+      final stamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '')
+          .replaceAll('.', '');
+      final file =
+          File('${dir.path}/bsp_review_${symbol}_${_activeLevel}_$stamp.json');
+      final jsonText =
+          const JsonEncoder.withIndent('  ').convert(_bspReviewReportJson());
       await file.writeAsString(jsonText);
       if (!mounted) return;
       _showInfo('BSP 检查 JSON 已导出\n${file.path}');
@@ -1193,8 +1227,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   }) {
     _toolboxSelectedToolSignal.value = tool;
     _toolboxOpenSignal.value++;
-    final label = tool == TradingViewDrawingTool.trendLine ? '趋势线' : tool.name;
-    _showMessage('已打开画线工具：$label，请在K线图上点击锚点。');
   }
 
   DateTime _dateOrDefault(DateTime? value, DateTime fallback) =>
@@ -1787,9 +1819,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               _infoButton('BSP统计', _bspReviewStatsText()),
               _infoButton('BSP分组', _bspReviewBucketStatsText()),
               OutlinedButton.icon(
-                onPressed: _bspStepReviewItems.isEmpty
-                    ? null
-                    : _copyBspReviewReport,
+                onPressed:
+                    _bspStepReviewItems.isEmpty ? null : _copyBspReviewReport,
                 icon: const Icon(Icons.copy_all, size: 16),
                 label: const Text('复制BSP报告'),
               ),
@@ -1807,8 +1838,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           title: '图层',
           children: <Widget>[
             Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
-              for (final n in _easyTdxIndicatorOptions)
-                _indicatorChip(n),
+              for (final n in _easyTdxIndicatorOptions) _indicatorChip(n),
             ]),
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
@@ -1896,11 +1926,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               ),
             ),
           ],
-        ),
-        SideToolbarSection(
-          title: '画线工具',
-          onTitleTap: _openDrawingToolbox,
-          children: const <Widget>[],
         ),
       ];
 
@@ -2051,9 +2076,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               _infoButton('BSP统计', _bspReviewStatsText()),
               _infoButton('BSP分组', _bspReviewBucketStatsText()),
               OutlinedButton.icon(
-                onPressed: _bspStepReviewItems.isEmpty
-                    ? null
-                    : _copyBspReviewReport,
+                onPressed:
+                    _bspStepReviewItems.isEmpty ? null : _copyBspReviewReport,
                 icon: const Icon(Icons.copy_all, size: 16),
                 label: const Text('复制BSP报告'),
               ),

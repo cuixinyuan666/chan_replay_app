@@ -54,9 +54,7 @@ void main() {
       's13-stock': '状态 / 一键复制',
       's13-levels': 'DAILY',
       's13-replay-marker': '载入复盘',
-      's13-real-bsp': '回到最新',
       's13-display-indicators': '节奏线设置',
-      's13-drawing': '打开画线工具',
     };
     for (final entry in cases.entries) {
       final button = find.byKey(
@@ -68,6 +66,15 @@ void main() {
       expect(find.text(entry.value), findsWidgets,
           reason: '${entry.key} should expose its original controls');
     }
+
+    final drawingButton = find.byKey(
+      const ValueKey<String>('sidebar-entry-s13-drawing'),
+    );
+    await tester.ensureVisible(drawingButton);
+    await tester.tap(drawingButton);
+    await tester.pumpAndSettle();
+    expect(find.text('已打开画线工具：趋势线，请在K线图上点击锚点。'), findsOneWidget);
+    expect(find.text('打开画线工具'), findsNothing);
 
     expect(tester.takeException(), isNull);
     debugDefaultTargetPlatformOverride = null;
