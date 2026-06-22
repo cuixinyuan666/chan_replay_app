@@ -116,6 +116,13 @@ class _AutoCollapsibleSideToolbarState
                         header: widget.header,
                         sections: widget.sections,
                         scrollController: _scrollController,
+                        onSectionTitleTap: (section) {
+                          _setExpanded(false);
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!mounted) return;
+                            section.onTitleTap?.call();
+                          });
+                        },
                       ),
                     ),
                   Align(
@@ -158,11 +165,13 @@ class _ToolbarBody extends StatelessWidget {
   final Widget? header;
   final List<SideToolbarSection> sections;
   final ScrollController scrollController;
+  final ValueChanged<SideToolbarSection> onSectionTitleTap;
 
   const _ToolbarBody({
     required this.header,
     required this.sections,
     required this.scrollController,
+    required this.onSectionTitleTap,
   });
 
   @override
@@ -199,9 +208,11 @@ class _ToolbarBody extends StatelessWidget {
               ],
               for (var i = 0; i < sections.length; i++) ...[
                 _SectionDivider(
-                    title: sections[i].title,
-                    onTap: sections[i].onTitleTap,
-                  ),
+                  title: sections[i].title,
+                  onTap: sections[i].onTitleTap == null
+                      ? null
+                      : () => onSectionTitleTap(sections[i]),
+                ),
                 const SizedBox(height: 8),
                 ...sections[i].children,
                 if (i != sections.length - 1) const SizedBox(height: 12),
