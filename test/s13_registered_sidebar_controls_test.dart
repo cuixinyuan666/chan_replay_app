@@ -73,7 +73,7 @@ void main() {
     await tester.ensureVisible(drawingButton);
     await tester.tap(drawingButton);
     await tester.pumpAndSettle();
-    expect(find.text('趋势线'), findsWidgets);
+    expect(find.text('已打开画线工具：趋势线，请在K线图上点击锚点。'), findsNothing);
     expect(find.text('打开画线工具'), findsNothing);
 
     expect(tester.takeException(), isNull);
