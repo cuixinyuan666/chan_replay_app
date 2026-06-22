@@ -15,6 +15,7 @@ import '../drawing/drawing_object_painter.dart';
 import '../drawing/drawing_object_persistence.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import '../drawing/tradingview_toolbox_host.dart';
+import 'bsp_chart_label_adapter.dart';
 import 'chart_time_formatter.dart';
 import 'chart_label_layout.dart';
 
