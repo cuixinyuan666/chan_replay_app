@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'tradingview_drawing_tool.dart';
@@ -115,6 +116,10 @@ class TradingViewToolboxHost extends StatefulWidget {
 }
 
 class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
+  static const double _panelWidth = 372;
+  static const double _panelTop = 52;
+  static const double _panelRightMargin = 12;
+
   bool _open = false;
   TradingViewDrawingTool _localSelectedTool = TradingViewDrawingTool.cursor;
   final List<TradingViewDrawingTool> _quickTools = <TradingViewDrawingTool>[];
@@ -148,6 +153,24 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
 
   void _handleOpenSignal() {
     if (mounted) setState(() => _open = true);
+  }
+
+  void _handleToolboxPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    GestureBinding.instance.pointerSignalResolver.register(
+      event,
+      (PointerSignalEvent resolvedEvent) {
+        if (resolvedEvent is! PointerScrollEvent) return;
+        if (!_toolboxScrollController.hasClients) return;
+        final position = _toolboxScrollController.position;
+        final next = (position.pixels + resolvedEvent.scrollDelta.dy)
+            .clamp(position.minScrollExtent, position.maxScrollExtent)
+            .toDouble();
+        if (next != position.pixels) {
+          _toolboxScrollController.jumpTo(next);
+        }
+      },
+    );
   }
 
   void _selectTool(TradingViewDrawingTool tool) {
@@ -191,7 +214,12 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
     final hasExternalButton = widget.openSignal != null;
     // Quick-tool rail is disabled by product policy; do not render the left fixed icon.
     final hasExternalQuickRail = widget.onToolboxQuickToolAddedDisabled;
-    final defaultPanelOffset = Offset(hasExternalButton ? 92 : 8, 52);
+    final size = MediaQuery.sizeOf(context);
+    final maxPanelLeft = (size.width - _panelWidth).clamp(0.0, double.infinity).toDouble();
+    final maxPanelTop = (size.height - 120).clamp(0.0, double.infinity).toDouble();
+    final rightAlignedLeft =
+        (size.width - _panelWidth - _panelRightMargin).clamp(0.0, maxPanelLeft).toDouble();
+    final defaultPanelOffset = Offset(rightAlignedLeft, _panelTop);
     final panelOffset = _panelOffset ?? defaultPanelOffset;
     return Stack(
       children: [
@@ -225,13 +253,15 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
           Positioned(
             left: panelOffset.dx,
             top: panelOffset.dy,
-            width: 372,
-            height: MediaQuery.sizeOf(context).height - panelOffset.dy - 12,
+            width: _panelWidth,
+            height: (size.height - panelOffset.dy - 12)
+                .clamp(120.0, double.infinity)
+                .toDouble(),
             child: Stack(
               children: [
                 Listener(
                   behavior: HitTestBehavior.opaque,
-                  onPointerSignal: (_) {},
+                  onPointerSignal: _handleToolboxPointerSignal,
                   child: _ToolboxPanel(
                     selectedTool: selected,
                     scrollController: _toolboxScrollController,
@@ -265,13 +295,14 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
                     onPanUpdate: (details) {
-                      final size = MediaQuery.sizeOf(context);
                       setState(() {
                         _panelOffset = Offset(
                           (panelOffset.dx + details.delta.dx)
-                              .clamp(0.0, size.width - 372),
+                              .clamp(0.0, maxPanelLeft)
+                              .toDouble(),
                           (panelOffset.dy + details.delta.dy)
-                              .clamp(0.0, size.height - 120),
+                              .clamp(0.0, maxPanelTop)
+                              .toDouble(),
                         );
                       });
                     },
@@ -454,7 +485,7 @@ class _ToolboxPanel extends StatelessWidget {
       color: Colors.transparent,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0x66131722),
+          color: const Color(0x00131722),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
           boxShadow: const [],
