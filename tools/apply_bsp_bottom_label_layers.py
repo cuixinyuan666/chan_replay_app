@@ -106,7 +106,7 @@ import '../widgets/bsp_chart_label_adapter.dart';
     final text = level.trim();
     if (text == '笔') return 0;
     if (text == '段') return 1;
-    final match = RegExp(r'^(\\d+)段$').firstMatch(text);
+    final match = RegExp(r'^(\d+)段$').firstMatch(text);
     if (match != null) return int.tryParse(match.group(1) ?? '') ?? 2;
     return text.contains('段') ? 1 : 0;
   }
