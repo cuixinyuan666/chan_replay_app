@@ -60,13 +60,6 @@ def main() -> None:
         'add bottom label overlay to chart stack',
     )
 
-    text = _replace_exact(
-        text,
-        """      _bspStepReviewWrongKeys.remove(item.judgeKey);\n        } else {\n""",
-        """          _bspStepReviewWrongKeys.remove(item.judgeKey);\n        } else {\n""",
-        'fix correct-branch indentation',
-    )
-
     if text == original:
         raise SystemExit('[abort] no changes produced')
     S13.write_text(text, encoding='utf-8')
