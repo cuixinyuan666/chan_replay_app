@@ -98,11 +98,12 @@ class _BspBottomLabelPainter extends CustomPainter {
 
     for (final label in visible) {
       final x = rawToX(label.rawIndex).clamp(rect.left, rect.right).toDouble();
+      final color = _labelColor(label);
       final painter = TextPainter(
         text: TextSpan(
           text: label.text,
           style: TextStyle(
-            color: _textColor(label),
+            color: color,
             fontSize: _fontSize(label.level),
             fontWeight: FontWeight.w700,
           ),
@@ -135,7 +136,7 @@ class _BspBottomLabelPainter extends CustomPainter {
       canvas.drawRRect(
         bg,
         Paint()
-          ..color = _strokeColor(label)
+          ..color = color.withValues(alpha: 0.92)
           ..strokeWidth = _strokeWidth(label.level)
           ..style = PaintingStyle.stroke,
       );
@@ -186,27 +187,12 @@ class _BspBottomLabelPainter extends CustomPainter {
   double _fontSize(String level) => _levelRank(level) >= 2 ? 10.8 : 10.2;
   double _strokeWidth(String level) => _levelRank(level) >= 2 ? 1.15 : 0.9;
 
-  Color _textColor(BspBottomLabel label) {
-    final levelColor = _levelColor(label.level);
-    if (label.status == BspReviewStatus.wrong) return const Color(0xFFFF8A80);
-    if (label.status == BspReviewStatus.correct) return const Color(0xFF69F0AE);
-    return levelColor;
-  }
-
-  Color _strokeColor(BspBottomLabel label) {
-    if (label.status == BspReviewStatus.wrong) return const Color(0xFFE53935);
-    if (label.status == BspReviewStatus.correct) return const Color(0xFF00C853);
-    return _levelColor(label.level).withValues(alpha: 0.92);
-  }
-
-  Color _levelColor(String level) {
-    return switch (_levelRank(level)) {
-      0 => const Color(0xFFFFD54F),
-      1 => const Color(0xFF69F0AE),
-      2 => const Color(0xFF00E5FF),
-      3 => const Color(0xFFFF8A65),
-      4 => const Color(0xFFCE93D8),
-      _ => const Color(0xFFFFFFFF),
+  Color _labelColor(BspBottomLabel label) {
+    if (label.isBuy) return const Color(0xFFFF5252);
+    return switch (_levelRank(label.level)) {
+      0 => const Color(0xFFB3E5FC), // 笔卖点：淡蓝色
+      1 => const Color(0xFF69F0AE), // 段卖点：绿色
+      _ => const Color(0xFF40C4FF), // 2段/N段卖点：天蓝色
     };
   }
 
