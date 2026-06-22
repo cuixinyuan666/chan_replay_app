@@ -57,9 +57,9 @@ class BspChartLabelAdapter {
     var text = bsp.type.replaceAll('候选轨迹', '').trim();
     if (text.isEmpty) return bsp.isSell ? 'S' : 'B';
 
-    final first = text.characters.isEmpty ? '' : text.characters.first;
+    final first = text.substring(0, 1);
     if (first.toLowerCase() == 'b' || first.toLowerCase() == 's') {
-      return first.toUpperCase() + text.substring(first.length).trim();
+      return first.toUpperCase() + text.substring(1).trim();
     }
 
     text = text
