@@ -35,7 +35,41 @@ class BspChartLabelAdapter {
   String labelText({required BspPoint bsp, required bool isSegLevel}) {
     final prefix = isSegLevel ? '段' : '笔';
     final suffix = bsp.confirmed ? '' : '?';
-    return '$prefix${_displayType(bsp.type)}$suffix';
+    return '$prefix${displayTypeFor(bsp)}$suffix';
+  }
+
+  static String labelTextFor({
+    required String levelPrefix,
+    required BspPoint bsp,
+  }) {
+    final suffix = bsp.confirmed ? '' : '?';
+    return '$levelPrefix${displayTypeFor(bsp)}$suffix';
+  }
+
+  /// Display type used by both the near-candle BSP labels and the lower
+  /// bottom-band BSP labels.
+  ///
+  /// Examples:
+  /// - `buy3a`, `买3a` -> `B3a`
+  /// - `sell2`, `卖2` -> `S2`
+  /// - `B3a`, `S2` are preserved.
+  static String displayTypeFor(BspPoint bsp) {
+    var text = bsp.type.replaceAll('候选轨迹', '').trim();
+    if (text.isEmpty) return bsp.isSell ? 'S' : 'B';
+
+    final first = text.characters.isEmpty ? '' : text.characters.first;
+    if (first.toLowerCase() == 'b' || first.toLowerCase() == 's') {
+      return first.toUpperCase() + text.substring(first.length).trim();
+    }
+
+    text = text
+        .replaceFirst(RegExp(r'^buy', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'^sell', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'^买'), '')
+        .replaceFirst(RegExp(r'^卖'), '')
+        .trim();
+    if (text.isEmpty) return bsp.isSell ? 'S' : 'B';
+    return '${bsp.isSell ? 'S' : 'B'}$text';
   }
 
   bool isSegLevel(BspPoint bsp) {
@@ -52,34 +86,5 @@ class BspChartLabelAdapter {
 
   Color colorOf(BspPoint bsp) {
     return bsp.isSell ? const Color(0xFFFF7043) : const Color(0xFF00E676);
-  }
-
-  String _displayType(String rawType) {
-    final normalized = rawType.trim();
-    if (normalized.isEmpty) return 'BSP';
-    return normalized
-            .replaceAll('buy', '')
-            .replaceAll('Buy', '')
-            .replaceAll('BUY', '')
-            .replaceAll('sell', '')
-            .replaceAll('Sell', '')
-            .replaceAll('SELL', '')
-            .replaceAll('买', '')
-            .replaceAll('卖', '')
-            .replaceAll('候选轨迹', '')
-            .trim()
-            .isEmpty
-        ? normalized
-        : normalized
-            .replaceAll('buy', '')
-            .replaceAll('Buy', '')
-            .replaceAll('BUY', '')
-            .replaceAll('sell', '')
-            .replaceAll('Sell', '')
-            .replaceAll('SELL', '')
-            .replaceAll('买', '')
-            .replaceAll('卖', '')
-            .replaceAll('候选轨迹', '')
-            .trim();
   }
 }
