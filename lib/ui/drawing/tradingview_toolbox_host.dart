@@ -446,15 +446,15 @@ class _ToolboxPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final grouped = TradingViewDrawingToolRegistry.byGroup();
     final groups = <TradingViewDrawingGroup>[
-      TradingViewDrawingGroup.chanOverlay,
       ...grouped.keys.where((g) => g != TradingViewDrawingGroup.chanOverlay),
+      TradingViewDrawingGroup.chanOverlay,
     ];
     return Material(
       elevation: 18,
       color: Colors.transparent,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0x00131722),
+          color: const Color(0x66131722),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
           boxShadow: const [],
@@ -626,8 +626,7 @@ class _ToolGroupTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ExpansionTile(
       maintainState: true,
-      initiallyExpanded: group == TradingViewDrawingGroup.chanOverlay ||
-          group == TradingViewDrawingGroup.lines,
+      initiallyExpanded: group != TradingViewDrawingGroup.chanOverlay,
       leading: Icon(_groupIcon(group), color: Colors.white70, size: 18),
       title: Text(_groupLabel(group),
           style: const TextStyle(
@@ -718,7 +717,7 @@ class _ToolTile extends StatelessWidget {
       child: Tooltip(
         waitDuration: _tooltipWait,
         message: enabled
-            ? '${meta.description}\n拖拽到左侧快捷栏可固定工具。'
+            ? meta.description
             : '${meta.label}：$disabledReason',
         child: Column(
           children: [
