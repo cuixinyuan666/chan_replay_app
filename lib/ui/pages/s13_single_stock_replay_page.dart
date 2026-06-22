@@ -1898,17 +1898,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           ],
         ),
         SideToolbarSection(
-          title: '画线',
-          children: <Widget>[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.tonalIcon(
-                onPressed: _openDrawingToolbox,
-                icon: const Icon(Icons.architecture, size: 18),
-                label: const Text('打开画线工具'),
-              ),
-            ),
-          ],
+          title: '画线工具',
+          onTitleTap: _openDrawingToolbox,
+          children: const <Widget>[],
         ),
       ];
 

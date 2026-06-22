@@ -182,76 +182,9 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
   }
 
   List<DrawingObject> _recursiveSegBspDrawingObjects(ChanSnapshot snapshot) {
-    final rows = <DrawingObject>[];
-    final now = DateTime.fromMillisecondsSinceEpoch(0);
-    final minLayer = minRecursiveSegLayer < 1 ? 1 : minRecursiveSegLayer;
-    final maxLayer = _effectiveMaxRecursiveSegLayer < minLayer
-        ? minLayer
-        : _effectiveMaxRecursiveSegLayer;
-
-    // Candidates are context only. Hide a candidate when CBSPointList produced
-    // a real BSP at the same layer/bar, and paint all remaining candidates
-    // before real points so they can never cover an authoritative label.
-    for (final entry in snapshot.recursiveSegBspCandidates.entries) {
-      final layer = entry.key;
-      if (layer < minLayer || layer > maxLayer) continue;
-      for (final bsp in entry.value) {
-        if (recursiveSegCandidateIsSuperseded(
-            snapshot.recursiveSegBsps, layer, bsp.rawIndex)) continue;
-        rows.add(DrawingObject(
-          id: 'hichan2_seg${layer}_candidate_${bsp.index}_${bsp.rawIndex}',
-          tool: TradingViewDrawingTool.priceLabel,
-          anchors: [
-            DrawingAnchor.chart(rawIndex: bsp.rawIndex, price: bsp.price)
-          ],
-          style: const DrawingStyle(
-            colorValue: 0xFFFFA726,
-            fontSize: 9.5,
-            opacity: 0.65,
-            filled: true,
-            fillColorValue: 0x33131722,
-            fillOpacity: 0.2,
-          ),
-          text: BspChartLabelAdapter.labelTextFor(
-            levelPrefix: '${layer}段候选',
-            bsp: bsp,
-          ),
-          locked: true,
-          hidden: false,
-          selected: false,
-          createdAt: now,
-          updatedAt: now,
-        ));
-      }
-    }
-
-    for (final entry in snapshot.recursiveSegBsps.entries) {
-      final layer = entry.key;
-      if (layer < minLayer || layer > maxLayer) continue;
-      for (final bsp in entry.value) {
-        rows.add(DrawingObject(
-          id: 'hichan2_seg${layer}_bsp_${bsp.index}_${bsp.rawIndex}',
-          tool: TradingViewDrawingTool.priceLabel,
-          anchors: [
-            DrawingAnchor.chart(rawIndex: bsp.rawIndex, price: bsp.price)
-          ],
-          style: DrawingStyle(
-            colorValue: _colorValueForLayer(layer),
-            fontSize: 11.0,
-            filled: true,
-            fillColorValue: 0x33131722,
-            fillOpacity: 0.25,
-          ),
-          text: recursiveSegBspLabel(layer, bsp),
-          locked: true,
-          hidden: false,
-          selected: false,
-          createdAt: now,
-          updatedAt: now,
-        ));
-      }
-    }
-    return rows;
+    // Main-chart recursive BSP price labels are intentionally suppressed.
+    // The bottom BSP band is the only BSP text authority on the K-line page.
+    return const <DrawingObject>[];
   }
 
   List<DrawingObject> _recursiveSegZsDrawingObjects(ChanSnapshot snapshot) {

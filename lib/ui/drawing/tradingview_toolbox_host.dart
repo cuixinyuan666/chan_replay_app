@@ -108,6 +108,8 @@ class TradingViewToolboxHost extends StatefulWidget {
     this.indicatorKeys = _defaultIndicatorKeys,
   });
 
+  bool get onToolboxQuickToolAddedDisabled => true;
+
   @override
   State<TradingViewToolboxHost> createState() => _TradingViewToolboxHostState();
 }
@@ -115,8 +117,9 @@ class TradingViewToolboxHost extends StatefulWidget {
 class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
   bool _open = false;
   TradingViewDrawingTool _localSelectedTool = TradingViewDrawingTool.cursor;
-  final List<TradingViewDrawingTool> _quickTools = [];
+  final List<TradingViewDrawingTool> _quickTools = <TradingViewDrawingTool>[];
   Offset? _panelOffset;
+  final ScrollController _toolboxScrollController = ScrollController();
 
   TradingViewDrawingTool get _effectiveSelectedTool =>
       widget.selectedTool ?? _localSelectedTool;
@@ -139,6 +142,7 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
   @override
   void dispose() {
     widget.openSignal?.removeListener(_handleOpenSignal);
+    _toolboxScrollController.dispose();
     super.dispose();
   }
 
@@ -185,7 +189,8 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
   Widget build(BuildContext context) {
     final selected = _effectiveSelectedTool;
     final hasExternalButton = widget.openSignal != null;
-    final hasExternalQuickRail = widget.onQuickToolAdded != null;
+    // Quick-tool rail is disabled by product policy; do not render the left fixed icon.
+    final hasExternalQuickRail = widget.onToolboxQuickToolAddedDisabled;
     final defaultPanelOffset = Offset(hasExternalButton ? 92 : 8, 52);
     final panelOffset = _panelOffset ?? defaultPanelOffset;
     return Stack(
@@ -224,10 +229,12 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
             height: MediaQuery.sizeOf(context).height - panelOffset.dy - 12,
             child: Stack(
               children: [
-                Opacity(
-                  opacity: 0.72,
+                Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerSignal: (_) {},
                   child: _ToolboxPanel(
                     selectedTool: selected,
+                    scrollController: _toolboxScrollController,
                     hasBars: widget.hasBars,
                     hasChanSnapshot: widget.hasChanSnapshot,
                     isToolAvailable: widget.isToolAvailable,
@@ -389,6 +396,7 @@ class _ToolboxButton extends StatelessWidget {
 }
 
 class _ToolboxPanel extends StatelessWidget {
+  final ScrollController scrollController;
   final TradingViewDrawingTool selectedTool;
   final bool hasBars;
   final bool hasChanSnapshot;
@@ -411,6 +419,7 @@ class _ToolboxPanel extends StatelessWidget {
   final List<String> indicatorKeys;
 
   const _ToolboxPanel({
+    required this.scrollController,
     required this.selectedTool,
     required this.hasBars,
     required this.hasChanSnapshot,
@@ -445,13 +454,10 @@ class _ToolboxPanel extends StatelessWidget {
       color: Colors.transparent,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0xF2131722),
+          color: const Color(0x00131722),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-          boxShadow: const [
-            BoxShadow(
-                blurRadius: 20, offset: Offset(0, 8), color: Color(0x99000000)),
-          ],
+          boxShadow: const [],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -514,11 +520,13 @@ class _ToolboxPanel extends StatelessWidget {
             const Divider(height: 1, color: Colors.white12),
             Expanded(
               child: RawScrollbar(
+                controller: scrollController,
                 thumbVisibility: true,
                 interactive: true,
                 thickness: 8,
                 radius: const Radius.circular(8),
                 child: ListView(
+                  controller: scrollController,
                   physics: const ClampingScrollPhysics(),
                   padding: const EdgeInsets.only(bottom: 10),
                   children: [
@@ -772,30 +780,7 @@ class _ToolTile extends StatelessWidget {
       ),
     );
 
-    return Draggable<TradingViewDrawingTool>(
-      data: meta.tool,
-      feedback: Material(
-        color: Colors.transparent,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-              color: const Color(0xEE1E3A8A),
-              borderRadius: BorderRadius.circular(8)),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(_toolIcon(meta.tool), size: 18, color: Colors.white),
-                const SizedBox(width: 8),
-                Text(meta.label, style: const TextStyle(color: Colors.white)),
-              ],
-            ),
-          ),
-        ),
-      ),
-      childWhenDragging: Opacity(opacity: 0.35, child: tile),
-      child: tile,
-    );
+    return tile;
   }
 }
 

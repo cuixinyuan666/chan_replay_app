@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 class SideToolbarSection {
   final String title;
   final List<Widget> children;
+  final VoidCallback? onTitleTap;
 
   const SideToolbarSection({
     required this.title,
     required this.children,
+    this.onTitleTap,
   });
 }
 
@@ -102,7 +104,7 @@ class _AutoCollapsibleSideToolbarState
         width: _expanded ? widget.expandedWidth : widget.collapsedWidth,
         child: MouseRegion(
           child: Listener(
-            behavior: HitTestBehavior.translucent,
+            behavior: HitTestBehavior.opaque,
             onPointerSignal: _handlePointerSignal,
             child: Material(
               color: Colors.transparent,
@@ -196,7 +198,10 @@ class _ToolbarBody extends StatelessWidget {
                 const SizedBox(height: 10),
               ],
               for (var i = 0; i < sections.length; i++) ...[
-                _SectionDivider(title: sections[i].title),
+                _SectionDivider(
+                    title: sections[i].title,
+                    onTap: sections[i].onTitleTap,
+                  ),
                 const SizedBox(height: 8),
                 ...sections[i].children,
                 if (i != sections.length - 1) const SizedBox(height: 12),
@@ -211,20 +216,21 @@ class _ToolbarBody extends StatelessWidget {
 
 class _SectionDivider extends StatelessWidget {
   final String title;
+  final VoidCallback? onTap;
 
-  const _SectionDivider({required this.title});
+  const _SectionDivider({required this.title, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final row = Row(
       children: <Widget>[
         const Expanded(child: Divider(color: Colors.white24, height: 1)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text(
             '- $title -',
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: onTap == null ? Colors.white70 : const Color(0xFFFFD54F),
               fontSize: 11.5,
               fontWeight: FontWeight.w700,
             ),
@@ -232,6 +238,17 @@ class _SectionDivider extends StatelessWidget {
         ),
         const Expanded(child: Divider(color: Colors.white24, height: 1)),
       ],
+    );
+    if (onTap == null) return row;
+    return Tooltip(
+      message: '打开$title',
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: row,
+        ),
+      ),
     );
   }
 }
