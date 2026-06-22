@@ -7,20 +7,15 @@ import '../../core/settings/level_promoter_settings.dart';
 import '../drawing/drawing_object.dart';
 import '../drawing/tradingview_drawing_tool.dart';
 import '../drawing/tradingview_toolbox_host.dart';
+import 'bsp_chart_label_adapter.dart';
 import 'origin_kline_chart_unlimited_interaction.dart' as base;
 
 @visibleForTesting
-String recursiveSegBspLabel(int layer, String rawType) {
-  var type = rawType.trim();
-  if (type.toLowerCase().startsWith('buy')) {
-    type = type.substring(3);
-  } else if (type.toLowerCase().startsWith('sell')) {
-    type = type.substring(4);
-  } else if (RegExp(r'^[bBsS]').hasMatch(type)) {
-    type = type.substring(1);
-  }
-  type = type.trim().toLowerCase();
-  return '$layer段${type.isEmpty ? '买卖点' : type}';
+String recursiveSegBspLabel(int layer, BspPoint bsp) {
+  return BspChartLabelAdapter.labelTextFor(
+    levelPrefix: '${layer}段',
+    bsp: bsp,
+  );
 }
 
 @visibleForTesting
@@ -200,7 +195,10 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
             fillColorValue: 0x33131722,
             fillOpacity: 0.2,
           ),
-          text: '$layer段候选${bsp.isBuy ? '买' : '卖'}',
+          text: BspChartLabelAdapter.labelTextFor(
+            levelPrefix: '${layer}段候选',
+            bsp: bsp,
+          ),
           locked: true,
           hidden: false,
           selected: false,
@@ -227,7 +225,7 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
             fillColorValue: 0x33131722,
             fillOpacity: 0.25,
           ),
-          text: recursiveSegBspLabel(layer, bsp.type),
+          text: recursiveSegBspLabel(layer, bsp),
           locked: true,
           hidden: false,
           selected: false,
@@ -624,8 +622,8 @@ class _RecursiveSegOriginKlineChartState
       ));
       entries.add(ChanOverlayToggleEntry(
         id: bspId,
-        label: '${layer}段买卖点',
-        description: '显示后端返回的 seg$layer 买卖点',
+        label: '${layer}段BSP',
+        description: '显示第$layer段递归买卖点',
         available: hasBsp,
         visible: widget.showRecursiveSegBsp &&
             hasBsp &&
@@ -636,31 +634,20 @@ class _RecursiveSegOriginKlineChartState
     return entries;
   }
 
-  void _toggleRecursiveOverlay(String id) {
-    setState(() {
-      if (!_hiddenRecursiveOverlays.add(id))
-        _hiddenRecursiveOverlays.remove(id);
-    });
-  }
-
-  bool _isRecursiveObjectHidden(String objectId, String category) {
-    final maxLayer = widget._effectiveMaxRecursiveSegLayer;
-    for (var layer = 2; layer <= maxLayer; layer++) {
-      final belongsToLayer = switch (category) {
-        'bsp' => objectId.contains('hichan2_seg${layer}_bsp_') ||
-            objectId.contains('hichan2_seg${layer}_candidate_'),
-        'zs' => objectId.contains('hichan2_seg${layer}_zs_'),
-        _ => objectId.contains('_L${layer}_'),
-      };
-      if (belongsToLayer) {
-        final id = switch (category) {
-          'bsp' => 'seg_${layer}_bsp',
-          'zs' => 'seg_${layer}_zs',
-          _ => 'seg_$layer',
-        };
-        return _hiddenRecursiveOverlays.contains(id);
-      }
+  bool _isRecursiveObjectHidden(String objectId, String kind) {
+    for (final hidden in _hiddenRecursiveOverlays) {
+      if (hidden.endsWith('_$kind') && objectId.contains(hidden)) return true;
     }
     return false;
+  }
+
+  void _toggleRecursiveOverlay(String id) {
+    setState(() {
+      if (_hiddenRecursiveOverlays.contains(id)) {
+        _hiddenRecursiveOverlays.remove(id);
+      } else {
+        _hiddenRecursiveOverlays.add(id);
+      }
+    });
   }
 }
