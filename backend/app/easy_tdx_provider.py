@@ -299,6 +299,13 @@ def _normalize_transaction_bars(
                 },
             }
         )
+    # TICK transactions must be chronological for replay, step no-future
+    # validation, and chan.py container calculation. easy_tdx may return latest
+    # transactions first, so normalize to ascending time and rewrite indices.
+    bars.sort(key=lambda row: str(row.get('dt') or row.get('time') or ''))
+    for raw_index, row in enumerate(bars):
+        row['id'] = raw_index
+        row['raw_index'] = raw_index
     return bars
 
 

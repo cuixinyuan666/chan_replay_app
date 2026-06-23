@@ -24,6 +24,12 @@ void main() {
     expect(source, contains('c.get_transactions'));
     expect(source, contains("'chip_tick_bins': {"));
     expect(source, contains("'source': 'backend_tick_transaction'"));
+    expect(source, contains('TICK transactions must be chronological'));
+    expect(
+        source,
+        contains(
+            "bars.sort(key=lambda row: str(row.get('dt') or row.get('time') or ''))"));
+    expect(source, contains("row['raw_index'] = raw_index"));
   });
 
   test('chanpy engine maps TICK to a supported calculation container', () {
