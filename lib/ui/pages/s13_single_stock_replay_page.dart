@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../core/analysis/chip_distribution.dart';
+import '../../core/analysis/chip_online_replay_adapter.dart';
 import '../../core/models/bsp.dart';
 import '../../core/models/bsp_step_review.dart';
 import '../../core/models/chan_snapshot.dart';
@@ -1704,6 +1706,102 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     return rows.isEmpty ? 'none' : rows.join(',');
   }
 
+  String _chipNumber(num value) {
+    if (!value.isFinite) return 'nan';
+    final abs = value.abs();
+    if (abs >= 1000000) return value.toStringAsFixed(2);
+    if (abs >= 1000) return value.toStringAsFixed(4);
+    return value.toStringAsFixed(6);
+  }
+
+  String _chipTargetSource(ChanSnapshot snapshot, int targetIndex) {
+    if (_hasStepFrames) {
+      final maxAllowed =
+          _safeFrameIndex.clamp(0, snapshot.rawBars.length - 1).toInt();
+      if (_crosshairIndex != null && _crosshairIndex! <= maxAllowed) {
+        return 'step_crosshair';
+      }
+      if (_crosshairIndex != null && _crosshairIndex! > maxAllowed) {
+        return 'step_clamped';
+      }
+      return 'step_frame';
+    }
+    if (_crosshairIndex != null) return 'crosshair';
+    if (_viewEndIndex != null) return 'view_end';
+    return 'last_bar';
+  }
+
+  Map<String, String> _chipDistributionEvidence(ChanSnapshot? snapshot) {
+    const binCount = 80;
+    const lookback = 1000000;
+    const ageDecay = 0.0;
+    if (snapshot == null || snapshot.rawBars.isEmpty) {
+      return <String, String>{
+        'enabled': '$_showChipDistribution',
+        'available': 'false',
+        'target_source': 'none',
+        'target_index': 'none',
+        'target_time': 'none',
+        'total_bars': '0',
+        'input_mode': 'none',
+        'bin_count': '$binCount',
+        'lookback': '$lookback',
+        'age_decay': '$ageDecay',
+        'total_weight': '0',
+        'poc_price': '0',
+        'average_cost': '0',
+        'profit_ratio': '0',
+        'step_no_future': 'true',
+      };
+    }
+
+    final bars = ChipOnlineReplayAdapter.fromSnapshot(snapshot);
+    final targetIndex = ChipOnlineReplayAdapter.resolveTargetIndex(
+      total: bars.length,
+      isStepMode: _hasStepFrames,
+      stepIndex: _safeFrameIndex,
+      crosshairIndex: _crosshairIndex,
+      viewEndIndex: _viewEndIndex,
+    );
+    final targetBar = snapshot.rawBars[targetIndex];
+    final scopedBars = bars.take(targetIndex + 1).toList(growable: false);
+    final hasExact = scopedBars.any((bar) => bar.hasExactChipBins);
+    final hasFallback = scopedBars.any((bar) => !bar.hasExactChipBins);
+    final inputMode = hasExact && hasFallback
+        ? 'mixed'
+        : (hasExact ? 'exact_tick_bins' : 'ohlcv_fallback');
+    final result = const ChipDistributionEngine().calculate(
+      bars,
+      targetIndex: targetIndex,
+      options: const ChipDistributionOptions(
+        binCount: binCount,
+        lookback: lookback,
+        ageDecay: ageDecay,
+      ),
+    );
+    final stepMaxAllowed =
+        _safeFrameIndex.clamp(0, snapshot.rawBars.length - 1).toInt();
+    final stepNoFuture = !_hasStepFrames || targetIndex <= stepMaxAllowed;
+
+    return <String, String>{
+      'enabled': '$_showChipDistribution',
+      'available': '${!result.isEmpty}',
+      'target_source': _chipTargetSource(snapshot, targetIndex),
+      'target_index': '$targetIndex',
+      'target_time': _chartEvidenceTime(targetBar.time),
+      'total_bars': '${snapshot.rawBars.length}',
+      'input_mode': inputMode,
+      'bin_count': '$binCount',
+      'lookback': '$lookback',
+      'age_decay': '$ageDecay',
+      'total_weight': _chipNumber(result.totalWeight),
+      'poc_price': _chipNumber(result.pocPrice),
+      'average_cost': _chipNumber(result.averageCost),
+      'profit_ratio': _chipNumber(result.profitRatio),
+      'step_no_future': '$stepNoFuture',
+    };
+  }
+
   String _currentS13SettingsEvidenceText() {
     final active = _activeSnapshot;
     final current = _currentSnapshot;
@@ -1741,6 +1839,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final activeSegZsTimeSample = _nativeSegZsTimeSample(active);
     final recursiveZsTimeSample = _recursiveZsTimeSample(active);
     final recursiveBspTimeSample = _recursiveBspTimeSample(active);
+    final chipEvidence = _chipDistributionEvidence(active);
 
     final buffer = StringBuffer()
       ..writeln('S13_CURRENT_SETTINGS_EVIDENCE')
@@ -1799,6 +1898,23 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           'visible_recursive_zs_layers=${visibleRecursiveZsLayers.isEmpty ? 'none' : visibleRecursiveZsLayers}')
       ..writeln(
           'easy_tdx_indicators=${_enabledEasyTdxIndicators.toList()..sort()}')
+      ..writeln()
+      ..writeln('[筹码分布]')
+      ..writeln("chip_enabled=${chipEvidence['enabled']}")
+      ..writeln("chip_available=${chipEvidence['available']}")
+      ..writeln("chip_target_source=${chipEvidence['target_source']}")
+      ..writeln("chip_target_index=${chipEvidence['target_index']}")
+      ..writeln("chip_target_time=${chipEvidence['target_time']}")
+      ..writeln("chip_total_bars=${chipEvidence['total_bars']}")
+      ..writeln("chip_input_mode=${chipEvidence['input_mode']}")
+      ..writeln("chip_bin_count=${chipEvidence['bin_count']}")
+      ..writeln("chip_lookback=${chipEvidence['lookback']}")
+      ..writeln("chip_age_decay=${chipEvidence['age_decay']}")
+      ..writeln("chip_total_weight=${chipEvidence['total_weight']}")
+      ..writeln("chip_poc_price=${chipEvidence['poc_price']}")
+      ..writeln("chip_average_cost=${chipEvidence['average_cost']}")
+      ..writeln("chip_profit_ratio=${chipEvidence['profit_ratio']}")
+      ..writeln("chip_step_no_future=${chipEvidence['step_no_future']}")
       ..writeln()
       ..writeln('[节奏线设置]')
       ..writeln('loaded_rhythm_enabled=${_loadedRhythmEnabled ?? 'not_loaded'}')
