@@ -14,7 +14,7 @@ from .a_multilevel_native_engine import (
     _raw_klu_iter,
     _snapshot_from_chan,
 )
-from .chanpy_engine import _export_bsp, _export_merged_bars, _idx
+from .chanpy_engine import _export_bsp, _export_merged_bars, _export_seg_zs, _idx
 from .easy_tdx_provider import (
     get_easy_tdx_cache_stats,
     infer_market,
@@ -125,6 +125,10 @@ def _timed_export_level(exporter: Any, level_obj: Any, timing: dict[str, Any]) -
     zs = exporter.export_zs(level_obj)
     _add_elapsed_ms(timing, 'backend_structure_export_zs_ms', zs_start)
 
+    seg_zs_start = perf_counter()
+    seg_zs = _export_seg_zs(level_obj)
+    _add_elapsed_ms(timing, 'backend_structure_export_seg_zs_ms', seg_zs_start)
+
     bsp_start = perf_counter()
     bsp = _export_bsp(level_obj)
     _add_elapsed_ms(timing, 'backend_structure_export_bsp_ms', bsp_start)
@@ -136,6 +140,7 @@ def _timed_export_level(exporter: Any, level_obj: Any, timing: dict[str, Any]) -
         'bi': bi,
         'seg': seg,
         'zs': zs,
+        'seg_zs': seg_zs,
         'bsp': bsp,
     }
 
@@ -155,6 +160,7 @@ def _compact_level_payload(*, visible_count: int, structures: dict[str, Any]) ->
         'bi': structures.get('bi', []),
         'seg': structures.get('seg', []),
         'zs': structures.get('zs', []),
+        'seg_zs': structures.get('seg_zs', []),
         'bsp': structures.get('bsp', []),
         'meta': {
             'compact_frame_level': True,
