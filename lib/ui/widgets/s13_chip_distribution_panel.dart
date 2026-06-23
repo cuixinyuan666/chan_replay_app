@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/analysis/chip_distribution.dart';
 import '../../core/analysis/chip_online_replay_adapter.dart';
 import '../../core/models/chan_snapshot.dart';
+import '../../core/settings/chip_distribution_settings.dart';
 
 /// Chip distribution embedded at the right edge of the main K-line pane.
 /// It deliberately reuses the same visible price range as the candle painter.
@@ -19,7 +20,7 @@ class S13ChipDistributionPanel extends StatelessWidget {
   final double priceScale;
   final double priceOffset;
   final int easySubPanelCount;
-  final int binCount;
+  final int? binCount;
   final double ageDecay;
 
   const S13ChipDistributionPanel({
@@ -34,12 +35,22 @@ class S13ChipDistributionPanel extends StatelessWidget {
     required this.priceScale,
     required this.priceOffset,
     this.easySubPanelCount = 0,
-    this.binCount = 80,
+    this.binCount,
     this.ageDecay = 0,
   });
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ChipDistributionSettings>(
+      valueListenable: ChipDistributionSettingsController.selected,
+      builder: (context, settings, _) {
+        final effectiveBinCount = binCount ?? settings.priceBucketCount;
+        return _buildPanel(context, effectiveBinCount);
+      },
+    );
+  }
+
+  Widget _buildPanel(BuildContext context, int effectiveBinCount) {
     final snapshot = this.snapshot;
     if (!enabled || snapshot == null || snapshot.rawBars.isEmpty) {
       return const SizedBox.shrink();
@@ -56,7 +67,7 @@ class S13ChipDistributionPanel extends StatelessWidget {
       bars,
       targetIndex: targetIndex,
       options: ChipDistributionOptions(
-        binCount: binCount,
+        binCount: effectiveBinCount,
         lookback: 1000000,
         ageDecay: ageDecay,
       ),
@@ -101,13 +112,13 @@ class S13ChipDistributionPanel extends StatelessWidget {
                     minPrice: center - scaledRange / 2 - padding,
                     maxPrice: center + scaledRange / 2 + padding,
                   ),
-                  child: const Stack(children: <Widget>[
+                  child: Stack(children: <Widget>[
                     Positioned(
                       top: 5,
                       left: 7,
-                      child: Text('筹码分布',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 10.5)),
+                      child: Text('筹码分布 · $effectiveBinCount桶',
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 10.5)),
                     ),
                   ]),
                 ),
