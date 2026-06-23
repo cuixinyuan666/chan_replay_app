@@ -686,9 +686,9 @@ class _AppearancePanel extends StatelessWidget {
               onChanged: KlineAppearanceController.setKlineOpacity,
             ),
             const SizedBox(height: 8),
-            _ColorRow(
+            const _ColorRow(
               label: 'K线颜色',
-              colors: const <Color>[
+              colors: <Color>[
                 Color(0xFFFFD54F),
                 Color(0xFFEF5350),
                 Color(0xFF26A69A),
@@ -697,9 +697,9 @@ class _AppearancePanel extends StatelessWidget {
               onColor: KlineAppearanceController.setKlineColor,
             ),
             const SizedBox(height: 8),
-            _ColorRow(
+            const _ColorRow(
               label: '图表背景',
-              colors: const <Color>[
+              colors: <Color>[
                 Color(0xFF0D1117),
                 Color(0xFF0B0D10),
                 Color(0xFF131722),

@@ -20,6 +20,7 @@ import '../../core/models/rhythm.dart';
 import '../../core/runtime/runtime_path.dart';
 import '../../core/services/replay_analysis_store.dart';
 import '../../core/settings/chan_config_store.dart';
+import '../../core/settings/chip_distribution_settings.dart';
 import '../../core/settings/level_promoter_settings.dart';
 import '../../data/python_multi_level_chan_analysis_source.dart';
 import '../drawing/drawing_object.dart';
@@ -1736,7 +1737,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   }
 
   Map<String, String> _chipDistributionEvidence(ChanSnapshot? snapshot) {
-    const binCount = 80;
+    final chipSettings = ChipDistributionSettingsController.current;
+    final binCount = chipSettings.priceBucketCount;
     const lookback = 1000000;
     const ageDecay = 0.0;
     if (snapshot == null || snapshot.rawBars.isEmpty) {
@@ -1749,6 +1751,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         'total_bars': '0',
         'input_mode': 'none',
         'bin_count': '$binCount',
+        'bin_count_source': 'global_chip_distribution_settings',
+        'minimal_ui': 'price_bucket_count_only',
         'lookback': '$lookback',
         'age_decay': '$ageDecay',
         'total_weight': '0',
@@ -1777,7 +1781,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final result = const ChipDistributionEngine().calculate(
       bars,
       targetIndex: targetIndex,
-      options: const ChipDistributionOptions(
+      options: ChipDistributionOptions(
         binCount: binCount,
         lookback: lookback,
         ageDecay: ageDecay,
@@ -1796,6 +1800,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       'total_bars': '${snapshot.rawBars.length}',
       'input_mode': inputMode,
       'bin_count': '$binCount',
+      'bin_count_source': 'global_chip_distribution_settings',
+      'minimal_ui': 'price_bucket_count_only',
       'lookback': '$lookback',
       'age_decay': '$ageDecay',
       'total_weight': _chipNumber(result.totalWeight),
@@ -1912,6 +1918,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       ..writeln("chip_total_bars=${chipEvidence['total_bars']}")
       ..writeln("chip_input_mode=${chipEvidence['input_mode']}")
       ..writeln("chip_bin_count=${chipEvidence['bin_count']}")
+      ..writeln("chip_bin_count_source=${chipEvidence['bin_count_source']}")
+      ..writeln("chip_minimal_ui=${chipEvidence['minimal_ui']}")
       ..writeln("chip_lookback=${chipEvidence['lookback']}")
       ..writeln("chip_age_decay=${chipEvidence['age_decay']}")
       ..writeln("chip_total_weight=${chipEvidence['total_weight']}")
