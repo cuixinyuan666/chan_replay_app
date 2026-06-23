@@ -411,6 +411,7 @@ def _level_payload(
         'bi': structures.get('bi', []),
         'seg': structures.get('seg', []),
         'zs': structures.get('zs', []),
+        'seg_zs': structures.get('seg_zs', []),
         'bsp': structures.get('bsp', []),
         'meta': {},
     }, config)

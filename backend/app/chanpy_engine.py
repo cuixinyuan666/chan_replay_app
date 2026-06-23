@@ -428,6 +428,61 @@ def _export_bsp(level: Any) -> list[dict[str, Any]]:
     return sorted(result, key=lambda row: (row['raw_index'], row['type']))
 
 
+def _export_seg_zs(level: Any) -> list[dict[str, Any]]:
+    """Export native segment Zhongshu as seg_zs using chan.py's own ZS engine.
+
+    This is not a Dart/Flutter inference. It uses native seg_list as the base
+    line sequence, native segseg_list when available as the upper line sequence,
+    and falls back to chan.py cal_seg + CZSList.cal_bi_zs when segseg_list is not
+    directly exposed by the level object.
+    """
+    try:
+        from .a_recursive_seg_manager import (
+            _as_list,
+            _chan_config,
+            _export_zs_list,
+            _native_container,
+            build_hidden_seg_layer,
+            build_level_zs,
+        )
+
+        conf = _chan_config(level)
+        if conf is None:
+            return []
+
+        base_lines = _native_container(level, ('seg_list', 'seg_lst'))
+        if not _as_list(base_lines):
+            return []
+
+        upper_lines = _native_container(
+            level,
+            ('segseg_list', 'seg_seg_list', 'segseg_lst'),
+        )
+        if not _as_list(upper_lines):
+            upper_lines = build_hidden_seg_layer(base_lines, conf)
+
+        if not _as_list(upper_lines):
+            return []
+
+        zs_list = build_level_zs(base_lines, upper_lines, conf.zs_conf)
+        rows = _export_zs_list(zs_list, layer=1)
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            patched = dict(row)
+            patched['level'] = 'seg'
+            patched['recursive_seg_layer'] = 1
+            patched['source'] = 'native_seg_zs'
+            result.append(patched)
+        return result
+    except Exception:
+        # Export-only hardening: native analysis must not fail because an
+        # optional segment-ZS export path failed. Evidence remains visible as an
+        # empty seg_zs list instead of synthesizing frontend structures.
+        return []
+
+
 def _export_level(exporter: Any, level: Any) -> dict[str, Any]:
     return {
         'merged_bars': _export_merged_bars(level),
@@ -435,6 +490,7 @@ def _export_level(exporter: Any, level: Any) -> dict[str, Any]:
         'bi': exporter.export_bi(level),
         'seg': exporter.export_seg(level),
         'zs': exporter.export_zs(level),
+        'seg_zs': _export_seg_zs(level),
         'bsp': _export_bsp(level),
     }
 
@@ -470,7 +526,7 @@ def _run_chanpy_export(*, bars: list[dict[str, Any]], code: str, freq: str, adju
 def _run_chanpy_step_export(*, bars: list[dict[str, Any]], code: str, freq: str, adjust: str, config: dict[str, Any] | None) -> dict[str, Any]:
     exporter, chan, kl_type = _prepare_chan(bars=bars, code=code, freq=freq, adjust=adjust, trigger_step=True, config=config)
     frames: list[dict[str, Any]] = []
-    last_structures: dict[str, Any] = {'merged_bars': [], 'fx': [], 'bi': [], 'seg': [], 'zs': [], 'bsp': []}
+    last_structures: dict[str, Any] = {'merged_bars': [], 'fx': [], 'bi': [], 'seg': [], 'zs': [], 'seg_zs': [], 'bsp': []}
     step_iter = getattr(chan, 'step_load', None)
     if not callable(step_iter):
         return {**_run_chanpy_export(bars=bars, code=code, freq=freq, adjust=adjust, config=config), 'frames': []}
@@ -494,6 +550,7 @@ def _fallback_result(*, bars: list[dict[str, Any]], symbol: str, market: str, fr
         'bi': [],
         'seg': [],
         'zs': [],
+        'seg_zs': [],
         'bsp': [],
         'frames': [],
         'meta': {
@@ -519,6 +576,7 @@ def _result(*, bars: list[dict[str, Any]], structures: dict[str, Any], code: str
         'bi': structures.get('bi', []),
         'seg': structures.get('seg', []),
         'zs': structures.get('zs', []),
+        'seg_zs': structures.get('seg_zs', []),
         'bsp': structures.get('bsp', []),
         'frames': structures.get('frames', []),
         'meta': {

@@ -8,7 +8,7 @@ from threading import RLock
 from typing import Any, Callable
 
 _BOOL_TRUE = {'1', 'true', 'yes', 'y', 'on'}
-_STRUCTURE_KEYS = ('merged_bars', 'fx', 'bi', 'seg', 'zs', 'bsp')
+_STRUCTURE_KEYS = ('merged_bars', 'fx', 'bi', 'seg', 'zs', 'seg_zs', 'bsp')
 _TRANSPORT_LAYER_KEYS = ('bars', 'indicators', *_STRUCTURE_KEYS)
 _LAYER_ALIASES = {
     'bar': 'bars',
@@ -30,6 +30,14 @@ _LAYER_ALIASES = {
     'bi': 'bi',
     'seg': 'seg',
     'segment': 'seg',
+    'seg_zs': 'seg_zs',
+    'segZs': 'seg_zs',
+    'seg_zss': 'seg_zs',
+    'segZss': 'seg_zs',
+    'segment_zs': 'seg_zs',
+    'segmentZs': 'seg_zs',
+    'segment_zss': 'seg_zs',
+    'segmentZss': 'seg_zs',
     'zs': 'zs',
     'center': 'zs',
     'bsp': 'bsp',
@@ -562,6 +570,12 @@ def _resolve_chart_layers(payload: dict[str, Any], config: dict[str, Any]) -> di
         transport.add('merged_bars')
     if 'seg' in transport:
         forced.append('bi')
+        transport.add('bi')
+        transport.add('merged_bars')
+    if 'seg_zs' in transport:
+        forced.append('seg')
+        forced.append('bi')
+        transport.add('seg')
         transport.add('bi')
         transport.add('merged_bars')
     forced = [layer for layer in dict.fromkeys(forced) if layer not in display_layers]

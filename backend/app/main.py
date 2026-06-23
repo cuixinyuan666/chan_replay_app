@@ -37,7 +37,7 @@ app.add_middleware(
 _CONTROL_QUERY_KEYS = {'mode', 'symbol', 'market', 'freq', 'period', 'adjust', 'count', 'start', 'end'}
 _BOOL_TRUE = {'1', 'true', 'yes', 'y', 'on'}
 _BOOL_FALSE = {'0', 'false', 'no', 'n', 'off'}
-_COMPACT_STRUCTURE_KEYS = ('merged_bars', 'fx', 'bi', 'seg', 'zs', 'bsp', 'rhythm_lines', 'rhythm_hits')
+_COMPACT_STRUCTURE_KEYS = ('merged_bars', 'fx', 'bi', 'seg', 'zs', 'seg_zs', 'bsp', 'rhythm_lines', 'rhythm_hits')
 
 
 def _elapsed_ms(start: float) -> int:
