@@ -133,50 +133,35 @@ class _FourWayGranularSidebarShellState
             routeIndex: 7),
         const SidebarRegistration(
             id: 'chips',
-            label: '筹码分布/价格桶数',
+            label: '价格桶数',
             category: '研究页面',
-            icon: Icons.stacked_bar_chart,
+            icon: Icons.tune,
             edge: SidebarEdge.left,
             routeIndex: 8),
-        SidebarRegistration(
+        const SidebarRegistration(
             id: 'appearance',
             label: 'K图外观',
-            category: '显示',
+            category: 'K线图',
             icon: Icons.palette_outlined,
             edge: SidebarEdge.right,
-            panelBuilder: (_) => const _AppearancePanel()),
+            routeIndex: null,
+            panelBuilder: _AppearancePanel.new),
         const SidebarRegistration(
-            id: 'quick-kline',
-            label: 'K线图',
-            category: '页面快捷方式',
-            icon: Icons.candlestick_chart,
+            id: 'shortcuts',
+            label: '快捷方式',
+            category: '系统',
+            icon: Icons.keyboard_command_key,
             edge: SidebarEdge.bottom,
-            routeIndex: 1),
+            routeIndex: null,
+            panelBuilder: _ShortcutPanel.new),
         const SidebarRegistration(
-            id: 'quick-research',
-            label: '选股/回测',
-            category: '页面快捷方式',
-            icon: Icons.science,
-            edge: SidebarEdge.bottom,
-            routeIndex: 5),
-        const SidebarRegistration(
-            id: 'quick-log',
-            label: '运行日志',
-            category: '系统快捷方式',
-            icon: Icons.receipt_long,
-            edge: SidebarEdge.bottom,
-            routeIndex: 7),
-        SidebarRegistration(
             id: 'runtime',
             label: '运行路径',
-            category: '系统快捷方式',
-            icon: Icons.route,
+            category: '系统',
+            icon: Icons.speed,
             edge: SidebarEdge.bottom,
-            panelBuilder: (_) => const _OptionSummaryPanel(
-                    title: '运行路径',
-                    groups: <String, List<String>>{
-                      '后端': <String>['应用托管 Python', '本地桥接', '运行状态']
-                    })),
+            routeIndex: null,
+            panelBuilder: _RuntimePathPanel.new),
       ];
 
   @override
@@ -192,49 +177,16 @@ class _FourWayGranularSidebarShellState
   }
 
   void _handleRegistryChanged() {
-    if (!mounted) return;
-    setState(() {
-      final active = _activeItem;
-      if (active != null &&
-          !_registrations.any((item) => item.id == active.id)) {
-        _activeItem = null;
-        _openEdge = null;
-      }
-    });
-  }
-
-  void _toggleRails() {
-    setState(() {
-      _railsVisible = !_railsVisible;
-      if (!_railsVisible) {
-        _openEdge = null;
-        _activeItem = null;
-      }
-    });
-  }
-
-  void _toggleEdge(SidebarEdge edge) {
-    setState(() {
-      _activeItem = null;
-      _openEdge = _openEdge == edge ? null : edge;
-    });
+    if (mounted) setState(() {});
   }
 
   void _activate(SidebarRegistration item) {
     if (item.onActivate != null) {
       item.onActivate!();
-      setState(() {
-        _activeItem = null;
-        _openEdge = null;
-      });
       return;
     }
     if (item.routeIndex != null) {
       widget.onOpenRoute(item.routeIndex!);
-      setState(() {
-        _activeItem = null;
-        _openEdge = null;
-      });
       return;
     }
     setState(() {
@@ -243,495 +195,422 @@ class _FourWayGranularSidebarShellState
     });
   }
 
-  List<SidebarRegistration> _itemsFor(SidebarEdge edge) => _registrations
-      .where((item) => item.edge == edge)
-      .toList(growable: false);
-
-  bool _isSelected(SidebarRegistration item) =>
-      item.routeIndex != null && item.routeIndex == widget.selectedRouteIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final sidePanelWidth =
-          (constraints.maxWidth - 336).clamp(120.0, 280.0).toDouble();
-      final horizontalPanelHeight =
-          (constraints.maxHeight - 300).clamp(72.0, 112.0).toDouble();
-      final left = _railsVisible
-          ? _railSize + (_openEdge == SidebarEdge.left ? sidePanelWidth : 0)
-          : 0.0;
-      final right = _railsVisible
-          ? _railSize + (_openEdge == SidebarEdge.right ? sidePanelWidth : 0)
-          : 0.0;
-      final top = _railsVisible
-          ? _horizontalRailSize +
-              (_openEdge == SidebarEdge.top ? horizontalPanelHeight : 0)
-          : 0.0;
-      final bottom = _railsVisible
-          ? _horizontalRailSize +
-              (_openEdge == SidebarEdge.bottom ? horizontalPanelHeight : 0)
-          : 0.0;
-
-      return Stack(children: <Widget>[
-        AnimatedPositioned(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          left: left,
-          right: right,
-          top: top,
-          bottom: bottom,
-          child: widget.child,
-        ),
-        if (_railsVisible && _openEdge == SidebarEdge.left)
-          _sidePanel(SidebarEdge.left,
-              left: _railSize,
-              top: top,
-              bottom: bottom,
-              width: sidePanelWidth),
-        if (_railsVisible && _openEdge == SidebarEdge.right)
-          _sidePanel(SidebarEdge.right,
-              right: _railSize,
-              top: top,
-              bottom: bottom,
-              width: sidePanelWidth),
-        if (_railsVisible && _openEdge == SidebarEdge.top)
-          _horizontalPanel(SidebarEdge.top,
-              left: left,
-              right: right,
-              top: _horizontalRailSize,
-              height: horizontalPanelHeight),
-        if (_railsVisible && _openEdge == SidebarEdge.bottom)
-          _horizontalPanel(SidebarEdge.bottom,
-              left: left,
-              right: right,
-              bottom: _horizontalRailSize,
-              height: horizontalPanelHeight),
-        if (_railsVisible) ...<Widget>[
-          _leftRail(top: top, bottom: bottom),
-          _rightRail(top: top, bottom: bottom),
-          _topRail(left: left, right: right),
-          _bottomRail(left: left, right: right),
-        ],
-        _visibilityToggle(),
-      ]);
+  void _toggleEdge(SidebarEdge edge) {
+    setState(() {
+      if (_openEdge == edge) {
+        _openEdge = null;
+        _activeItem = null;
+      } else {
+        _openEdge = edge;
+        _activeItem = _firstForEdge(edge);
+      }
     });
   }
 
-  Widget _leftRail({required double top, required double bottom}) =>
-      Positioned(
-        left: 0,
-        top: top,
-        bottom: bottom,
-        width: _railSize,
-        child: _railBox(
-          border: const Border(right: BorderSide(color: Colors.white12)),
-          child: SafeArea(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: <Widget>[
-                _edgeButton(SidebarEdge.left, Icons.menu_open, '页面与分类'),
-                const Divider(height: 1, color: Colors.white12),
-                for (final item in _itemsFor(SidebarEdge.left))
-                  _verticalRailItem(item),
-              ],
+  SidebarRegistration? _firstForEdge(SidebarEdge edge) {
+    final items = _registrations.where((e) => e.edge == edge).toList();
+    if (items.isEmpty) return null;
+    return items.first;
+  }
+
+  List<SidebarRegistration> _itemsForEdge(SidebarEdge edge) =>
+      _registrations.where((e) => e.edge == edge).toList(growable: false);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0D10),
+      body: Stack(
+        children: <Widget>[
+          Positioned.fill(child: widget.child),
+          if (_openEdge != null && _activeItem != null) _panel(_openEdge!),
+          if (_railsVisible) ...<Widget>[
+            _verticalRail(SidebarEdge.left),
+            _verticalRail(SidebarEdge.right),
+            _horizontalRail(SidebarEdge.top),
+            _horizontalRail(SidebarEdge.bottom),
+          ],
+          Positioned(
+            top: 10,
+            left: 10,
+            child: _RailToggle(
+              visible: _railsVisible,
+              onPressed: () => setState(() => _railsVisible = !_railsVisible),
             ),
           ),
-        ),
-      );
-
-  Widget _rightRail({required double top, required double bottom}) =>
-      Positioned(
-        right: 0,
-        top: top,
-        bottom: bottom,
-        width: _railSize,
-        child: _railBox(
-          border: const Border(left: BorderSide(color: Colors.white12)),
-          child: SafeArea(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: <Widget>[
-                _edgeButton(SidebarEdge.right, Icons.tune, '设置面板'),
-                const Divider(height: 1, color: Colors.white12),
-                for (final item in _itemsFor(SidebarEdge.right))
-                  _verticalRailItem(item),
-              ],
-            ),
-          ),
-        ),
-      );
-
-  Widget _topRail({required double left, required double right}) => Positioned(
-        left: left,
-        right: right,
-        top: 0,
-        height: _horizontalRailSize,
-        child: _railBox(
-          border: const Border(bottom: BorderSide(color: Colors.white12)),
-          child: Row(children: <Widget>[
-            _edgeButton(SidebarEdge.top, Icons.expand_more, '上边栏分类'),
-            const VerticalDivider(width: 1, color: Colors.white12),
-            Expanded(
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.zero,
-                children: <Widget>[
-                  for (final item in _itemsFor(SidebarEdge.top))
-                    _horizontalRailItem(item),
-                ],
-              ),
-            ),
-          ]),
-        ),
-      );
-
-  Widget _bottomRail({required double left, required double right}) =>
-      Positioned(
-        left: left,
-        right: right,
-        bottom: 0,
-        height: _horizontalRailSize,
-        child: _railBox(
-          border: const Border(top: BorderSide(color: Colors.white12)),
-          child: Row(children: <Widget>[
-            _edgeButton(SidebarEdge.bottom, Icons.expand_less, '下边栏分类'),
-            const VerticalDivider(width: 1, color: Colors.white12),
-            Expanded(
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.zero,
-                children: <Widget>[
-                  for (final item in _itemsFor(SidebarEdge.bottom))
-                    _horizontalRailItem(item),
-                ],
-              ),
-            ),
-          ]),
-        ),
-      );
-
-  Widget _sidePanel(
-    SidebarEdge edge, {
-    double? left,
-    double? right,
-    required double top,
-    required double bottom,
-    required double width,
-  }) =>
-      Positioned(
-        left: left,
-        right: right,
-        top: top,
-        bottom: bottom,
-        width: width,
-        child: _panelBody(edge),
-      );
-
-  Widget _horizontalPanel(
-    SidebarEdge edge, {
-    required double left,
-    required double right,
-    double? top,
-    double? bottom,
-    required double height,
-  }) =>
-      Positioned(
-        left: left,
-        right: right,
-        top: top,
-        bottom: bottom,
-        height: height,
-        child: _panelBody(edge, horizontal: true),
-      );
-
-  Widget _panelBody(SidebarEdge edge, {bool horizontal = false}) {
-    final active = _activeItem;
-    if (active != null && active.edge == edge && active.panelBuilder != null) {
-      return _panelShell(
-        title: active.label,
-        child: active.panelBuilder!(context),
-      );
-    }
-    return _panelShell(
-      title: _edgeTitle(edge),
-      child: _RegistrationList(
-        items: _itemsFor(edge),
-        horizontal: horizontal,
-        selectedRouteIndex: widget.selectedRouteIndex,
-        onActivate: _activate,
+        ],
       ),
     );
   }
 
-  Widget _panelShell({required String title, required Widget child}) =>
-      DecoratedBox(
-        decoration: const BoxDecoration(
-          color: Color(0xF0131722),
-          border: Border.symmetric(
-            vertical: BorderSide(color: Colors.white12),
-            horizontal: BorderSide(color: Colors.white10),
-          ),
-        ),
+  Widget _verticalRail(SidebarEdge edge) {
+    final isLeft = edge == SidebarEdge.left;
+    final items = _itemsForEdge(edge);
+    return Positioned(
+      top: _horizontalRailSize,
+      bottom: _horizontalRailSize,
+      left: isLeft ? 0 : null,
+      right: isLeft ? null : 0,
+      width: _railSize,
+      child: _RailSurface(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 9, 8, 7),
-              child: Row(children: <Widget>[
-                Expanded(
-                  child: Text(title,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13)),
-                ),
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  iconSize: 18,
-                  color: Colors.white54,
-                  onPressed: () => setState(() {
-                    _activeItem = null;
-                    _openEdge = null;
-                  }),
-                  icon: const Icon(Icons.close),
-                ),
-              ]),
-            ),
-            const Divider(height: 1, color: Colors.white12),
-            Expanded(child: child),
-          ],
-        ),
-      );
-
-  Widget _railBox({required Widget child, Border? border}) => DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xF00B0D10),
-          border: border,
-        ),
-        child: child,
-      );
-
-  Widget _edgeButton(SidebarEdge edge, IconData icon, String tooltip) =>
-      Tooltip(
-        message: tooltip,
-        child: InkWell(
-          onTap: () => _toggleEdge(edge),
-          child: SizedBox(
-            width: _railSize,
-            height: _horizontalRailSize,
-            child: Icon(icon,
-                size: 20,
-                color: _openEdge == edge
-                    ? const Color(0xFFFFD54F)
-                    : Colors.white70),
-          ),
-        ),
-      );
-
-  Widget _verticalRailItem(SidebarRegistration item) => Tooltip(
-        message: '${item.category} / ${item.label}',
-        child: InkWell(
-          onTap: () => _activate(item),
-          child: Container(
-            width: _railSize,
-            height: 44,
-            decoration: BoxDecoration(
-              color: _isSelected(item)
-                  ? const Color(0x332962FF)
-                  : Colors.transparent,
-            ),
-            child: Icon(item.icon,
-                size: 20,
-                color: _isSelected(item)
-                    ? const Color(0xFF8AB4FF)
-                    : Colors.white70),
-          ),
-        ),
-      );
-
-  Widget _horizontalRailItem(SidebarRegistration item) => Tooltip(
-        message: '${item.category} / ${item.label}',
-        child: InkWell(
-          onTap: () => _activate(item),
-          child: Container(
-            width: 48,
-            height: _horizontalRailSize,
-            decoration: BoxDecoration(
-              color: _isSelected(item)
-                  ? const Color(0x332962FF)
-                  : Colors.transparent,
-            ),
-            child: Icon(item.icon,
-                size: 20,
-                color: _isSelected(item)
-                    ? const Color(0xFF8AB4FF)
-                    : Colors.white70),
-          ),
-        ),
-      );
-
-  String _edgeTitle(SidebarEdge edge) {
-    switch (edge) {
-      case SidebarEdge.left:
-        return '页面与分类';
-      case SidebarEdge.right:
-        return '设置面板';
-      case SidebarEdge.top:
-        return '上边栏';
-      case SidebarEdge.bottom:
-        return '快捷方式';
-    }
-  }
-
-  Widget _visibilityToggle() => Positioned(
-        left: 0,
-        top: 0,
-        width: _railSize,
-        height: _horizontalRailSize,
-        child: Material(
-          color: const Color(0xF01E293B),
-          child: InkWell(
-            onTap: _toggleRails,
-            child: Center(
-              child: Text(
-                _railsVisible ? '<' : '>',
-                style: const TextStyle(
-                  color: Color(0xFFFFD54F),
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                ),
+            _edgeButton(edge),
+            const Divider(color: Colors.white12, height: 1),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                children: <Widget>[
+                  for (final item in items) _itemButton(item, vertical: true),
+                ],
               ),
             ),
-          ),
+          ],
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _horizontalRail(SidebarEdge edge) {
+    final isTop = edge == SidebarEdge.top;
+    final items = _itemsForEdge(edge);
+    return Positioned(
+      left: _railSize,
+      right: _railSize,
+      top: isTop ? 0 : null,
+      bottom: isTop ? null : 0,
+      height: _horizontalRailSize,
+      child: _RailSurface(
+        child: Row(
+          children: <Widget>[
+            _edgeButton(edge),
+            const VerticalDivider(color: Colors.white12, width: 1),
+            Expanded(
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                children: <Widget>[
+                  for (final item in items) _itemButton(item, vertical: false),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _edgeButton(SidebarEdge edge) {
+    final selected = _openEdge == edge;
+    final icon = switch (edge) {
+      SidebarEdge.left => Icons.keyboard_arrow_right,
+      SidebarEdge.right => Icons.keyboard_arrow_left,
+      SidebarEdge.top => Icons.keyboard_arrow_down,
+      SidebarEdge.bottom => Icons.keyboard_arrow_up,
+    };
+    return IconButton(
+      tooltip: selected ? '收起' : '展开',
+      icon: Icon(icon, size: 18),
+      color: selected ? Colors.lightBlueAccent : Colors.white70,
+      onPressed: () => _toggleEdge(edge),
+    );
+  }
+
+  Widget _itemButton(SidebarRegistration item, {required bool vertical}) {
+    final selected = _activeItem?.id == item.id ||
+        (item.routeIndex != null && item.routeIndex == widget.selectedRouteIndex);
+    final content = Tooltip(
+      message: '${item.category} / ${item.label}',
+      waitDuration: const Duration(milliseconds: 250),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _activate(item),
+        child: Container(
+          width: vertical ? _railSize : 104,
+          height: vertical ? 54 : _horizontalRailSize,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white.withValues(alpha: 0.12) : null,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: vertical
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Icon(item.icon,
+                        size: 17,
+                        color: selected ? Colors.lightBlueAccent : Colors.white70),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: selected ? Colors.lightBlueAccent : Colors.white54,
+                        fontSize: 9.5,
+                        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Icon(item.icon,
+                        size: 16,
+                        color: selected ? Colors.lightBlueAccent : Colors.white70),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color:
+                              selected ? Colors.lightBlueAccent : Colors.white54,
+                          fontSize: 11,
+                          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+    return Padding(
+      padding: EdgeInsets.symmetric(
+          horizontal: vertical ? 3 : 2, vertical: vertical ? 2 : 3),
+      child: content,
+    );
+  }
+
+  Widget _panel(SidebarEdge edge) {
+    final item = _activeItem;
+    if (item == null) return const SizedBox.shrink();
+    final content = item.panelBuilder?.call(context) ??
+        _OptionSummaryPanel(
+          title: item.label,
+          category: item.category,
+        );
+    final horizontal = edge == SidebarEdge.top || edge == SidebarEdge.bottom;
+    return Positioned(
+      left: edge == SidebarEdge.right ? null : _railSize,
+      right: edge == SidebarEdge.left ? null : _railSize,
+      top: edge == SidebarEdge.bottom ? null : _horizontalRailSize,
+      bottom: edge == SidebarEdge.top ? null : _horizontalRailSize,
+      width: horizontal ? null : 320,
+      height: horizontal ? 220 : null,
+      child: _PanelSurface(
+        title: '${item.category} / ${item.label}',
+        onClose: () => setState(() {
+          _openEdge = null;
+          _activeItem = null;
+        }),
+        child: content,
+      ),
+    );
+  }
 }
 
-class _RegistrationList extends StatelessWidget {
-  final List<SidebarRegistration> items;
-  final bool horizontal;
-  final int selectedRouteIndex;
-  final ValueChanged<SidebarRegistration> onActivate;
+class _RailSurface extends StatelessWidget {
+  final Widget child;
+  const _RailSurface({required this.child});
 
-  const _RegistrationList({
-    required this.items,
-    required this.horizontal,
-    required this.selectedRouteIndex,
-    required this.onActivate,
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.50),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _PanelSurface extends StatelessWidget {
+  final String title;
+  final VoidCallback onClose;
+  final Widget child;
+  const _PanelSurface({
+    required this.title,
+    required this.onClose,
+    required this.child,
   });
 
   @override
   Widget build(BuildContext context) {
-    final categories = <String, List<SidebarRegistration>>{};
-    for (final item in items) {
-      categories.putIfAbsent(item.category, () => <SidebarRegistration>[]).add(item);
-    }
-    final children = <Widget>[
-      for (final entry in categories.entries) ...<Widget>[
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-          child: Text(entry.key,
-              style: const TextStyle(
-                  color: Colors.white54,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700)),
+    return Material(
+      color: Colors.black.withValues(alpha: 0.72),
+      elevation: 12,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white12),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(blurRadius: 16, color: Color(0x66000000)),
+          ],
         ),
-        for (final item in entry.value) _listItem(item),
-      ],
-    ];
-    if (horizontal) {
-      return ListView(scrollDirection: Axis.horizontal, children: children);
-    }
-    return ListView(children: children);
+        child: Column(
+          children: <Widget>[
+            SizedBox(
+              height: 38,
+              child: Row(
+                children: <Widget>[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭',
+                    icon: const Icon(Icons.close, size: 18),
+                    color: Colors.white54,
+                    onPressed: onClose,
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: Colors.white12, height: 1),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: child,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
+}
 
-  Widget _listItem(SidebarRegistration item) {
-    final selected = item.routeIndex != null && item.routeIndex == selectedRouteIndex;
-    return ListTile(
-      dense: true,
-      leading: Icon(item.icon,
-          color: selected ? const Color(0xFF8AB4FF) : Colors.white70),
-      title: Text(item.label,
-          style: TextStyle(
-              color: selected ? Colors.white : Colors.white70,
-              fontWeight: selected ? FontWeight.w800 : FontWeight.w500)),
-      subtitle: Text(item.category,
-          style: const TextStyle(color: Colors.white38, fontSize: 11)),
-      selected: selected,
-      onTap: () => onActivate(item),
+class _RailToggle extends StatelessWidget {
+  final bool visible;
+  final VoidCallback onPressed;
+  const _RailToggle({required this.visible, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.50),
+      borderRadius: BorderRadius.circular(10),
+      child: IconButton(
+        tooltip: visible ? '隐藏四向侧边栏' : '显示四向侧边栏',
+        icon: Icon(visible ? Icons.visibility_off : Icons.visibility, size: 18),
+        color: Colors.white70,
+        onPressed: onPressed,
+      ),
+    );
+  }
+}
+
+class _OptionSummaryPanel extends StatelessWidget {
+  final String title;
+  final String category;
+  const _OptionSummaryPanel({required this.title, required this.category});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '$category / $title\n此项为页面跳转入口或外部注册项。',
+      style: const TextStyle(color: Colors.white70, height: 1.4),
     );
   }
 }
 
 class _AppearancePanel extends StatelessWidget {
-  const _AppearancePanel();
+  const _AppearancePanel(BuildContext context);
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<KlineAppearanceSettings>(
-      valueListenable: KlineAppearanceController.selected,
+      valueListenable: klineAppearanceController.settings,
       builder: (context, settings, _) {
-        return ListView(
-          padding: const EdgeInsets.all(12),
-          children: <Widget>[
-            const Text('K线透明度',
-                style: TextStyle(color: Colors.white70, fontSize: 12)),
-            Slider(
-              value: settings.klineOpacity,
-              min: 0,
-              max: 0.85,
-              divisions: 85,
-              label: settings.klineOpacity.toStringAsFixed(2),
-              onChanged: KlineAppearanceController.setKlineOpacity,
-            ),
-            const SizedBox(height: 8),
-            const _ColorRow(
-              label: 'K线颜色',
-              colors: <Color>[
-                Color(0xFFFFD54F),
-                Color(0xFFEF5350),
-                Color(0xFF26A69A),
-                Color(0xFF8AB4FF),
-              ],
-              onColor: KlineAppearanceController.setKlineColor,
-            ),
-            const SizedBox(height: 8),
-            const _ColorRow(
-              label: '图表背景',
-              colors: <Color>[
-                Color(0xFF0D1117),
-                Color(0xFF0B0D10),
-                Color(0xFF131722),
-                Color(0xFF101820),
-              ],
-              onColor: KlineAppearanceController.setChartBackgroundColor,
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: KlineAppearanceController.reset,
-              icon: const Icon(Icons.restore, size: 16),
-              label: const Text('恢复默认'),
-            ),
-            const SizedBox(height: 8),
-            Text(settings.toEvidenceText(),
-                style: const TextStyle(color: Colors.white38, fontSize: 11)),
-          ],
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const _SettingCaption('整体透明度'),
+              Slider(
+                value: settings.overlayOpacity,
+                min: 0,
+                max: 1,
+                divisions: 20,
+                label: settings.overlayOpacity.toStringAsFixed(2),
+                onChanged: klineAppearanceController.setOverlayOpacity,
+              ),
+              const SizedBox(height: 12),
+              const _SettingCaption('K线颜色'),
+              const SizedBox(height: 8),
+              const _ColorRow(
+                label: 'K线颜色',
+                colors: <Color>[
+                  Color(0xFF26A69A),
+                  Color(0xFFEF5350),
+                  Color(0xFFFFB74D),
+                  Color(0xFF64B5F6),
+                ],
+                onPicked: _noopColorPick,
+              ),
+              const SizedBox(height: 12),
+              const _SettingCaption('背景'),
+              const SizedBox(height: 8),
+              const _ColorRow(
+                label: '图表背景',
+                colors: <Color>[
+                  Color(0xFF0B0D10),
+                  Color(0xFF111722),
+                  Color(0xFF101010),
+                  Color(0xFF17202A),
+                ],
+                onPicked: _noopColorPick,
+              ),
+              const SizedBox(height: 14),
+              FilledButton.tonalIcon(
+                icon: const Icon(Icons.restart_alt, size: 16),
+                label: const Text('恢复默认'),
+                onPressed: klineAppearanceController.reset,
+              ),
+            ],
+          ),
         );
       },
     );
   }
 }
 
+void _noopColorPick(Color color) {}
+
+class _SettingCaption extends StatelessWidget {
+  final String text;
+  const _SettingCaption(this.text);
+
+  @override
+  Widget build(BuildContext context) => Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white70,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+}
+
 class _ColorRow extends StatelessWidget {
   final String label;
   final List<Color> colors;
-  final ValueChanged<Color> onColor;
-
+  final ValueChanged<Color> onPicked;
   const _ColorRow({
     required this.label,
     required this.colors,
-    required this.onColor,
+    required this.onPicked,
   });
 
   @override
@@ -739,22 +618,23 @@ class _ColorRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        Text(label,
+            style: const TextStyle(color: Colors.white54, fontSize: 12)),
         const SizedBox(height: 6),
         Wrap(
           spacing: 8,
           children: <Widget>[
             for (final color in colors)
               InkWell(
-                onTap: () => onColor(color),
                 borderRadius: BorderRadius.circular(999),
+                onTap: () => onPicked(color),
                 child: Container(
-                  width: 24,
-                  height: 24,
+                  width: 28,
+                  height: 28,
                   decoration: BoxDecoration(
-                    color: color,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white38),
+                    color: color,
+                    border: Border.all(color: Colors.white24),
                   ),
                 ),
               ),
@@ -765,39 +645,26 @@ class _ColorRow extends StatelessWidget {
   }
 }
 
-class _OptionSummaryPanel extends StatelessWidget {
-  final String title;
-  final Map<String, List<String>> groups;
-
-  const _OptionSummaryPanel({required this.title, required this.groups});
+class _ShortcutPanel extends StatelessWidget {
+  const _ShortcutPanel(BuildContext context);
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: <Widget>[
-        Text(title,
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w800)),
-        const SizedBox(height: 8),
-        for (final entry in groups.entries) ...<Widget>[
-          Text(entry.key,
-              style: const TextStyle(
-                  color: Colors.white54,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          for (final value in entry.value)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text('• $value',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12)),
-            ),
-          const SizedBox(height: 8),
-        ],
-      ],
+    return const Text(
+      'F5 刷新\n空格 播放 / 暂停\n方向键 单步复盘\n鼠标滚轮 缩放 / 平移',
+      style: TextStyle(color: Colors.white70, height: 1.6),
+    );
+  }
+}
+
+class _RuntimePathPanel extends StatelessWidget {
+  const _RuntimePathPanel(BuildContext context);
+
+  @override
+  Widget build(BuildContext context) {
+    return const Text(
+      '运行路径用于区分 high_speed / training 等后端路线。当前页面仍以 Python 后端为缠论计算权威。',
+      style: TextStyle(color: Colors.white70, height: 1.5),
     );
   }
 }
