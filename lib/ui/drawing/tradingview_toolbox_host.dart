@@ -123,7 +123,6 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
   bool _open = false;
   TradingViewDrawingTool _localSelectedTool = TradingViewDrawingTool.cursor;
   final List<TradingViewDrawingTool> _quickTools = <TradingViewDrawingTool>[];
-  Offset? _panelOffset;
   final ScrollController _toolboxScrollController = ScrollController();
 
   TradingViewDrawingTool get _effectiveSelectedTool =>
@@ -214,52 +213,50 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
     final hasExternalButton = widget.openSignal != null;
     // Quick-tool rail is disabled by product policy; do not render the left fixed icon.
     final hasExternalQuickRail = widget.onToolboxQuickToolAddedDisabled;
-    final size = MediaQuery.sizeOf(context);
-    final maxPanelLeft = (size.width - _panelWidth).clamp(0.0, double.infinity).toDouble();
-    final maxPanelTop = (size.height - 120).clamp(0.0, double.infinity).toDouble();
-    final rightAlignedLeft =
-        (size.width - _panelWidth - _panelRightMargin).clamp(0.0, maxPanelLeft).toDouble();
-    final defaultPanelOffset = Offset(rightAlignedLeft, _panelTop);
-    final panelOffset = _panelOffset ?? defaultPanelOffset;
-    return Stack(
-      children: [
-        widget.child,
-        if (!hasExternalQuickRail)
-          Positioned(
-            left: hasExternalButton ? 54 : 8,
-            top: 8,
-            bottom: 12,
-            child: _QuickToolRail(
-              tools: _quickTools,
-              selectedTool: selected,
-              onAcceptTool: _addQuickTool,
-              onRemoveTool: _removeQuickTool,
-              onSelected: _selectTool,
-            ),
-          ),
-        if (!hasExternalButton)
-          Positioned(
-            left: 8,
-            top: 8,
-            child: _ToolboxButton(
-              open: _open,
-              selectedLabel:
-                  TradingViewDrawingToolRegistry.metaOf(selected).label,
-              drawingCount: widget.drawingCount,
-              onPressed: () => setState(() => _open = !_open),
-            ),
-          ),
-        if (_open)
-          Positioned(
-            left: panelOffset.dx,
-            top: panelOffset.dy,
-            width: _panelWidth,
-            height: (size.height - panelOffset.dy - 12)
-                .clamp(120.0, double.infinity)
-                .toDouble(),
-            child: Stack(
-              children: [
-                Listener(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final panelWidth = (availableWidth - _panelRightMargin * 2)
+            .clamp(0.0, _panelWidth)
+            .toDouble();
+        return Stack(
+          children: [
+            widget.child,
+            if (!hasExternalQuickRail)
+              Positioned(
+                left: hasExternalButton ? 54 : 8,
+                top: 8,
+                bottom: 12,
+                child: _QuickToolRail(
+                  tools: _quickTools,
+                  selectedTool: selected,
+                  onAcceptTool: _addQuickTool,
+                  onRemoveTool: _removeQuickTool,
+                  onSelected: _selectTool,
+                ),
+              ),
+            if (!hasExternalButton)
+              Positioned(
+                left: 8,
+                top: 8,
+                child: _ToolboxButton(
+                  open: _open,
+                  selectedLabel:
+                      TradingViewDrawingToolRegistry.metaOf(selected).label,
+                  drawingCount: widget.drawingCount,
+                  onPressed: () => setState(() => _open = !_open),
+                ),
+              ),
+            if (_open)
+              Positioned(
+                key: const ValueKey<String>('drawing-toolbox-panel'),
+                right: _panelRightMargin,
+                top: _panelTop,
+                bottom: 12,
+                width: panelWidth,
+                child: Listener(
                   behavior: HitTestBehavior.opaque,
                   onPointerSignal: _handleToolboxPointerSignal,
                   child: _ToolboxPanel(
@@ -287,31 +284,10 @@ class _TradingViewToolboxHostState extends State<TradingViewToolboxHost> {
                     indicatorKeys: widget.indicatorKeys,
                   ),
                 ),
-                Positioned(
-                  left: 46,
-                  top: 0,
-                  width: 170,
-                  height: 44,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onPanUpdate: (details) {
-                      setState(() {
-                        _panelOffset = Offset(
-                          (panelOffset.dx + details.delta.dx)
-                              .clamp(0.0, maxPanelLeft)
-                              .toDouble(),
-                          (panelOffset.dy + details.delta.dy)
-                              .clamp(0.0, maxPanelTop)
-                              .toDouble(),
-                        );
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -747,9 +723,7 @@ class _ToolTile extends StatelessWidget {
       opacity: enabled ? 1.0 : 0.42,
       child: Tooltip(
         waitDuration: _tooltipWait,
-        message: enabled
-            ? meta.description
-            : '${meta.label}：$disabledReason',
+        message: enabled ? meta.description : '${meta.label}：$disabledReason',
         child: Column(
           children: [
             ListTile(

@@ -255,6 +255,18 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
     _zoomVertical(verticalFactor);
   }
 
+  void _handlePointerSignal(PointerSignalEvent event, _ChartRects rects) {
+    if (event is! PointerScrollEvent) return;
+    GestureBinding.instance.pointerSignalResolver.register(
+      event,
+      (PointerSignalEvent resolvedEvent) {
+        if (resolvedEvent is PointerScrollEvent) {
+          _handleWheel(resolvedEvent, rects);
+        }
+      },
+    );
+  }
+
   void _zoomHorizontal(double factor, Rect mainRect, Offset localPosition) {
     final bars = widget.snapshot.rawBars;
     if (bars.isEmpty || mainRect.width <= 0) return;
@@ -385,9 +397,7 @@ class _OriginKlineChartState extends State<OriginKlineChart> {
       final rects = _chartRectsFor(size);
       return Listener(
         behavior: HitTestBehavior.translucent,
-        onPointerSignal: (event) {
-          if (event is PointerScrollEvent) _handleWheel(event, rects);
-        },
+        onPointerSignal: (event) => _handlePointerSignal(event, rects),
         onPointerDown: (event) => _handlePointerDown(event, rects),
         onPointerMove: (event) => _handlePointerMove(event, rects),
         onPointerUp: _handlePointerEnd,
