@@ -282,11 +282,11 @@ def _time(obj: Any) -> str | None:
 
 
 def _chanpy_freq(freq: str) -> str:
-    # TICK rows are transaction-level pseudo bars. chan.py usually exposes K-line
-    # KL_TYPE enums but not a dedicated transaction enum, so use the finest
-    # supported minute level as the calculation container while preserving
-    # period='TICK' in the raw rows for downstream chip evidence.
-    return 'MIN1' if str(freq).strip().upper() == 'TICK' else freq
+    # TICK rows are transaction-level pseudo bars and should normally use the
+    # chip-only bypass. TICK_MIN1 rows are transaction-derived minute bars and
+    # can safely use chan.py's MIN1 calculation container.
+    text = str(freq).strip().upper()
+    return 'MIN1' if text in {'TICK', 'TICK_MIN1', 'TICK_1MIN', 'TXN_MIN1'} else freq
 
 
 def _iter_list(obj: Any, *names: str) -> list[Any]:

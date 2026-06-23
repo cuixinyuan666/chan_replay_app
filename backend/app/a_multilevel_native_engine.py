@@ -77,11 +77,42 @@ def _is_tick_level(level: str) -> bool:
     return text in {'TICK', 'TRANSACTION', 'TRANSACTIONS'}
 
 
+
+
+def _is_tick_agg_min1_level(level: str) -> bool:
+    raw = str(level).upper().strip()
+    compact = raw.replace('K_', '').replace('-', '').replace('_', '')
+    aliases = {
+        'TICK_MIN1',
+        'TICK_1MIN',
+        'TICK_MIN_1',
+        'TXN_MIN1',
+        'TRANSACTION_MIN1',
+        'TRANSACTIONS_MIN1',
+        'TICKMIN1',
+        'TICK1MIN',
+        'TICKMIN_1',
+        'TXNMIN1',
+        'TRANSACTIONMIN1',
+        'TRANSACTIONSMIN1',
+    }
+    return raw in aliases or compact in aliases
+
+
+def _chanpy_level_for_native(level: str) -> str:
+    # TICK_MIN1 is transaction-derived minute K-line data. Keep the public
+    # level name as TICK_MIN1, but feed chan.py through the MIN1 KL_TYPE
+    # container so it can calculate fx/bi/seg/zs/bsp normally.
+    return 'MIN1' if _is_tick_agg_min1_level(level) else level
+
+
 def _level_intraday_bars_per_day(level: str) -> int:
     if _is_tick_level(level):
         # TICK is transaction-level data. Use a large estimate so request-window
         # prefetch never collapses to daily-style one-row loading.
         return 50000
+    if _is_tick_agg_min1_level(level):
+        return 240
     text = level.upper().strip().replace('K_', '').replace('-', '').replace('_', '')
     aliases = {
         'MIN1': 240,
@@ -461,8 +492,21 @@ def _raw_klu_iter(level: Any) -> list[Any]:
     return result
 
 
-def _visible_bars_for_level(level_obj: Any, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    indices = [idx for idx in (_idx(klu) for klu in _raw_klu_iter(level_obj)) if idx is not None]
+def _visible_bars_for_level(
+    level_name: str,
+    level_obj: Any,
+    bars: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if _is_tick_agg_min1_level(level_name):
+        # TICK_MIN1 bars are already legal minute bars and carry exact
+        # transaction-derived chip_tick_bins. Do not let chan.py internal KLU
+        # visibility truncate the UI/chip payload.
+        return list(bars)
+
+    indices = [
+        idx for idx in (_idx(klu) for klu in _raw_klu_iter(level_obj))
+        if idx is not None
+    ]
     if not indices:
         return []
     visible_count = min(max(indices) + 1, len(bars))
@@ -533,7 +577,7 @@ def _prepare_native_chan(
     exporter = _load_exporter()
     chanpy_root = exporter.add_chanpy_path(_chanpy_path())
     CChan, CChanConfig, AUTYPE, DATA_SRC, KL_TYPE = exporter.import_chanpy()
-    kl_types = [exporter.pick_kl_type(KL_TYPE, level) for level in level_order]
+    kl_types = [exporter.pick_kl_type(KL_TYPE, _chanpy_level_for_native(level)) for level in level_order]
     autype = exporter.pick_autype(AUTYPE, adjust)
     prepared_code_base = f'origin_multi_{_safe_code(code)}'
     prepared_code: str | None = None
@@ -575,7 +619,7 @@ def _snapshot_from_chan(
     for level, kl_type in zip(level_order, kl_types):
         level_obj = exporter.get_level(chan, kl_type)
         structures = _export_level(exporter, level_obj)
-        visible_bars = _visible_bars_for_level(level_obj, bars_by_level[level])
+        visible_bars = _visible_bars_for_level(level, level_obj, bars_by_level[level])
         level_results[level] = _level_payload(
             bars=visible_bars,
             structures=structures,

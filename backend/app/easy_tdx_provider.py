@@ -184,6 +184,18 @@ def _is_tick_period(period_name: str) -> bool:
     return period_name.upper() in {'TICK', 'TRANSACTION', 'TRANSACTIONS'}
 
 
+def _is_tick_agg_min1_period(period_name: str) -> bool:
+    text = period_name.upper().strip().replace('-', '_')
+    return text in {
+        'TICK_MIN1',
+        'TICK_1MIN',
+        'TICK_MIN_1',
+        'TXN_MIN1',
+        'TRANSACTION_MIN1',
+        'TRANSACTIONS_MIN1',
+    }
+
+
 def _date_arg(value: str | None) -> int | None:
     if not value:
         return None
@@ -309,6 +321,105 @@ def _normalize_transaction_bars(
     return bars
 
 
+def _aggregate_transaction_bars_to_min1(
+    transaction_bars: list[dict[str, Any]],
+    *,
+    code: str,
+    market_name: str,
+    period_name: str,
+    adjust_name: str,
+) -> list[dict[str, Any]]:
+    buckets: dict[datetime, list[dict[str, Any]]] = {}
+    for row in transaction_bars:
+        if not isinstance(row, dict):
+            continue
+        dt = _parse_dt(row.get('dt') or row.get('time'))
+        minute = dt.replace(second=0, microsecond=0)
+        buckets.setdefault(minute, []).append(row)
+
+    bars: list[dict[str, Any]] = []
+    for minute in sorted(buckets):
+        rows = buckets[minute]
+        prices = [
+            float(row.get('close') or row.get('price') or row.get('open') or 0)
+            for row in rows
+        ]
+        prices = [price for price in prices if price > 0]
+        if not prices:
+            continue
+
+        open_ = prices[0]
+        close = prices[-1]
+        high = max(prices)
+        low = min(prices)
+        volume = sum(float(row.get('volume') or row.get('vol') or 0) for row in rows)
+        amount_values = [
+            float(row.get('amount'))
+            for row in rows
+            if row.get('amount') is not None
+        ]
+        amount = sum(amount_values) if amount_values else None
+
+        sell_by_price: dict[float, float] = {}
+        buy_by_price: dict[float, float] = {}
+        total_by_price: dict[float, float] = {}
+        for row in rows:
+            bins = row.get('chip_tick_bins') if isinstance(row.get('chip_tick_bins'), dict) else {}
+            prices_bin = bins.get('p') or bins.get('prices') or []
+            sells = bins.get('s') or bins.get('sell') or bins.get('sell_weights') or []
+            buys = bins.get('b') or bins.get('buy') or bins.get('buy_weights') or []
+            totals = bins.get('w') or bins.get('weight') or bins.get('weights') or []
+            for i, raw_price in enumerate(prices_bin):
+                price = _optional_float(raw_price)
+                if price is None or price <= 0:
+                    continue
+                sell = _optional_float(sells[i] if i < len(sells) else None) or 0.0
+                buy = _optional_float(buys[i] if i < len(buys) else None) or 0.0
+                total = _optional_float(totals[i] if i < len(totals) else None)
+                if total is None:
+                    total = sell + buy
+                sell_by_price[price] = sell_by_price.get(price, 0.0) + sell
+                buy_by_price[price] = buy_by_price.get(price, 0.0) + buy
+                total_by_price[price] = total_by_price.get(price, 0.0) + total
+
+        bin_prices = sorted(total_by_price)
+        raw_index = len(bars)
+        bars.append({
+            'id': raw_index,
+            'raw_index': raw_index,
+            'dt': minute.isoformat(sep=' '),
+            'time': minute.isoformat(sep=' '),
+            'open': open_,
+            'high': high,
+            'low': low,
+            'close': close,
+            'vol': volume,
+            'volume': volume,
+            'amount': amount,
+            'turnover': None,
+            'symbol': f'{code}.{market_name}',
+            'market': market_name,
+            'code': code,
+            'period': period_name,
+            'adjust': adjust_name,
+            'tick_agg_source': 'backend_tick_transaction',
+            'tick_agg_period': 'MIN1',
+            'tick_agg_transaction_count': len(rows),
+            'chip_tick_bins': {
+                'p': bin_prices,
+                's': [sell_by_price.get(price, 0.0) for price in bin_prices],
+                'b': [buy_by_price.get(price, 0.0) for price in bin_prices],
+                'w': [total_by_price.get(price, 0.0) for price in bin_prices],
+                'source': 'backend_tick_agg_min1',
+                'source_period': 'TICK',
+                'agg_period': 'MIN1',
+                'transaction_count': len(rows),
+            },
+        })
+
+    return bars
+
+
 def _cache_key(
     *,
     code: str,
@@ -382,6 +493,48 @@ def load_easy_tdx_bars(
         ) from exc
 
     market_enum = _market_value(market_name, Market)
+    if _is_tick_agg_min1_period(period_name):
+        date_hint = _date_arg(end) or _date_arg(start)
+        try:
+            if date_hint is None:
+                df = _get_transactions(MacClient, market_enum, code, count=safe_count)
+            else:
+                df = _get_transactions(
+                    MacClient,
+                    market_enum,
+                    code,
+                    count=safe_count,
+                    date=date_hint,
+                )
+        except TypeError:
+            if date_hint is None:
+                df = _get_transactions(MacClient, market_enum, code, safe_count)
+            else:
+                df = _get_transactions(
+                    MacClient,
+                    market_enum,
+                    code,
+                    safe_count,
+                    date_hint,
+                )
+        transaction_bars = _normalize_transaction_bars(
+            df,
+            code=code,
+            market_name=market_name,
+            period_name='TICK',
+            adjust_name=adjust_name,
+            date_hint=date_hint,
+        )
+        bars = _aggregate_transaction_bars_to_min1(
+            transaction_bars,
+            code=code,
+            market_name=market_name,
+            period_name=period_name,
+            adjust_name=adjust_name,
+        )
+        _EASY_TDX_BAR_CACHE[key] = _copy_bars(bars)
+        return bars
+
     if _is_tick_period(period_name):
         date_hint = _date_arg(end) or _date_arg(start)
         try:
