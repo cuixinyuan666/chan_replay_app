@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date, datetime
+import re
 from typing import Any
 
 
@@ -168,6 +169,139 @@ def _get_stock_kline(MacClient: Any, *args: Any, **kwargs: Any) -> Any:
         _close_client(client)
 
 
+def _get_transactions(MacClient: Any, *args: Any, **kwargs: Any) -> Any:
+    client = MacClient.from_best_host()
+    try:
+        if hasattr(client, '__enter__') and hasattr(client, '__exit__'):
+            with client as c:
+                return c.get_transactions(*args, **kwargs)
+        return client.get_transactions(*args, **kwargs)
+    finally:
+        _close_client(client)
+
+
+def _is_tick_period(period_name: str) -> bool:
+    return period_name.upper() in {'TICK', 'TRANSACTION', 'TRANSACTIONS'}
+
+
+def _date_arg(value: str | None) -> int | None:
+    if not value:
+        return None
+    dt = _parse_dt(value)
+    return int(f'{dt.year:04d}{dt.month:02d}{dt.day:02d}')
+
+
+def _parse_transaction_dt(row: Any, date_hint: int | None) -> datetime:
+    value = _row_get(row, 'datetime', 'dt', 'date', 'time', default=None)
+    if isinstance(value, datetime):
+        return value
+    text = str(value or '').strip().replace('/', '-').replace('T', ' ')
+    if text:
+        if re.match(r'^\d{1,2}:\d{2}(:\d{2})?$', text):
+            if date_hint is not None:
+                day = datetime.strptime(str(date_hint), '%Y%m%d')
+            else:
+                day = datetime.today()
+            parts = [int(x) for x in text.split(':')]
+            hour, minute = parts[0], parts[1]
+            second = parts[2] if len(parts) > 2 else 0
+            return datetime(day.year, day.month, day.day, hour, minute, second)
+        return _parse_dt(text)
+    if date_hint is not None:
+        return datetime.strptime(str(date_hint), '%Y%m%d')
+    return datetime.today()
+
+
+def _transaction_side(row: Any) -> str:
+    raw = _row_get(
+        row,
+        'bs',
+        'side',
+        'direction',
+        'flag',
+        'type',
+        'buy_sell',
+        'kind',
+        default='',
+    )
+    text = str(raw).strip().lower()
+    if text in {'s', 'sell', 'sold', 'out', '2', '-1'} or '卖' in text:
+        return 'sell'
+    if text in {'b', 'buy', 'bought', 'in', '1'} or '买' in text:
+        return 'buy'
+    return 'unknown'
+
+
+def _transaction_price(row: Any) -> float | None:
+    return _optional_float(_row_get(row, 'price', 'p', 'close', 'last', default=None))
+
+
+def _transaction_volume(row: Any) -> float:
+    return (
+        _optional_float(
+            _row_get(row, 'vol', 'volume', 'v', 'qty', 'quantity', default=0)
+        )
+        or 0.0
+    )
+
+
+def _transaction_amount(row: Any) -> float | None:
+    return _optional_float(_row_get(row, 'amount', 'money', 'turnover', default=None))
+
+
+def _normalize_transaction_bars(
+    rows: Any,
+    *,
+    code: str,
+    market_name: str,
+    period_name: str,
+    adjust_name: str,
+    date_hint: int | None,
+) -> list[dict[str, Any]]:
+    bars: list[dict[str, Any]] = []
+    for row in _iter_rows(rows):
+        price = _transaction_price(row)
+        if price is None or price <= 0:
+            continue
+        dt = _parse_transaction_dt(row, date_hint)
+        volume = _transaction_volume(row)
+        amount = _transaction_amount(row)
+        side = _transaction_side(row)
+        sell_volume = volume if side == 'sell' else 0.0
+        buy_volume = volume if side != 'sell' else 0.0
+        raw_index = len(bars)
+        bars.append(
+            {
+                'id': raw_index,
+                'raw_index': raw_index,
+                'dt': dt.isoformat(sep=' '),
+                'time': dt.isoformat(sep=' '),
+                'open': price,
+                'high': price,
+                'low': price,
+                'close': price,
+                'vol': volume,
+                'volume': volume,
+                'amount': amount,
+                'turnover': None,
+                'transaction_side': side,
+                'symbol': f'{code}.{market_name}',
+                'market': market_name,
+                'code': code,
+                'period': period_name,
+                'adjust': adjust_name,
+                'chip_tick_bins': {
+                    'p': [price],
+                    's': [sell_volume],
+                    'b': [buy_volume],
+                    'w': [volume],
+                    'source': 'backend_tick_transaction',
+                },
+            }
+        )
+    return bars
+
+
 def _cache_key(
     *,
     code: str,
@@ -241,6 +375,41 @@ def load_easy_tdx_bars(
         ) from exc
 
     market_enum = _market_value(market_name, Market)
+    if _is_tick_period(period_name):
+        date_hint = _date_arg(end) or _date_arg(start)
+        try:
+            if date_hint is None:
+                df = _get_transactions(MacClient, market_enum, code, count=safe_count)
+            else:
+                df = _get_transactions(
+                    MacClient,
+                    market_enum,
+                    code,
+                    count=safe_count,
+                    date=date_hint,
+                )
+        except TypeError:
+            if date_hint is None:
+                df = _get_transactions(MacClient, market_enum, code, safe_count)
+            else:
+                df = _get_transactions(
+                    MacClient,
+                    market_enum,
+                    code,
+                    safe_count,
+                    date_hint,
+                )
+        bars = _normalize_transaction_bars(
+            df,
+            code=code,
+            market_name=market_name,
+            period_name=period_name,
+            adjust_name=adjust_name,
+            date_hint=date_hint,
+        )
+        _EASY_TDX_BAR_CACHE[key] = _copy_bars(bars)
+        return bars
+
     period_enum = _period_value(period_name, Period)
     adjust_enum = _adjust_value(adjust_name, Adjust)
 

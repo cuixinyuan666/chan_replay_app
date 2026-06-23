@@ -52,6 +52,7 @@ class S13SingleStockReplayPage extends StatefulWidget {
 
 class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   static const _levelOptions = <String>[
+    'TICK',
     'DAILY',
     'MIN60',
     'MIN30',
@@ -60,6 +61,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     'MIN1',
   ];
   static const _levelOptionSet = <String>{
+    'TICK',
     'DAILY',
     'MIN60',
     'MIN30',

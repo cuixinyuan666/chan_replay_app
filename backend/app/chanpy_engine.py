@@ -281,6 +281,14 @@ def _time(obj: Any) -> str | None:
     return None if value is None else str(value)
 
 
+def _chanpy_freq(freq: str) -> str:
+    # TICK rows are transaction-level pseudo bars. chan.py usually exposes K-line
+    # KL_TYPE enums but not a dedicated transaction enum, so use the finest
+    # supported minute level as the calculation container while preserving
+    # period='TICK' in the raw rows for downstream chip evidence.
+    return 'MIN1' if str(freq).strip().upper() == 'TICK' else freq
+
+
 def _iter_list(obj: Any, *names: str) -> list[Any]:
     for name in names:
         value = getattr(obj, name, None)
@@ -499,7 +507,7 @@ def _prepare_chan(*, bars: list[dict[str, Any]], code: str, freq: str, adjust: s
     exporter = _load_exporter()
     chanpy_root = exporter.add_chanpy_path(_chanpy_path())
     CChan, CChanConfig, AUTYPE, DATA_SRC, KL_TYPE = exporter.import_chanpy()
-    kl_type = exporter.pick_kl_type(KL_TYPE, freq)
+    kl_type = exporter.pick_kl_type(KL_TYPE, _chanpy_freq(freq))
     autype = exporter.pick_autype(AUTYPE, adjust)
     csv_path = _bars_to_csv(bars, code)
     prepared_code = exporter.prepare_chanpy_csv(str(csv_path), chanpy_root, kl_type, f'origin_{_safe_code(code)}')
