@@ -531,7 +531,7 @@ class _AppearancePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<KlineAppearanceSettings>(
-      valueListenable: klineAppearanceController.settings,
+      valueListenable: KlineAppearanceController.selected,
       builder: (context, settings, _) {
         return SingleChildScrollView(
           child: Column(
@@ -539,12 +539,12 @@ class _AppearancePanel extends StatelessWidget {
             children: <Widget>[
               const _SettingCaption('整体透明度'),
               Slider(
-                value: settings.overlayOpacity,
+                value: settings.klineOpacity,
                 min: 0,
                 max: 1,
                 divisions: 20,
-                label: settings.overlayOpacity.toStringAsFixed(2),
-                onChanged: klineAppearanceController.setOverlayOpacity,
+                label: settings.klineOpacity.toStringAsFixed(2),
+                onChanged: KlineAppearanceController.setKlineOpacity,
               ),
               const SizedBox(height: 12),
               const _SettingCaption('K线颜色'),
@@ -576,7 +576,7 @@ class _AppearancePanel extends StatelessWidget {
               FilledButton.tonalIcon(
                 icon: const Icon(Icons.restart_alt, size: 16),
                 label: const Text('恢复默认'),
-                onPressed: klineAppearanceController.reset,
+                onPressed: KlineAppearanceController.reset,
               ),
             ],
           ),
