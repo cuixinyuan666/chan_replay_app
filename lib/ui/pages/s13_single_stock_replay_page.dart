@@ -1618,6 +1618,92 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     });
   }
 
+  String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+  String _chartEvidenceTime(DateTime time) {
+    return '${time.year}-${_twoDigits(time.month)}-${_twoDigits(time.day)} '
+        '${_twoDigits(time.hour)}:${_twoDigits(time.minute)}';
+  }
+
+  String _snapshotTimeRange(ChanSnapshot? snapshot) {
+    if (snapshot == null || snapshot.rawBars.isEmpty) return 'none';
+    return '${_chartEvidenceTime(snapshot.rawBars.first.time)}'
+        '~${_chartEvidenceTime(snapshot.rawBars.last.time)}';
+  }
+
+  String _visibleWindowTimeRange(ChanSnapshot? snapshot) {
+    if (snapshot == null || snapshot.rawBars.isEmpty) return 'none';
+    final max = snapshot.rawBars.length - 1;
+    final end = (_viewEndIndex ?? max).clamp(0, max).toInt();
+    final safeWindowSize = _windowSize < 1 ? 1 : _windowSize;
+    final start = (end - safeWindowSize + 1).clamp(0, end).toInt();
+    return '${_chartEvidenceTime(snapshot.rawBars[start].time)}'
+        '~${_chartEvidenceTime(snapshot.rawBars[end].time)}';
+  }
+
+  String _timeForRawIndex(ChanSnapshot snapshot, int rawIndex) {
+    if (snapshot.rawBars.isEmpty) return 'none';
+    for (final bar in snapshot.rawBars) {
+      if (bar.index == rawIndex) return _chartEvidenceTime(bar.time);
+    }
+
+    var nearest = snapshot.rawBars.first;
+    var nearestDistance = (nearest.index - rawIndex).abs();
+    for (final bar in snapshot.rawBars.skip(1)) {
+      final distance = (bar.index - rawIndex).abs();
+      if (distance < nearestDistance) {
+        nearest = bar;
+        nearestDistance = distance;
+      }
+    }
+    return '${_chartEvidenceTime(nearest.time)}(nearest)';
+  }
+
+  String _biZsTimeSample(ChanSnapshot? snapshot) {
+    if (snapshot == null || snapshot.zss.isEmpty) return 'none';
+    return <String>[
+      for (final zs in snapshot.zss)
+        '笔@${_timeForRawIndex(snapshot, zs.startRawIndex)}'
+            '~${_timeForRawIndex(snapshot, zs.endRawIndex)}'
+            ':zg=${zs.zg}:zd=${zs.zd}',
+    ].take(12).join(',');
+  }
+
+  String _nativeSegZsTimeSample(ChanSnapshot? snapshot) {
+    if (snapshot == null || snapshot.segZss.isEmpty) return 'none';
+    return <String>[
+      for (final zs in snapshot.segZss)
+        '段@${_timeForRawIndex(snapshot, zs.startRawIndex)}'
+            '~${_timeForRawIndex(snapshot, zs.endRawIndex)}'
+            ':zg=${zs.zg}:zd=${zs.zd}',
+    ].take(12).join(',');
+  }
+
+  String _recursiveZsTimeSample(ChanSnapshot? snapshot) {
+    if (snapshot == null || snapshot.recursiveSegZss.isEmpty) return 'none';
+    final layers = snapshot.recursiveSegZss.keys.toList()..sort();
+    final rows = <String>[
+      for (final layer in layers)
+        for (final zs in snapshot.recursiveSegZss[layer] ?? const [])
+          '$layer段@${_timeForRawIndex(snapshot, zs.startRawIndex)}'
+              '~${_timeForRawIndex(snapshot, zs.endRawIndex)}'
+              ':zg=${zs.zg}:zd=${zs.zd}',
+    ].take(12).toList();
+    return rows.isEmpty ? 'none' : rows.join(',');
+  }
+
+  String _recursiveBspTimeSample(ChanSnapshot? snapshot) {
+    if (snapshot == null || snapshot.recursiveSegBsps.isEmpty) return 'none';
+    final layers = snapshot.recursiveSegBsps.keys.toList()..sort();
+    final rows = <String>[
+      for (final layer in layers)
+        for (final bsp
+            in snapshot.recursiveSegBsps[layer] ?? const <BspPoint>[])
+          '$layer段@${_timeForRawIndex(snapshot, bsp.rawIndex)}:${bsp.type}',
+    ].take(12).toList();
+    return rows.isEmpty ? 'none' : rows.join(',');
+  }
+
   String _currentS13SettingsEvidenceText() {
     final active = _activeSnapshot;
     final current = _currentSnapshot;
@@ -1641,6 +1727,20 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         for (final bsp in active?.recursiveSegBsps[layer] ?? const <BspPoint>[])
           '$layer段@${bsp.rawIndex}:${bsp.type}',
     ].take(12).join(',');
+    final visibleRecursiveZsLayers = <int>[
+      if (_showSeg2Zs) 2,
+      if (_showSegNZs)
+        for (var layer = 3;
+            layer <= LevelPromoterSettings.currentMaxLayer;
+            layer++)
+          layer,
+    ].join(',');
+    final activeDataTimeRange = _snapshotTimeRange(active);
+    final visibleWindowTimeRange = _visibleWindowTimeRange(active);
+    final activeBiZsTimeSample = _biZsTimeSample(active);
+    final activeSegZsTimeSample = _nativeSegZsTimeSample(active);
+    final recursiveZsTimeSample = _recursiveZsTimeSample(active);
+    final recursiveBspTimeSample = _recursiveBspTimeSample(active);
 
     final buffer = StringBuffer()
       ..writeln('S13_CURRENT_SETTINGS_EVIDENCE')
@@ -1685,12 +1785,18 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       ..writeln('crosshair_index=${_crosshairIndex ?? 'none'}')
       ..writeln('price_scale=$_priceScale')
       ..writeln('price_offset=$_priceOffset')
+      ..writeln('visible_window_time_range=$visibleWindowTimeRange')
       ..writeln()
       ..writeln('[图层]')
       ..writeln('show_bsp_candidate_trail=$_showBspCandidateTrail')
       ..writeln('show_rhythm_lines=$_showRhythmLines')
       ..writeln('show_1382_hits=$_show1382Hits')
       ..writeln('show_chip_distribution=$_showChipDistribution')
+      ..writeln('show_native_zs=$_showNativeZs')
+      ..writeln('show_seg2_zs=$_showSeg2Zs')
+      ..writeln('show_seg_n_zs=$_showSegNZs')
+      ..writeln(
+          'visible_recursive_zs_layers=${visibleRecursiveZsLayers.isEmpty ? 'none' : visibleRecursiveZsLayers}')
       ..writeln(
           'easy_tdx_indicators=${_enabledEasyTdxIndicators.toList()..sort()}')
       ..writeln()
@@ -1720,6 +1826,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       ..writeln('has_current_snapshot=${current != null}')
       ..writeln('has_active_snapshot=${active != null}')
       ..writeln('active_raw_bars=${active?.rawBars.length ?? 0}')
+      ..writeln('active_data_time_range=$activeDataTimeRange')
       ..writeln('active_bi_count=${active?.bis.length ?? 0}')
       ..writeln('active_seg_count=${active?.segs.length ?? 0}')
       ..writeln('active_zs_count=${active?.zss.length ?? 0}')
@@ -1728,11 +1835,15 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           'recursive_seg_counts=${recursiveCounts(active?.recursiveSegLayers)}')
       ..writeln(
           'recursive_zs_counts=${recursiveCounts(active?.recursiveSegZss)}')
+      ..writeln('active_bi_zs_time_sample=$activeBiZsTimeSample')
+      ..writeln('active_seg_zs_time_sample=$activeSegZsTimeSample')
+      ..writeln('recursive_zs_time_sample=$recursiveZsTimeSample')
       ..writeln(
           'recursive_real_bsp_counts=${recursiveCounts(active?.recursiveSegBsps)}')
       ..writeln(
           'recursive_candidate_bsp_counts=${recursiveCounts(active?.recursiveSegBspCandidates)}')
       ..writeln('recursive_real_bsp_sample=$recursiveBspSample')
+      ..writeln('recursive_real_bsp_time_sample=$recursiveBspTimeSample')
       ..writeln('nested_markers=${_nestedBspMarkers.length}')
       ..writeln('candidate_trail=$_bspCandidateTrailCount')
       ..writeln()
