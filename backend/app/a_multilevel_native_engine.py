@@ -72,7 +72,16 @@ def _parse_request_window_bound(value: str | None, *, is_end: bool) -> datetime 
     return parsed
 
 
+def _is_tick_level(level: str) -> bool:
+    text = level.upper().strip().replace('K_', '').replace('-', '').replace('_', '')
+    return text in {'TICK', 'TRANSACTION', 'TRANSACTIONS'}
+
+
 def _level_intraday_bars_per_day(level: str) -> int:
+    if _is_tick_level(level):
+        # TICK is transaction-level data. Use a large estimate so request-window
+        # prefetch never collapses to daily-style one-row loading.
+        return 50000
     text = level.upper().strip().replace('K_', '').replace('-', '').replace('_', '')
     aliases = {
         'MIN1': 240,
@@ -128,6 +137,8 @@ def _effective_csv_dt(level: str, row: dict[str, Any]) -> datetime | None:
     row_dt = _parse_bar_dt(row)
     if row_dt is None:
         return None
+    if _is_tick_level(level):
+        return row_dt
     if _is_intraday_level(level):
         return row_dt
     return datetime.combine(row_dt.date(), time(23, 59))
@@ -214,6 +225,23 @@ def _filter_by_date_window(
 
 
 def _sort_dedupe_level_bars(level: str, bars: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    if _is_tick_level(level):
+        # TICK preserves every transaction. Multiple transactions may share the
+        # same second or same price, so datetime-key dedupe would incorrectly
+        # collapse real trades into a single bar.
+        result = [
+            row for row in bars
+            if isinstance(row, dict) and _parse_bar_dt(row) is not None
+        ]
+        result.sort(key=lambda row: (
+            _parse_bar_dt(row) or datetime.min,
+            int(row.get('raw_index', row.get('id', 0)) or 0),
+        ))
+        for raw_index, row in enumerate(result):
+            row['id'] = raw_index
+            row['raw_index'] = raw_index
+        return result, 0
+
     keyed: dict[datetime, dict[str, Any]] = {}
     for row in bars:
         if not isinstance(row, dict):
@@ -365,7 +393,7 @@ def _load_aligned_bars_by_level(
 
 def _bars_for_native_csv(level: str, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
-    for row in bars:
+    for i, row in enumerate(bars):
         if not isinstance(row, dict):
             continue
         csv_dt = _effective_csv_dt(level, row)
@@ -373,6 +401,11 @@ def _bars_for_native_csv(level: str, bars: list[dict[str, Any]]) -> list[dict[st
             result.append(row)
             continue
         patched = dict(row)
+        if _is_tick_level(level):
+            # chan.py CSV loading is safer with unique timestamps. Keep payload
+            # bars untouched; only the native-calculation CSV timestamp receives
+            # a stable microsecond offset.
+            csv_dt = csv_dt.replace(microsecond=min(i, 999999))
         patched['dt'] = csv_dt.isoformat(sep=' ')
         patched['time'] = csv_dt.isoformat(sep=' ')
         result.append(patched)

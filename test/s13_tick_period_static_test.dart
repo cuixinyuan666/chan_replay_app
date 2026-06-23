@@ -43,4 +43,16 @@ void main() {
     expect(
         source, contains('exporter.pick_kl_type(KL_TYPE, _chanpy_freq(freq))'));
   });
+
+  test('multi-level native engine preserves every TICK transaction', () {
+    final source = _read('backend/app/a_multilevel_native_engine.py');
+
+    expect(source, contains('def _is_tick_level('));
+    expect(source,
+        contains("return text in {'TICK', 'TRANSACTION', 'TRANSACTIONS'}"));
+    expect(source, contains('TICK preserves every transaction'));
+    expect(source, contains("row['raw_index'] = raw_index"));
+    expect(source,
+        contains('csv_dt = csv_dt.replace(microsecond=min(i, 999999))'));
+  });
 }
