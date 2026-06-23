@@ -38,11 +38,11 @@ class ChipDistributionPage extends StatelessWidget {
                       children: <Widget>[
                         Row(
                           children: <Widget>[
-                            const Icon(Icons.stacked_bar_chart,
+                            const Icon(Icons.tune,
                                 color: Color(0xFF8AB4FF)),
                             const SizedBox(width: 8),
                             Text(
-                              '筹码分布/价格桶数',
+                              '价格桶数',
                               style: Theme.of(context)
                                   .textTheme
                                   .titleLarge
