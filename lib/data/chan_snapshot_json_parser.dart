@@ -186,6 +186,26 @@ class ChanSnapshotJsonParser {
     timing[key] = (timing[key] ?? 0) + elapsedMs;
   }
 
+  static Map<String, dynamic>? _parseChipTickBins(Object? raw) {
+    if (raw is! Map) return null;
+    final out = <String, dynamic>{};
+    for (final entry in raw.entries) {
+      final key = entry.key.toString();
+      final value = entry.value;
+      if (value is List) {
+        out[key] = List<dynamic>.unmodifiable(value);
+      } else if (value is Map) {
+        out[key] = Map<String, dynamic>.unmodifiable(<String, dynamic>{
+          for (final nested in value.entries)
+            nested.key.toString(): nested.value,
+        });
+      } else if (value != null) {
+        out[key] = value;
+      }
+    }
+    return out.isEmpty ? null : Map<String, dynamic>.unmodifiable(out);
+  }
+
   static RawBar? _parseRawBar(Map row, int index) {
     final time =
         _parseTime(row['dt'] ?? row['datetime'] ?? row['date'] ?? row['time']);
@@ -194,6 +214,8 @@ class ChanSnapshotJsonParser {
     final low = _num(row['low'] ?? row['l']);
     final close = _num(row['close'] ?? row['c']);
     final volume = _num(row['vol'] ?? row['volume'] ?? row['v']) ?? 0.0;
+    final chipTickBins =
+        _parseChipTickBins(row['chip_tick_bins'] ?? row['chipTickBins']);
     if (time == null ||
         open == null ||
         high == null ||
@@ -206,7 +228,8 @@ class ChanSnapshotJsonParser {
         high: high,
         low: low,
         close: close,
-        volume: volume);
+        volume: volume,
+        chipTickBins: chipTickBins);
   }
 
   static MergedBar? _parseMergedBar(Map row, List<RawBar> bars) {

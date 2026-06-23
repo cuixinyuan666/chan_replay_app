@@ -6,6 +6,7 @@ class RawBar {
   final double low;
   final double close;
   final double volume;
+  final Map<String, dynamic>? chipTickBins;
 
   const RawBar({
     required this.index,
@@ -15,6 +16,7 @@ class RawBar {
     required this.low,
     required this.close,
     required this.volume,
+    this.chipTickBins,
   });
 
   RawBar copyWith({
@@ -25,6 +27,7 @@ class RawBar {
     double? low,
     double? close,
     double? volume,
+    Map<String, dynamic>? chipTickBins,
   }) {
     return RawBar(
       index: index ?? this.index,
@@ -34,6 +37,7 @@ class RawBar {
       low: low ?? this.low,
       close: close ?? this.close,
       volume: volume ?? this.volume,
+      chipTickBins: chipTickBins ?? this.chipTickBins,
     );
   }
 }

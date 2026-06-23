@@ -14,15 +14,30 @@ class ChipOnlineReplayAdapter {
     final bars = snapshot?.rawBars ?? const <RawBar>[];
     return <ChipDistributionBar>[
       for (final bar in bars)
-        ChipDistributionBar(
-          index: bar.index,
-          time: bar.time,
-          open: bar.open,
-          high: bar.high,
-          low: bar.low,
-          close: bar.close,
-          volume: bar.volume,
-        ),
+        if (bar.chipTickBins == null)
+          ChipDistributionBar(
+            index: bar.index,
+            time: bar.time,
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+            volume: bar.volume,
+          )
+        else
+          ChipDistributionBar.fromJson(
+            <String, dynamic>{
+              'x': bar.index,
+              'dt': bar.time.toIso8601String(),
+              'open': bar.open,
+              'high': bar.high,
+              'low': bar.low,
+              'close': bar.close,
+              'volume': bar.volume,
+              'chip_tick_bins': bar.chipTickBins,
+            },
+            bar.index,
+          ),
     ];
   }
 
