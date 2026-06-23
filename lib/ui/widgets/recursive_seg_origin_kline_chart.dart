@@ -199,13 +199,12 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
           DrawingAnchor.chart(rawIndex: zs.endRawIndex, price: zs.zd),
         ],
         style: DrawingStyle(
-          colorValue: 0xFF5B8DFF,
-          strokeWidth: 1.1,
-          opacity: zs.confirmed ? 0.76 : 0.42,
+          // Native segment ZS follows native SEG line color.
+          colorValue: zs.confirmed ? 0xFF00E676 : 0xFFB2FF59,
+          strokeWidth: zs.confirmed ? 2.0 : 1.4,
+          opacity: zs.confirmed ? 0.92 : 0.62,
           dashed: !zs.confirmed,
-          filled: true,
-          fillColorValue: 0xFF5B8DFF,
-          fillOpacity: zs.confirmed ? 0.09 : 0.045,
+          filled: false,
         ),
         text: '段中枢',
         locked: true,
@@ -239,13 +238,13 @@ class RecursiveSegOriginKlineChart extends StatefulWidget {
             DrawingAnchor.chart(rawIndex: zs.endRawIndex, price: zs.zd),
           ],
           style: DrawingStyle(
+            // Recursive segment ZS follows the recursive segment line color.
             colorValue: _colorValueForLayer(layer),
-            strokeWidth: 1.0,
-            opacity: zs.confirmed ? 0.72 : 0.38,
+            strokeWidth:
+                _styleForLayer(layer: layer, isSure: zs.confirmed).strokeWidth,
+            opacity: zs.confirmed ? 0.88 : 0.46,
             dashed: !zs.confirmed,
-            filled: true,
-            fillColorValue: _colorValueForLayer(layer),
-            fillOpacity: zs.confirmed ? 0.08 : 0.04,
+            filled: false,
           ),
           text: '$layer段中枢',
           locked: true,

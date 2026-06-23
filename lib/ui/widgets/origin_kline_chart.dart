@@ -1301,7 +1301,8 @@ class _OriginChartPainter extends CustomPainter {
       Color(0xFFEF5350),
       Color(0xFF66BB6A),
     ];
-    double valueToY(double value) => rect.bottom -
+    double valueToY(double value) =>
+        rect.bottom -
         3 -
         (value - minValue) / (maxValue - minValue) * (rect.height - 18);
     for (var ki = 0; ki < keys.length; ki++) {
@@ -1609,7 +1610,8 @@ class _OriginChartPainter extends CustomPainter {
       final p = Offset(
           rawToX(fx.rawIndex).clamp(rect.left, rect.right).toDouble(),
           priceToY(fx.price).clamp(rect.top, rect.bottom).toDouble());
-      canvas.drawCircle(p, 4, Paint()..color = color);
+      // Do not draw circular top/bottom icons. Text labels remain controlled
+      // by showFxText, while fx-line remains controlled by showFxLine.
       if (showFxText) {
         chartLabels.add(ChartLabel(
           text: fx.isTop ? '顶' : '底',
@@ -1699,13 +1701,12 @@ class _OriginChartPainter extends CustomPainter {
 
   void _drawZs(Canvas canvas, Rect rect, int start, int end,
       double Function(int) rawToX, double Function(double) priceToY) {
-    final fill = Paint()
-      ..color = const Color(0xFF2962FF).withValues(alpha: 0.10)
-      ..style = PaintingStyle.fill;
+    // BI-level ZS follows BI line color: red. ZS boxes are border-only to
+    // avoid covering candles and higher-level overlays.
     final stroke = Paint()
-      ..color = const Color(0xFF5B8DFF).withValues(alpha: 0.85)
+      ..color = const Color(0xFFE53935).withValues(alpha: 0.88)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.1;
+      ..strokeWidth = 1.15;
     for (final zs in snapshot.zss) {
       if (zs.endRawIndex < start || zs.startRawIndex > end) continue;
       final left =
@@ -1716,10 +1717,9 @@ class _OriginChartPainter extends CustomPainter {
       final bottom = priceToY(zs.zd).clamp(rect.top, rect.bottom).toDouble();
       final area = Rect.fromLTRB(math.min(left, right), math.min(top, bottom),
           math.max(left, right), math.max(top, bottom));
-      canvas.drawRect(area, fill);
       canvas.drawRect(area, stroke);
       _drawText(canvas, 'ZS${zs.index + 1}',
-          Offset(area.left + 3, area.top + 3), 10, const Color(0xFF82B1FF));
+          Offset(area.left + 3, area.top + 3), 10, const Color(0xFFE53935));
     }
   }
 
