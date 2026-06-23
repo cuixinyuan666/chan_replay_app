@@ -31,6 +31,9 @@ from .chanpy_engine import _export_bsp
 from .easy_tdx_provider import infer_market, normalize_symbol, reset_easy_tdx_cache_stats
 
 
+_TICK_LEVEL_NAMES = {'TICK', 'TRANSACTION', 'TRANSACTIONS'}
+
+
 def _level_recognition_position(level_payload: dict[str, Any]) -> tuple[int | None, str | None]:
     bars = level_payload.get('bars')
     if isinstance(bars, list) and bars:
@@ -299,6 +302,126 @@ def _attach_recursive_seg_layers(
     return patched
 
 
+
+def _is_tick_only_level_order(level_order: list[str]) -> bool:
+    return bool(level_order) and all(
+        str(level).strip().upper() in _TICK_LEVEL_NAMES
+        for level in level_order
+    )
+
+
+def _tick_chip_only_level_payload(bars: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        'bars': bars,
+        'merged_bars': [],
+        'fx': [],
+        'bi': [],
+        'seg': [],
+        'zs': [],
+        'seg_zs': [],
+        'bsp': [],
+        'seg_layers': {'1': [], '2': []},
+        'seg_bsp_layers': {},
+        'seg_bsp_candidates_layers': {},
+        'seg_zs_layers': {},
+        'meta': {
+            'tick_chip_only': True,
+            'chanpy_calculation_skipped': True,
+            'tick_policy': (
+                'TICK uses transaction bars for chip distribution. '
+                'chan.py structures are intentionally empty because '
+                'chan.py CTime is minute-granular for the MIN1 container.'
+            ),
+        },
+    }
+
+
+def _tick_chip_only_response(
+    *,
+    level_order: list[str],
+    bars_by_level: dict[str, list[dict[str, Any]]],
+    data_meta: dict[str, Any],
+    code: str,
+    market_name: str,
+    adjust: str,
+    main: str,
+    clock: str,
+    mode_name: str,
+
+    config: dict[str, Any] | None,
+) -> dict[str, Any]:
+    levels = {
+        level: _tick_chip_only_level_payload(bars_by_level.get(level, []))
+        for level in level_order
+    }
+    meta = {
+        'symbol': f'{code}.{market_name}',
+        'name': code,
+        'adjust': adjust.upper(),
+        'native_tick_chip_only': True,
+        'native_tick_chan_calculation_skipped': True,
+        'native_tick_data_window': data_meta,
+        'native_data_window': data_meta,
+        'native_csv_time_policy': (
+            'TICK bypasses chan.py CSV loading; original transaction times '
+            'are preserved in bars for chip distribution.'
+        ),
+        'warnings': [
+            'TICK chip-only path is active: raw transaction bars are exported, '
+            'chan.py fx/bi/seg/zs/bsp structures are intentionally empty.'
+        ],
+    }
+
+    frames: list[dict[str, Any]] = []
+    if mode_name == 'step':
+        max_frames = _max_step_frames(config)
+        tick_bars = bars_by_level.get(clock, [])
+        total = len(tick_bars)
+        retain_from = max(0, total - max_frames)
+        for cursor in range(retain_from, total):
+            frame_levels: dict[str, Any] = {}
+            for level in level_order:
+                source_bars = bars_by_level.get(level, [])
+                end = min(cursor + 1, len(source_bars))
+                frame_levels[level] = _tick_chip_only_level_payload(
+                    list(source_bars[:end])
+                )
+            frames.append({
+                'main_level': main,
+                'levels': frame_levels,
+                'relations': [],
+                'meta': {
+                    'tick_chip_only': True,
+                    'frame_index': cursor,
+                    'current_time': tick_bars[cursor].get('dt') if cursor < total else None,
+                    'native_step_frames': True,
+                    'native_step_frames_total': total,
+                    'native_step_frames_returned': min(max_frames, total),
+                    'native_step_frames_limit': max_frames,
+                    'native_step_frames_truncated': total > max_frames,
+                    'step_frame_format': 'compact_v1',
+                },
+            })
+        meta.update({
+            'native_step_frames': True,
+            'native_step_frames_total': total,
+            'native_step_frames_returned': len(frames),
+            'native_step_frames_limit': max_frames,
+            'native_step_frames_truncated': total > len(frames),
+            'step_frame_format': 'compact_v1',
+        })
+
+    return {
+        'ok': True,
+        'main_level': main,
+        'levels': levels,
+        'relations': [],
+        'frames': frames,
+        'meta': meta,
+    }
+
+
+
 def _recursive_timed_native_step_response(
     *,
     exporter: Any,
@@ -493,6 +616,24 @@ def analyze_multi_native_timed_recursive(
         )
         timing['backend_native_data_load_ms'] = _elapsed_ms(data_start)
         timing.update(_cache_timing_meta())
+
+        if _is_tick_only_level_order(level_order):
+            tick_start = perf_counter()
+            result = _tick_chip_only_response(
+                level_order=level_order,
+                bars_by_level=bars_by_level,
+                data_meta=data_meta,
+                code=code,
+                market_name=market_name,
+                adjust=adjust,
+                main=main,
+                clock=clock,
+                mode_name=mode_name,
+                config=config,
+            )
+            timing['backend_native_tick_chip_only_export_ms'] = _elapsed_ms(tick_start)
+            timing['backend_native_total_ms'] = _elapsed_ms(total_start)
+            return _merge_timing(result, timing)
 
         prepare_start = perf_counter()
         exporter, chan, kl_types, prepared_code = _prepare_native_chan(

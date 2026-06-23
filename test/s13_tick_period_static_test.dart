@@ -55,4 +55,15 @@ void main() {
     expect(source,
         contains('csv_dt = csv_dt.replace(microsecond=min(i, 999999))'));
   });
+  test('TICK analyze_multi bypasses chan.py structure calculation', () {
+    final source =
+        _read('backend/app/a_multilevel_native_timed_recursive_engine.py');
+
+    expect(source, contains('def _is_tick_only_level_order('));
+    expect(source, contains('def _tick_chip_only_response('));
+    expect(source, contains('native_tick_chip_only'));
+    expect(source, contains('native_tick_chan_calculation_skipped'));
+    expect(source, contains('TICK chip-only path is active'));
+    expect(source, contains('if _is_tick_only_level_order(level_order):'));
+  });
 }
