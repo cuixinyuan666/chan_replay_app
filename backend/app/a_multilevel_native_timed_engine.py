@@ -18,6 +18,7 @@ from .chanpy_engine import _export_bsp, _export_merged_bars, _export_seg_zs, _id
 from .easy_tdx_provider import (
     get_easy_tdx_cache_stats,
     infer_market,
+    normalize_market,
     normalize_symbol,
     reset_easy_tdx_cache_stats,
 )
@@ -51,7 +52,7 @@ def _timed_native_failure_response(
     exc: Exception,
 ) -> dict[str, Any]:
     code = normalize_symbol(symbol)
-    market_name = (market or infer_market(code)).upper()
+    market_name = normalize_market(code, market or infer_market(code))
     level_order = _normalize_levels(levels)
     main = (main_level or level_order[0]).upper()
     if main not in level_order:

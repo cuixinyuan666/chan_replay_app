@@ -22,7 +22,7 @@ from .a_seg_composite_strategy import (
     run_seg_composite_stream_backtest,
 )
 from .chanpy_engine import analyze_bars, analyze_once, analyze_step
-from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
+from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_market, normalize_symbol
 
 app = FastAPI(title='Chan Replay origin_vespa_tdx Backend', version='0.6.0')
 
@@ -356,7 +356,7 @@ def tdx_kline(
     end: str | None = Query(None),
 ) -> dict[str, object]:
     code = normalize_symbol(symbol)
-    market_name = (market or infer_market(code)).upper()
+    market_name = normalize_market(code, market or infer_market(code))
     bars = load_easy_tdx_bars(symbol=code, market=market_name, period=period, adjust=adjust, count=count, start=start, end=end)
     return {'ok': True, 'symbol': f'{code}.{market_name}', 'period': period, 'bars': bars}
 

@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterable
 
-from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
+from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_market, normalize_symbol
 
 
 def _project_root() -> Path:
@@ -613,13 +613,13 @@ def analyze_bars(*, bars: list[dict[str, Any]], symbol: str = 'local_csv', marke
 
 def analyze_once(*, symbol: str, market: str | None, freq: str, adjust: str, start: str | None, end: str | None, count: int = 50000, config: dict[str, Any] | None = None) -> dict[str, Any]:
     code = normalize_symbol(symbol)
-    market_name = (market or infer_market(code)).upper()
+    market_name = normalize_market(code, market or infer_market(code))
     bars = load_easy_tdx_bars(symbol=code, market=market_name, period=freq, adjust=adjust, count=count, start=start, end=end)
     return analyze_bars(bars=bars, symbol=code, market=market_name, freq=freq, adjust=adjust, mode='once', config=config)
 
 
 def analyze_step(*, symbol: str, market: str | None, freq: str, adjust: str, start: str | None, end: str | None, count: int = 50000, config: dict[str, Any] | None = None) -> dict[str, Any]:
     code = normalize_symbol(symbol)
-    market_name = (market or infer_market(code)).upper()
+    market_name = normalize_market(code, market or infer_market(code))
     bars = load_easy_tdx_bars(symbol=code, market=market_name, period=freq, adjust=adjust, count=count, start=start, end=end)
     return analyze_bars(bars=bars, symbol=code, market=market_name, freq=freq, adjust=adjust, mode='step', config=config)

@@ -28,7 +28,7 @@ from .a_recursive_seg_manager import (
     build_recursive_seg_payload,
 )
 from .chanpy_engine import _export_bsp
-from .easy_tdx_provider import infer_market, normalize_symbol, reset_easy_tdx_cache_stats
+from .easy_tdx_provider import infer_market, normalize_market, normalize_symbol, reset_easy_tdx_cache_stats
 
 
 _TICK_LEVEL_NAMES = {'TICK', 'TRANSACTION', 'TRANSACTIONS'}
@@ -594,7 +594,7 @@ def analyze_multi_native_timed_recursive(
     reset_easy_tdx_cache_stats()
     try:
         code = normalize_symbol(symbol)
-        market_name = (market or infer_market(code)).upper()
+        market_name = normalize_market(code, market or infer_market(code))
         level_order = _normalize_levels(levels)
         main = (main_level or level_order[0]).upper()
         if main not in level_order:

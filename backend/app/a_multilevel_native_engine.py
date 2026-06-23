@@ -14,7 +14,7 @@ from .chanpy_engine import (
     _load_exporter,
     _safe_code,
 )
-from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_symbol
+from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_market, normalize_symbol
 
 
 _MAX_EXPANDED_LEVEL_COUNT = 200000
@@ -800,7 +800,7 @@ def analyze_multi_native(
     config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     code = normalize_symbol(symbol)
-    market_name = (market or infer_market(code)).upper()
+    market_name = normalize_market(code, market or infer_market(code))
     level_order = _normalize_levels(levels)
     main = (main_level or level_order[0]).upper()
     if main not in level_order:

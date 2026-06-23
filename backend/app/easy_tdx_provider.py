@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, time
 import re
 from typing import Any
 
@@ -36,18 +36,20 @@ def clear_easy_tdx_bar_cache() -> None:
 
 
 def normalize_symbol(symbol: str) -> str:
-    return str(symbol or '').strip().upper().replace('.SZ', '').replace('.SH', '')
+    return str(symbol or '').strip().upper().replace('.SZ', '').replace('.SH', '').replace('.BJ', '')
 
 
 def infer_market(symbol: str) -> str:
     code = normalize_symbol(symbol)
+    if code.startswith(('920', '8', '4')):
+        return 'BJ'
     return 'SH' if code.startswith(('5', '6', '9')) else 'SZ'
 
 
 def normalize_market(symbol: str, market: str | None = None) -> str:
     inferred = infer_market(symbol)
     requested = str(market or '').strip().upper().replace('.', '')
-    if requested not in {'SH', 'SZ'}:
+    if requested not in {'SH', 'SZ', 'BJ'}:
         return inferred
     return inferred if requested != inferred else requested
 
@@ -79,7 +81,10 @@ def _adjust_value(adjust: str, Adjust: Any) -> Any:
 
 
 def _market_value(market: str, Market: Any) -> Any:
-    return _enum_value(Market, 'SH') if str(market).upper() == 'SH' else _enum_value(Market, 'SZ')
+    text = str(market).upper()
+    if text == 'BJ':
+        return _enum_value(Market, 'BJ')
+    return _enum_value(Market, 'SH') if text == 'SH' else _enum_value(Market, 'SZ')
 
 
 def _parse_dt(value: Any) -> datetime:
@@ -169,6 +174,51 @@ def _date_arg(value: str | None) -> int | None:
     return None if not value else int(f'{_parse_dt(value).year:04d}{_parse_dt(value).month:02d}{_parse_dt(value).day:02d}')
 
 
+def _window_bounds(start: str | None, end: str | None) -> tuple[datetime | None, datetime | None]:
+    start_dt = _parse_dt(start) if start else None
+    end_dt = _parse_dt(end) if end else None
+    if end_dt is not None and end and len(str(end).strip().replace('/', '-')) <= 10 and ':' not in str(end):
+        end_dt = datetime.combine(end_dt.date(), time.max)
+    return start_dt, end_dt
+
+
+def _transaction_date_hints(start: str | None, end: str | None) -> list[int | None]:
+    start_dt, end_dt = _window_bounds(start, end)
+    if start_dt is None and end_dt is None:
+        return [None]
+    anchor_start = (start_dt or end_dt)
+    anchor_end = (end_dt or start_dt)
+    if anchor_start is None or anchor_end is None:
+        return [None]
+    if anchor_start > anchor_end:
+        anchor_start, anchor_end = anchor_end, anchor_start
+    hints: list[int | None] = []
+    cur = anchor_start.date()
+    while cur <= anchor_end.date():
+        if cur.weekday() < 5:
+            hints.append(int(f'{cur.year:04d}{cur.month:02d}{cur.day:02d}'))
+        cur += timedelta(days=1)
+    return hints or [_date_arg(end) or _date_arg(start)]
+
+
+def _filter_bars_by_datetime(bars: list[dict[str, Any]], *, start: str | None, end: str | None) -> list[dict[str, Any]]:
+    start_dt, end_dt = _window_bounds(start, end)
+    if start_dt is None and end_dt is None:
+        return bars
+    filtered: list[dict[str, Any]] = []
+    for row in bars:
+        dt = _parse_dt(row.get('dt') or row.get('time') or row.get('datetime') or row.get('date'))
+        if start_dt is not None and dt < start_dt:
+            continue
+        if end_dt is not None and dt > end_dt:
+            continue
+        filtered.append(row)
+    for raw_index, row in enumerate(filtered):
+        row['id'] = raw_index
+        row['raw_index'] = raw_index
+    return filtered
+
+
 def _parse_transaction_dt(row: Any, date_hint: int | None) -> datetime:
     value = _row_get(row, 'datetime', 'dt', 'date', 'time', default=None)
     if isinstance(value, datetime):
@@ -222,6 +272,7 @@ def _normalize_transaction_bars(rows: Any, *, code: str, market_name: str, perio
             'market': market_name, 'code': code, 'period': period_name, 'adjust': adjust_name,
             'chip_tick_bins': {'p': [price], 's': [volume if side == 'sell' else 0.0], 'b': [volume if side != 'sell' else 0.0], 'w': [volume], 'source': 'backend_tick_transaction'},
         })
+    # TICK transactions must be chronological before aggregation and export.
     bars.sort(key=lambda row: str(row.get('dt') or row.get('time') or ''))
     for raw_index, row in enumerate(bars):
         row['id'] = raw_index
@@ -325,8 +376,11 @@ def load_easy_tdx_bars(*, symbol: str, market: str | None = None, period: str = 
 
     market_enum = _market_value(market_name, Market)
     if _is_tick_agg_min1_period(period_name) or _is_tick_period(period_name):
-        date_hint = _date_arg(end) or _date_arg(start)
-        transaction_bars = _normalize_transaction_bars(_fetch_transactions(MacClient, market_enum, code, safe_count, date_hint), code=code, market_name=market_name, period_name='TICK' if _is_tick_agg_min1_period(period_name) else period_name, adjust_name=adjust_name, date_hint=date_hint)
+        transaction_bars: list[dict[str, Any]] = []
+        for date_hint in _transaction_date_hints(start, end):
+            rows = _fetch_transactions(MacClient, market_enum, code, safe_count, date_hint)
+            transaction_bars.extend(_normalize_transaction_bars(rows, code=code, market_name=market_name, period_name='TICK' if _is_tick_agg_min1_period(period_name) else period_name, adjust_name=adjust_name, date_hint=date_hint))
+        transaction_bars = _filter_bars_by_datetime(transaction_bars, start=start, end=end)
         bars = _aggregate_transaction_bars_to_min1(transaction_bars, code=code, market_name=market_name, period_name=period_name, adjust_name=adjust_name) if _is_tick_agg_min1_period(period_name) else transaction_bars
         _EASY_TDX_BAR_CACHE[key] = _copy_bars(bars)
         return bars
@@ -338,8 +392,7 @@ def load_easy_tdx_bars(*, symbol: str, market: str | None = None, period: str = 
     except TypeError:
         df = _get_stock_kline(MacClient, market_enum, code, period_enum, safe_count, adjust_enum)
 
-    start_dt = _parse_dt(start) if start else None
-    end_dt = _parse_dt(end) if end else None
+    start_dt, end_dt = _window_bounds(start, end)
     bars: list[dict[str, Any]] = []
     for row in _iter_rows(df):
         dt = _parse_dt(_row_get(row, 'datetime', 'dt', 'date', 'time'))

@@ -22,7 +22,7 @@ void main() {
         source,
         contains(
             "return period_name.upper() in {'TICK', 'TRANSACTION', 'TRANSACTIONS'}"));
-    expect(source, contains('c.get_transactions'));
+    expect(source, contains("_client_call('get_transactions'"));
     expect(source, contains("'chip_tick_bins': {"));
     expect(source, contains("'source': 'backend_tick_transaction'"));
     expect(source, contains('TICK transactions must be chronological'));
@@ -41,7 +41,28 @@ void main() {
     expect(source, contains('def _aggregate_transaction_bars_to_min1('));
     expect(source, contains("'source': 'backend_tick_agg_min1'"));
     expect(source, contains("'tick_agg_period': 'MIN1'"));
-    expect(source, contains('if _is_tick_agg_min1_period(period_name):'));
+    expect(source, contains('if _is_tick_agg_min1_period(period_name) or _is_tick_period(period_name):'));
+  });
+
+  test('backend easy_tdx provider supports BJ market for 920 tick requests', () {
+    final source = _read('backend/app/easy_tdx_provider.py');
+
+    expect(source, contains(".replace('.BJ', '')"));
+    expect(source, contains("if code.startswith(('920', '8', '4')):"));
+    expect(source, contains("return 'BJ'"));
+    expect(source, contains("requested not in {'SH', 'SZ', 'BJ'}"));
+    expect(source, contains("if text == 'BJ':"));
+    expect(source, contains("_enum_value(Market, 'BJ')"));
+  });
+
+  test('backend easy_tdx provider fetches tick windows by trading day', () {
+    final source = _read('backend/app/easy_tdx_provider.py');
+
+    expect(source, contains('def _transaction_date_hints('));
+    expect(source, contains('while cur <= anchor_end.date():'));
+    expect(source, contains('if cur.weekday() < 5:'));
+    expect(source, contains('for date_hint in _transaction_date_hints(start, end):'));
+    expect(source, contains('_filter_bars_by_datetime(transaction_bars, start=start, end=end)'));
   });
 
   test('chanpy engine maps TICK_MIN1 to MIN1 calculation container', () {
