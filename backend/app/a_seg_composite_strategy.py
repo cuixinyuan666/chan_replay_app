@@ -23,6 +23,24 @@ def _time(row: dict[str, Any]) -> Any:
     return row.get('dt') or row.get('time') or row.get('datetime') or row.get('date')
 
 
+def _point_raw_index(row: dict[str, Any]) -> int | None:
+    return _int(
+        row.get('recognized_raw_index')
+        if 'recognized_raw_index' in row
+        else row.get('raw_index')
+        if 'raw_index' in row
+        else row.get('rawIndex')
+    )
+
+
+def _point_type(row: dict[str, Any]) -> Any:
+    return row.get('type') or row.get('recognized_type') or row.get('bsp_type')
+
+
+def _point_is_sure(row: dict[str, Any]) -> bool:
+    return bool(row.get('confirmed', row.get('is_sure', row.get('recognized_confirmed', True))))
+
+
 def _datetime(value: Any) -> datetime | None:
     text = str(value or '').strip().replace(' ', 'T').replace('/', '-')
     if not text:
@@ -47,7 +65,7 @@ def _canonical_type(value: Any) -> str:
 def _is_buy(row: dict[str, Any]) -> bool:
     if 'is_buy' in row:
         return bool(row['is_buy'])
-    return str(row.get('type') or '').strip().lower().startswith(('b', 'buy'))
+    return str(_point_type(row) or '').strip().lower().startswith(('b', 'buy'))
 
 
 def _bars(analysis: dict[str, Any], level: str) -> list[dict[str, Any]]:
@@ -79,16 +97,16 @@ def _match_condition(
     allow_unsure = bool(condition.get('allow_unsure', False))
     available: list[dict[str, Any]] = []
     for row in layer_rows:
-        raw = _int(row.get('raw_index') if 'raw_index' in row else row.get('rawIndex'))
+        raw = _point_raw_index(row)
         if raw is None or raw > current_raw:
             continue
-        if not allow_unsure and not bool(row.get('confirmed', row.get('is_sure', True))):
+        if not allow_unsure and not _point_is_sure(row):
             continue
         available.append(row)
     if not available:
         return None
-    latest = max(available, key=lambda row: _int(row.get('raw_index'), -1) or -1)
-    raw = _int(latest.get('raw_index') if 'raw_index' in latest else latest.get('rawIndex'))
+    latest = max(available, key=lambda row: _point_raw_index(row) or -1)
+    raw = _point_raw_index(latest)
     if raw is None or (max_age is not None and current_raw - raw > max_age):
         return None
     is_buy = _is_buy(latest)
@@ -96,9 +114,13 @@ def _match_condition(
         return None
     if side == 'sell' and is_buy:
         return None
-    if allowed and _canonical_type(latest.get('type')) not in allowed:
+    if allowed and _canonical_type(_point_type(latest)) not in allowed:
         return None
-    return latest
+    normalized = dict(latest)
+    normalized.setdefault('raw_index', raw)
+    normalized.setdefault('type', _point_type(latest))
+    normalized.setdefault('confirmed', _point_is_sure(latest))
+    return normalized
 
 
 def _event_from_frame(
@@ -143,7 +165,7 @@ def _event_from_frame(
         'time': _time(bars[bar_index]),
         'matched': matched,
         'signature': [
-            f"{row['layer']}段{_canonical_type(row.get('type'))}"
+            f"{row['layer']}段{_canonical_type(_point_type(row))}"
             for row in matched
         ],
     }
@@ -153,8 +175,8 @@ def _event_key(event: dict[str, Any]) -> tuple[tuple[int, int, str], ...]:
     return tuple(
         (
             int(row['layer']),
-            _int(row.get('raw_index'), -1) or -1,
-            str(row.get('type') or ''),
+            _point_raw_index(row) or -1,
+            str(_point_type(row) or ''),
         )
         for row in event.get('matched', [])
         if isinstance(row, dict)
