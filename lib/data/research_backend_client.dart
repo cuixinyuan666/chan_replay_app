@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import '../core/services/replay_analysis_store.dart';
+
 class ResearchBackendClient {
   final String baseUrl;
   final http.Client _client;
@@ -16,17 +18,55 @@ class ResearchBackendClient {
       String endpoint, Map<String, dynamic> payload) async {
     final sourceBase = await _readyBaseUrl();
     try {
-      return await _postToBase(sourceBase, endpoint, payload);
+      final result = await _postToBase(sourceBase, endpoint, payload);
+      _recordBacktestIfNeeded(endpoint, payload, result);
+      return result;
     } on _ResearchBackendMismatch catch (_) {
-      return _postViaAutoLocalBackend(endpoint, payload);
+      final result = await _postViaAutoLocalBackend(endpoint, payload);
+      _recordBacktestIfNeeded(endpoint, payload, result);
+      return result;
     } on SocketException catch (_) {
-      return _postViaAutoLocalBackend(endpoint, payload);
+      final result = await _postViaAutoLocalBackend(endpoint, payload);
+      _recordBacktestIfNeeded(endpoint, payload, result);
+      return result;
     } on TimeoutException catch (_) {
-      return _postViaAutoLocalBackend(endpoint, payload);
+      final result = await _postViaAutoLocalBackend(endpoint, payload);
+      _recordBacktestIfNeeded(endpoint, payload, result);
+      return result;
     } on http.ClientException catch (e) {
       if (!_looksLikeConnectionFailure(e)) rethrow;
-      return _postViaAutoLocalBackend(endpoint, payload);
+      final result = await _postViaAutoLocalBackend(endpoint, payload);
+      _recordBacktestIfNeeded(endpoint, payload, result);
+      return result;
     }
+  }
+
+  void _recordBacktestIfNeeded(
+      String endpoint, Map<String, dynamic> payload, Map<String, dynamic> result) {
+    if (result['ok'] == false) return;
+    if (!endpoint.endsWith('/backtest')) return;
+    // Pipeline records are still added by the research page so the UI can label
+    // them as a complete features -> scores -> backtest run without duplicates.
+    if (endpoint.endsWith('/pipeline')) return;
+    final isSegComposite = endpoint.endsWith('/seg-composite/backtest');
+    ReplayAnalysisStore.addBacktestRecord(BacktestRecord.fromResearchResult(
+      result: result,
+      latestAnalysis: ReplayAnalysisStore.latestAnalysis.value,
+      source: isSegComposite ? 'seg-composite' : 'bsp-backtest',
+      symbol: _payloadString(payload, const ['symbol']) ??
+          _payloadString(payload, const ['analysis', 'symbol']) ??
+          _payloadString(payload, const ['analysis', 'meta', 'symbol']),
+      market: _payloadString(payload, const ['market']) ??
+          _payloadString(payload, const ['analysis', 'market']) ??
+          _payloadString(payload, const ['analysis', 'meta', 'market']),
+      period: _payloadString(payload, const ['level']) ??
+          _payloadString(payload, const ['period']) ??
+          _payloadString(payload, const ['freq']) ??
+          _payloadString(payload, const ['analysis', 'period']) ??
+          _payloadString(payload, const ['analysis', 'freq']) ??
+          _payloadString(payload, const ['analysis', 'meta', 'period']) ??
+          _payloadString(payload, const ['analysis', 'meta', 'freq']),
+    ));
   }
 
   Future<String> _readyBaseUrl() async {
@@ -129,6 +169,16 @@ class ResearchBackendClient {
     _localProcess?.dispose();
     _localProcess = null;
   }
+}
+
+String? _payloadString(Map<String, dynamic> payload, List<String> path) {
+  Object? cursor = payload;
+  for (final part in path) {
+    if (cursor is! Map) return null;
+    cursor = cursor[part];
+  }
+  final text = '${cursor ?? ''}'.trim();
+  return text.isEmpty || text == 'null' ? null : text;
 }
 
 class _ResearchLocalPythonProcess {
@@ -256,13 +306,4 @@ class _ResearchPythonCandidate {
   final String executable;
 
   const _ResearchPythonCandidate(this.executable);
-}
-
-class _ResearchBackendMismatch implements Exception {
-  final String message;
-
-  const _ResearchBackendMismatch(this.message);
-
-  @override
-  String toString() => message;
 }
