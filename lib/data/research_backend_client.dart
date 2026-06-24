@@ -202,17 +202,26 @@ class _ResearchLocalPythonProcess {
   }
 
   static Future<_ResearchLocalPythonProcess> start() async {
-    final appEngine = await _findAppEngine();
+    final backendMain = await _findBackendMain();
+    final repoRoot = backendMain.parent.parent.parent.path;
     final port = await _pickFreePort();
     final baseUrl = 'http://127.0.0.1:$port';
-    final candidates = _pythonCandidates(appEngine);
+    final candidates = _pythonCandidates(repoRoot);
     Object? lastError;
     for (final candidate in candidates) {
       try {
         final process = await Process.start(
           candidate.executable,
-          [appEngine.path, '--host', '127.0.0.1', '--port', '$port'],
-          workingDirectory: appEngine.parent.parent.path,
+          [
+            '-m',
+            'uvicorn',
+            'backend.app.main:app',
+            '--host',
+            '127.0.0.1',
+            '--port',
+            '$port',
+          ],
+          workingDirectory: repoRoot,
           runInShell: false,
           environment: {'PYTHONIOENCODING': 'utf-8'},
           mode: ProcessStartMode.normal,
@@ -225,10 +234,10 @@ class _ResearchLocalPythonProcess {
       }
     }
     throw Exception(
-        'Unable to start bundled Python backend. Last error: $lastError');
+        'Unable to start bundled Python backend via uvicorn. Last error: $lastError');
   }
 
-  static Future<File> _findAppEngine() async {
+  static Future<File> _findBackendMain() async {
     final checked = <String>{};
     final starts = <Directory>[
       Directory.current,
@@ -236,9 +245,9 @@ class _ResearchLocalPythonProcess {
     ];
     for (final start in starts) {
       var dir = start.absolute;
-      for (var i = 0; i < 8; i++) {
+      for (var i = 0; i < 12; i++) {
         if (!checked.add(dir.path)) break;
-        for (final candidate in _appEngineCandidatesFrom(dir)) {
+        for (final candidate in _backendMainCandidatesFrom(dir)) {
           if (await candidate.exists()) return candidate;
         }
         final parent = dir.parent;
@@ -246,17 +255,16 @@ class _ResearchLocalPythonProcess {
         dir = parent;
       }
     }
-    throw const FileSystemException('Cannot locate backend/app_engine.py');
+    throw const FileSystemException('Cannot locate backend/app/main.py');
   }
 
-  static Iterable<File> _appEngineCandidatesFrom(Directory dir) sync* {
-    yield File('${dir.path}/backend/app_engine.py');
-    yield File('${dir.path}/../backend/app_engine.py');
-    yield File('${dir.path}/../../backend/app_engine.py');
+  static Iterable<File> _backendMainCandidatesFrom(Directory dir) sync* {
+    yield File('${dir.path}/backend/app/main.py');
+    yield File('${dir.path}/../backend/app/main.py');
+    yield File('${dir.path}/../../backend/app/main.py');
   }
 
-  static List<_PythonCandidate> _pythonCandidates(File appEngine) {
-    final repoRoot = appEngine.parent.parent.path;
+  static List<_PythonCandidate> _pythonCandidates(String repoRoot) {
     final localVenv = File('$repoRoot/.venv/Scripts/python.exe');
     return [
       _PythonCandidate(localVenv.path),
@@ -273,7 +281,7 @@ class _ResearchLocalPythonProcess {
   }
 
   Future<void> _waitUntilReady() async {
-    final deadline = DateTime.now().add(const Duration(seconds: 20));
+    final deadline = DateTime.now().add(const Duration(seconds: 30));
     Object? lastError;
     while (DateTime.now().isBefore(deadline)) {
       try {
