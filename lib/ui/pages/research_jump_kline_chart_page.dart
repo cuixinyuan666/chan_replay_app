@@ -226,60 +226,65 @@ class _ResearchJumpKlineChartPageState extends State<ResearchJumpKlineChartPage>
     return _ParsedResearchJump(snapshot: parsed.of(frameLevel), frameIndex: selected);
   }
 
-  Map<String, dynamic> _frameWithAccumulatedHistory(List<dynamic> frames, int index) {
-    final raw = frames[index];
-    final frame = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
-    final rawLevels = frame['levels'];
-    if (rawLevels is! Map) return frame;
+  Map<String, dynamic> _frameWithAccumulatedHistory(List<dynamic> frames, int targetIndex) {
     Map<String, dynamic>? previous;
-    if (index > 0) previous = _frameWithAccumulatedHistory(frames, index - 1);
-    final previousLevels = previous?['levels'];
-    final nextLevels = <String, dynamic>{};
-    for (final entry in rawLevels.entries) {
-      final levelName = '${entry.key}';
-      final source = entry.value;
-      if (source is! Map) {
-        nextLevels[levelName] = source;
+    for (var index = 0; index <= targetIndex; index++) {
+      final raw = frames[index];
+      final frame = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+      final rawLevels = frame['levels'];
+      if (rawLevels is! Map) {
+        previous = frame;
         continue;
       }
-      final payload = Map<String, dynamic>.from(source);
-      final isSeed = payload['bsp_history_seed'] == true || index == 0;
-      if (!isSeed && previousLevels is Map) {
-        final previousRaw = previousLevels[levelName] ?? previousLevels[entry.key];
-        final previousPayload = previousRaw is Map ? previousRaw : const {};
-        final baseHistory = previousPayload['bsp_history'] ?? previousPayload['bsp'];
-        final baseDelta = payload['bsp_delta'] ?? payload['bsp_history'] ?? payload['bsp'];
-        payload['bsp_history'] = <dynamic>[
-          if (baseHistory is List) ...baseHistory,
-          if (baseDelta is List) ...baseDelta,
-        ];
-        payload['bsp'] = payload['bsp_history'];
-
-        final previousRecursive = previousPayload['seg_bsp_history_layers'];
-        final deltaRecursive = payload['seg_bsp_delta_layers'] ?? payload['seg_bsp_history_layers'];
-        final layerNames = <String>{
-          if (previousRecursive is Map) for (final key in previousRecursive.keys) '$key',
-          if (deltaRecursive is Map) for (final key in deltaRecursive.keys) '$key',
-        };
-        final mergedRecursive = <String, dynamic>{};
-        for (final layer in layerNames) {
-          final before = previousRecursive is Map
-              ? previousRecursive[layer] ?? previousRecursive[int.tryParse(layer)]
-              : null;
-          final delta = deltaRecursive is Map
-              ? deltaRecursive[layer] ?? deltaRecursive[int.tryParse(layer)]
-              : null;
-          mergedRecursive[layer] = <dynamic>[
-            if (before is List) ...before,
-            if (delta is List) ...delta,
-          ];
+      final previousLevels = previous?['levels'];
+      final nextLevels = <String, dynamic>{};
+      for (final entry in rawLevels.entries) {
+        final levelName = '${entry.key}';
+        final source = entry.value;
+        if (source is! Map) {
+          nextLevels[levelName] = source;
+          continue;
         }
-        payload['seg_bsp_history_layers'] = mergedRecursive;
+        final payload = Map<String, dynamic>.from(source);
+        final isSeed = payload['bsp_history_seed'] == true || index == 0;
+        if (!isSeed && previousLevels is Map) {
+          final previousRaw = previousLevels[levelName] ?? previousLevels[entry.key];
+          final previousPayload = previousRaw is Map ? previousRaw : const {};
+          final baseHistory = previousPayload['bsp_history'] ?? previousPayload['bsp'];
+          final baseDelta = payload['bsp_delta'] ?? payload['bsp_history'] ?? payload['bsp'];
+          payload['bsp_history'] = <dynamic>[
+            if (baseHistory is List) ...baseHistory,
+            if (baseDelta is List) ...baseDelta,
+          ];
+          payload['bsp'] = payload['bsp_history'];
+
+          final previousRecursive = previousPayload['seg_bsp_history_layers'];
+          final deltaRecursive = payload['seg_bsp_delta_layers'] ?? payload['seg_bsp_history_layers'];
+          final layerNames = <String>{
+            if (previousRecursive is Map) for (final key in previousRecursive.keys) '$key',
+            if (deltaRecursive is Map) for (final key in deltaRecursive.keys) '$key',
+          };
+          final mergedRecursive = <String, dynamic>{};
+          for (final layer in layerNames) {
+            final before = previousRecursive is Map
+                ? previousRecursive[layer] ?? previousRecursive[int.tryParse(layer)]
+                : null;
+            final delta = deltaRecursive is Map
+                ? deltaRecursive[layer] ?? deltaRecursive[int.tryParse(layer)]
+                : null;
+            mergedRecursive[layer] = <dynamic>[
+              if (before is List) ...before,
+              if (delta is List) ...delta,
+            ];
+          }
+          payload['seg_bsp_history_layers'] = mergedRecursive;
+        }
+        nextLevels[levelName] = payload;
       }
-      nextLevels[levelName] = payload;
+      frame['levels'] = nextLevels;
+      previous = frame;
     }
-    frame['levels'] = nextLevels;
-    return frame;
+    return previous ?? <String, dynamic>{};
   }
 
   int? _frameVisibleCount(Object? frame, String level) {
