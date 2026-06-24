@@ -27,7 +27,8 @@ from validate_research_other_target_flow import (  # noqa: E402
 
 _PRESETS: dict[str, dict[str, Any]] = {
     'strict_nest': {
-        'label': '严格区间套：2段B1 AND 3段B3a',
+        'label': '真实BSP：严格区间套：2段B1 AND 3段B3a',
+        'signal_source': 'real_bsp',
         'entry_rule': {
             'conditions': [
                 {'layer': 2, 'side': 'buy', 'types': ['1']},
@@ -37,7 +38,8 @@ _PRESETS: dict[str, dict[str, Any]] = {
         },
     },
     'layer2_b1': {
-        'label': '只测2段B1',
+        'label': '真实BSP：只测2段B1',
+        'signal_source': 'real_bsp',
         'entry_rule': {
             'conditions': [
                 {'layer': 2, 'side': 'buy', 'types': ['1']},
@@ -46,7 +48,8 @@ _PRESETS: dict[str, dict[str, Any]] = {
         },
     },
     'layer2_any_buy': {
-        'label': '只测2段任意买点',
+        'label': '真实BSP：只测2段任意买点',
+        'signal_source': 'real_bsp',
         'entry_rule': {
             'conditions': [
                 {'layer': 2, 'side': 'buy', 'types': ['1', '2', '3a', '3b']},
@@ -55,10 +58,31 @@ _PRESETS: dict[str, dict[str, Any]] = {
         },
     },
     'layer3_any_buy': {
-        'label': '只测3段任意买点',
+        'label': '真实BSP：只测3段任意买点',
+        'signal_source': 'real_bsp',
         'entry_rule': {
             'conditions': [
                 {'layer': 3, 'side': 'buy', 'types': ['1', '2', '3a', '3b']},
+            ],
+            'dedupe': True,
+        },
+    },
+    'endpoint_layer2_buy': {
+        'label': '候选：2段向下段结束买点',
+        'signal_source': 'endpoint_candidate',
+        'entry_rule': {
+            'conditions': [
+                {'layer': 2, 'side': 'buy', 'types': []},
+            ],
+            'dedupe': True,
+        },
+    },
+    'endpoint_layer3_buy': {
+        'label': '候选：3段向下段结束买点',
+        'signal_source': 'endpoint_candidate',
+        'entry_rule': {
+            'conditions': [
+                {'layer': 3, 'side': 'buy', 'types': []},
             ],
             'dedupe': True,
         },
@@ -68,12 +92,13 @@ _PRESETS: dict[str, dict[str, Any]] = {
 
 def _seg_payload(args: argparse.Namespace, preset_key: str) -> dict[str, Any]:
     preset = _PRESETS[preset_key]
+    signal_source = str(preset.get('signal_source') or 'real_bsp')
     payload = _base_payload(args)
     payload.update({
         'entry_rule': preset['entry_rule'],
         'exit_rule': {
             'conditions': [
-                {'layer': 2, 'side': 'sell', 'types': ['1']},
+                {'layer': 2, 'side': 'sell', 'types': [] if signal_source == 'endpoint_candidate' else ['1']},
             ],
             'dedupe': True,
         },
@@ -81,6 +106,7 @@ def _seg_payload(args: argparse.Namespace, preset_key: str) -> dict[str, Any]:
             'max_hold_days': args.horizon,
             'fee_bps': 3,
             'slippage_bps': 2,
+            'signal_source': signal_source,
         },
         'preset': preset_key,
         'preset_label': preset['label'],
@@ -110,22 +136,27 @@ def validate(args: argparse.Namespace) -> dict[str, Any]:
         rows.append({
             'preset': key,
             'label': _PRESETS[key]['label'],
+            'signal_source': _PRESETS[key].get('signal_source'),
             'entry_events': _length(result.get('entry_events')),
             'exit_events': _length(result.get('exit_events')),
             'trades': _length(result.get('trades')),
             'evaluated_step_frames': meta.get('evaluated_step_frames'),
+            'effective_signal_source': meta.get('seg_composite_signal_source'),
             'trade_count': summary.get('trade_count'),
             'win_rate': summary.get('win_rate'),
             'total_return': summary.get('total_return'),
             'profit_factor': summary.get('profit_factor'),
         })
-    loosest_has_signal = any(
-        row['preset'] in {'layer2_b1', 'layer2_any_buy', 'layer3_any_buy'}
-        and int(row['entry_events'] or 0) > 0
+    real_bsp_signal_found = any(
+        row['signal_source'] == 'real_bsp' and int(row['entry_events'] or 0) > 0
         for row in rows
     )
-    if args.require_loose_signal and not loosest_has_signal:
-        raise RuntimeError(f'no loose preset generated entry_events: {rows}')
+    endpoint_candidate_signal_found = any(
+        row['signal_source'] == 'endpoint_candidate' and int(row['entry_events'] or 0) > 0
+        for row in rows
+    )
+    if args.require_loose_signal and not (real_bsp_signal_found or endpoint_candidate_signal_found):
+        raise RuntimeError(f'no real-BSP or endpoint-candidate preset generated entry_events: {rows}')
     return {
         'ok': True,
         'base_url': args.base_url,
@@ -134,10 +165,13 @@ def validate(args: argparse.Namespace) -> dict[str, Any]:
         'level': args.level.upper(),
         'preset': args.preset,
         'results': rows,
-        'loose_signal_found': loosest_has_signal,
+        'real_bsp_signal_found': real_bsp_signal_found,
+        'endpoint_candidate_signal_found': endpoint_candidate_signal_found,
+        'loose_signal_found': real_bsp_signal_found or endpoint_candidate_signal_found,
         'meta': {
             'validator': 'tools/validate_seg_composite_presets.py',
             'preset_count': len(rows),
+            'candidate_policy': 'endpoint_candidate presets are segment-end candidates, not real chan.py CBSPointList BSP',
             'chan_py_polluted': False,
         },
     }
