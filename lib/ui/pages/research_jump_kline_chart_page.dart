@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../core/models/chan_snapshot.dart';
@@ -82,66 +84,44 @@ class _ResearchJumpKlineChartPageState extends State<ResearchJumpKlineChartPage>
     if (snapshot == null || snapshot.rawBars.isEmpty) {
       return _errorView(_parsed.error ?? '研究结果没有可显示的K线数据');
     }
-    final label = widget.request.label.trim().isEmpty
-        ? '研究/回测跳转'
-        : widget.request.label.trim();
     return Scaffold(
       backgroundColor: const Color(0xFF0B0D10),
       body: SafeArea(
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: RecursiveSegOriginKlineChart(
-                snapshot: snapshot,
-                showFx: true,
-                showBi: true,
-                showSeg: true,
-                showZs: true,
-                showBiBsp: true,
-                showSegBsp: true,
-                showMergedBars: false,
-                showEasyTdxIndicators: false,
-                drawingObjects: _jumpDrawingObjects(snapshot, label),
-                drawingStorageKey:
-                    'research_jump_${widget.request.market}_${widget.request.symbol}_${widget.request.level}_${widget.request.nonce}',
-                symbolLabel:
-                    '${widget.request.market}${widget.request.symbol} ${widget.request.level} ${widget.request.mode}',
-                windowSize: _windowSize,
-                viewEndIndex: _viewEndIndex,
-                crosshairIndex: _crosshairIndex,
-                priceScale: _priceScale,
-                priceOffset: _priceOffset,
-                onCrosshairChanged: (index) => setState(() => _crosshairIndex = index),
-                onPanBars: (delta) => setState(() {
-                  final max = snapshot.rawBars.length - 1;
-                  final current = _viewEndIndex ?? max;
-                  _viewEndIndex = (current + delta).clamp(0, max).toInt();
-                }),
-                onWindowSizeChanged: (next) => setState(() {
-                  _windowSize = next.clamp(1, snapshot.rawBars.length).toInt();
-                }),
-                onPriceScaleChanged: (next) => setState(() => _priceScale = next),
-                onPriceOffsetChanged: (next) => setState(() => _priceOffset = next),
-                showRecursiveSegLayers: true,
-                showRecursiveSegZs: true,
-                showRecursiveSegBsp: true,
-                minRecursiveSegLayer: 2,
-              ),
-            ),
-            Positioned(
-              left: 12,
-              top: 12,
-              child: _JumpBadge(
-                label: label,
-                mode: widget.request.mode,
-                source: widget.request.source,
-                rawIndex: widget.request.rawIndex,
-                frameIndex: _parsed.frameIndex,
-                window: _windowText(snapshot),
-                onReset: () => setState(_resetViewport),
-              ),
-            ),
-          ],
+        child: RecursiveSegOriginKlineChart(
+          snapshot: snapshot,
+          showFx: true,
+          showBi: true,
+          showSeg: true,
+          showZs: true,
+          showBiBsp: true,
+          showSegBsp: true,
+          showMergedBars: false,
+          showEasyTdxIndicators: false,
+          drawingObjects: _jumpDrawingObjects(snapshot),
+          drawingStorageKey:
+              'research_jump_${widget.request.market}_${widget.request.symbol}_${widget.request.level}_${widget.request.nonce}',
+          symbolLabel:
+              '${widget.request.market}${widget.request.symbol} ${widget.request.level} ${widget.request.mode}',
+          windowSize: _windowSize,
+          viewEndIndex: _viewEndIndex,
+          crosshairIndex: _crosshairIndex,
+          priceScale: _priceScale,
+          priceOffset: _priceOffset,
+          onCrosshairChanged: (index) => setState(() => _crosshairIndex = index),
+          onPanBars: (delta) => setState(() {
+            final max = snapshot.rawBars.length - 1;
+            final current = _viewEndIndex ?? max;
+            _viewEndIndex = (current + delta).clamp(0, max).toInt();
+          }),
+          onWindowSizeChanged: (next) => setState(() {
+            _windowSize = next.clamp(1, snapshot.rawBars.length).toInt();
+          }),
+          onPriceScaleChanged: (next) => setState(() => _priceScale = next),
+          onPriceOffsetChanged: (next) => setState(() => _priceOffset = next),
+          showRecursiveSegLayers: true,
+          showRecursiveSegZs: true,
+          showRecursiveSegBsp: true,
+          minRecursiveSegLayer: 2,
         ),
       ),
     );
@@ -176,15 +156,25 @@ class _ResearchJumpKlineChartPageState extends State<ResearchJumpKlineChartPage>
         decoded,
         parseSingleLevelSnapshot: ChanSnapshotJsonParser.parse,
       );
-      if (finalSnapshot == null) {
-        return const _ParsedResearchJump(error: '无法解析研究/回测 analysis payload');
+      if (finalSnapshot != null) {
+        final level = _resolveLevel(finalSnapshot, request.level);
+        if (request.mode.toLowerCase() == 'step') {
+          final frameResult = _parseStepFrame(
+            decoded,
+            finalSnapshot,
+            level,
+            request.rawIndex,
+            request.frameIndex,
+          );
+          if (frameResult.snapshot != null) return frameResult;
+        }
+        return _ParsedResearchJump(snapshot: finalSnapshot.of(level), frameIndex: -1);
       }
-      final level = _resolveLevel(finalSnapshot, request.level);
-      if (request.mode.toLowerCase() == 'step') {
-        final frameResult = _parseStepFrame(decoded, finalSnapshot, level, request.rawIndex, request.frameIndex);
-        if (frameResult.snapshot != null) return frameResult;
-      }
-      return _ParsedResearchJump(snapshot: finalSnapshot.of(level), frameIndex: -1);
+      final direct = decoded['analysis'] is Map
+          ? Map<String, dynamic>.from(decoded['analysis'] as Map)
+          : decoded;
+      final single = ChanSnapshotJsonParser.parse(direct);
+      return _ParsedResearchJump(snapshot: single, frameIndex: -1);
     } catch (error) {
       return _ParsedResearchJump(error: '解析研究/回测K线失败：$error');
     }
@@ -311,7 +301,13 @@ class _ResearchJumpKlineChartPageState extends State<ResearchJumpKlineChartPage>
     return rawIndex.clamp(0, snapshot.rawBars.length - 1).toInt();
   }
 
-  List<DrawingObject> _jumpDrawingObjects(ChanSnapshot snapshot, String label) {
+  List<DrawingObject> _jumpDrawingObjects(ChanSnapshot snapshot) {
+    final overlay = _overlayDrawingObjects(snapshot);
+    if (overlay.isNotEmpty) return overlay;
+
+    final label = widget.request.label.trim().isEmpty
+        ? '研究/回测跳转'
+        : widget.request.label.trim();
     final barIndex = _barListIndexForRawIndex(snapshot, widget.request.rawIndex);
     final raw = snapshot.rawBars[barIndex];
     final minLow = snapshot.rawBars.map((bar) => bar.low).reduce((a, b) => a < b ? a : b);
@@ -340,9 +336,7 @@ class _ResearchJumpKlineChartPageState extends State<ResearchJumpKlineChartPage>
       DrawingObject(
         id: 'research_jump_flag_${widget.request.nonce}_${widget.request.rawIndex}',
         tool: TradingViewDrawingTool.iconFlag,
-        anchors: [
-          DrawingAnchor.chart(rawIndex: raw.index, price: raw.high),
-        ],
+        anchors: [DrawingAnchor.chart(rawIndex: raw.index, price: raw.high)],
         style: const DrawingStyle(
           colorValue: 0xFFFFD54F,
           strokeWidth: 2.0,
@@ -357,12 +351,89 @@ class _ResearchJumpKlineChartPageState extends State<ResearchJumpKlineChartPage>
     ];
   }
 
-  String _windowText(ChanSnapshot snapshot) {
-    if (snapshot.rawBars.isEmpty) return '--';
-    final max = snapshot.rawBars.length - 1;
-    final end = (_viewEndIndex ?? max).clamp(0, max).toInt();
-    final start = (end - _windowSize + 1).clamp(0, end).toInt();
-    return '${snapshot.rawBars[start].time} ~ ${snapshot.rawBars[end].time}';
+  List<DrawingObject> _overlayDrawingObjects(ChanSnapshot snapshot) {
+    final payload = widget.request.analysisPayload;
+    final rawMarkers = payload == null ? null : payload['_research_overlay_markers'];
+    if (rawMarkers is! List || rawMarkers.isEmpty || snapshot.rawBars.isEmpty) {
+      return const [];
+    }
+    final now = DateTime.fromMillisecondsSinceEpoch(0);
+    final objects = <DrawingObject>[];
+    for (var index = 0; index < rawMarkers.length; index++) {
+      final marker = rawMarkers[index];
+      if (marker is! Map) continue;
+      final rawIndex = _int(marker['raw_index']);
+      if (rawIndex == null) continue;
+      final barIndex = _barListIndexForRawIndex(snapshot, rawIndex);
+      if (barIndex < 0 || barIndex >= snapshot.rawBars.length) continue;
+      final bar = snapshot.rawBars[barIndex];
+      final kind = '${marker['kind'] ?? ''}';
+      final label = _markerLabel(marker, kind);
+      final price = _markerPrice(bar, kind);
+      final color = _markerColor(kind);
+      objects.add(
+        DrawingObject(
+          id: 'research_overlay_${widget.request.nonce}_${index}_$rawIndex',
+          tool: TradingViewDrawingTool.iconFlag,
+          anchors: [DrawingAnchor.chart(rawIndex: bar.index, price: price)],
+          style: DrawingStyle(
+            colorValue: color,
+            strokeWidth: 2.0,
+            opacity: 0.96,
+            fontSize: 12,
+          ),
+          text: label,
+          locked: true,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+    }
+    return objects;
+  }
+
+  String _markerLabel(Map marker, String kind) {
+    final ordinal = marker['ordinal'];
+    final no = ordinal == null ? '' : '#$ordinal';
+    switch (kind) {
+      case 'entry':
+        return '入$no';
+      case 'exit':
+        return '出$no';
+      case 'trade_entry':
+        return '交入$no';
+      case 'trade_exit':
+        return '交出$no';
+    }
+    final label = '${marker['label'] ?? ''}'.trim();
+    return label.isEmpty ? '信号$no' : '$label$no';
+  }
+
+  double _markerPrice(dynamic bar, String kind) {
+    final high = _num(_readBarValue(bar, 'high')) ?? 0.0;
+    final low = _num(_readBarValue(bar, 'low')) ?? high;
+    final close = _num(_readBarValue(bar, 'close')) ?? high;
+    switch (kind) {
+      case 'entry':
+      case 'trade_entry':
+        return low;
+      case 'exit':
+      case 'trade_exit':
+        return high;
+    }
+    return close;
+  }
+
+  int _markerColor(String kind) {
+    switch (kind) {
+      case 'entry':
+      case 'trade_entry':
+        return 0xFF26A69A;
+      case 'exit':
+      case 'trade_exit':
+        return 0xFFEF5350;
+    }
+    return 0xFFFFD54F;
   }
 }
 
@@ -374,64 +445,27 @@ class _ParsedResearchJump {
   const _ParsedResearchJump({this.snapshot, this.frameIndex, this.error});
 }
 
-class _JumpBadge extends StatelessWidget {
-  final String label;
-  final String mode;
-  final String source;
-  final int rawIndex;
-  final int? frameIndex;
-  final String window;
-  final VoidCallback onReset;
+int? _int(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse('${value ?? ''}');
+}
 
-  const _JumpBadge({
-    required this.label,
-    required this.mode,
-    required this.source,
-    required this.rawIndex,
-    required this.frameIndex,
-    required this.window,
-    required this.onReset,
-  });
+double? _num(Object? value) {
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse('${value ?? ''}');
+}
 
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xDD0F172A),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0x66FFD54F)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.location_pin, color: Color(0xFFFFD54F), size: 20),
-            const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text(
-                    'mode=$mode raw=$rawIndex frame=${frameIndex == null || frameIndex! < 0 ? 'final' : frameIndex! + 1} source=${source.isEmpty ? 'research/backtest' : source}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  Text('window=$window', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                ],
-              ),
-            ),
-            IconButton(
-              tooltip: '回到跳转区间',
-              onPressed: onReset,
-              icon: const Icon(Icons.center_focus_strong, color: Colors.white70, size: 18),
-            ),
-          ],
-        ),
-      ),
-    );
+Object? _readBarValue(dynamic bar, String name) {
+  if (bar is Map) return bar[name];
+  switch (name) {
+    case 'high':
+      return bar.high;
+    case 'low':
+      return bar.low;
+    case 'close':
+      return bar.close;
   }
+  return null;
 }
