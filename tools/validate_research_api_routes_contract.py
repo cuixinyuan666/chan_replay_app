@@ -77,6 +77,28 @@ def _assert_clean_meta(payload: dict[str, Any], stage: str) -> None:
     _assert(meta.get('chan_py_polluted') is False, f'{stage}.meta.chan_py_polluted must be false')
 
 
+def _assert_feature_registry(payload: dict[str, Any], stage: str) -> None:
+    meta = payload.get('meta')
+    _assert(isinstance(meta, dict), f'{stage}.meta must be an object')
+    registry = meta.get('feature_registry')
+    _assert(isinstance(registry, list), f'{stage}.meta.feature_registry must be a list')
+    for name in ('bsp_identity', 'chan_native_bi_seg_zs', 'chan_recursive_segn'):
+        _assert(name in registry, f'{stage}.meta.feature_registry missing {name}')
+    _assert(meta.get('feature_registry_version') == 1, f'{stage}.meta.feature_registry_version must be 1')
+    _assert(
+        meta.get('segn_feature_source') == 'seg_bsp_history_layers|seg_bsp_layers',
+        f'{stage}.meta.segn_feature_source invalid',
+    )
+
+
+def _assert_ml_feature_contract(payload: dict[str, Any], stage: str) -> None:
+    meta = payload.get('meta')
+    _assert(isinstance(meta, dict), f'{stage}.meta must be an object')
+    _assert(meta.get('segn_features_supported') is True, f'{stage}.meta.segn_features_supported must be true')
+    columns = meta.get('feature_columns')
+    _assert(isinstance(columns, list), f'{stage}.meta.feature_columns must be a list')
+
+
 def _assert_scores(rows: list[dict[str, Any]], *, stage: str) -> None:
     for index, row in enumerate(rows):
         score = row.get('ml_score')
@@ -108,6 +130,7 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     features = research_bsp_features(payload)
     _assert(features.get('ok') is True, 'features route must return ok=true')
     _assert_clean_meta(features, 'features')
+    _assert_feature_registry(features, 'features')
     feature_rows = _rows(features, 'features')
     if require_features:
         _assert(feature_rows, 'features route returned no feature rows')
@@ -115,6 +138,7 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     scores = research_ml_score(payload)
     _assert(scores.get('ok') is True, 'ml score route must return ok=true')
     _assert_clean_meta(scores, 'scores')
+    _assert_ml_feature_contract(scores, 'scores')
     score_rows = _rows(scores, 'scores')
     _assert(len(score_rows) == len(feature_rows), f'score count mismatch: {len(score_rows)} != {len(feature_rows)}')
     _assert_scores(score_rows, stage='scores')
@@ -135,6 +159,8 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     _assert_clean_meta(pipeline['features'], 'pipeline.features')
     _assert_clean_meta(pipeline['scores'], 'pipeline.scores')
     _assert_clean_meta(pipeline['backtest'], 'pipeline.backtest')
+    _assert_feature_registry(pipeline['features'], 'pipeline.features')
+    _assert_ml_feature_contract(pipeline['scores'], 'pipeline.scores')
 
     pipeline_features = _rows(pipeline['features'], 'features')
     pipeline_scores = _rows(pipeline['scores'], 'scores')
@@ -154,6 +180,8 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
         'analysis_path': str(path),
         'features': len(feature_rows),
         'scores': len(score_rows),
+        'feature_registry': features['meta'].get('feature_registry'),
+        'ml_segn_features_supported': scores['meta'].get('segn_features_supported'),
         'backtest_trades': len(backtest.get('trades', [])),
         'backtest_equity_points': len(_rows(backtest, 'equity_curve')),
         'backtest_max_drawdown': backtest['summary'].get('max_drawdown'),
