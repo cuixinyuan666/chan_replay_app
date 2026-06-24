@@ -16,11 +16,8 @@ class ResearchBacktestPage extends StatefulWidget {
 }
 
 class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
-  final TextEditingController _backendUrlController =
-      TextEditingController(text: 'http://127.0.0.1:8000');
-  final TextEditingController _jsonController = TextEditingController(text: '''{
-  "analysis": {}
-}''');
+  static const _backendUrl = 'http://127.0.0.1:8000';
+
   final ScrollController _resultScrollController = ScrollController();
   final ScrollController _recordScrollController = ScrollController();
   final TextEditingController _segSymbolController =
@@ -43,19 +40,17 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   ];
 
   bool _running = false;
-  bool _segVisualMode = false;
+  bool _useOtherTarget = false;
   bool _useExitConditions = true;
   bool _useHoldDays = true;
   String _segLevel = 'MIN5';
-  String _status = '粘贴 chan.py analysis JSON，或点击“使用当前复盘数据”。';
+  String _status = '默认使用当前K线图缓存的 analysis 数据。';
   Map<String, dynamic>? _lastResult;
   ResearchBackendClient? _backendClient;
 
   @override
   void dispose() {
-    _backendUrlController.dispose();
     _backendClient?.close();
-    _jsonController.dispose();
     _resultScrollController.dispose();
     _recordScrollController.dispose();
     _segSymbolController.dispose();
@@ -66,24 +61,26 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     super.dispose();
   }
 
-  void _useLatestReplayAnalysis() {
-    final latest = ReplayAnalysisStore.latestAnalysis.value;
-    if (latest == null) {
-      setState(() => _status = '暂无当前复盘数据：请先在复盘页成功加载一次数据。');
-      return;
-    }
-    _jsonController.text = latest.toPrettyPayloadJson();
+  void _useCurrentKlineTarget() {
     setState(() {
-      _segVisualMode = false;
-      _status =
-          '已载入当前复盘数据：${latest.displaySymbol} ${latest.period}，保存时间 ${_timeText(latest.savedAt)}。';
+      _useOtherTarget = false;
+      final latest = ReplayAnalysisStore.latestAnalysis.value;
+      _status = latest == null
+          ? '暂无当前K线缓存：请先在K线/复盘页成功加载一次数据。'
+          : '已切换为当前K线标的：${latest.displaySymbol} ${latest.period}。';
     });
   }
 
-  void _useSegCompositeTemplate() {
+  void _useOtherTarget() {
+    final latest = ReplayAnalysisStore.latestAnalysis.value;
+    if (latest != null && _segSymbolController.text.trim() == '600340') {
+      _segSymbolController.text = latest.symbol;
+      _segMarketController.text = latest.market;
+      _segLevel = latest.period;
+    }
     setState(() {
-      _segVisualMode = true;
-      _status = '已载入 segN 组合模板：条件之间为 AND；信号按 step 当时状态计算。';
+      _useOtherTarget = true;
+      _status = '其它标的模式：不使用当前K线缓存，按下方标的和规则直接请求后端。';
     });
   }
 
@@ -97,7 +94,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
         : allLayers.reduce((left, right) => left > right ? left : right);
     Map<String, dynamic> ruleOf(List<_SegRuleCondition> conditions) => {
           'conditions': [
-            for (final condition in conditions) condition.toJson()
+            for (final condition in conditions) condition.toJson(),
           ],
           'dedupe': true,
         };
@@ -107,8 +104,10 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       'levels': [_segLevel],
       'level': _segLevel,
       'adjust': 'QFQ',
-      'start': _segStartController.text.trim(),
-      'end': _segEndController.text.trim(),
+      if (_segStartController.text.trim().isNotEmpty)
+        'start': _segStartController.text.trim(),
+      if (_segEndController.text.trim().isNotEmpty)
+        'end': _segEndController.text.trim(),
       'count': 50000,
       'config': {
         'bi_algo': 'fx',
@@ -127,20 +126,29 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     };
   }
 
+  Map<String, dynamic>? _currentKlinePayload() {
+    final latest = ReplayAnalysisStore.latestAnalysis.value;
+    if (latest == null) {
+      setState(() => _status = '暂无当前K线缓存：请先在K线/复盘页成功加载一次数据。');
+      return null;
+    }
+    return latest.toPayload();
+  }
+
   Future<void> _call(String endpoint,
       {Map<String, dynamic>? overridePayload}) async {
     if (_running) return;
+    final payload = overridePayload ?? _currentKlinePayload();
+    if (payload == null) return;
     setState(() {
       _running = true;
       _status = '请求 $endpoint ...';
     });
     try {
-      final payload = overridePayload ?? _parsePayload();
-      final baseUrl = _backendUrlController.text.trim();
       final client = _backendClient;
-      if (client == null || client.baseUrl != baseUrl) {
+      if (client == null || client.baseUrl != _backendUrl) {
         client?.close();
-        _backendClient = ResearchBackendClient(baseUrl: baseUrl);
+        _backendClient = ResearchBackendClient(baseUrl: _backendUrl);
       }
       final result = await _backendClient!.post(endpoint, payload);
       if (endpoint.endsWith('/pipeline') && result['ok'] != false) {
@@ -163,6 +171,11 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     }
   }
 
+  Future<void> _callSegComposite() async {
+    await _call('/api/research/seg-composite/backtest',
+        overridePayload: _segCompositePayload());
+  }
+
   void _locateResult(Map<String, dynamic> row, {String label = '回测结果'}) {
     final raw = row['raw_index'] ??
         row['entry_signal_raw_index'] ??
@@ -172,37 +185,35 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     if (rawIndex == null) return;
     final timeText =
         '${row['time'] ?? row['entry_signal_time'] ?? row['entry_time'] ?? ''}';
+    final latest = ReplayAnalysisStore.latestAnalysis.value;
+    final useLatest = !_useOtherTarget && latest != null;
     ReplayAnalysisStore.requestKlineLocation(
-      symbol: _segSymbolController.text.trim(),
-      market: _segMarketController.text.trim().toUpperCase(),
-      level: _segLevel,
+      symbol: useLatest ? latest.symbol : _segSymbolController.text.trim(),
+      market: useLatest
+          ? latest.market
+          : _segMarketController.text.trim().toUpperCase(),
+      level: useLatest ? latest.period : _segLevel,
       rawIndex: rawIndex,
       time: DateTime.tryParse(timeText.replaceFirst(' ', 'T')),
-      startDate: DateTime.tryParse(_segStartController.text.trim()),
-      endDate: DateTime.tryParse(_segEndController.text.trim()),
+      startDate:
+          useLatest ? null : DateTime.tryParse(_segStartController.text.trim()),
+      endDate: useLatest ? null : DateTime.tryParse(_segEndController.text.trim()),
       label: label,
     );
     widget.onOpenRoute?.call(1);
   }
 
-  Map<String, dynamic> _parsePayload() {
-    final text = _jsonController.text.trim();
-    if (text.isEmpty) return {'analysis': {}};
-    final decoded = jsonDecode(text);
-    if (decoded is! Map) throw const FormatException('请输入 JSON 对象，不能是数组或纯文本');
-    return Map<String, dynamic>.from(decoded);
-  }
-
   String _summaryOf(String endpoint, Map<String, dynamic> result) {
-    if (result['ok'] == false)
+    if (result['ok'] == false) {
       return '接口返回失败：${result['error'] ?? 'unknown error'}';
+    }
     if (endpoint.endsWith('/pipeline')) {
       final backtest = result['backtest'];
       final summary = backtest is Map ? backtest['summary'] : null;
       if (summary is Map) {
-        return 'Pipeline 完成并已生成记录：特征 ${_rowsFrom(result['features'], nestedKey: 'features').length}，评分 ${_rowsFrom(result['scores'], nestedKey: 'scores').length}，交易 ${summary['trade_count'] ?? 0}，胜率 ${_pct(summary['win_rate'])}，总收益 ${_pct(summary['total_return'])}';
+        return 'Pipeline 完成：特征 ${_rowsFrom(result['features'], nestedKey: 'features').length}，评分 ${_rowsFrom(result['scores'], nestedKey: 'scores').length}，交易 ${summary['trade_count'] ?? 0}，胜率 ${_pct(summary['win_rate'])}，总收益 ${_pct(summary['total_return'])}';
       }
-      return 'Pipeline 完成并已生成记录。';
+      return 'Pipeline 完成。';
     }
     if (endpoint.endsWith('/features')) {
       return 'BSP 特征提取完成：${_rowsFrom(result['features'], nestedKey: 'features').length} 行。';
@@ -260,7 +271,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     if (source is! List) return const [];
     return [
       for (final row in source)
-        if (row is Map) Map<String, dynamic>.from(row)
+        if (row is Map) Map<String, dynamic>.from(row),
     ];
   }
 
@@ -293,69 +304,58 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: _backendUrlController,
-              decoration: const InputDecoration(
-                labelText: 'Python 后端地址',
-                hintText: 'http://127.0.0.1:8000',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                ValueListenableBuilder<LatestAnalysisJson?>(
-                  valueListenable: ReplayAnalysisStore.latestAnalysis,
-                  builder: (context, latest, _) {
-                    return OutlinedButton.icon(
-                      onPressed: latest == null || _running
-                          ? null
-                          : _useLatestReplayAnalysis,
-                      icon: const Icon(Icons.input, size: 18),
-                      label: Text(latest == null
-                          ? '暂无复盘数据'
-                          : '使用当前复盘数据：${latest.displaySymbol} ${latest.period}'),
-                    );
-                  },
+                OutlinedButton.icon(
+                  onPressed: _running ? null : _useCurrentKlineTarget,
+                  icon: const Icon(Icons.candlestick_chart, size: 18),
+                  label: const Text('当前K线标的'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _running ? null : _useOtherTarget,
+                  icon: const Icon(Icons.search, size: 18),
+                  label: const Text('其它标的'),
                 ),
                 _ActionButton(
                   label: 'BSP 特征',
                   icon: Icons.table_chart,
                   running: _running,
-                  onPressed: () => _call('/api/research/bsp/features'),
+                  onPressed: _useOtherTarget
+                      ? null
+                      : () => _call('/api/research/bsp/features'),
                 ),
                 _ActionButton(
                   label: 'ML 打分',
                   icon: Icons.psychology,
                   running: _running,
-                  onPressed: () => _call('/api/research/ml/score'),
+                  onPressed: _useOtherTarget
+                      ? null
+                      : () => _call('/api/research/ml/score'),
                 ),
                 _ActionButton(
                   label: '回测',
                   icon: Icons.show_chart,
                   running: _running,
-                  onPressed: () => _call('/api/research/backtest'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _running ? null : _useSegCompositeTemplate,
-                  icon: const Icon(Icons.rule, size: 18),
-                  label: const Text('载入 segN 模板'),
-                ),
-                _ActionButton(
-                  label: 'segN 组合回测',
-                  icon: Icons.layers,
-                  running: _running,
-                  onPressed: () => _call('/api/research/seg-composite/backtest',
-                      overridePayload: _segCompositePayload()),
+                  onPressed: _useOtherTarget
+                      ? null
+                      : () => _call('/api/research/backtest'),
                 ),
                 _ActionButton(
                   label: '一键 Pipeline',
                   icon: Icons.account_tree,
                   running: _running,
-                  onPressed: () => _call('/api/research/pipeline'),
+                  onPressed: _useOtherTarget
+                      ? null
+                      : () => _call('/api/research/pipeline'),
+                ),
+                _ActionButton(
+                  label: 'segN 组合回测',
+                  icon: Icons.layers,
+                  running: _running,
+                  onPressed: _callSegComposite,
                 ),
               ],
             ),
@@ -366,10 +366,10 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
               child: Row(
                 children: [
                   Expanded(
-                    child: _segVisualMode
-                        ? _JsonPanel(
-                            title: 'segN 多级联组合规则（同组条件为 AND）',
-                            child: _SegCompositeRuleEditor(
+                    child: _JsonPanel(
+                      title: _useOtherTarget ? '其它标的' : '当前K线缓存',
+                      child: _useOtherTarget
+                          ? _SegCompositeRuleEditor(
                               symbolController: _segSymbolController,
                               marketController: _segMarketController,
                               startController: _segStartController,
@@ -387,28 +387,12 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                               onUseHoldDaysChanged: (value) =>
                                   setState(() => _useHoldDays = value),
                               onChanged: () => setState(() {}),
-                              onShowJson: () =>
-                                  setState(() => _segVisualMode = false),
+                            )
+                          : _CurrentKlinePanel(
+                              pctText: _pct,
+                              valueText: _valueText,
                             ),
-                          )
-                        : _JsonPanel(
-                            title: '输入 analysis JSON',
-                            child: TextField(
-                              controller: _jsonController,
-                              expands: true,
-                              maxLines: null,
-                              minLines: null,
-                              keyboardType: TextInputType.multiline,
-                              textAlignVertical: TextAlignVertical.top,
-                              style: const TextStyle(
-                                  fontFamily: 'monospace', fontSize: 12),
-                              decoration: const InputDecoration(
-                                alignLabelWithHint: true,
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.all(12),
-                              ),
-                            ),
-                          ),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -432,9 +416,9 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                         ),
                         const SizedBox(height: 12),
                         SizedBox(
-                          height: 220,
+                          height: 230,
                           child: _JsonPanel(
-                            title: 'Pipeline 回测记录',
+                            title: '回测记录',
                             child: _BacktestRecordList(
                               scrollController: _recordScrollController,
                               pctText: _pct,
@@ -451,6 +435,84 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CurrentKlinePanel extends StatelessWidget {
+  final String Function(Object? value) pctText;
+  final String Function(Object? value) valueText;
+
+  const _CurrentKlinePanel({required this.pctText, required this.valueText});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<LatestAnalysisJson?>(
+      valueListenable: ReplayAnalysisStore.latestAnalysis,
+      builder: (context, latest, _) {
+        if (latest == null) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                '暂无当前K线缓存。\n请先在K线图/复盘页加载一次标的，再回到这里直接研究。',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54),
+              ),
+            ),
+          );
+        }
+        final bars = latest.analysis['bars'];
+        final bsp = latest.analysis['bsp'];
+        return Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('默认数据源',
+                  style: TextStyle(
+                      color: Colors.white70, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              _InfoLine('标的', latest.displaySymbol),
+              _InfoLine('周期', latest.period),
+              _InfoLine('复权', latest.adjust.isEmpty ? '--' : latest.adjust),
+              _InfoLine('缓存时间', _timeText(latest.savedAt)),
+              _InfoLine('K线数量', bars is List ? '${bars.length}' : '--'),
+              _InfoLine('BSP数量', bsp is List ? '${bsp.length}' : '--'),
+              const SizedBox(height: 14),
+              const Text(
+                '本页不再手动粘贴 JSON，也不显示后端地址。\nBSP 特征、ML 打分、回测、Pipeline 默认直接使用当前K线图缓存的 analysis 数据。\n点击“其它标的”可不使用当前K线缓存，改用标的代码和规则直接运行 segN 组合回测。',
+                style: TextStyle(color: Colors.white54, height: 1.45),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _InfoLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _InfoLine(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+              width: 86,
+              child: Text(label,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12))),
+          Expanded(
+              child: Text(value,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12))),
+        ],
       ),
     );
   }
@@ -490,7 +552,6 @@ class _SegCompositeRuleEditor extends StatelessWidget {
   final ValueChanged<bool> onUseExitConditionsChanged;
   final ValueChanged<bool> onUseHoldDaysChanged;
   final VoidCallback onChanged;
-  final VoidCallback onShowJson;
 
   const _SegCompositeRuleEditor({
     required this.symbolController,
@@ -507,7 +568,6 @@ class _SegCompositeRuleEditor extends StatelessWidget {
     required this.onUseExitConditionsChanged,
     required this.onUseHoldDaysChanged,
     required this.onChanged,
-    required this.onShowJson,
   });
 
   @override
@@ -571,14 +631,8 @@ class _SegCompositeRuleEditor extends StatelessWidget {
           if (useHoldDays) _field(holdDaysController, '持有天数', 130),
           const SizedBox(height: 12),
           const Text(
-            '数据口径：仅使用 CBSPointList 真实买卖点；候选端点不参与。信号在首次识别 K 线冻结，下一根 K 线成交。',
+            '其它标的模式不使用当前K线缓存，当前优先支持 segN 组合回测。',
             style: TextStyle(color: Colors.white54, fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          TextButton.icon(
-            onPressed: onShowJson,
-            icon: const Icon(Icons.code),
-            label: const Text('切换到通用 JSON 工具'),
           ),
         ],
       ),
@@ -939,8 +993,7 @@ class _BacktestRecordList extends StatelessWidget {
       builder: (context, records, _) {
         if (records.isEmpty) {
           return const Center(
-            child: Text('暂无 Pipeline 回测记录',
-                style: TextStyle(color: Colors.white54)),
+            child: Text('暂无回测记录', style: TextStyle(color: Colors.white54)),
           );
         }
         return Scrollbar(
@@ -957,59 +1010,35 @@ class _BacktestRecordList extends StatelessWidget {
                 dataRowMaxHeight: 40,
                 columnSpacing: 18,
                 columns: const [
-                  DataColumn(
-                      label: Text('时间',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12))),
-                  DataColumn(
-                      label: Text('标的',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12))),
-                  DataColumn(
-                      label: Text('周期',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12))),
-                  DataColumn(
-                      label: Text('交易数',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12))),
-                  DataColumn(
-                      label: Text('胜率',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12))),
-                  DataColumn(
-                      label: Text('总收益',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12))),
-                  DataColumn(
-                      label: Text('最终权益',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12))),
+                  DataColumn(label: Text('时间', style: _headerStyle)),
+                  DataColumn(label: Text('来源', style: _headerStyle)),
+                  DataColumn(label: Text('标的', style: _headerStyle)),
+                  DataColumn(label: Text('周期', style: _headerStyle)),
+                  DataColumn(label: Text('交易数', style: _headerStyle)),
+                  DataColumn(label: Text('胜率', style: _headerStyle)),
+                  DataColumn(label: Text('最大回撤', style: _headerStyle)),
+                  DataColumn(label: Text('PF', style: _headerStyle)),
+                  DataColumn(label: Text('总收益', style: _headerStyle)),
+                  DataColumn(label: Text('最终权益', style: _headerStyle)),
                 ],
                 rows: [
                   for (final record in records)
                     DataRow(cells: [
                       DataCell(Text(timeText(record.createdAt),
-                          style: const TextStyle(
-                              color: Colors.white60, fontSize: 12))),
-                      DataCell(Text(record.symbol,
-                          style: const TextStyle(
-                              color: Colors.white60, fontSize: 12))),
-                      DataCell(Text(record.period,
-                          style: const TextStyle(
-                              color: Colors.white60, fontSize: 12))),
-                      DataCell(Text('${record.tradeCount}',
-                          style: const TextStyle(
-                              color: Colors.white60, fontSize: 12))),
-                      DataCell(Text(pctText(record.winRate),
-                          style: const TextStyle(
-                              color: Colors.white60, fontSize: 12))),
-                      DataCell(Text(pctText(record.totalReturn),
-                          style: const TextStyle(
-                              color: Colors.white60, fontSize: 12))),
-                      DataCell(Text(valueText(record.finalEquity),
-                          style: const TextStyle(
-                              color: Colors.white60, fontSize: 12))),
+                          style: _cellStyle)),
+                      DataCell(Text(record.source, style: _cellStyle)),
+                      DataCell(Text(record.symbol, style: _cellStyle)),
+                      DataCell(Text(record.period, style: _cellStyle)),
+                      DataCell(Text('${record.tradeCount}', style: _cellStyle)),
+                      DataCell(Text(pctText(record.winRate), style: _cellStyle)),
+                      DataCell(
+                          Text(pctText(record.maxDrawdown), style: _cellStyle)),
+                      DataCell(Text(valueText(record.profitFactor),
+                          style: _cellStyle)),
+                      DataCell(
+                          Text(pctText(record.totalReturn), style: _cellStyle)),
+                      DataCell(
+                          Text(valueText(record.finalEquity), style: _cellStyle)),
                     ]),
                 ],
               ),
@@ -1020,6 +1049,9 @@ class _BacktestRecordList extends StatelessWidget {
     );
   }
 }
+
+const _headerStyle = TextStyle(color: Colors.white70, fontSize: 12);
+const _cellStyle = TextStyle(color: Colors.white60, fontSize: 12);
 
 class _ResearchResultView extends StatelessWidget {
   final Map<String, dynamic>? result;
@@ -1073,45 +1105,28 @@ class _ResearchResultView extends StatelessWidget {
               _ErrorBanner(message: '${data['error'] ?? 'unknown error'}')
             else ...[
               _SummaryGrid(cards: [
-                _SummaryCardData(
-                    'Features', '${features.length}', Icons.table_chart),
-                _SummaryCardData(
-                    'Scores', '${scores.length}', Icons.psychology),
-                _SummaryCardData(
-                    'Trades',
-                    '${summary['trade_count'] ?? trades.length}',
-                    Icons.show_chart),
-                _SummaryCardData(
-                    'Win rate', pctText(summary['win_rate']), Icons.percent),
+                _SummaryCardData('Features', '${features.length}', Icons.table_chart),
+                _SummaryCardData('Scores', '${scores.length}', Icons.psychology),
+                _SummaryCardData('Trades',
+                    '${summary['trade_count'] ?? trades.length}', Icons.show_chart),
+                _SummaryCardData('Win rate', pctText(summary['win_rate']), Icons.percent),
                 _SummaryCardData('Total return',
                     pctText(summary['total_return']), Icons.trending_up),
-                _SummaryCardData(
-                    'Final equity',
-                    valueText(summary['final_equity']),
+                _SummaryCardData('Final equity', valueText(summary['final_equity']),
                     Icons.account_balance_wallet),
-                _SummaryCardData('Payoff', valueText(summary['payoff_ratio']),
-                    Icons.balance),
-                _SummaryCardData('Profit factor',
-                    valueText(summary['profit_factor']), Icons.functions),
-                _SummaryCardData('Max drawdown',
-                    pctText(summary['max_drawdown']), Icons.trending_down),
+                _SummaryCardData('Profit factor', valueText(summary['profit_factor']),
+                    Icons.functions),
+                _SummaryCardData('Max drawdown', pctText(summary['max_drawdown']),
+                    Icons.trending_down),
               ]),
               const SizedBox(height: 12),
               if (equityCurve.length > 1 || trades.isNotEmpty)
-                _BacktestCharts(
-                  equityCurve: equityCurve,
-                  trades: trades,
-                ),
+                _BacktestCharts(equityCurve: equityCurve, trades: trades),
               if (entryEvents.isNotEmpty)
                 _PreviewTable(
                   title: '入场信号（点击定位K线）',
                   rows: entryEvents,
-                  columns: const [
-                    'time',
-                    'raw_index',
-                    'signature',
-                    'level',
-                  ],
+                  columns: const ['time', 'raw_index', 'signature', 'level'],
                   valueText: valueText,
                   onRowTap: (row) => onLocate(row, label: '入场信号'),
                 ),
@@ -1119,12 +1134,7 @@ class _ResearchResultView extends StatelessWidget {
                 _PreviewTable(
                   title: '出场信号（点击定位K线）',
                   rows: exitEvents,
-                  columns: const [
-                    'time',
-                    'raw_index',
-                    'signature',
-                    'level',
-                  ],
+                  columns: const ['time', 'raw_index', 'signature', 'level'],
                   valueText: valueText,
                   onRowTap: (row) => onLocate(row, label: '出场信号'),
                 ),
@@ -1172,16 +1182,6 @@ class _ResearchResultView extends StatelessWidget {
                   ],
                   valueText: valueText,
                   onRowTap: (row) => onLocate(row, label: '交易入场'),
-                ),
-              if (features.isEmpty &&
-                  scores.isEmpty &&
-                  trades.isEmpty &&
-                  entryEvents.isEmpty &&
-                  exitEvents.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 18),
-                  child: Text('接口已返回 JSON，但没有可表格化的 features / scores / trades。',
-                      style: TextStyle(color: Colors.white54)),
                 ),
             ],
             const SizedBox(height: 8),
@@ -1261,8 +1261,7 @@ class _SummaryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(card.label,
-                    style:
-                        const TextStyle(color: Colors.white54, fontSize: 11)),
+                    style: const TextStyle(color: Colors.white54, fontSize: 11)),
                 const SizedBox(height: 3),
                 Text(card.value,
                     overflow: TextOverflow.ellipsis,
@@ -1318,10 +1317,7 @@ class _PreviewTable extends StatelessWidget {
                   columnSpacing: 18,
                   columns: [
                     for (final col in columns)
-                      DataColumn(
-                          label: Text(col,
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 12))),
+                      DataColumn(label: Text(col, style: _headerStyle)),
                   ],
                   rows: [
                     for (final row in previewRows)
@@ -1331,8 +1327,7 @@ class _PreviewTable extends StatelessWidget {
                           cells: [
                             for (final col in columns)
                               DataCell(Text(valueText(row[col]),
-                                  style: const TextStyle(
-                                      color: Colors.white60, fontSize: 12))),
+                                  style: _cellStyle)),
                           ]),
                   ],
                 ),
@@ -1370,7 +1365,7 @@ class _ActionButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool running;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   const _ActionButton({
     required this.label,
