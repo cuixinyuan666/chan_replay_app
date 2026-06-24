@@ -25,21 +25,11 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   final _segEndController = TextEditingController(text: '2026-06-18');
   final _holdDaysController = TextEditingController(text: '10');
 
-  final List<_SegRuleCondition> _entryConditions = [
-    _SegRuleCondition(
-      source: 'recursive_seg_endpoint_candidate',
-      layer: 2,
-      side: 'buy',
-      type: '',
-    ),
+  final List<_RuleCondition> _entryConditions = [
+    _RuleCondition(structure: 'nseg', layer: 2, side: 'buy', type: 'endpoint'),
   ];
-  final List<_SegRuleCondition> _exitConditions = [
-    _SegRuleCondition(
-      source: 'recursive_seg_endpoint_candidate',
-      layer: 2,
-      side: 'sell',
-      type: '',
-    ),
+  final List<_RuleCondition> _exitConditions = [
+    _RuleCondition(structure: 'nseg', layer: 2, side: 'sell', type: 'endpoint'),
   ];
 
   ResearchBackendClient? _backendClient;
@@ -48,7 +38,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   bool _useExitConditions = true;
   bool _useHoldDays = true;
   String _segLevel = 'MIN5';
-  String _segPreset = 'custom';
+  String _executionMode = 'step';
   String _status = '默认使用当前K线图缓存的 analysis 数据。';
   Map<String, dynamic>? _lastResult;
 
@@ -92,20 +82,17 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     }
     setState(() {
       _useOtherTarget = true;
-      _status = '其它标的模式：非 segN 研究会先自动 analyze_multi；segN 组合回测使用下方结构源规则。';
+      _status = '其它标的模式：按 once/step、笔/线段/N段、买卖点类型设计入场和出场。';
     });
   }
 
-  _SegRulePreset get _activePreset => _SegRulePreset.byValue(_segPreset);
-
   int _maxRecursiveSegLayer() {
-    final allLayers = <int>{
-      _activePreset.maxLayer,
+    final layers = <int>{
       for (final condition in _entryConditions) condition.layer,
       for (final condition in _exitConditions) condition.layer,
     };
-    if (allLayers.isEmpty) return 4;
-    final maxLayer = allLayers.reduce((left, right) => left > right ? left : right);
+    if (layers.isEmpty) return 4;
+    final maxLayer = layers.reduce((left, right) => left > right ? left : right);
     return maxLayer < 4 ? 4 : maxLayer;
   }
 
@@ -116,6 +103,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
         'level': _segLevel,
         'main_level': _segLevel,
         'clock_level': _segLevel,
+        'mode': _executionMode,
         'adjust': 'QFQ',
         if (_segStartController.text.trim().isNotEmpty)
           'start': _segStartController.text.trim(),
@@ -132,64 +120,42 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
 
   Map<String, dynamic> _analyzeMultiPayload() => {
         ..._otherTargetBasePayload(),
-        'mode': 'once',
+        'mode': _executionMode,
       };
 
-  Map<String, dynamic> _ruleOf(List<_SegRuleCondition> conditions) => {
+  Map<String, dynamic> _ruleOf(List<_RuleCondition> conditions) => {
         'conditions': [
           for (final condition in conditions) condition.toJson(),
         ],
         'dedupe': true,
       };
 
-  Map<String, dynamic> _entryRulePayload() {
-    final preset = _activePreset;
-    if (preset.value == 'custom') return _ruleOf(_entryConditions);
-    return {
-      'conditions': [for (final row in preset.entryConditions) Map<String, dynamic>.from(row)],
-      'dedupe': true,
-    };
-  }
-
-  Map<String, dynamic> _exitRulePayload() {
-    final preset = _activePreset;
-    if (preset.value == 'custom') return _ruleOf(_exitConditions);
-    if (preset.signalSource == 'endpoint_candidate') {
-      return {
-        'conditions': [
-          {'source': 'recursive_seg_endpoint_candidate', 'layer': 2, 'side': 'sell', 'types': <String>[]},
-        ],
-        'dedupe': true,
-      };
-    }
-    return _ruleOf(_exitConditions);
-  }
-
   String _effectiveSignalSource() {
-    final preset = _activePreset;
-    if (preset.value != 'custom') return preset.signalSource;
-    final hasCandidate = [..._entryConditions, ..._exitConditions]
-        .any((condition) => condition.source != 'origin_bsp');
-    return hasCandidate ? 'endpoint_candidate' : 'real_bsp';
+    final rows = [..._entryConditions, if (_useExitConditions) ..._exitConditions];
+    final needsRealBsp = rows.any((condition) => condition.isRealNsegBsp);
+    final needsCandidate = rows.any((condition) => condition.isEndpointCandidate);
+    if (needsRealBsp && needsCandidate) return 'auto';
+    if (needsCandidate) return 'endpoint_candidate';
+    return 'real_bsp';
   }
 
   Map<String, dynamic> _segCompositePayload() {
-    final preset = _activePreset;
     final signalSource = _effectiveSignalSource();
     return {
       ..._otherTargetBasePayload(),
-      'entry_rule': _entryRulePayload(),
-      if (_useExitConditions) 'exit_rule': _exitRulePayload(),
-      'preset': preset.value,
-      'preset_label': preset.label,
+      'entry_rule': _ruleOf(_entryConditions),
+      if (_useExitConditions) 'exit_rule': _ruleOf(_exitConditions),
+      'preset': 'custom_mode_structure_type',
+      'preset_label': '自定义：once/step | 笔/线段/N段 | 买卖点类型',
       'options': {
         if (_useHoldDays)
           'max_hold_days': int.tryParse(_holdDaysController.text.trim()) ?? 10,
         'fee_bps': 3,
         'slippage_bps': 2,
         'signal_source': signalSource,
-        'preset': preset.value,
-        'preset_label': preset.label,
+        'execution_mode': _executionMode,
+        'preset': 'custom_mode_structure_type',
+        'preset_label': '自定义：once/step | 笔/线段/N段 | 买卖点类型',
       },
     };
   }
@@ -221,7 +187,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     final level = _segLevel.trim().toUpperCase();
     if (symbol.isEmpty) throw const FormatException('其它标的代码不能为空');
     if (mounted) {
-      setState(() => _status = '其它标的：正在自动 analyze_multi $market$symbol $level ...');
+      setState(() => _status = '其它标的：正在自动 analyze_multi $market$symbol $level $_executionMode ...');
     }
     final response = await client.post('/api/chan/analyze_multi', _analyzeMultiPayload());
     if (response['ok'] == false) {
@@ -250,6 +216,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       'adjust': 'QFQ',
       'main_level': level,
       'levels': [level],
+      'mode': _executionMode,
       'source': 'research_page.other_target.analyze_multi',
       'research_other_target': true,
       'chan_py_polluted': false,
@@ -356,7 +323,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       if (summary is Map) {
         final frames = meta is Map ? meta['evaluated_step_frames'] : null;
         final source = meta is Map ? meta['seg_composite_signal_source'] : null;
-        return '组合回测完成：${source ?? _effectiveSignalSource()}，逐帧 ${frames ?? '--'}，入场 ${_rowsFrom(result['entry_events']).length}，交易 ${summary['trade_count'] ?? 0}，胜率 ${_pct(summary['win_rate'])}，总收益 ${_pct(summary['total_return'])}';
+        return '组合回测完成：模式 $_executionMode，信号 ${source ?? _effectiveSignalSource()}，逐帧 ${frames ?? '--'}，入场 ${_rowsFrom(result['entry_events']).length}，交易 ${summary['trade_count'] ?? 0}，胜率 ${_pct(summary['win_rate'])}，总收益 ${_pct(summary['total_return'])}';
       }
       return '组合回测完成。';
     }
@@ -467,7 +434,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                   onPressed: () => _call('/api/research/pipeline'),
                 ),
                 _ActionButton(
-                  label: '结构源组合回测',
+                  label: '组合回测',
                   icon: Icons.layers,
                   running: _running,
                   onPressed: _callSegComposite,
@@ -482,22 +449,22 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                 children: [
                   Expanded(
                     child: _Panel(
-                      title: _useOtherTarget ? '其它标的 / 结构源规则' : '当前K线缓存',
+                      title: _useOtherTarget ? '其它标的 / 出入场设计' : '当前K线缓存',
                       child: _useOtherTarget
-                          ? _StructureSourceRuleEditor(
+                          ? _SimpleRuleEditor(
                               symbolController: _segSymbolController,
                               marketController: _segMarketController,
                               startController: _segStartController,
                               endController: _segEndController,
                               holdDaysController: _holdDaysController,
                               level: _segLevel,
-                              preset: _segPreset,
+                              executionMode: _executionMode,
                               entryConditions: _entryConditions,
                               exitConditions: _exitConditions,
                               useExitConditions: _useExitConditions,
                               useHoldDays: _useHoldDays,
                               onLevelChanged: (value) => setState(() => _segLevel = value),
-                              onPresetChanged: (value) => setState(() => _segPreset = value),
+                              onExecutionModeChanged: (value) => setState(() => _executionMode = value),
                               onUseExitConditionsChanged: (value) => setState(() => _useExitConditions = value),
                               onUseHoldDaysChanged: (value) => setState(() => _useHoldDays = value),
                               onChanged: () => setState(() {}),
@@ -531,129 +498,57 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   }
 }
 
-class _SegRulePreset {
-  final String value;
-  final String label;
-  final String signalSource;
-  final int maxLayer;
-  final List<Map<String, dynamic>> entryConditions;
-
-  const _SegRulePreset({
-    required this.value,
-    required this.label,
-    required this.signalSource,
-    required this.maxLayer,
-    required this.entryConditions,
-  });
-
-  static const values = [
-    _SegRulePreset(
-      value: 'custom',
-      label: '自定义：结构源 AND 条件',
-      signalSource: 'endpoint_candidate',
-      maxLayer: 4,
-      entryConditions: [],
-    ),
-    _SegRulePreset(
-      value: 'origin_bsp_any_buy',
-      label: '原级别真实BSP：任意买点',
-      signalSource: 'real_bsp',
-      maxLayer: 4,
-      entryConditions: [
-        {'source': 'origin_bsp', 'layer': 2, 'side': 'buy', 'types': ['1', '1p', '2', '2s', '3a', '3b']},
-      ],
-    ),
-    _SegRulePreset(
-      value: 'bi_endpoint_buy',
-      label: '非真实BSP：笔下跌终点候选',
-      signalSource: 'endpoint_candidate',
-      maxLayer: 4,
-      entryConditions: [
-        {'source': 'bi_endpoint_candidate', 'layer': 2, 'side': 'buy', 'types': <String>[]},
-      ],
-    ),
-    _SegRulePreset(
-      value: 'seg_endpoint_buy',
-      label: '非真实BSP：线段下跌终点候选',
-      signalSource: 'endpoint_candidate',
-      maxLayer: 4,
-      entryConditions: [
-        {'source': 'seg_endpoint_candidate', 'layer': 2, 'side': 'buy', 'types': <String>[]},
-      ],
-    ),
-    _SegRulePreset(
-      value: 'endpoint_layer2_buy',
-      label: '非真实BSP：2层递归段下跌终点候选',
-      signalSource: 'endpoint_candidate',
-      maxLayer: 2,
-      entryConditions: [
-        {'source': 'recursive_seg_endpoint_candidate', 'layer': 2, 'side': 'buy', 'types': <String>[]},
-      ],
-    ),
-    _SegRulePreset(
-      value: 'endpoint_layer3_buy',
-      label: '非真实BSP：3层递归段下跌终点候选',
-      signalSource: 'endpoint_candidate',
-      maxLayer: 3,
-      entryConditions: [
-        {'source': 'recursive_seg_endpoint_candidate', 'layer': 3, 'side': 'buy', 'types': <String>[]},
-      ],
-    ),
-  ];
-
-  static _SegRulePreset byValue(String value) => values.firstWhere(
-        (preset) => preset.value == value,
-        orElse: () => values.first,
-      );
-}
-
-class _SegRuleCondition {
-  String source;
+class _RuleCondition {
+  String structure;
   int layer;
   String side;
   String type;
 
-  _SegRuleCondition({
-    required this.source,
+  _RuleCondition({
+    required this.structure,
     required this.layer,
     required this.side,
     required this.type,
   });
 
-  bool get isEndpointCandidate => source != 'origin_bsp';
-  bool get usesLayer => source == 'recursive_seg_endpoint_candidate';
+  bool get isEndpointCandidate => structure == 'bi' || structure == 'seg' || type == 'endpoint';
+  bool get isRealNsegBsp => structure == 'nseg' && type != 'endpoint';
 
-  Map<String, dynamic> toJson() => {
-        'source': source,
-        'layer': layer,
+  Map<String, dynamic> toJson() {
+    if (structure == 'bi') {
+      return {
+        'source': 'bi_endpoint_candidate',
+        'layer': 2,
         'side': side,
-        'types': type.trim().isEmpty ? <String>[] : [type.trim()],
+        'types': <String>[],
       };
+    }
+    if (structure == 'seg') {
+      return {
+        'source': 'seg_endpoint_candidate',
+        'layer': 2,
+        'side': side,
+        'types': <String>[],
+      };
+    }
+    return {
+      'source': type == 'endpoint' ? 'recursive_seg_endpoint_candidate' : 'recursive_seg_bsp',
+      'layer': layer,
+      'side': side,
+      'types': type == 'endpoint' ? <String>[] : [type],
+    };
+  }
 }
 
-class _StructureSourceOption {
-  final String value;
-  final String label;
-  final bool usesLayer;
-  final bool realBsp;
-
-  const _StructureSourceOption({
-    required this.value,
-    required this.label,
-    required this.usesLayer,
-    required this.realBsp,
-  });
-}
-
-class _StructureSourceRuleEditor extends StatelessWidget {
+class _SimpleRuleEditor extends StatelessWidget {
   static const _levels = ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY'];
-  static const _bspTypes = ['1', '1p', '2', '2s', '3a', '3b'];
-  static const _sources = [
-    _StructureSourceOption(value: 'origin_bsp', label: '原级别真实BSP', usesLayer: false, realBsp: true),
-    _StructureSourceOption(value: 'bi_endpoint_candidate', label: '非真实BSP：笔端点候选', usesLayer: false, realBsp: false),
-    _StructureSourceOption(value: 'seg_endpoint_candidate', label: '非真实BSP：线段端点候选', usesLayer: false, realBsp: false),
-    _StructureSourceOption(value: 'recursive_seg_endpoint_candidate', label: '非真实BSP：递归段端点候选', usesLayer: true, realBsp: false),
+  static const _modes = ['once', 'step'];
+  static const _structures = [
+    DropdownMenuItem(value: 'bi', child: Text('笔')),
+    DropdownMenuItem(value: 'seg', child: Text('线段')),
+    DropdownMenuItem(value: 'nseg', child: Text('N段')),
   ];
+  static const _bspTypes = ['1', '1p', '2', '2s', '3a', '3b', 'endpoint'];
 
   final TextEditingController symbolController;
   final TextEditingController marketController;
@@ -661,31 +556,31 @@ class _StructureSourceRuleEditor extends StatelessWidget {
   final TextEditingController endController;
   final TextEditingController holdDaysController;
   final String level;
-  final String preset;
-  final List<_SegRuleCondition> entryConditions;
-  final List<_SegRuleCondition> exitConditions;
+  final String executionMode;
+  final List<_RuleCondition> entryConditions;
+  final List<_RuleCondition> exitConditions;
   final bool useExitConditions;
   final bool useHoldDays;
   final ValueChanged<String> onLevelChanged;
-  final ValueChanged<String> onPresetChanged;
+  final ValueChanged<String> onExecutionModeChanged;
   final ValueChanged<bool> onUseExitConditionsChanged;
   final ValueChanged<bool> onUseHoldDaysChanged;
   final VoidCallback onChanged;
 
-  const _StructureSourceRuleEditor({
+  const _SimpleRuleEditor({
     required this.symbolController,
     required this.marketController,
     required this.startController,
     required this.endController,
     required this.holdDaysController,
     required this.level,
-    required this.preset,
+    required this.executionMode,
     required this.entryConditions,
     required this.exitConditions,
     required this.useExitConditions,
     required this.useHoldDays,
     required this.onLevelChanged,
-    required this.onPresetChanged,
+    required this.onExecutionModeChanged,
     required this.onUseExitConditionsChanged,
     required this.onUseHoldDaysChanged,
     required this.onChanged,
@@ -693,8 +588,6 @@ class _StructureSourceRuleEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activePreset = _SegRulePreset.byValue(preset);
-    final isCustom = activePreset.value == 'custom';
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -706,6 +599,19 @@ class _StructureSourceRuleEditor extends StatelessWidget {
             children: [
               _field(symbolController, '标的', 120),
               _field(marketController, '市场', 90),
+              SizedBox(
+                width: 120,
+                child: DropdownButtonFormField<String>(
+                  initialValue: executionMode,
+                  decoration: const InputDecoration(labelText: '执行模式'),
+                  items: [
+                    for (final value in _modes) DropdownMenuItem(value: value, child: Text(value)),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) onExecutionModeChanged(value);
+                  },
+                ),
+              ),
               SizedBox(
                 width: 130,
                 child: DropdownButtonFormField<String>(
@@ -724,26 +630,11 @@ class _StructureSourceRuleEditor extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          DropdownButtonFormField<String>(
-            initialValue: preset,
-            decoration: const InputDecoration(labelText: '规则预设'),
-            items: [
-              for (final item in _SegRulePreset.values) DropdownMenuItem(value: item.value, child: Text(item.label)),
-            ],
-            onChanged: (value) {
-              if (value != null) onPresetChanged(value);
-            },
-          ),
-          const SizedBox(height: 8),
-          _RuleNotice(preset: activePreset),
+          const _RuleHelp(),
           const SizedBox(height: 14),
           _ruleSection(
             title: '入场组合',
-            subtitle: isCustom
-                ? '自定义模式：每行选择结构源 → 层级/N段 → 买卖方向 → 类型；所有行同时满足才入场。'
-                : '当前为预设模式：下方自定义条件仅保留显示，不参与本次 payload。',
             rows: entryConditions,
-            enabled: isCustom,
             entry: true,
           ),
           const Divider(height: 26),
@@ -751,14 +642,12 @@ class _StructureSourceRuleEditor extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             value: useExitConditions,
             onChanged: onUseExitConditionsChanged,
-            title: const Text('启用组合出场'),
+            title: const Text('启用出场组合'),
           ),
           if (useExitConditions)
             _ruleSection(
               title: '出场组合',
-              subtitle: isCustom ? '自定义出场结构源组合。' : '预设模式下，候选预设默认使用 2层递归段上涨终点作为卖出候选。',
               rows: exitConditions,
-              enabled: isCustom,
               entry: false,
             ),
           SwitchListTile.adaptive(
@@ -768,11 +657,6 @@ class _StructureSourceRuleEditor extends StatelessWidget {
             title: const Text('启用入场后 N 天退出'),
           ),
           if (useHoldDays) _field(holdDaysController, '持有天数', 130),
-          const SizedBox(height: 12),
-          const Text(
-            '真实BSP来自 chan.py CBSPointList；笔/线段/递归段端点候选为非真实BSP，仅用于宽松扫描和诊断。',
-            style: TextStyle(color: Colors.white54, fontSize: 12),
-          ),
         ],
       ),
     );
@@ -780,145 +664,122 @@ class _StructureSourceRuleEditor extends StatelessWidget {
 
   Widget _ruleSection({
     required String title,
-    required String subtitle,
-    required List<_SegRuleCondition> rows,
-    required bool enabled,
+    required List<_RuleCondition> rows,
     required bool entry,
   }) {
-    return Opacity(
-      opacity: enabled ? 1 : 0.62,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 3),
-          Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-          const SizedBox(height: 8),
-          for (var index = 0; index < rows.length; index++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _conditionRow(rows, index, enabled: enabled),
-            ),
-          OutlinedButton.icon(
-            onPressed: enabled
-                ? () {
-                    rows.add(_SegRuleCondition(
-                      source: 'recursive_seg_endpoint_candidate',
-                      layer: 2,
-                      side: entry ? 'buy' : 'sell',
-                      type: '',
-                    ));
-                    onChanged();
-                  }
-                : null,
-            icon: const Icon(Icons.add, size: 17),
-            label: const Text('增加 AND 条件'),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        for (var index = 0; index < rows.length; index++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _conditionRow(rows, index),
           ),
-        ],
-      ),
+        OutlinedButton.icon(
+          onPressed: () {
+            rows.add(_RuleCondition(
+              structure: 'nseg',
+              layer: 2,
+              side: entry ? 'buy' : 'sell',
+              type: 'endpoint',
+            ));
+            onChanged();
+          },
+          icon: const Icon(Icons.add, size: 17),
+          label: const Text('增加 AND 条件'),
+        ),
+      ],
     );
   }
 
-  Widget _conditionRow(List<_SegRuleCondition> rows, int index, {required bool enabled}) {
+  Widget _conditionRow(List<_RuleCondition> rows, int index) {
     final row = rows[index];
-    final selectedSource = _sourceOf(row.source);
+    final isNseg = row.structure == 'nseg';
+    final types = isNseg ? _bspTypes : const ['endpoint'];
+    if (!types.contains(row.type)) row.type = 'endpoint';
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         SizedBox(
-          width: 220,
+          width: 100,
           child: DropdownButtonFormField<String>(
-            initialValue: row.source,
-            decoration: const InputDecoration(labelText: '结构源'),
-            items: [
-              for (final source in _sources) DropdownMenuItem(value: source.value, child: Text(source.label)),
-            ],
-            onChanged: enabled
-                ? (value) {
-                    if (value == null) return;
-                    row.source = value;
-                    if (!_sourceOf(value).realBsp) row.type = '';
-                    row.layer = row.layer < 2 ? 2 : row.layer;
-                    onChanged();
-                  }
-                : null,
+            initialValue: row.structure,
+            decoration: const InputDecoration(labelText: '结构'),
+            items: _structures,
+            onChanged: (value) {
+              if (value == null) return;
+              row.structure = value;
+              if (value != 'nseg') {
+                row.layer = 2;
+                row.type = 'endpoint';
+              }
+              onChanged();
+            },
           ),
         ),
-        if (selectedSource.usesLayer)
-          SizedBox(
-            width: 105,
-            child: TextFormField(
-              key: ValueKey('layer-${row.hashCode}-${row.layer}'),
-              enabled: enabled,
-              initialValue: '${row.layer}',
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(labelText: 'N层递归段'),
-              onChanged: (value) {
-                final next = int.tryParse(value.trim());
-                if (next != null && next >= 2) {
-                  row.layer = next;
-                  onChanged();
-                }
-              },
-            ),
-          )
-        else
-          SizedBox(
-            width: 105,
-            child: InputDecorator(
-              decoration: const InputDecoration(labelText: '层级'),
-              child: Text(selectedSource.realBsp ? '原级别' : selectedSource.label.split('：').last),
-            ),
-          ),
+        SizedBox(
+          width: 105,
+          child: isNseg
+              ? TextFormField(
+                  key: ValueKey('layer-${row.hashCode}-${row.layer}'),
+                  initialValue: '${row.layer}',
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(labelText: 'N段'),
+                  onChanged: (value) {
+                    final next = int.tryParse(value.trim());
+                    if (next != null && next >= 2) {
+                      row.layer = next;
+                      onChanged();
+                    }
+                  },
+                )
+              : InputDecorator(
+                  decoration: const InputDecoration(labelText: '层级'),
+                  child: Text(row.structure == 'bi' ? '笔' : '线段'),
+                ),
+        ),
         SizedBox(
           width: 100,
           child: DropdownButtonFormField<String>(
             initialValue: row.side,
             decoration: const InputDecoration(labelText: '方向'),
             items: const [
-              DropdownMenuItem(value: 'buy', child: Text('买/低点')),
-              DropdownMenuItem(value: 'sell', child: Text('卖/高点')),
+              DropdownMenuItem(value: 'buy', child: Text('买')),
+              DropdownMenuItem(value: 'sell', child: Text('卖')),
             ],
-            onChanged: enabled
-                ? (value) {
-                    if (value != null) {
-                      row.side = value;
-                      onChanged();
-                    }
-                  }
-                : null,
+            onChanged: (value) {
+              if (value != null) {
+                row.side = value;
+                onChanged();
+              }
+            },
           ),
         ),
         SizedBox(
-          width: 150,
-          child: selectedSource.realBsp
-              ? DropdownButtonFormField<String>(
-                  initialValue: row.type.trim().isEmpty ? '1' : row.type,
-                  decoration: const InputDecoration(labelText: 'BSP类型'),
-                  items: [
-                    for (final type in _bspTypes)
-                      DropdownMenuItem(value: type, child: Text('${row.side == 'buy' ? 'B' : 'S'}$type')),
-                  ],
-                  onChanged: enabled
-                      ? (value) {
-                          if (value != null) {
-                            row.type = value;
-                            onChanged();
-                          }
-                        }
-                      : null,
-                )
-              : InputDecorator(
-                  decoration: const InputDecoration(labelText: '类型'),
-                  child: Text(row.side == 'buy' ? '下跌终点候选' : '上涨终点候选'),
-                ),
+          width: 180,
+          child: DropdownButtonFormField<String>(
+            initialValue: row.type,
+            decoration: const InputDecoration(labelText: '买卖点类型'),
+            items: [
+              for (final type in types)
+                DropdownMenuItem(value: type, child: Text(_typeLabel(row.side, type))),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                row.type = value;
+                onChanged();
+              }
+            },
+          ),
         ),
         IconButton(
           tooltip: '删除条件',
-          onPressed: !enabled || rows.length <= 1
+          onPressed: rows.length <= 1
               ? null
               : () {
                   rows.removeAt(index);
@@ -930,10 +791,10 @@ class _StructureSourceRuleEditor extends StatelessWidget {
     );
   }
 
-  static _StructureSourceOption _sourceOf(String value) => _sources.firstWhere(
-        (source) => source.value == value,
-        orElse: () => _sources.last,
-      );
+  static String _typeLabel(String side, String type) {
+    if (type == 'endpoint') return side == 'buy' ? '下跌终点候选' : '上涨终点候选';
+    return '${side == 'buy' ? 'B' : 'S'}$type';
+  }
 
   static Widget _field(TextEditingController controller, String label, double width) {
     return SizedBox(
@@ -943,29 +804,22 @@ class _StructureSourceRuleEditor extends StatelessWidget {
   }
 }
 
-class _RuleNotice extends StatelessWidget {
-  final _SegRulePreset preset;
-
-  const _RuleNotice({required this.preset});
+class _RuleHelp extends StatelessWidget {
+  const _RuleHelp();
 
   @override
   Widget build(BuildContext context) {
-    final isCandidate = preset.signalSource == 'endpoint_candidate';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: isCandidate ? const Color(0xFF422006) : const Color(0xFF0F172A),
+        color: const Color(0xFF0F172A),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: isCandidate ? const Color(0xFFF59E0B) : Colors.white10),
+        border: Border.all(color: Colors.white10),
       ),
-      child: Text(
-        preset.value == 'custom'
-            ? '自定义模式：规则行会把 source/layer/side/types 直接传给后端组合引擎。'
-            : isCandidate
-                ? '候选模式：${preset.label}。该信号不等同真实 chan.py 买卖点。'
-                : '真实BSP模式：${preset.label}。',
-        style: TextStyle(color: isCandidate ? Colors.amber.shade100 : Colors.white70, fontSize: 12),
+      child: const Text(
+        '只保留三轴：执行模式 once/step；结构 笔/线段/N段；买卖点类型。笔和线段目前对应端点候选；N段支持 B/S1、B/S1p、B/S2、B/S2s、B/S3a、B/S3b 和端点候选。',
+        style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
     );
   }
@@ -1008,7 +862,7 @@ class _CurrentKlinePanel extends StatelessWidget {
               _InfoLine('BSP数量', bsp is List ? '${bsp.length}' : '--'),
               const SizedBox(height: 14),
               const Text(
-                'BSP 特征、ML 打分、回测、Pipeline 默认使用当前K线图缓存。\n点击“其它标的”后可使用统一结构源规则编辑器。',
+                'BSP 特征、ML 打分、回测、Pipeline 默认使用当前K线图缓存。\n点击“其它标的”后可使用 once/step 出入场设计。',
                 style: TextStyle(color: Colors.white54, height: 1.45),
               ),
             ],
