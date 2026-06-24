@@ -77,6 +77,14 @@ def _assert_clean_meta(payload: dict[str, Any], stage: str) -> None:
     _assert(meta.get('chan_py_polluted') is False, f'{stage}.meta.chan_py_polluted must be false')
 
 
+def _assert_scores(rows: list[dict[str, Any]], *, stage: str) -> None:
+    for index, row in enumerate(rows):
+        score = row.get('ml_score')
+        _assert(isinstance(score, (int, float)), f'{stage}[{index}].ml_score must be numeric')
+        _assert(0.0 <= float(score) <= 1.0, f'{stage}[{index}].ml_score out of [0,1]')
+        _assert(row.get('ml_signal') in {'accept', 'reject'}, f'{stage}[{index}].ml_signal invalid')
+
+
 def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     payload = _load_payload(path)
 
@@ -92,16 +100,13 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     _assert_clean_meta(scores, 'scores')
     score_rows = _rows(scores, 'scores')
     _assert(len(score_rows) == len(feature_rows), f'score count mismatch: {len(score_rows)} != {len(feature_rows)}')
-    for index, row in enumerate(score_rows):
-        score = row.get('ml_score')
-        _assert(isinstance(score, (int, float)), f'scores[{index}].ml_score must be numeric')
-        _assert(0.0 <= float(score) <= 1.0, f'scores[{index}].ml_score out of [0,1]')
-        _assert(row.get('ml_signal') in {'accept', 'reject'}, f'scores[{index}].ml_signal invalid')
+    _assert_scores(score_rows, stage='scores')
 
     backtest = research_backtest(payload)
     _assert(backtest.get('ok') is True, 'backtest route must return ok=true')
     _assert_clean_meta(backtest, 'backtest')
     _assert(backtest['meta'].get('same_bar_lookahead') is False, 'backtest must declare no same-bar lookahead')
+    _assert(backtest['meta'].get('signal_source') != 'analysis_bsp_fallback', 'backtest must not use naked BSP fallback when features can be scored')
     _assert(isinstance(backtest.get('trades'), list), 'backtest.trades must be a list')
     _assert(isinstance(backtest.get('summary'), dict), 'backtest.summary must be an object')
 
@@ -113,13 +118,17 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     _assert_clean_meta(pipeline['features'], 'pipeline.features')
     _assert_clean_meta(pipeline['scores'], 'pipeline.scores')
     _assert_clean_meta(pipeline['backtest'], 'pipeline.backtest')
+
+    pipeline_features = _rows(pipeline['features'], 'features')
+    pipeline_scores = _rows(pipeline['scores'], 'scores')
+    _assert(len(pipeline_scores) == len(pipeline_features), f'pipeline score count mismatch: {len(pipeline_scores)} != {len(pipeline_features)}')
+    _assert_scores(pipeline_scores, stage='pipeline.scores')
     _assert(
         pipeline['backtest']['meta'].get('signal_source') in {
             'analysis_scores_or_features',
             'auto_scored_features',
-            'analysis_bsp_fallback',
         },
-        'pipeline.backtest.meta.signal_source must be declared',
+        'pipeline backtest must consume scored features, not naked BSP fallback',
     )
 
     return {
@@ -128,6 +137,8 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
         'features': len(feature_rows),
         'scores': len(score_rows),
         'backtest_trades': len(backtest.get('trades', [])),
+        'pipeline_features': len(pipeline_features),
+        'pipeline_scores': len(pipeline_scores),
         'pipeline_trades': len(pipeline['backtest'].get('trades', [])),
         'pipeline_signal_source': pipeline['backtest']['meta'].get('signal_source'),
         'meta': {
