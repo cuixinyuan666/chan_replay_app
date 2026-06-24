@@ -39,10 +39,13 @@ class BacktestRecord {
   final DateTime createdAt;
   final String symbol;
   final String period;
+  final String source;
   final int tradeCount;
   final double? winRate;
   final double? totalReturn;
   final double? finalEquity;
+  final double? maxDrawdown;
+  final double? profitFactor;
   final Map<String, dynamic> result;
 
   const BacktestRecord({
@@ -50,10 +53,13 @@ class BacktestRecord {
     required this.createdAt,
     required this.symbol,
     required this.period,
+    required this.source,
     required this.tradeCount,
     required this.winRate,
     required this.totalReturn,
     required this.finalEquity,
+    required this.maxDrawdown,
+    required this.profitFactor,
     required this.result,
   });
 
@@ -61,25 +67,62 @@ class BacktestRecord {
     required Map<String, dynamic> result,
     required LatestAnalysisJson? latestAnalysis,
   }) {
+    return BacktestRecord.fromResearchResult(
+      result: result,
+      latestAnalysis: latestAnalysis,
+      source: 'pipeline',
+    );
+  }
+
+  factory BacktestRecord.fromResearchResult({
+    required Map<String, dynamic> result,
+    required LatestAnalysisJson? latestAnalysis,
+    required String source,
+    String? symbol,
+    String? market,
+    String? period,
+  }) {
     final backtest = result['backtest'] is Map
         ? Map<String, dynamic>.from(result['backtest'] as Map)
         : result;
     final summary = backtest['summary'] is Map
         ? Map<String, dynamic>.from(backtest['summary'] as Map)
         : <String, dynamic>{};
+    final meta = backtest['meta'] is Map
+        ? Map<String, dynamic>.from(backtest['meta'] as Map)
+        : <String, dynamic>{};
     final createdAt = DateTime.now();
+    final displaySymbol = _displaySymbol(
+      symbol ??
+          _string(meta['symbol']) ??
+          _string(summary['symbol']) ??
+          latestAnalysis?.symbol ??
+          '--',
+      market ??
+          _string(meta['market']) ??
+          _string(summary['market']) ??
+          latestAnalysis?.market ??
+          '',
+      latestAnalysis: latestAnalysis,
+    );
     return BacktestRecord(
       id: createdAt.microsecondsSinceEpoch.toString(),
       createdAt: createdAt,
-      symbol: latestAnalysis?.displaySymbol ??
-          _string(summary['symbol'], fallback: '--'),
-      period:
-          latestAnalysis?.period ?? _string(summary['period'], fallback: '--'),
+      symbol: displaySymbol,
+      period: period ??
+          _string(meta['period']) ??
+          _string(meta['level']) ??
+          _string(summary['period']) ??
+          latestAnalysis?.period ??
+          '--',
+      source: source,
       tradeCount:
           _int(summary['trade_count']) ?? _rows(backtest['trades']).length,
       winRate: _double(summary['win_rate']),
       totalReturn: _double(summary['total_return']),
       finalEquity: _double(summary['final_equity']),
+      maxDrawdown: _double(summary['max_drawdown']),
+      profitFactor: _double(summary['profit_factor']),
       result: _deepCopyMap(result),
     );
   }
@@ -178,9 +221,25 @@ Map<String, dynamic> _deepCopyMap(Map<String, dynamic> source) {
   return Map<String, dynamic>.from(jsonDecode(jsonEncode(source)) as Map);
 }
 
-String _string(Object? value, {String fallback = ''}) {
+String? _string(Object? value, {String? fallback}) {
   final text = '${value ?? ''}'.trim();
-  return text.isEmpty || text == 'null' ? fallback : text;
+  if (text.isEmpty || text == 'null') return fallback;
+  return text;
+}
+
+String _displaySymbol(
+  String symbol,
+  String market, {
+  LatestAnalysisJson? latestAnalysis,
+}) {
+  if (latestAnalysis != null && symbol == latestAnalysis.symbol && market == latestAnalysis.market) {
+    return latestAnalysis.displaySymbol;
+  }
+  final m = market.trim().toUpperCase();
+  final s = symbol.trim().toUpperCase();
+  if (m.isEmpty) return s.isEmpty ? '--' : s;
+  if (s.isEmpty) return m;
+  return '$m$s';
 }
 
 String? _analysisString(Map<String, dynamic> source, List<String> path) {
