@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/services/replay_analysis_store.dart';
 import '../../data/research_backend_client.dart';
+import '../registries/research_backtest_registry.dart';
 
 class ResearchBacktestPage extends StatefulWidget {
   final ValueChanged<int>? onOpenRoute;
@@ -42,6 +43,8 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   String _status = '默认使用当前K线图缓存的 analysis 数据。';
   Map<String, dynamic>? _lastResult;
   Map<String, dynamic>? _lastAnalyzeMultiPayload;
+
+  ResearchBacktestRegistry get _registry => ResearchBacktestRegistry.instance;
 
   @override
   void dispose() {
@@ -239,6 +242,15 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     return analysis;
   }
 
+  Future<void> _callAction(ResearchActionRegistration action) async {
+    switch (action.kind) {
+      case ResearchActionKind.endpoint:
+        return _call(action.endpoint);
+      case ResearchActionKind.segComposite:
+        return _callSegComposite(action.endpoint);
+    }
+  }
+
   Future<void> _call(String endpoint, {Map<String, dynamic>? overridePayload}) async {
     if (_running) return;
     setState(() {
@@ -276,7 +288,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     }
   }
 
-  Future<void> _callSegComposite() async {
+  Future<void> _callSegComposite(String endpoint) async {
     if (_running) return;
     setState(() {
       _running = true;
@@ -287,10 +299,10 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       if (_useOtherTarget) {
         await _loadOtherTargetAnalysis(client);
       }
-      final result = await client.post('/api/research/seg-composite/backtest', _segCompositePayload());
+      final result = await client.post(endpoint, _segCompositePayload());
       setState(() {
         _lastResult = result;
-        _status = _summaryOf('/api/research/seg-composite/backtest', result);
+        _status = _summaryOf(endpoint, result);
       });
     } catch (e) {
       setState(() {
@@ -458,36 +470,13 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                   icon: const Icon(Icons.search, size: 18),
                   label: const Text('其它标的'),
                 ),
-                _ActionButton(
-                  label: 'BSP 特征',
-                  icon: Icons.table_chart,
-                  running: _running,
-                  onPressed: () => _call('/api/research/bsp/features'),
-                ),
-                _ActionButton(
-                  label: 'ML 打分',
-                  icon: Icons.psychology,
-                  running: _running,
-                  onPressed: () => _call('/api/research/ml/score'),
-                ),
-                _ActionButton(
-                  label: '回测',
-                  icon: Icons.show_chart,
-                  running: _running,
-                  onPressed: () => _call('/api/research/backtest'),
-                ),
-                _ActionButton(
-                  label: '一键 Pipeline',
-                  icon: Icons.account_tree,
-                  running: _running,
-                  onPressed: () => _call('/api/research/pipeline'),
-                ),
-                _ActionButton(
-                  label: '组合回测',
-                  icon: Icons.layers,
-                  running: _running,
-                  onPressed: _callSegComposite,
-                ),
+                for (final action in _registry.actions)
+                  _ActionButton(
+                    label: action.label,
+                    icon: action.icon,
+                    running: _running,
+                    onPressed: () => _callAction(action),
+                  ),
               ],
             ),
             const SizedBox(height: 10),
@@ -560,68 +549,22 @@ class _RuleCondition {
     required this.type,
   });
 
-  bool get isEndpointCandidate => type == 'endpoint';
-  bool get isRealBsp => type != 'endpoint';
+  ResearchBspTypeRegistration get _typeRegistration =>
+      ResearchBacktestRegistry.instance.bspTypeOf(type);
 
-  Map<String, dynamic> toJson() {
-    if (type == 'endpoint') {
-      if (structure == 'bi') {
-        return {
-          'source': 'bi_endpoint_candidate',
-          'structure': 'bi',
-          'layer': 2,
-          'side': side,
-          'types': <String>[],
-        };
-      }
-      if (structure == 'seg') {
-        return {
-          'source': 'seg_endpoint_candidate',
-          'structure': 'seg',
-          'layer': 2,
-          'side': side,
-          'types': <String>[],
-        };
-      }
-      return {
-        'source': 'recursive_seg_endpoint_candidate',
-        'structure': 'nseg',
-        'layer': layer,
-        'side': side,
-        'types': <String>[],
-      };
-    }
+  bool get isEndpointCandidate => _typeRegistration.endpointCandidate;
+  bool get isRealBsp => !isEndpointCandidate;
 
-    if (structure == 'nseg') {
-      return {
-        'source': 'recursive_seg_bsp',
-        'structure': 'nseg',
-        'layer': layer,
-        'side': side,
-        'types': [type],
-      };
-    }
-
-    return {
-      'source': 'origin_bsp',
-      'structure': structure,
-      'layer': 2,
-      'side': side,
-      'types': [type],
-    };
-  }
+  Map<String, dynamic> toJson() =>
+      ResearchBacktestRegistry.instance.buildConditionPayload(
+        structure: structure,
+        layer: layer,
+        side: side,
+        type: type,
+      );
 }
 
 class _SimpleRuleEditor extends StatelessWidget {
-  static const _levels = ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY'];
-  static const _modes = ['once', 'step'];
-  static const _structures = [
-    DropdownMenuItem(value: 'bi', child: Text('笔')),
-    DropdownMenuItem(value: 'seg', child: Text('线段')),
-    DropdownMenuItem(value: 'nseg', child: Text('N段')),
-  ];
-  static const _bspTypes = ['1', '1p', '2', '2s', '3a', '3b', 'endpoint'];
-
   final TextEditingController symbolController;
   final TextEditingController marketController;
   final TextEditingController startController;
@@ -658,6 +601,8 @@ class _SimpleRuleEditor extends StatelessWidget {
     required this.onChanged,
   });
 
+  ResearchBacktestRegistry get _registry => ResearchBacktestRegistry.instance;
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -677,7 +622,8 @@ class _SimpleRuleEditor extends StatelessWidget {
                   initialValue: executionMode,
                   decoration: const InputDecoration(labelText: '执行模式'),
                   items: [
-                    for (final value in _modes) DropdownMenuItem(value: value, child: Text(value)),
+                    for (final mode in _registry.executionModes)
+                      DropdownMenuItem(value: mode.value, child: Text(mode.label)),
                   ],
                   onChanged: (value) {
                     if (value != null) onExecutionModeChanged(value);
@@ -690,7 +636,8 @@ class _SimpleRuleEditor extends StatelessWidget {
                   initialValue: level,
                   decoration: const InputDecoration(labelText: 'K线周期'),
                   items: [
-                    for (final value in _levels) DropdownMenuItem(value: value, child: Text(value)),
+                    for (final item in _registry.levels)
+                      DropdownMenuItem(value: item.value, child: Text(item.label)),
                   ],
                   onChanged: (value) {
                     if (value != null) onLevelChanged(value);
@@ -704,11 +651,7 @@ class _SimpleRuleEditor extends StatelessWidget {
           const SizedBox(height: 14),
           const _RuleHelp(),
           const SizedBox(height: 14),
-          _ruleSection(
-            title: '入场组合',
-            rows: entryConditions,
-            entry: true,
-          ),
+          _ruleSection(title: '入场组合', rows: entryConditions, entry: true),
           const Divider(height: 26),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
@@ -717,11 +660,7 @@ class _SimpleRuleEditor extends StatelessWidget {
             title: const Text('启用出场组合'),
           ),
           if (useExitConditions)
-            _ruleSection(
-              title: '出场组合',
-              rows: exitConditions,
-              entry: false,
-            ),
+            _ruleSection(title: '出场组合', rows: exitConditions, entry: false),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
             value: useHoldDays,
@@ -752,10 +691,10 @@ class _SimpleRuleEditor extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: () {
             rows.add(_RuleCondition(
-              structure: 'nseg',
+              structure: _registry.defaultStructure.value,
               layer: 2,
               side: entry ? 'buy' : 'sell',
-              type: 'endpoint',
+              type: _registry.defaultBspType.value,
             ));
             onChanged();
           },
@@ -768,9 +707,10 @@ class _SimpleRuleEditor extends StatelessWidget {
 
   Widget _conditionRow(List<_RuleCondition> rows, int index) {
     final row = rows[index];
-    final isNseg = row.structure == 'nseg';
-    final types = _bspTypes;
-    if (!types.contains(row.type)) row.type = 'endpoint';
+    final structureRegistration = _registry.structureOf(row.structure);
+    final isNseg = structureRegistration.recursiveLayer;
+    final types = _registry.bspTypes;
+    if (!_registry.hasBspType(row.type)) row.type = _registry.defaultBspType.value;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -779,13 +719,17 @@ class _SimpleRuleEditor extends StatelessWidget {
         SizedBox(
           width: 100,
           child: DropdownButtonFormField<String>(
-            initialValue: row.structure,
+            initialValue: structureRegistration.value,
             decoration: const InputDecoration(labelText: '结构'),
-            items: _structures,
+            items: [
+              for (final structure in _registry.structures)
+                DropdownMenuItem(value: structure.value, child: Text(structure.label)),
+            ],
             onChanged: (value) {
               if (value == null) return;
-              row.structure = value;
-              if (value != 'nseg') row.layer = 2;
+              final nextStructure = _registry.structureOf(value);
+              row.structure = nextStructure.value;
+              if (!nextStructure.recursiveLayer) row.layer = nextStructure.fixedLayer;
               onChanged();
             },
           ),
@@ -809,7 +753,7 @@ class _SimpleRuleEditor extends StatelessWidget {
                 )
               : InputDecorator(
                   decoration: const InputDecoration(labelText: '层级'),
-                  child: Text(row.structure == 'bi' ? '笔' : '线段'),
+                  child: Text(structureRegistration.label),
                 ),
         ),
         SizedBox(
@@ -817,9 +761,9 @@ class _SimpleRuleEditor extends StatelessWidget {
           child: DropdownButtonFormField<String>(
             initialValue: row.side,
             decoration: const InputDecoration(labelText: '方向'),
-            items: const [
-              DropdownMenuItem(value: 'buy', child: Text('买')),
-              DropdownMenuItem(value: 'sell', child: Text('卖')),
+            items: [
+              for (final side in _registry.sides)
+                DropdownMenuItem(value: side.value, child: Text(side.label)),
             ],
             onChanged: (value) {
               if (value != null) {
@@ -836,7 +780,10 @@ class _SimpleRuleEditor extends StatelessWidget {
             decoration: const InputDecoration(labelText: '买卖点类型'),
             items: [
               for (final type in types)
-                DropdownMenuItem(value: type, child: Text(_typeLabel(row.side, type))),
+                DropdownMenuItem(
+                  value: type.value,
+                  child: Text(type.labelForSide(row.side)),
+                ),
             ],
             onChanged: (value) {
               if (value != null) {
@@ -858,11 +805,6 @@ class _SimpleRuleEditor extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  static String _typeLabel(String side, String type) {
-    if (type == 'endpoint') return side == 'buy' ? '下跌终点候选' : '上涨终点候选';
-    return '${side == 'buy' ? 'B' : 'S'}$type';
   }
 
   static Widget _field(TextEditingController controller, String label, double width) {
@@ -887,7 +829,7 @@ class _RuleHelp extends StatelessWidget {
         border: Border.all(color: Colors.white10),
       ),
       child: const Text(
-        '只保留三轴：执行模式 once/step；结构 笔/线段/N段；买卖点类型。三种结构都会显示完整买卖点类型下拉；笔/线段选择终点候选时走端点候选，选择 B/S 类型时走已验证的真实 BSP 事件源；N段走递归段真实 BSP 或递归段端点候选。',
+        '只保留三轴：执行模式 once/step；结构 笔/线段/N段；买卖点类型。三种结构都会显示完整买卖点类型下拉；笔/线段选择终点候选时走端点候选，选择 B/S 类型时走已验证的真实 BSP 事件源；N段走递归段真实 BSP 或递归段端点候选。上述选项由 ResearchBacktestRegistry 统一注册。',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
     );
