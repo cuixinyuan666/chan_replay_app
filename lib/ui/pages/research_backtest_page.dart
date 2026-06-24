@@ -637,7 +637,7 @@ class _SegRulePreset {
     ),
     _SegRulePreset(
       value: 'endpoint_layer2_buy',
-      label: '候选：2段向下段结束买点',
+      label: '非真实BSP：2层递归段下跌终点候选',
       signalSource: 'endpoint_candidate',
       maxLayer: 2,
       entryConditions: [
@@ -646,7 +646,7 @@ class _SegRulePreset {
     ),
     _SegRulePreset(
       value: 'endpoint_layer3_buy',
-      label: '候选：3段向下段结束买点',
+      label: '非真实BSP：3层递归段下跌终点候选',
       signalSource: 'endpoint_candidate',
       maxLayer: 3,
       entryConditions: [
