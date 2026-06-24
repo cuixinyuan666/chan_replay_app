@@ -71,7 +71,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     });
   }
 
-  void _useOtherTarget() {
+  void _switchToOtherTarget() {
     final latest = ReplayAnalysisStore.latestAnalysis.value;
     if (latest != null && _segSymbolController.text.trim() == '600340') {
       _segSymbolController.text = latest.symbol;
@@ -315,7 +315,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                   label: const Text('当前K线标的'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _running ? null : _useOtherTarget,
+                  onPressed: _running ? null : _switchToOtherTarget,
                   icon: const Icon(Icons.search, size: 18),
                   label: const Text('其它标的'),
                 ),
