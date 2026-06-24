@@ -41,6 +41,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   String _executionMode = 'step';
   String _status = '默认使用当前K线图缓存的 analysis 数据。';
   Map<String, dynamic>? _lastResult;
+  Map<String, dynamic>? _lastAnalyzeMultiPayload;
 
   @override
   void dispose() {
@@ -193,6 +194,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     if (response['ok'] == false) {
       throw Exception('analyze_multi 失败：${response['error'] ?? 'unknown error'}');
     }
+    _lastAnalyzeMultiPayload = Map<String, dynamic>.from(response);
     return _analysisFromAnalyzeMultiResponse(response);
   }
 
@@ -275,7 +277,29 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   }
 
   Future<void> _callSegComposite() async {
-    await _call('/api/research/seg-composite/backtest', overridePayload: _segCompositePayload());
+    if (_running) return;
+    setState(() {
+      _running = true;
+      _status = '其它标的：准备研究K线缓存并执行组合回测 ...';
+    });
+    try {
+      final client = _client();
+      if (_useOtherTarget) {
+        await _loadOtherTargetAnalysis(client);
+      }
+      final result = await client.post('/api/research/seg-composite/backtest', _segCompositePayload());
+      setState(() {
+        _lastResult = result;
+        _status = _summaryOf('/api/research/seg-composite/backtest', result);
+      });
+    } catch (e) {
+      setState(() {
+        _lastResult = {'ok': false, 'error': '$e'};
+        _status = '调用失败：$e';
+      });
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
   }
 
   void _locateResult(Map<String, dynamic> row, {String label = '回测结果'}) {
@@ -285,6 +309,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     final timeText = '${row['time'] ?? row['entry_signal_time'] ?? row['entry_time'] ?? ''}';
     final latest = ReplayAnalysisStore.latestAnalysis.value;
     final useLatest = !_useOtherTarget && latest != null;
+    final window = _jumpWindow(row, rawIndex);
     ReplayAnalysisStore.requestKlineLocation(
       symbol: useLatest ? latest.symbol : _segSymbolController.text.trim(),
       market: useLatest ? latest.market : _segMarketController.text.trim().toUpperCase(),
@@ -294,8 +319,32 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       startDate: useLatest ? null : DateTime.tryParse(_segStartController.text.trim()),
       endDate: useLatest ? null : DateTime.tryParse(_segEndController.text.trim()),
       label: label,
+      mode: _useOtherTarget ? _executionMode : 'once',
+      frameIndex: _rowInt(row['frame_index']),
+      visibleStartRawIndex: window.$1,
+      visibleEndRawIndex: window.$2,
+      analysisPayload: _useOtherTarget ? _lastAnalyzeMultiPayload : null,
+      source: 'research/backtest',
     );
     widget.onOpenRoute?.call(1);
+  }
+
+  (int, int) _jumpWindow(Map<String, dynamic> row, int fallbackRaw) {
+    final candidates = <int>[
+      fallbackRaw,
+      if (_rowInt(row['entry_signal_raw_index']) != null) _rowInt(row['entry_signal_raw_index'])!,
+      if (_rowInt(row['entry_raw_index']) != null) _rowInt(row['entry_raw_index'])!,
+      if (_rowInt(row['exit_raw_index']) != null) _rowInt(row['exit_raw_index'])!,
+      if (_rowInt(row['raw_index']) != null) _rowInt(row['raw_index'])!,
+    ];
+    candidates.sort();
+    return (candidates.first, candidates.last);
+  }
+
+  int? _rowInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('${value ?? ''}');
   }
 
   String _summaryOf(String endpoint, Map<String, dynamic> result) {
