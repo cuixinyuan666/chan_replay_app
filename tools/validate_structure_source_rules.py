@@ -97,6 +97,13 @@ _PRESETS: dict[str, dict[str, Any]] = {
     },
 }
 
+_REQUIRED_SOURCE_COUNT_KEYS = (
+    'origin_bsp',
+    'bi_endpoint_candidate',
+    'seg_endpoint_candidate',
+    'recursive_seg_2',
+)
+
 
 def _length(value: Any) -> int:
     return len(value) if isinstance(value, list) else 0
@@ -120,9 +127,47 @@ def _seg_payload(args: argparse.Namespace, preset_key: str) -> dict[str, Any]:
     return payload
 
 
+def _row_from_result(key: str, result: dict[str, Any]) -> dict[str, Any]:
+    preset = _PRESETS[key]
+    meta = result.get('meta') if isinstance(result.get('meta'), dict) else {}
+    summary = result.get('summary') if isinstance(result.get('summary'), dict) else {}
+    source_counts = meta.get('structure_source_counts') if isinstance(meta.get('structure_source_counts'), dict) else {}
+    return {
+        'preset': key,
+        'label': preset['label'],
+        'signal_source': preset['signal_source'],
+        'entry_events': _length(result.get('entry_events')),
+        'exit_events': _length(result.get('exit_events')),
+        'trades': _length(result.get('trades')),
+        'evaluated_step_frames': meta.get('evaluated_step_frames'),
+        'effective_signal_source': meta.get('seg_composite_signal_source'),
+        'structure_source_counts': source_counts,
+        'trade_count': summary.get('trade_count'),
+        'win_rate': summary.get('win_rate'),
+        'total_return': summary.get('total_return'),
+        'profit_factor': summary.get('profit_factor'),
+    }
+
+
+def _validate_source_counts(row: dict[str, Any]) -> None:
+    counts = row.get('structure_source_counts')
+    if not isinstance(counts, dict):
+        raise RuntimeError(f'missing structure_source_counts in smoke result: {row}')
+    missing = [key for key in _REQUIRED_SOURCE_COUNT_KEYS if int(counts.get(key) or 0) <= 0]
+    if missing:
+        raise RuntimeError(f'structure_source_counts missing positive sources {missing}: {counts}')
+
+
 def validate(args: argparse.Namespace) -> dict[str, Any]:
+    if args.exhaustive:
+        preset_keys = list(_PRESETS)
+    else:
+        # One full-window request is enough for CI: the backend now reports all
+        # source counts in meta.structure_source_counts from the same scan.
+        preset_keys = ['recursive_seg2_endpoint_buy']
+
     rows: list[dict[str, Any]] = []
-    for key, preset in _PRESETS.items():
+    for key in preset_keys:
         result = _json_post(
             args.base_url,
             '/api/research/seg-composite/backtest',
@@ -130,38 +175,24 @@ def validate(args: argparse.Namespace) -> dict[str, Any]:
             timeout=args.timeout,
         ).payload
         _assert_ok(f'structure-source preset {key}', result)
-        meta = result.get('meta') if isinstance(result.get('meta'), dict) else {}
-        summary = result.get('summary') if isinstance(result.get('summary'), dict) else {}
-        source_counts = meta.get('structure_source_counts') if isinstance(meta.get('structure_source_counts'), dict) else {}
-        rows.append({
-            'preset': key,
-            'label': preset['label'],
-            'signal_source': preset['signal_source'],
-            'entry_events': _length(result.get('entry_events')),
-            'exit_events': _length(result.get('exit_events')),
-            'trades': _length(result.get('trades')),
-            'evaluated_step_frames': meta.get('evaluated_step_frames'),
-            'effective_signal_source': meta.get('seg_composite_signal_source'),
-            'structure_source_counts': source_counts,
-            'trade_count': summary.get('trade_count'),
-            'win_rate': summary.get('win_rate'),
-            'total_return': summary.get('total_return'),
-            'profit_factor': summary.get('profit_factor'),
-        })
+        row = _row_from_result(key, result)
+        rows.append(row)
+        if int(row['entry_events'] or 0) <= 0:
+            raise RuntimeError(f'structure source smoke preset generated no entry_events: {row}')
+        _validate_source_counts(row)
 
-    missing = [row for row in rows if int(row['entry_events'] or 0) <= 0]
-    if missing:
-        raise RuntimeError(f'structure source presets generated no entry_events: {missing}')
     return {
         'ok': True,
         'base_url': args.base_url,
         'symbol': args.symbol,
         'market': args.market.upper(),
         'level': args.level.upper(),
+        'mode': 'exhaustive' if args.exhaustive else 'smoke',
         'results': rows,
         'meta': {
             'validator': 'tools/validate_structure_source_rules.py',
             'preset_count': len(rows),
+            'validated_source_count_keys': list(_REQUIRED_SOURCE_COUNT_KEYS),
             'rule_policy': 'condition.source selects origin BSP, bi endpoint, seg endpoint, or recursive seg endpoint sources',
             'chan_py_polluted': False,
         },
@@ -184,6 +215,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument('--seg-algo', default='chan')
     parser.add_argument('--zs-algo', default='normal')
     parser.add_argument('--recursive-seg-max-level', type=int, default=4)
+    parser.add_argument('--exhaustive', action='store_true')
     args = parser.parse_args(argv)
     try:
         print(json.dumps(validate(args), ensure_ascii=False, indent=2))
