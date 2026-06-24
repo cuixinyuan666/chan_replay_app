@@ -120,6 +120,7 @@ def _seg_payload(args: argparse.Namespace, preset_key: str) -> dict[str, Any]:
             'fee_bps': 3,
             'slippage_bps': 2,
             'signal_source': preset['signal_source'],
+            'collect_structure_source_counts': True,
         },
         'preset': preset_key,
         'preset_label': preset['label'],
@@ -162,8 +163,8 @@ def validate(args: argparse.Namespace) -> dict[str, Any]:
     if args.exhaustive:
         preset_keys = list(_PRESETS)
     else:
-        # One full-window request is enough for CI: the backend now reports all
-        # source counts in meta.structure_source_counts from the same scan.
+        # One full-window request is enough for CI: the backend reports all
+        # source counts only because this validator explicitly requests them.
         preset_keys = ['recursive_seg2_endpoint_buy']
 
     rows: list[dict[str, Any]] = []
