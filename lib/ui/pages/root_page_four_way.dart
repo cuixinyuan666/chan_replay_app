@@ -63,7 +63,10 @@ class _RootPageState extends State<RootPage> {
             category: '系统页面',
             icon: Icons.settings,
             edge: SidebarEdge.left,
-            panelBuilder: (_) => const ChanSettingsPage(compactMode: true),
+            panelBuilder: (_) => const KeyedSubtree(
+              key: ValueKey<String>('left-category-panel'),
+              child: ChanSettingsPage(compactMode: true),
+            ),
           ),
         ],
         child: _LazyRouteStack(
@@ -93,6 +96,7 @@ class _RootPageState extends State<RootPage> {
 
 class _RouteBuilder {
   final Widget child;
+
   const _RouteBuilder({required this.child});
 }
 
