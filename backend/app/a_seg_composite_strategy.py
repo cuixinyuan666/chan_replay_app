@@ -100,21 +100,23 @@ def _match_condition(
         raw = _point_raw_index(row)
         if raw is None or raw > current_raw:
             continue
+        if max_age is not None and current_raw - raw > max_age:
+            continue
         if not allow_unsure and not _point_is_sure(row):
+            continue
+        is_buy = _is_buy(row)
+        if side == 'buy' and not is_buy:
+            continue
+        if side == 'sell' and is_buy:
+            continue
+        if allowed and _canonical_type(_point_type(row)) not in allowed:
             continue
         available.append(row)
     if not available:
         return None
     latest = max(available, key=lambda row: _point_raw_index(row) or -1)
     raw = _point_raw_index(latest)
-    if raw is None or (max_age is not None and current_raw - raw > max_age):
-        return None
-    is_buy = _is_buy(latest)
-    if side == 'buy' and not is_buy:
-        return None
-    if side == 'sell' and is_buy:
-        return None
-    if allowed and _canonical_type(_point_type(latest)) not in allowed:
+    if raw is None:
         return None
     normalized = dict(latest)
     normalized.setdefault('raw_index', raw)
@@ -489,14 +491,14 @@ def run_seg_composite_stream_backtest(
             if not history:
                 grouped[str(layer)] = []
                 continue
-            latest = max(
-                history.values(),
-                key=lambda row: _int(
-                    row.get('recognized_raw_index', row.get('raw_index')),
-                    -1,
-                ) or -1,
+            grouped[str(layer)] = sorted(
+                (dict(row) for row in history.values()),
+                key=lambda row: (
+                    _point_raw_index(row) or -1,
+                    _int(row.get('anchor_raw_index'), -1) or -1,
+                    str(_point_type(row) or ''),
+                ),
             )
-            grouped[str(layer)] = [latest]
         frame = {
             'levels': {
                 signal_level: {
