@@ -84,6 +84,27 @@ def _rule_conditions(rule: dict[str, Any]) -> list[dict[str, Any]]:
     return [dict(row) for row in rows or [] if isinstance(row, dict)]
 
 
+def _signal_source_mode(options: dict[str, Any] | None) -> str:
+    value = str((options or {}).get('signal_source') or 'real_bsp').strip().lower()
+    if value in {'endpoint', 'endpoint_bsp', 'endpoint_candidate', 'candidate'}:
+        return 'endpoint_candidate'
+    if value in {'auto', 'mixed', 'both'}:
+        return 'auto'
+    return 'real_bsp'
+
+
+def _sort_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        (dict(row) for row in rows if isinstance(row, dict)),
+        key=lambda row: (
+            _point_raw_index(row) or -1,
+            _int(row.get('anchor_raw_index'), -1) or -1,
+            str(_point_type(row) or ''),
+            str(row.get('source') or ''),
+        ),
+    )
+
+
 def _match_condition(
     layer_rows: list[dict[str, Any]],
     condition: dict[str, Any],
@@ -191,11 +212,7 @@ def scan_seg_composite_events(
     level: str,
     rule: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Evaluate a segN AND-rule against each historical step frame.
-
-    Only authoritative ``seg_bsp_layers`` rows are considered. Endpoint
-    candidates are intentionally excluded, preserving as-of/no-future semantics.
-    """
+    """Evaluate a segN AND-rule against each historical step frame."""
     frames = [frame for frame in analysis.get('frames', []) if isinstance(frame, dict)]
     bars = _bars(analysis, level)
     conditions = _rule_conditions(rule)
@@ -275,6 +292,7 @@ def _backtest_from_events(
     slippage = float(opts.get('slippage_bps', 2.0)) / 10000.0
     hold_days = _int(opts.get('max_hold_days'))
     hold_bars = _int(opts.get('max_hold_bars'))
+    signal_source = _signal_source_mode(options)
 
     trades: list[dict[str, Any]] = []
     equity_curve: list[dict[str, Any]] = [
@@ -362,8 +380,9 @@ def _backtest_from_events(
         'summary': _summary(trades, equity_curve),
         'meta': {
             'source': 'origin_vespa_tdx.backend.a_seg_composite_strategy',
-            'signal_source': 'step frames authoritative seg_bsp_layers only',
-            'endpoint_candidates_used': False,
+            'signal_source': 'step frames seg composite rule engine',
+            'seg_composite_signal_source': signal_source,
+            'endpoint_candidates_used': signal_source in {'endpoint_candidate', 'auto'},
             'same_bar_lookahead': False,
             'execution': 'next_bar_open_or_close_fallback',
         },
@@ -416,8 +435,16 @@ def run_seg_composite_stream_backtest(
         _advance_step_histories_light,
         _latest_level_position,
     )
-    from .a_recursive_seg_manager import RecursiveSegRuntimeState
+    from .a_recursive_seg_manager import (
+        RecursiveSegRuntimeState,
+        _export_line_list,
+        _export_seg_layer_endpoint_bsp,
+    )
     from .easy_tdx_provider import infer_market, normalize_symbol
+
+    signal_source = _signal_source_mode(options)
+    include_real_bsp = signal_source in {'real_bsp', 'auto'}
+    include_endpoint_candidate = signal_source in {'endpoint_candidate', 'auto'}
 
     code = normalize_symbol(symbol)
     market_name = (market or infer_market(code)).upper()
@@ -487,18 +514,24 @@ def run_seg_composite_stream_backtest(
             total_frames += 1
             continue
         grouped: dict[str, list[dict[str, Any]]] = {}
-        for layer, history in signal_state.bsp_history.items():
-            if not history:
-                grouped[str(layer)] = []
-                continue
-            grouped[str(layer)] = sorted(
-                (dict(row) for row in history.values()),
-                key=lambda row: (
-                    _point_raw_index(row) or -1,
-                    _int(row.get('anchor_raw_index'), -1) or -1,
-                    str(_point_type(row) or ''),
-                ),
-            )
+        for layer in range(2, signal_state.max_level + 1):
+            rows: list[dict[str, Any]] = []
+            if include_real_bsp:
+                history = signal_state.bsp_history.get(layer, {})
+                rows.extend(dict(row) for row in history.values())
+            if include_endpoint_candidate:
+                line_rows = _export_line_list(
+                    signal_state.line_objects.get(layer),
+                    layer=layer,
+                    input_layer=layer - 1,
+                )
+                for row in _export_seg_layer_endpoint_bsp(layer, line_rows):
+                    candidate = dict(row)
+                    candidate.setdefault('recognized_raw_index', candidate.get('raw_index'))
+                    candidate.setdefault('recognized_time', candidate.get('time'))
+                    candidate['candidate_only'] = True
+                    rows.append(candidate)
+            grouped[str(layer)] = _sort_signal_rows(rows)
         frame = {
             'levels': {
                 signal_level: {
@@ -558,5 +591,8 @@ def run_seg_composite_stream_backtest(
         'prepared_code': prepared_code,
         'data_window': data_meta,
         'timing': timing,
+        'seg_composite_signal_source': signal_source,
+        'real_bsp_source_used': include_real_bsp,
+        'endpoint_candidate_source_used': include_endpoint_candidate,
     })
     return result
