@@ -181,6 +181,15 @@ String? _payloadString(Map<String, dynamic> payload, List<String> path) {
   return text.isEmpty || text == 'null' ? null : text;
 }
 
+class _ResearchBackendMismatch implements Exception {
+  final String message;
+
+  const _ResearchBackendMismatch(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class _ResearchLocalPythonProcess {
   final Process process;
   final String baseUrl;
