@@ -94,7 +94,8 @@ class ResearchBackendClient {
       String endpoint, Map<String, dynamic> payload) async {
     await _assertCompatibleBackend(sourceBaseUrl);
     final uri = Uri.parse(_join(sourceBaseUrl, endpoint));
-    final timeout = endpoint.endsWith('/seg-composite/backtest')
+    final timeout = endpoint.endsWith('/seg-composite/backtest') ||
+            endpoint.endsWith('/chan/analyze_multi')
         ? const Duration(minutes: 5)
         : const Duration(seconds: 60);
     final response = await _client
@@ -245,15 +246,22 @@ class _ResearchLocalPythonProcess {
         dir = parent;
       }
     }
-    throw Exception('Cannot find python/app_engine.py');
+    throw FileSystemException('Cannot locate backend/app_engine.py');
   }
 
-  static List<File> _appEngineCandidatesFrom(Directory dir) {
-    final sep = Platform.pathSeparator;
+  static Iterable<File> _appEngineCandidatesFrom(Directory dir) sync* {
+    yield File('${dir.path}/backend/app_engine.py');
+    yield File('${dir.path}/../backend/app_engine.py');
+    yield File('${dir.path}/../../backend/app_engine.py');
+  }
+
+  static List<_PythonCandidate> _pythonCandidates(File appEngine) {
+    final repoRoot = appEngine.parent.parent.path;
+    final localVenv = File('$repoRoot/.venv/Scripts/python.exe');
     return [
-      File('${dir.path}${sep}python${sep}app_engine.py'),
-      File('${dir.path}${sep}data${sep}python${sep}app_engine.py'),
-      File('${dir.path}${sep}app_engine.py'),
+      _PythonCandidate(localVenv.path),
+      _PythonCandidate('python'),
+      _PythonCandidate('py'),
     ];
   }
 
@@ -264,55 +272,36 @@ class _ResearchLocalPythonProcess {
     return port;
   }
 
-  static List<_ResearchPythonCandidate> _pythonCandidates(File appEngine) {
-    final sep = Platform.pathSeparator;
-    final bundledPython = File('${appEngine.parent.path}${sep}python.exe');
-    if (!bundledPython.existsSync()) {
-      throw Exception('Cannot find bundled Python: ${bundledPython.path}');
-    }
-    return [_ResearchPythonCandidate(bundledPython.path)];
-  }
-
   Future<void> _waitUntilReady() async {
-    final deadline = DateTime.now().add(const Duration(seconds: 25));
+    final deadline = DateTime.now().add(const Duration(seconds: 20));
     Object? lastError;
     while (DateTime.now().isBefore(deadline)) {
-      final exitCode = await process.exitCode.timeout(
-        const Duration(milliseconds: 10),
-        onTimeout: () => -999999,
-      );
-      if (exitCode != -999999) {
-        throw Exception(
-            'Python backend exited early, exitCode=$exitCode, stderr=${_stderr.toString()}');
-      }
       try {
-        final client = HttpClient();
-        final request = await client
-            .getUrl(Uri.parse('$baseUrl/health'))
-            .timeout(const Duration(milliseconds: 700));
-        final response =
-            await request.close().timeout(const Duration(milliseconds: 700));
-        client.close(force: true);
-        if (response.statusCode >= 200 && response.statusCode < 300) return;
+        final client = http.Client();
+        try {
+          final response = await client
+              .get(Uri.parse('$baseUrl/health'))
+              .timeout(const Duration(milliseconds: 800));
+          if (response.statusCode == 200) return;
+        } finally {
+          client.close();
+        }
       } catch (e) {
         lastError = e;
       }
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
     dispose();
-    throw Exception(
-        'Python backend startup timed out: $lastError, stderr=${_stderr.toString()}');
+    throw TimeoutException(
+        'Bundled Python backend did not become ready: $lastError\n$_stderr');
   }
 
   void dispose() {
-    try {
-      process.kill(ProcessSignal.sigterm);
-    } catch (_) {}
+    process.kill();
   }
 }
 
-class _ResearchPythonCandidate {
+class _PythonCandidate {
   final String executable;
-
-  const _ResearchPythonCandidate(this.executable);
+  const _PythonCandidate(this.executable);
 }
