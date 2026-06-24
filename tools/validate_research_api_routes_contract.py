@@ -2,7 +2,7 @@
 """Validate research API route contracts against a fixture analysis JSON.
 
 This script intentionally imports ``backend.app.main`` and calls the FastAPI route
-functions directly.  It catches route-to-engine signature drift such as passing a
+functions directly. It catches route-to-engine signature drift such as passing a
 ``model_name`` keyword to a scorer that only accepts ``model``, or passing legacy
 backtest keywords to an engine that only accepts ``options``.
 
@@ -32,6 +32,32 @@ from backend.app.main import (  # noqa: E402
 
 class ContractError(RuntimeError):
     pass
+
+
+_NATIVE_CHAN_REQUIRED_COLUMNS = {
+    'bi_start_raw_index',
+    'bi_end_raw_index',
+    'bi_start_price',
+    'bi_end_price',
+    'bi_high',
+    'bi_low',
+    'bi_length_bars',
+    'bi_amplitude_pct',
+    'bi_progress_ratio',
+    'bi_slope_pct_per_bar',
+    'bi_same_direction_as_bsp',
+    'seg_start_raw_index',
+    'seg_end_raw_index',
+    'seg_start_price',
+    'seg_end_price',
+    'seg_high',
+    'seg_low',
+    'seg_length_bars',
+    'seg_amplitude_pct',
+    'seg_progress_ratio',
+    'seg_slope_pct_per_bar',
+    'seg_same_direction_as_bsp',
+}
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -84,11 +110,25 @@ def _assert_feature_registry(payload: dict[str, Any], stage: str) -> None:
     _assert(isinstance(registry, list), f'{stage}.meta.feature_registry must be a list')
     for name in ('bsp_identity', 'chan_native_bi_seg_zs', 'chan_recursive_segn'):
         _assert(name in registry, f'{stage}.meta.feature_registry missing {name}')
-    _assert(meta.get('feature_registry_version') == 1, f'{stage}.meta.feature_registry_version must be 1')
+    _assert(meta.get('feature_registry_version') == 2, f'{stage}.meta.feature_registry_version must be 2')
+    _assert(
+        meta.get('native_chan_feature_profile') == 'bi_seg_zs_expanded_v2',
+        f'{stage}.meta.native_chan_feature_profile invalid',
+    )
     _assert(
         meta.get('segn_feature_source') == 'seg_bsp_history_layers|seg_bsp_layers',
         f'{stage}.meta.segn_feature_source invalid',
     )
+
+
+def _assert_native_chan_columns(rows: list[dict[str, Any]], stage: str) -> None:
+    if not rows:
+        return
+    columns: set[str] = set()
+    for row in rows:
+        columns.update(str(key) for key in row.keys())
+    missing = sorted(_NATIVE_CHAN_REQUIRED_COLUMNS - columns)
+    _assert(not missing, f'{stage} missing expanded native chan columns: {missing}')
 
 
 def _assert_ml_feature_contract(payload: dict[str, Any], stage: str) -> None:
@@ -97,6 +137,8 @@ def _assert_ml_feature_contract(payload: dict[str, Any], stage: str) -> None:
     _assert(meta.get('segn_features_supported') is True, f'{stage}.meta.segn_features_supported must be true')
     columns = meta.get('feature_columns')
     _assert(isinstance(columns, list), f'{stage}.meta.feature_columns must be a list')
+    missing = sorted(_NATIVE_CHAN_REQUIRED_COLUMNS - set(str(column) for column in columns))
+    _assert(not missing, f'{stage}.meta.feature_columns missing expanded native chan columns: {missing}')
 
 
 def _assert_scores(rows: list[dict[str, Any]], *, stage: str) -> None:
@@ -134,6 +176,7 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     feature_rows = _rows(features, 'features')
     if require_features:
         _assert(feature_rows, 'features route returned no feature rows')
+    _assert_native_chan_columns(feature_rows, 'features')
 
     scores = research_ml_score(payload)
     _assert(scores.get('ok') is True, 'ml score route must return ok=true')
@@ -147,7 +190,7 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     _assert(backtest.get('ok') is True, 'backtest route must return ok=true')
     _assert_clean_meta(backtest, 'backtest')
     _assert(backtest['meta'].get('same_bar_lookahead') is False, 'backtest must declare no same-bar lookahead')
-    _assert(backtest['meta'].get('signal_source') != 'analysis_bsp_fallback', 'backtest must not use naked BSP fallback when features can be scored')
+    _assert(backtest['meta'].get('signal_source') != 'analysis_bsp_fallback', 'backtest must not use raw BSP fallback when features can be scored')
     _assert(isinstance(backtest.get('trades'), list), 'backtest.trades must be a list')
     _assert_backtest_metrics(backtest, stage='backtest')
 
@@ -160,6 +203,7 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     _assert_clean_meta(pipeline['scores'], 'pipeline.scores')
     _assert_clean_meta(pipeline['backtest'], 'pipeline.backtest')
     _assert_feature_registry(pipeline['features'], 'pipeline.features')
+    _assert_native_chan_columns(_rows(pipeline['features'], 'features'), 'pipeline.features')
     _assert_ml_feature_contract(pipeline['scores'], 'pipeline.scores')
 
     pipeline_features = _rows(pipeline['features'], 'features')
@@ -172,7 +216,7 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
             'analysis_scores_or_features',
             'auto_scored_features',
         },
-        'pipeline backtest must consume scored features, not naked BSP fallback',
+        'pipeline backtest must consume scored features, not raw BSP fallback',
     )
 
     return {
@@ -181,6 +225,9 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
         'features': len(feature_rows),
         'scores': len(score_rows),
         'feature_registry': features['meta'].get('feature_registry'),
+        'feature_registry_version': features['meta'].get('feature_registry_version'),
+        'native_chan_feature_profile': features['meta'].get('native_chan_feature_profile'),
+        'native_chan_required_columns': sorted(_NATIVE_CHAN_REQUIRED_COLUMNS),
         'ml_segn_features_supported': scores['meta'].get('segn_features_supported'),
         'backtest_trades': len(backtest.get('trades', [])),
         'backtest_equity_points': len(_rows(backtest, 'equity_curve')),
