@@ -90,78 +90,85 @@ class _FourWayGranularSidebarShellState
 
   List<SidebarRegistration> get _defaultRegistrations => <SidebarRegistration>[
         const SidebarRegistration(
-            id: 'replay',
-            label: 'K线图',
-            category: '页面',
-            icon: Icons.account_tree,
-            edge: SidebarEdge.left,
-            routeIndex: 1),
+          id: 'replay',
+          label: 'K线图',
+          category: '页面',
+          icon: Icons.account_tree,
+          edge: SidebarEdge.left,
+          routeIndex: 1,
+        ),
         const SidebarRegistration(
-            id: 'scanner',
-            label: '扫描器',
-            category: '复盘页面',
-            icon: Icons.radar,
-            edge: SidebarEdge.left,
-            routeIndex: 2),
+          id: 'scanner',
+          label: '扫描器',
+          category: '复盘页面',
+          icon: Icons.radar,
+          edge: SidebarEdge.left,
+          routeIndex: 2,
+        ),
         const SidebarRegistration(
-            id: 'promoter',
-            label: '级别推进器',
-            category: '复盘页面',
-            icon: Icons.double_arrow,
-            edge: SidebarEdge.left,
-            routeIndex: 3),
+          id: 'promoter',
+          label: '级别推进器',
+          category: '复盘页面',
+          icon: Icons.double_arrow,
+          edge: SidebarEdge.left,
+          routeIndex: 3,
+        ),
         const SidebarRegistration(
-            id: 'batch',
-            label: '批量候选',
-            category: '复盘页面',
-            icon: Icons.view_list,
-            edge: SidebarEdge.left,
-            routeIndex: 4),
+          id: 'batch',
+          label: '批量候选',
+          category: '复盘页面',
+          icon: Icons.view_list,
+          edge: SidebarEdge.left,
+          routeIndex: 4,
+        ),
         const SidebarRegistration(
-            id: 'research',
-            label: '研究工具',
-            category: '研究页面',
-            icon: Icons.science_outlined,
-            edge: SidebarEdge.left,
-            routeIndex: 5),
+          id: 'research',
+          label: '研究工具',
+          category: '研究页面',
+          icon: Icons.science_outlined,
+          edge: SidebarEdge.left,
+          routeIndex: 5,
+        ),
         const SidebarRegistration(
-            id: 'logs',
-            label: '运行日志',
-            category: '系统页面',
-            icon: Icons.receipt_long,
-            edge: SidebarEdge.left,
-            routeIndex: 7),
+          id: 'logs',
+          label: '运行日志',
+          category: '系统页面',
+          icon: Icons.receipt_long,
+          edge: SidebarEdge.left,
+          routeIndex: 7,
+        ),
         const SidebarRegistration(
-            id: 'chips',
-            label: '价格桶数',
-            category: '研究页面',
-            icon: Icons.tune,
-            edge: SidebarEdge.left,
-            routeIndex: 8),
+          id: 'chips',
+          label: '价格桶数',
+          category: '研究页面',
+          icon: Icons.tune,
+          edge: SidebarEdge.left,
+          routeIndex: 8,
+        ),
         const SidebarRegistration(
-            id: 'appearance',
-            label: 'K图外观',
-            category: 'K线图',
-            icon: Icons.palette_outlined,
-            edge: SidebarEdge.right,
-            routeIndex: null,
-            panelBuilder: _AppearancePanel.new),
+          id: 'appearance',
+          label: 'K图外观',
+          category: 'K线图',
+          icon: Icons.palette_outlined,
+          edge: SidebarEdge.right,
+          panelBuilder: _AppearancePanel.new,
+        ),
         const SidebarRegistration(
-            id: 'shortcuts',
-            label: '快捷方式',
-            category: '系统',
-            icon: Icons.keyboard_command_key,
-            edge: SidebarEdge.bottom,
-            routeIndex: null,
-            panelBuilder: _ShortcutPanel.new),
+          id: 'shortcuts',
+          label: '快捷方式',
+          category: '系统',
+          icon: Icons.keyboard_command_key,
+          edge: SidebarEdge.bottom,
+          panelBuilder: _ShortcutPanel.new,
+        ),
         const SidebarRegistration(
-            id: 'runtime',
-            label: '运行路径',
-            category: '系统',
-            icon: Icons.speed,
-            edge: SidebarEdge.bottom,
-            routeIndex: null,
-            panelBuilder: _RuntimePathPanel.new),
+          id: 'runtime',
+          label: '运行路径',
+          category: '系统',
+          icon: Icons.speed,
+          edge: SidebarEdge.bottom,
+          panelBuilder: _RuntimePathPanel.new,
+        ),
       ];
 
   @override
@@ -208,13 +215,13 @@ class _FourWayGranularSidebarShellState
   }
 
   SidebarRegistration? _firstForEdge(SidebarEdge edge) {
-    final items = _registrations.where((e) => e.edge == edge).toList();
+    final items = _itemsForEdge(edge);
     if (items.isEmpty) return null;
     return items.first;
   }
 
   List<SidebarRegistration> _itemsForEdge(SidebarEdge edge) =>
-      _registrations.where((e) => e.edge == edge).toList(growable: false);
+      _registrations.where((item) => item.edge == edge).toList(growable: false);
 
   @override
   Widget build(BuildContext context) {
@@ -309,6 +316,7 @@ class _FourWayGranularSidebarShellState
       SidebarEdge.bottom => Icons.keyboard_arrow_up,
     };
     return IconButton(
+      key: ValueKey<String>('sidebar-edge-${edge.name}'),
       tooltip: selected ? '收起' : '展开',
       icon: Icon(icon, size: 18),
       color: selected ? Colors.lightBlueAccent : Colors.white70,
@@ -323,6 +331,7 @@ class _FourWayGranularSidebarShellState
       message: '${item.category} / ${item.label}',
       waitDuration: const Duration(milliseconds: 250),
       child: InkWell(
+        key: ValueKey<String>('sidebar-entry-${item.id}'),
         borderRadius: BorderRadius.circular(12),
         onTap: () => _activate(item),
         child: Container(
@@ -337,9 +346,11 @@ class _FourWayGranularSidebarShellState
               ? Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: <Widget>[
-                    Icon(item.icon,
-                        size: 17,
-                        color: selected ? Colors.lightBlueAccent : Colors.white70),
+                    Icon(
+                      item.icon,
+                      size: 17,
+                      color: selected ? Colors.lightBlueAccent : Colors.white70,
+                    ),
                     const SizedBox(height: 2),
                     Text(
                       item.label,
@@ -357,9 +368,11 @@ class _FourWayGranularSidebarShellState
               : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: <Widget>[
-                    Icon(item.icon,
-                        size: 16,
-                        color: selected ? Colors.lightBlueAccent : Colors.white70),
+                    Icon(
+                      item.icon,
+                      size: 16,
+                      color: selected ? Colors.lightBlueAccent : Colors.white70,
+                    ),
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
@@ -367,8 +380,7 @@ class _FourWayGranularSidebarShellState
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color:
-                              selected ? Colors.lightBlueAccent : Colors.white54,
+                          color: selected ? Colors.lightBlueAccent : Colors.white54,
                           fontSize: 11,
                           fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                         ),
@@ -381,7 +393,9 @@ class _FourWayGranularSidebarShellState
     );
     return Padding(
       padding: EdgeInsets.symmetric(
-          horizontal: vertical ? 3 : 2, vertical: vertical ? 2 : 3),
+        horizontal: vertical ? 3 : 2,
+        vertical: vertical ? 2 : 3,
+      ),
       child: content,
     );
   }
@@ -390,10 +404,7 @@ class _FourWayGranularSidebarShellState
     final item = _activeItem;
     if (item == null) return const SizedBox.shrink();
     final content = item.panelBuilder?.call(context) ??
-        _OptionSummaryPanel(
-          title: item.label,
-          category: item.category,
-        );
+        _OptionSummaryPanel(title: item.label, category: item.category);
     final horizontal = edge == SidebarEdge.top || edge == SidebarEdge.bottom;
     return Positioned(
       left: edge == SidebarEdge.right ? null : _railSize,
@@ -416,6 +427,7 @@ class _FourWayGranularSidebarShellState
 
 class _RailSurface extends StatelessWidget {
   final Widget child;
+
   const _RailSurface({required this.child});
 
   @override
@@ -434,6 +446,7 @@ class _PanelSurface extends StatelessWidget {
   final String title;
   final VoidCallback onClose;
   final Widget child;
+
   const _PanelSurface({
     required this.title,
     required this.onClose,
@@ -465,7 +478,9 @@ class _PanelSurface extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   IconButton(
@@ -494,6 +509,7 @@ class _PanelSurface extends StatelessWidget {
 class _RailToggle extends StatelessWidget {
   final bool visible;
   final VoidCallback onPressed;
+
   const _RailToggle({required this.visible, required this.onPressed});
 
   @override
@@ -514,6 +530,7 @@ class _RailToggle extends StatelessWidget {
 class _OptionSummaryPanel extends StatelessWidget {
   final String title;
   final String category;
+
   const _OptionSummaryPanel({required this.title, required this.category});
 
   @override
@@ -590,6 +607,7 @@ void _noopColorPick(Color color) {}
 
 class _SettingCaption extends StatelessWidget {
   final String text;
+
   const _SettingCaption(this.text);
 
   @override
@@ -607,6 +625,7 @@ class _ColorRow extends StatelessWidget {
   final String label;
   final List<Color> colors;
   final ValueChanged<Color> onPicked;
+
   const _ColorRow({
     required this.label,
     required this.colors,
@@ -618,8 +637,7 @@ class _ColorRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(label,
-            style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
         const SizedBox(height: 6),
         Wrap(
           spacing: 8,
