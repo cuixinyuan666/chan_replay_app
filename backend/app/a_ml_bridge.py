@@ -51,6 +51,23 @@ def _bounded(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
 
 
+def _alignment_contribution(value: Any, *, positive: float, negative: float) -> float | None:
+    if isinstance(value, bool):
+        return positive if value else negative
+    return None
+
+
+def _progress_contribution(value: Any, *, weight: float) -> float | None:
+    number = _num(value)
+    if number is None:
+        return None
+    # BSPs near the latter half of a completed/active native structure are usually
+    # more informative than very early points, but keep the contribution bounded
+    # so this remains a research baseline rather than an opinionated model.
+    centered = _bounded(number, 0.0, 1.0) - 0.5
+    return centered * weight
+
+
 def _heuristic_score(row: dict[str, Any]) -> tuple[float, dict[str, float]]:
     contributions: dict[str, float] = {}
     score = 0.0
@@ -84,6 +101,46 @@ def _heuristic_score(row: dict[str, Any]) -> tuple[float, dict[str, float]]:
     if zs_distance is not None:
         value = max(0.0, 0.12 - min(zs_distance, 24.0) / 240.0)
         contributions['near_zs'] = value
+        score += value
+
+    bi_align = _alignment_contribution(
+        row.get('bi_same_direction_as_bsp'),
+        positive=0.035,
+        negative=-0.020,
+    )
+    if bi_align is not None:
+        contributions['native_bi_direction_alignment'] = bi_align
+        score += bi_align
+
+    seg_align = _alignment_contribution(
+        row.get('seg_same_direction_as_bsp'),
+        positive=0.055,
+        negative=-0.030,
+    )
+    if seg_align is not None:
+        contributions['native_seg_direction_alignment'] = seg_align
+        score += seg_align
+
+    bi_progress = _progress_contribution(row.get('bi_progress_ratio'), weight=0.035)
+    if bi_progress is not None:
+        contributions['native_bi_progress'] = bi_progress
+        score += bi_progress
+
+    seg_progress = _progress_contribution(row.get('seg_progress_ratio'), weight=0.045)
+    if seg_progress is not None:
+        contributions['native_seg_progress'] = seg_progress
+        score += seg_progress
+
+    bi_slope = _num(row.get('bi_slope_pct_per_bar'))
+    if bi_slope is not None:
+        value = _bounded(abs(bi_slope), 0.0, 0.02) * 1.5
+        contributions['native_bi_slope_strength'] = value
+        score += value
+
+    seg_slope = _num(row.get('seg_slope_pct_per_bar'))
+    if seg_slope is not None:
+        value = _bounded(abs(seg_slope), 0.0, 0.02) * 2.0
+        contributions['native_seg_slope_strength'] = value
         score += value
 
     seg_layer_count = _num(row.get('segn_context_layer_count'))
@@ -157,8 +214,9 @@ def score_bsp_features(
 
     Registered feature groups such as chan.py native BI/SEG/ZS context and
     recursive segN context are ordinary feature columns.  The heuristic baseline
-    consumes a conservative subset of ``segn_*`` fields, while a linear model can
-    use any numeric registered feature via ``weights``.
+    consumes a conservative subset of ``segn_*`` and native ``bi_*`` / ``seg_*``
+    fields, while a linear model can use any numeric registered feature via
+    ``weights``.
     """
     rows_in, source_shape = _normalize_feature_rows(features)
     normalized_model = _normalize_model(model, model_name=model_name)
@@ -186,6 +244,7 @@ def score_bsp_features(
             'count': len(rows),
             'feature_columns': _feature_columns(rows_in),
             'segn_features_supported': True,
+            'native_chan_features_supported': True,
             'default_model_is_research_baseline': model_type != 'linear',
             'chan_py_polluted': False,
         },
