@@ -128,9 +128,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       };
 
   Map<String, dynamic> _ruleOf(List<_RuleCondition> conditions) => {
-        'conditions': [
-          for (final condition in conditions) condition.toJson(),
-        ],
+        'conditions': [for (final condition in conditions) condition.toJson()],
         'dedupe': true,
       };
 
@@ -233,9 +231,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       ..['freq'] = level
       ..['period'] = level
       ..['adjust'] = 'QFQ';
-    if (analysis['bsp'] is! List && analysis['bsps'] is List) {
-      analysis['bsp'] = analysis['bsps'];
-    }
+    if (analysis['bsp'] is! List && analysis['bsps'] is List) analysis['bsp'] = analysis['bsps'];
     if (analysis['seg_bsp_history_layers'] == null && analysis['seg_bsp_layers'] != null) {
       analysis['seg_bsp_history_layers'] = analysis['seg_bsp_layers'];
     }
@@ -296,9 +292,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     });
     try {
       final client = _client();
-      if (_useOtherTarget) {
-        await _loadOtherTargetAnalysis(client);
-      }
+      if (_useOtherTarget) await _loadOtherTargetAnalysis(client);
       final result = await client.post(endpoint, _segCompositePayload());
       setState(() {
         _lastResult = result;
@@ -335,10 +329,94 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       frameIndex: _rowInt(row['frame_index']),
       visibleStartRawIndex: window.$1,
       visibleEndRawIndex: window.$2,
-      analysisPayload: _useOtherTarget ? _lastAnalyzeMultiPayload : null,
+      analysisPayload: _payloadForKlineMarkers(const <Map<String, dynamic>>[]),
       source: 'research/backtest',
     );
     widget.onOpenRoute?.call(1);
+  }
+
+  void _showRowsOnKline(
+    List<Map<String, dynamic>> rows, {
+    required String label,
+    required String markerKind,
+  }) {
+    final markers = _markersFromRows(rows, markerKind: markerKind);
+    if (markers.isEmpty) {
+      setState(() => _status = '$label 没有可定位的 raw_index。');
+      return;
+    }
+    final rawIndexes = [for (final marker in markers) _rowInt(marker['raw_index'])].whereType<int>().toList()..sort();
+    final latest = ReplayAnalysisStore.latestAnalysis.value;
+    final useLatest = !_useOtherTarget && latest != null;
+    ReplayAnalysisStore.requestKlineLocation(
+      symbol: useLatest ? latest.symbol : _segSymbolController.text.trim(),
+      market: useLatest ? latest.market : _segMarketController.text.trim().toUpperCase(),
+      level: useLatest ? latest.period : _segLevel,
+      rawIndex: rawIndexes.first,
+      startDate: useLatest ? null : DateTime.tryParse(_segStartController.text.trim()),
+      endDate: useLatest ? null : DateTime.tryParse(_segEndController.text.trim()),
+      label: label,
+      mode: _useOtherTarget ? _executionMode : 'once',
+      visibleStartRawIndex: rawIndexes.first,
+      visibleEndRawIndex: rawIndexes.last,
+      analysisPayload: _payloadForKlineMarkers(markers),
+      source: 'research/backtest/all',
+    );
+    widget.onOpenRoute?.call(1);
+    setState(() => _status = '已在K线图全量显示：$label ${markers.length} 个位置。');
+  }
+
+  Map<String, dynamic>? _payloadForKlineMarkers(List<Map<String, dynamic>> markers) {
+    final source = _useOtherTarget
+        ? _lastAnalyzeMultiPayload
+        : ReplayAnalysisStore.latestAnalysis.value?.analysis;
+    if (source == null) return null;
+    final payload = Map<String, dynamic>.from(jsonDecode(jsonEncode(source)) as Map);
+    if (markers.isNotEmpty) payload['_research_overlay_markers'] = markers;
+    return payload;
+  }
+
+  List<Map<String, dynamic>> _markersFromRows(
+    List<Map<String, dynamic>> rows, {
+    required String markerKind,
+  }) {
+    final markers = <Map<String, dynamic>>[];
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      if (markerKind == 'trade') {
+        final entryRaw = _rowInt(row['entry_raw_index'] ?? row['entry_signal_raw_index']);
+        if (entryRaw != null) {
+          markers.add({
+            'raw_index': entryRaw,
+            'time': row['entry_time'] ?? row['entry_signal_time'],
+            'label': '交易入',
+            'kind': 'trade_entry',
+            'ordinal': i + 1,
+          });
+        }
+        final exitRaw = _rowInt(row['exit_raw_index']);
+        if (exitRaw != null) {
+          markers.add({
+            'raw_index': exitRaw,
+            'time': row['exit_time'],
+            'label': '交易出',
+            'kind': 'trade_exit',
+            'ordinal': i + 1,
+          });
+        }
+      } else {
+        final raw = _rowInt(row['raw_index'] ?? row['entry_signal_raw_index'] ?? row['entry_raw_index']);
+        if (raw == null) continue;
+        markers.add({
+          'raw_index': raw,
+          'time': row['time'] ?? row['entry_signal_time'] ?? row['entry_time'],
+          'label': markerKind == 'entry' ? '入场' : '出场',
+          'kind': markerKind,
+          'ordinal': i + 1,
+        });
+      }
+    }
+    return markers;
   }
 
   (int, int) _jumpWindow(Map<String, dynamic> row, int fallbackRaw) {
@@ -415,10 +493,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   List<Map<String, dynamic>> _rowsFrom(Object? value, {String? nestedKey}) {
     final source = value is Map && nestedKey != null ? value[nestedKey] : value;
     if (source is! List) return const [];
-    return [
-      for (final row in source)
-        if (row is Map) Map<String, dynamic>.from(row),
-    ];
+    return [for (final row in source) if (row is Map) Map<String, dynamic>.from(row)];
   }
 
   Map<String, dynamic> _mapFrom(Object? value) =>
@@ -523,6 +598,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                         rowsFrom: _rowsFrom,
                         mapFrom: _mapFrom,
                         onLocate: _locateResult,
+                        onShowAll: _showRowsOnKline,
                       ),
                     ),
                   ),
@@ -780,10 +856,7 @@ class _SimpleRuleEditor extends StatelessWidget {
             decoration: const InputDecoration(labelText: '买卖点类型'),
             items: [
               for (final type in types)
-                DropdownMenuItem(
-                  value: type.value,
-                  child: Text(type.labelForSide(row.side)),
-                ),
+                DropdownMenuItem(value: type.value, child: Text(type.labelForSide(row.side))),
             ],
             onChanged: (value) {
               if (value != null) {
@@ -913,6 +986,7 @@ class _ResearchResultView extends StatelessWidget {
   final List<Map<String, dynamic>> Function(Object? value, {String? nestedKey}) rowsFrom;
   final Map<String, dynamic> Function(Object? value) mapFrom;
   final void Function(Map<String, dynamic> row, {String label}) onLocate;
+  final void Function(List<Map<String, dynamic>> rows, {required String label, required String markerKind}) onShowAll;
 
   const _ResearchResultView({
     required this.result,
@@ -923,14 +997,13 @@ class _ResearchResultView extends StatelessWidget {
     required this.rowsFrom,
     required this.mapFrom,
     required this.onLocate,
+    required this.onShowAll,
   });
 
   @override
   Widget build(BuildContext context) {
     final data = result;
-    if (data == null) {
-      return const Center(child: Text('暂无结果', style: TextStyle(color: Colors.white54)));
-    }
+    if (data == null) return const Center(child: Text('暂无结果', style: TextStyle(color: Colors.white54)));
     final backtest = data['backtest'] is Map ? mapFrom(data['backtest']) : data;
     final summary = mapFrom(backtest['summary']);
     final meta = mapFrom(backtest['meta']);
@@ -966,9 +1039,7 @@ class _ResearchResultView extends StatelessWidget {
               if (sourceCounts.isNotEmpty)
                 _PreviewTable(
                   title: '结构源计数',
-                  rows: [
-                    for (final entry in sourceCounts.entries) {'source': entry.key, 'count': entry.value},
-                  ],
+                  rows: [for (final entry in sourceCounts.entries) {'source': entry.key, 'count': entry.value}],
                   columns: const ['source', 'count'],
                   valueText: valueText,
                 ),
@@ -979,6 +1050,7 @@ class _ResearchResultView extends StatelessWidget {
                   columns: const ['time', 'raw_index', 'signature', 'level'],
                   valueText: valueText,
                   onRowTap: (row) => onLocate(row, label: '入场信号'),
+                  onShowAll: () => onShowAll(entryEvents, label: '入场信号', markerKind: 'entry'),
                 ),
               if (exitEvents.isNotEmpty)
                 _PreviewTable(
@@ -987,6 +1059,7 @@ class _ResearchResultView extends StatelessWidget {
                   columns: const ['time', 'raw_index', 'signature', 'level'],
                   valueText: valueText,
                   onRowTap: (row) => onLocate(row, label: '出场信号'),
+                  onShowAll: () => onShowAll(exitEvents, label: '出场信号', markerKind: 'exit'),
                 ),
               if (features.isNotEmpty)
                 _PreviewTable(
@@ -1004,11 +1077,13 @@ class _ResearchResultView extends StatelessWidget {
                 ),
               if (trades.isNotEmpty)
                 _PreviewTable(
-                  title: '回测交易预览',
+                  title: '回测交易记录',
                   rows: trades,
                   columns: const ['entry_time', 'exit_time', 'net_return', 'exit_reason', 'hold_bars'],
                   valueText: valueText,
                   onRowTap: (row) => onLocate(row, label: '交易入场'),
+                  onShowAll: () => onShowAll(trades, label: '回测交易记录', markerKind: 'trade'),
+                  showAllRows: true,
                 ),
             ],
             const SizedBox(height: 8),
@@ -1040,6 +1115,8 @@ class _PreviewTable extends StatelessWidget {
   final List<String> columns;
   final String Function(Object? value) valueText;
   final ValueChanged<Map<String, dynamic>>? onRowTap;
+  final VoidCallback? onShowAll;
+  final bool showAllRows;
 
   const _PreviewTable({
     required this.title,
@@ -1047,17 +1124,34 @@ class _PreviewTable extends StatelessWidget {
     required this.columns,
     required this.valueText,
     this.onRowTap,
+    this.onShowAll,
+    this.showAllRows = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final previewRows = rows.take(30).toList(growable: false);
+    final displayRows = showAllRows ? rows : rows.take(30).toList(growable: false);
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$title（显示 ${previewRows.length}/${rows.length}）', style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$title（显示 ${displayRows.length}/${rows.length}）',
+                  style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
+                ),
+              ),
+              if (onShowAll != null)
+                TextButton.icon(
+                  onPressed: onShowAll,
+                  icon: const Icon(Icons.my_location, size: 16),
+                  label: const Text('全部显示'),
+                ),
+            ],
+          ),
           const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
@@ -1072,7 +1166,7 @@ class _PreviewTable extends StatelessWidget {
                   columnSpacing: 18,
                   columns: [for (final col in columns) DataColumn(label: Text(col, style: _headerStyle))],
                   rows: [
-                    for (final row in previewRows)
+                    for (final row in displayRows)
                       DataRow(
                         onSelectChanged: onRowTap == null ? null : (_) => onRowTap!(row),
                         cells: [for (final col in columns) DataCell(Text(valueText(row[col]), style: _cellStyle))],
