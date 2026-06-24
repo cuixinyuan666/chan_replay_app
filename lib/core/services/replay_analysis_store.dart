@@ -146,6 +146,12 @@ class KlineLocationRequest {
   final DateTime? startDate;
   final DateTime? endDate;
   final String label;
+  final String mode;
+  final int? frameIndex;
+  final int? visibleStartRawIndex;
+  final int? visibleEndRawIndex;
+  final Map<String, dynamic>? analysisPayload;
+  final String source;
 
   const KlineLocationRequest({
     required this.nonce,
@@ -157,6 +163,12 @@ class KlineLocationRequest {
     this.startDate,
     this.endDate,
     this.label = '',
+    this.mode = 'once',
+    this.frameIndex,
+    this.visibleStartRawIndex,
+    this.visibleEndRawIndex,
+    this.analysisPayload,
+    this.source = '',
   });
 }
 
@@ -210,6 +222,12 @@ class ReplayAnalysisStore {
     DateTime? startDate,
     DateTime? endDate,
     String label = '',
+    String mode = 'once',
+    int? frameIndex,
+    int? visibleStartRawIndex,
+    int? visibleEndRawIndex,
+    Map<String, dynamic>? analysisPayload,
+    String source = '',
   }) {
     klineLocation.value = KlineLocationRequest(
       nonce: DateTime.now().microsecondsSinceEpoch,
@@ -221,6 +239,12 @@ class ReplayAnalysisStore {
       startDate: startDate,
       endDate: endDate,
       label: label,
+      mode: mode.trim().isEmpty ? 'once' : mode.trim().toLowerCase(),
+      frameIndex: frameIndex,
+      visibleStartRawIndex: visibleStartRawIndex,
+      visibleEndRawIndex: visibleEndRawIndex,
+      analysisPayload: analysisPayload == null ? null : _deepCopyMap(analysisPayload),
+      source: source,
     );
   }
 }
@@ -258,46 +282,35 @@ String _recordPeriodLabel({
   required double? maxDrawdown,
   required double? profitFactor,
 }) {
-  final parts = <String>[
-    basePeriod,
-    source,
-    'DD ${_pctLabel(maxDrawdown)}',
-    'PF ${profitFactor == null ? '--' : profitFactor.toStringAsFixed(2)}',
-  ];
+  final parts = <String>[basePeriod, source];
+  if (maxDrawdown != null) {
+    parts.add('DD ${(maxDrawdown * 100).toStringAsFixed(1)}%');
+  }
+  if (profitFactor != null) {
+    parts.add('PF ${profitFactor.toStringAsFixed(2)}');
+  }
   return parts.where((part) => part.trim().isNotEmpty).join(' · ');
-}
-
-String _pctLabel(double? value) {
-  if (value == null) return '--';
-  return '${(value * 100).toStringAsFixed(2)}%';
 }
 
 String? _analysisString(Map<String, dynamic> source, List<String> path) {
   Object? cursor = source;
-  for (final part in path) {
+  for (final key in path) {
     if (cursor is! Map) return null;
-    cursor = cursor[part];
+    cursor = cursor[key];
   }
-  final text = '${cursor ?? ''}'.trim();
-  return text.isEmpty || text == 'null' ? null : text;
-}
-
-double? _double(Object? value) {
-  if (value is num) return value.toDouble();
-  return double.tryParse('${value ?? ''}'.trim());
+  return _string(cursor);
 }
 
 int? _int(Object? value) {
   if (value is int) return value;
   if (value is num) return value.toInt();
-  return int.tryParse('${value ?? ''}'.trim());
+  return int.tryParse('${value ?? ''}');
 }
 
-List<Map<String, dynamic>> _rows(Object? value) {
-  final source = value is Map ? value['trades'] : value;
-  if (source is! List) return const [];
-  return [
-    for (final row in source)
-      if (row is Map) Map<String, dynamic>.from(row),
-  ];
+double? _double(Object? value) {
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse('${value ?? ''}');
 }
+
+List<dynamic> _rows(Object? value) => value is List ? value : const [];
