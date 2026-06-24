@@ -85,6 +85,23 @@ def _assert_scores(rows: list[dict[str, Any]], *, stage: str) -> None:
         _assert(row.get('ml_signal') in {'accept', 'reject'}, f'{stage}[{index}].ml_signal invalid')
 
 
+def _assert_backtest_metrics(backtest: dict[str, Any], *, stage: str) -> None:
+    summary = backtest.get('summary')
+    _assert(isinstance(summary, dict), f'{stage}.summary must be an object')
+    for key in ('trade_count', 'total_return', 'final_equity', 'max_drawdown', 'gross_profit', 'gross_loss'):
+        _assert(key in summary, f'{stage}.summary.{key} missing')
+    _assert(isinstance(summary.get('max_drawdown'), (int, float)), f'{stage}.summary.max_drawdown must be numeric')
+    equity_curve = _rows(backtest, 'equity_curve')
+    _assert(equity_curve, f'{stage}.equity_curve must not be empty')
+    for index, point in enumerate(equity_curve):
+        _assert(isinstance(point.get('equity'), (int, float)), f'{stage}.equity_curve[{index}].equity must be numeric')
+        _assert(isinstance(point.get('drawdown'), (int, float)), f'{stage}.equity_curve[{index}].drawdown must be numeric')
+    trades = _rows(backtest, 'trades')
+    for index, trade in enumerate(trades):
+        for key in ('entry_signal_raw_index', 'entry_raw_index', 'exit_raw_index'):
+            _assert(isinstance(trade.get(key), int), f'{stage}.trades[{index}].{key} must be int')
+
+
 def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     payload = _load_payload(path)
 
@@ -108,7 +125,7 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     _assert(backtest['meta'].get('same_bar_lookahead') is False, 'backtest must declare no same-bar lookahead')
     _assert(backtest['meta'].get('signal_source') != 'analysis_bsp_fallback', 'backtest must not use naked BSP fallback when features can be scored')
     _assert(isinstance(backtest.get('trades'), list), 'backtest.trades must be a list')
-    _assert(isinstance(backtest.get('summary'), dict), 'backtest.summary must be an object')
+    _assert_backtest_metrics(backtest, stage='backtest')
 
     pipeline = research_pipeline(payload)
     _assert(pipeline.get('ok') is True, 'pipeline route must return ok=true')
@@ -123,6 +140,7 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
     pipeline_scores = _rows(pipeline['scores'], 'scores')
     _assert(len(pipeline_scores) == len(pipeline_features), f'pipeline score count mismatch: {len(pipeline_scores)} != {len(pipeline_features)}')
     _assert_scores(pipeline_scores, stage='pipeline.scores')
+    _assert_backtest_metrics(pipeline['backtest'], stage='pipeline.backtest')
     _assert(
         pipeline['backtest']['meta'].get('signal_source') in {
             'analysis_scores_or_features',
@@ -137,9 +155,13 @@ def validate(path: Path, *, require_features: bool) -> dict[str, Any]:
         'features': len(feature_rows),
         'scores': len(score_rows),
         'backtest_trades': len(backtest.get('trades', [])),
+        'backtest_equity_points': len(_rows(backtest, 'equity_curve')),
+        'backtest_max_drawdown': backtest['summary'].get('max_drawdown'),
         'pipeline_features': len(pipeline_features),
         'pipeline_scores': len(pipeline_scores),
         'pipeline_trades': len(pipeline['backtest'].get('trades', [])),
+        'pipeline_equity_points': len(_rows(pipeline['backtest'], 'equity_curve')),
+        'pipeline_max_drawdown': pipeline['backtest']['summary'].get('max_drawdown'),
         'pipeline_signal_source': pipeline['backtest']['meta'].get('signal_source'),
         'meta': {
             'validator': 'tools/validate_research_api_routes_contract.py',
