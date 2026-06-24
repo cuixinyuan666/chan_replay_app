@@ -65,7 +65,8 @@ def _canonical_type(value: Any) -> str:
 def _is_buy(row: dict[str, Any]) -> bool:
     if 'is_buy' in row:
         return bool(row['is_buy'])
-    return str(_point_type(row) or '').strip().lower().startswith(('b', 'buy'))
+    text = str(_point_type(row) or '').strip().lower()
+    return text.startswith(('b', 'buy')) or text.endswith('_b') or text.endswith(':b')
 
 
 def _bars(analysis: dict[str, Any], level: str) -> list[dict[str, Any]]:
@@ -171,7 +172,18 @@ def _trace_endpoint_klu(obj: Any, *, end: bool, depth: int = 0) -> Any:
     attrs = (
         ('end_klu', 'end_klc', 'end_bi', 'end_seg', 'end')
         if end
-        else ('begin_klu', 'begin_klc', 'start_klu', 'start_klc', 'begin_bi', 'start_bi', 'begin_seg', 'start_seg', 'begin', 'start')
+        else (
+            'begin_klu',
+            'begin_klc',
+            'start_klu',
+            'start_klc',
+            'begin_bi',
+            'start_bi',
+            'begin_seg',
+            'start_seg',
+            'begin',
+            'start',
+        )
     )
     for name in attrs:
         child = _obj_attr(obj, (name,), None)
@@ -212,21 +224,37 @@ def _line_endpoint_value(line: Any, klu: Any, *, end: bool, is_buy: bool) -> flo
     return None
 
 
-def _candidate_type_for_direction(layer: int, direction: str) -> tuple[str, bool]:
+def _candidate_type_for_direction(layer: int | None, direction: str, *, source: str) -> tuple[str, bool]:
     text = str(direction or '').lower()
-    if 'down' in text:
-        return f'SEG{layer}_B', True
-    if 'up' in text:
-        return f'SEG{layer}_S', False
-    return f'SEG{layer}_BSP', True
+    is_buy = 'up' not in text
+    if source == 'bi_endpoint_candidate':
+        return ('BI_B' if is_buy else 'BI_S'), is_buy
+    if source == 'seg_endpoint_candidate':
+        return ('SEG_B' if is_buy else 'SEG_S'), is_buy
+    safe_layer = max(2, int(layer or 2))
+    return (f'SEG{safe_layer}_B' if is_buy else f'SEG{safe_layer}_S'), is_buy
 
 
-def _endpoint_candidate_rows_from_lines(layer: int, line_objects: Any) -> list[dict[str, Any]]:
+def _line_level_for_source(source: str, layer: int | None) -> str:
+    if source == 'bi_endpoint_candidate':
+        return 'bi'
+    if source == 'seg_endpoint_candidate':
+        return 'seg'
+    safe_layer = max(2, int(layer or 2))
+    return 'segseg' if safe_layer == 2 else f'seg{safe_layer}'
+
+
+def _endpoint_candidate_rows_from_lines(
+    layer: int | None,
+    line_objects: Any,
+    *,
+    source: str = 'recursive_seg_endpoint_candidate',
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     seen: set[tuple[int, str, int]] = set()
     for fallback, line in enumerate(_obj_list(line_objects)):
         direction = _line_direction_obj(line)
-        type_text, is_buy = _candidate_type_for_direction(layer, direction)
+        type_text, is_buy = _candidate_type_for_direction(layer, direction, source=source)
         end_klu = _trace_endpoint_klu(line, end=True)
         raw_index = _obj_idx(end_klu)
         if raw_index is None:
@@ -234,13 +262,14 @@ def _endpoint_candidate_rows_from_lines(layer: int, line_objects: Any) -> list[d
         price = _line_endpoint_value(line, end_klu, end=True, is_buy=is_buy)
         if price is None:
             continue
-        segment_index = _obj_idx(line)
-        if segment_index is None:
-            segment_index = fallback
-        key = (raw_index, type_text, segment_index)
+        line_index = _obj_idx(line)
+        if line_index is None:
+            line_index = fallback
+        key = (raw_index, type_text, line_index)
         if key in seen:
             continue
         seen.add(key)
+        row_layer = None if layer is None else int(layer)
         rows.append({
             'index': len(rows),
             'raw_index': raw_index,
@@ -249,20 +278,42 @@ def _endpoint_candidate_rows_from_lines(layer: int, line_objects: Any) -> list[d
             'recognized_time': _obj_time(end_klu),
             'price': price,
             'type': type_text,
-            'level': 'segseg' if int(layer) == 2 else f'seg{int(layer)}',
-            'seg_index': segment_index,
-            'recursive_seg_layer': int(layer),
-            'recursive_seg_index': segment_index,
+            'level': _line_level_for_source(source, layer),
+            'bi_index': line_index if source == 'bi_endpoint_candidate' else None,
+            'seg_index': line_index if source != 'bi_endpoint_candidate' else None,
+            'recursive_seg_layer': row_layer,
+            'recursive_seg_index': line_index if row_layer is not None else None,
             'confirmed': True,
-            'source': 'recursive_seg_endpoint_candidate_runtime',
+            'source': source,
+            'source_key': source,
             'derived': True,
             'candidate_only': True,
             'direction': direction,
             'is_buy': is_buy,
-            'evidence_key': f'seg{layer}#{segment_index}@raw={raw_index}',
-            'candidate_policy': 'runtime segment endpoint candidate; not chan.py CBSPointList BSP',
+            'evidence_key': f'{source}#{line_index}@raw={raw_index}',
+            'candidate_policy': 'runtime endpoint candidate; not chan.py CBSPointList BSP',
         })
     return _sort_signal_rows(rows)
+
+
+def _native_line_container(level_obj: Any, *, source: str) -> Any:
+    if source == 'bi_endpoint_candidate':
+        names = ('bi_list', 'bi', 'bi_lst', 'biList')
+        methods = ('get_bi_list', 'getBiList')
+    elif source == 'seg_endpoint_candidate':
+        names = ('seg_list', 'seg', 'seg_lst', 'segList')
+        methods = ('get_seg_list', 'getSegList')
+    else:
+        return None
+    for name in names:
+        value = _obj_attr(level_obj, (name,), None)
+        if value is not None:
+            return value
+    for name in methods:
+        value = _obj_call(level_obj, (name,), None)
+        if value is not None:
+            return value
+    return None
 
 
 def _sort_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -275,6 +326,31 @@ def _sort_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             str(row.get('source') or ''),
         ),
     )
+
+
+def _condition_source_key(condition: dict[str, Any], layer: int) -> str:
+    value = str(
+        condition.get('source')
+        or condition.get('structure_source')
+        or condition.get('signal_source')
+        or ''
+    ).strip().lower()
+    if value in {'origin_bsp', 'base_bsp', 'bsp', 'native_bsp'}:
+        return 'origin_bsp'
+    if value in {'bi', 'bi_endpoint', 'bi_endpoint_candidate', 'bi_endpoint_candidate_runtime'}:
+        return 'bi_endpoint_candidate'
+    if value in {'seg', 'line_segment', 'seg_endpoint', 'seg_endpoint_candidate', 'seg_endpoint_candidate_runtime'}:
+        return 'seg_endpoint_candidate'
+    if value in {
+        'recursive_seg',
+        'recursive_seg_bsp',
+        'recursive_seg_endpoint',
+        'recursive_seg_endpoint_candidate',
+        'endpoint_candidate',
+        'segn',
+    }:
+        return str(max(2, layer))
+    return str(max(2, layer))
 
 
 def _match_condition(
@@ -345,12 +421,13 @@ def _event_from_frame(
     matched: list[dict[str, Any]] = []
     for condition in conditions:
         layer = max(2, _int(condition.get('layer'), 2) or 2)
-        source = grouped.get(str(layer), grouped.get(layer, []))
+        source_key = _condition_source_key(condition, layer)
+        source = grouped.get(source_key, grouped.get(str(layer), []))
         rows = [row for row in source or [] if isinstance(row, dict)]
         point = _match_condition(rows, condition, current_raw)
         if point is None:
             return None
-        matched.append({'layer': layer, **point})
+        matched.append({'layer': layer, 'condition_source': source_key, **point})
 
     return {
         'frame_index': frame_index,
@@ -360,16 +437,16 @@ def _event_from_frame(
         'time': _time(bars[bar_index]),
         'matched': matched,
         'signature': [
-            f"{row['layer']}段{_canonical_type(_point_type(row))}"
+            f"{row.get('condition_source', row['layer'])}:{_canonical_type(_point_type(row))}"
             for row in matched
         ],
     }
 
 
-def _event_key(event: dict[str, Any]) -> tuple[tuple[int, int, str], ...]:
+def _event_key(event: dict[str, Any]) -> tuple[tuple[str, int, str], ...]:
     return tuple(
         (
-            int(row['layer']),
+            str(row.get('condition_source') or row.get('layer') or ''),
             _point_raw_index(row) or -1,
             str(_point_type(row) or ''),
         )
@@ -392,7 +469,7 @@ def scan_seg_composite_events(
         return []
 
     events: list[dict[str, Any]] = []
-    last_signature: tuple[tuple[int, int, str], ...] | None = None
+    last_signature: tuple[tuple[str, int, str], ...] | None = None
     for frame_index, frame in enumerate(frames):
         event = _event_from_frame(
             frame,
@@ -649,13 +726,14 @@ def run_seg_composite_stream_backtest(
     bars = bars_by_level[signal_level]
     entry_events: list[dict[str, Any]] = []
     exit_events: list[dict[str, Any]] = []
-    last_entry_key: tuple[tuple[int, int, str], ...] | None = None
-    last_exit_key: tuple[tuple[int, int, str], ...] | None = None
+    last_entry_key: tuple[tuple[str, int, str], ...] | None = None
+    last_exit_key: tuple[tuple[str, int, str], ...] | None = None
     runtime_states: dict[str, RecursiveSegRuntimeState] = {}
     base_bsp_histories: dict[str, dict[tuple[str, int, bool], dict[str, Any]]] = {}
     timing: dict[str, Any] = {}
     total_frames = 0
     endpoint_candidate_counts: dict[str, int] = {}
+    source_counts: dict[str, int] = {}
 
     for frame_index, cur_chan in enumerate(step_iter()):
         _advance_step_histories_light(
@@ -683,6 +761,33 @@ def run_seg_composite_stream_backtest(
             total_frames += 1
             continue
         grouped: dict[str, list[dict[str, Any]]] = {}
+
+        origin_rows = _sort_signal_rows(list(base_bsp_histories.get(signal_level, {}).values()))
+        grouped['origin_bsp'] = origin_rows
+        source_counts['origin_bsp'] = max(source_counts.get('origin_bsp', 0), len(origin_rows))
+
+        bi_candidates = _endpoint_candidate_rows_from_lines(
+            None,
+            _native_line_container(signal_obj, source='bi_endpoint_candidate'),
+            source='bi_endpoint_candidate',
+        )
+        grouped['bi_endpoint_candidate'] = bi_candidates
+        source_counts['bi_endpoint_candidate'] = max(
+            source_counts.get('bi_endpoint_candidate', 0),
+            len(bi_candidates),
+        )
+
+        seg_candidates = _endpoint_candidate_rows_from_lines(
+            None,
+            _native_line_container(signal_obj, source='seg_endpoint_candidate'),
+            source='seg_endpoint_candidate',
+        )
+        grouped['seg_endpoint_candidate'] = seg_candidates
+        source_counts['seg_endpoint_candidate'] = max(
+            source_counts.get('seg_endpoint_candidate', 0),
+            len(seg_candidates),
+        )
+
         for layer in range(2, signal_state.max_level + 1):
             rows: list[dict[str, Any]] = []
             if include_real_bsp:
@@ -692,6 +797,7 @@ def run_seg_composite_stream_backtest(
                 candidates = _endpoint_candidate_rows_from_lines(
                     layer,
                     signal_state.line_objects.get(layer),
+                    source='recursive_seg_endpoint_candidate',
                 )
                 endpoint_candidate_counts[str(layer)] = max(
                     endpoint_candidate_counts.get(str(layer), 0),
@@ -699,6 +805,10 @@ def run_seg_composite_stream_backtest(
                 )
                 rows.extend(candidates)
             grouped[str(layer)] = _sort_signal_rows(rows)
+            source_counts[f'recursive_seg_{layer}'] = max(
+                source_counts.get(f'recursive_seg_{layer}', 0),
+                len(rows),
+            )
         frame = {
             'levels': {
                 signal_level: {
@@ -762,5 +872,6 @@ def run_seg_composite_stream_backtest(
         'real_bsp_source_used': include_real_bsp,
         'endpoint_candidate_source_used': include_endpoint_candidate,
         'endpoint_candidate_layer_counts': endpoint_candidate_counts,
+        'structure_source_counts': source_counts,
     })
     return result
