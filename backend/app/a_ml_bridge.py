@@ -24,6 +24,29 @@ def _sigmoid(value: float) -> float:
     return 1.0 / (1.0 + math.exp(-value))
 
 
+def _normalize_feature_rows(features: Any) -> tuple[list[dict[str, Any]], str]:
+    """Accept both a raw feature list and the /features API payload shape."""
+    source_shape = type(features).__name__
+    if isinstance(features, dict):
+        source_shape = 'features_payload'
+        features = features.get('features', [])
+    if not isinstance(features, list):
+        return [], source_shape
+    return [row for row in features if isinstance(row, dict)], source_shape
+
+
+def _normalize_model(model: Any, model_name: str | None = None) -> dict[str, Any]:
+    if isinstance(model, dict):
+        normalized = dict(model)
+    else:
+        normalized = {'type': 'heuristic_baseline'}
+    if model_name and 'name' not in normalized:
+        normalized['name'] = model_name
+    if not normalized.get('type'):
+        normalized['type'] = 'heuristic_baseline'
+    return normalized
+
+
 def _heuristic_score(row: dict[str, Any]) -> tuple[float, dict[str, float]]:
     contributions: dict[str, float] = {}
     score = 0.0
@@ -79,27 +102,36 @@ def _linear_score(row: dict[str, Any], model: dict[str, Any]) -> tuple[float, di
     return _sigmoid(raw_score), contributions
 
 
-def score_bsp_features(features: list[dict[str, Any]], model: dict[str, Any] | None = None) -> dict[str, Any]:
+def score_bsp_features(
+    features: Any,
+    model: dict[str, Any] | None = None,
+    *,
+    model_name: str | None = None,
+) -> dict[str, Any]:
     """Score BSP feature rows with a small pluggable model contract.
 
     The default mode is a transparent heuristic baseline.  A caller can pass a
     linear model: {"type":"linear", "intercept":0, "weights":{"ret_5":-1}}
     to keep the interface compatible with later external model files without
     importing sklearn/xgboost/lightgbm into the app backend by default.
+
+    The public API route historically passed a full feature payload and a
+    ``model_name`` keyword.  Keep this function tolerant so route-level calls,
+    direct tool validation, and older clients all share one contract.
     """
-    model = model or {'type': 'heuristic_baseline'}
-    model_type = str(model.get('type') or 'heuristic_baseline')
+    rows_in, source_shape = _normalize_feature_rows(features)
+    normalized_model = _normalize_model(model, model_name=model_name)
+    model_type = str(normalized_model.get('type') or 'heuristic_baseline')
     rows: list[dict[str, Any]] = []
-    for row in features:
-        if not isinstance(row, dict):
-            continue
+    threshold = float(normalized_model.get('threshold', 0.55))
+    for row in rows_in:
         if model_type == 'linear':
-            probability, contributions = _linear_score(row, model)
+            probability, contributions = _linear_score(row, normalized_model)
         else:
             probability, contributions = _heuristic_score(row)
         scored = dict(row)
         scored['ml_score'] = probability
-        scored['ml_signal'] = 'accept' if probability >= float(model.get('threshold', 0.55)) else 'reject'
+        scored['ml_signal'] = 'accept' if probability >= threshold else 'reject'
         scored['ml_contributions'] = contributions
         rows.append(scored)
     return {
@@ -108,6 +140,8 @@ def score_bsp_features(features: list[dict[str, Any]], model: dict[str, Any] | N
         'meta': {
             'source': 'origin_vespa_tdx.backend.a_ml_bridge',
             'model_type': model_type,
+            'model_name': normalized_model.get('name'),
+            'feature_source_shape': source_shape,
             'count': len(rows),
             'default_model_is_research_baseline': model_type != 'linear',
             'chan_py_polluted': False,
