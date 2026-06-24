@@ -535,18 +535,29 @@ def research_pipeline(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
         include_labels=True,
     )
     scored = score_bsp_features(features.get('features', []), model_name=str(payload.get('model') or 'logistic_v1'))
+    backtest_input = dict(analysis)
+    backtest_input['features'] = features.get('features', [])
+    backtest_input['scores'] = scored.get('scores', [])
     backtest = run_bsp_backtest(
-        analysis,
-        horizon=horizon,
-        fee_rate=float(payload.get('fee_rate', 0.0005) or 0.0),
-        slippage=float(payload.get('slippage', 0.0) or 0.0),
-        initial_cash=float(payload.get('initial_cash', 100000.0) or 100000.0),
+        backtest_input,
+        options={
+            'max_hold_bars': horizon,
+            'fee_bps': float(payload.get('fee_rate', 0.0005) or 0.0) * 10000.0,
+            'slippage_bps': float(payload.get('slippage', 0.0) or 0.0) * 10000.0,
+            'initial_cash': float(payload.get('initial_cash', 100000.0) or 100000.0),
+        },
     )
     return {
         'ok': True,
         'features': features,
         'scores': scored,
         'backtest': backtest,
+        'meta': {
+            'source': 'origin_vespa_tdx.backend.main.research_pipeline',
+            'pipeline_chain': 'analysis->features->scores->backtest_input.scores->run_bsp_backtest',
+            'scores_injected_into_backtest': True,
+            'chan_py_polluted': False,
+        },
     }
 
 
