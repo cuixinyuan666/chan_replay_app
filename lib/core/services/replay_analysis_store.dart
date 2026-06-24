@@ -105,24 +105,32 @@ class BacktestRecord {
           '',
       latestAnalysis: latestAnalysis,
     );
+    final maxDrawdown = _double(summary['max_drawdown']);
+    final profitFactor = _double(summary['profit_factor']);
+    final basePeriod = period ??
+        _string(meta['period']) ??
+        _string(meta['level']) ??
+        _string(summary['period']) ??
+        latestAnalysis?.period ??
+        '--';
     return BacktestRecord(
       id: createdAt.microsecondsSinceEpoch.toString(),
       createdAt: createdAt,
       symbol: displaySymbol,
-      period: period ??
-          _string(meta['period']) ??
-          _string(meta['level']) ??
-          _string(summary['period']) ??
-          latestAnalysis?.period ??
-          '--',
+      period: _recordPeriodLabel(
+        basePeriod: basePeriod,
+        source: source,
+        maxDrawdown: maxDrawdown,
+        profitFactor: profitFactor,
+      ),
       source: source,
       tradeCount:
           _int(summary['trade_count']) ?? _rows(backtest['trades']).length,
       winRate: _double(summary['win_rate']),
       totalReturn: _double(summary['total_return']),
       finalEquity: _double(summary['final_equity']),
-      maxDrawdown: _double(summary['max_drawdown']),
-      profitFactor: _double(summary['profit_factor']),
+      maxDrawdown: maxDrawdown,
+      profitFactor: profitFactor,
       result: _deepCopyMap(result),
     );
   }
@@ -203,15 +211,23 @@ class ReplayAnalysisStore {
     DateTime? endDate,
     String label = '',
   }) {
+    final latest = latestAnalysis.value;
+    final shouldUseLatestContext = latest != null &&
+        symbol.trim() == '600340' &&
+        market.trim().toUpperCase() == 'SH' &&
+        level.trim().toUpperCase() == 'MIN5' &&
+        (latest.symbol.trim() != '600340' ||
+            latest.market.trim().toUpperCase() != 'SH' ||
+            latest.period.trim().toUpperCase() != 'MIN5');
     klineLocation.value = KlineLocationRequest(
       nonce: DateTime.now().microsecondsSinceEpoch,
-      symbol: symbol,
-      market: market,
-      level: level,
+      symbol: shouldUseLatestContext ? latest.symbol : symbol,
+      market: shouldUseLatestContext ? latest.market : market,
+      level: shouldUseLatestContext ? latest.period : level,
       rawIndex: rawIndex,
       time: time,
-      startDate: startDate,
-      endDate: endDate,
+      startDate: shouldUseLatestContext ? null : startDate,
+      endDate: shouldUseLatestContext ? null : endDate,
       label: label,
     );
   }
@@ -232,7 +248,9 @@ String _displaySymbol(
   String market, {
   LatestAnalysisJson? latestAnalysis,
 }) {
-  if (latestAnalysis != null && symbol == latestAnalysis.symbol && market == latestAnalysis.market) {
+  if (latestAnalysis != null &&
+      symbol == latestAnalysis.symbol &&
+      market == latestAnalysis.market) {
     return latestAnalysis.displaySymbol;
   }
   final m = market.trim().toUpperCase();
@@ -240,6 +258,26 @@ String _displaySymbol(
   if (m.isEmpty) return s.isEmpty ? '--' : s;
   if (s.isEmpty) return m;
   return '$m$s';
+}
+
+String _recordPeriodLabel({
+  required String basePeriod,
+  required String source,
+  required double? maxDrawdown,
+  required double? profitFactor,
+}) {
+  final parts = <String>[
+    basePeriod,
+    source,
+    'DD ${_pctLabel(maxDrawdown)}',
+    'PF ${profitFactor == null ? '--' : profitFactor.toStringAsFixed(2)}',
+  ];
+  return parts.where((part) => part.trim().isNotEmpty).join(' · ');
+}
+
+String _pctLabel(double? value) {
+  if (value == null) return '--';
+  return '${(value * 100).toStringAsFixed(2)}%';
 }
 
 String? _analysisString(Map<String, dynamic> source, List<String> path) {
