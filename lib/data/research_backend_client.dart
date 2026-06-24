@@ -19,26 +19,88 @@ class ResearchBackendClient {
     final sourceBase = await _readyBaseUrl();
     try {
       final result = await _postToBase(sourceBase, endpoint, payload);
-      _recordBacktestIfNeeded(endpoint, payload, result);
-      return result;
+      return _finalizeResult(endpoint, payload, result);
     } on _ResearchBackendMismatch catch (_) {
       final result = await _postViaAutoLocalBackend(endpoint, payload);
-      _recordBacktestIfNeeded(endpoint, payload, result);
-      return result;
+      return _finalizeResult(endpoint, payload, result);
     } on SocketException catch (_) {
       final result = await _postViaAutoLocalBackend(endpoint, payload);
-      _recordBacktestIfNeeded(endpoint, payload, result);
-      return result;
+      return _finalizeResult(endpoint, payload, result);
     } on TimeoutException catch (_) {
       final result = await _postViaAutoLocalBackend(endpoint, payload);
-      _recordBacktestIfNeeded(endpoint, payload, result);
-      return result;
+      return _finalizeResult(endpoint, payload, result);
     } on http.ClientException catch (e) {
       if (!_looksLikeConnectionFailure(e)) rethrow;
       final result = await _postViaAutoLocalBackend(endpoint, payload);
-      _recordBacktestIfNeeded(endpoint, payload, result);
-      return result;
+      return _finalizeResult(endpoint, payload, result);
     }
+  }
+
+  Map<String, dynamic> _finalizeResult(
+    String endpoint,
+    Map<String, dynamic> payload,
+    Map<String, dynamic> result,
+  ) {
+    if (result['ok'] != false) {
+      _cacheAnalyzeMultiIfNeeded(endpoint, payload, result);
+    }
+    _recordBacktestIfNeeded(endpoint, payload, result);
+    return result;
+  }
+
+  void _cacheAnalyzeMultiIfNeeded(
+    String endpoint,
+    Map<String, dynamic> payload,
+    Map<String, dynamic> result,
+  ) {
+    if (!endpoint.endsWith('/chan/analyze_multi')) return;
+    final levels = result['levels'];
+    if (levels is! Map) return;
+    final level = _payloadLevel(payload);
+    final rawLevel = _levelPayload(levels, level);
+    if (rawLevel is! Map) return;
+    final analysis = Map<String, dynamic>.from(rawLevel);
+    final meta = analysis['meta'] is Map
+        ? Map<String, dynamic>.from(analysis['meta'] as Map)
+        : <String, dynamic>{};
+    final symbol = _payloadString(payload, const ['symbol']) ??
+        _payloadString(result, const ['meta', 'symbol']) ??
+        _payloadString(result, const ['symbol']) ??
+        '';
+    final market = _payloadString(payload, const ['market']) ??
+        _payloadString(result, const ['meta', 'market']) ??
+        _payloadString(result, const ['market']) ??
+        '';
+    final adjust = _payloadString(payload, const ['adjust']) ??
+        _payloadString(result, const ['meta', 'adjust']) ??
+        _payloadString(result, const ['adjust']) ??
+        'QFQ';
+    meta.addAll({
+      'symbol': symbol,
+      'market': market,
+      'freq': level,
+      'period': level,
+      'adjust': adjust,
+      'levels': _payloadLevels(payload, fallback: level),
+      'main_level': level,
+      'source': 'research_backend_client.analyze_multi_cache',
+      'research_cache_from_analyze_multi': true,
+      'chan_py_polluted': false,
+    });
+    analysis['meta'] = meta;
+    analysis['symbol'] = symbol;
+    analysis['market'] = market;
+    analysis['freq'] = level;
+    analysis['period'] = level;
+    analysis['adjust'] = adjust;
+    if (analysis['bsp'] is! List && analysis['bsps'] is List) {
+      analysis['bsp'] = analysis['bsps'];
+    }
+    if (analysis['seg_bsp_history_layers'] == null &&
+        analysis['seg_bsp_layers'] != null) {
+      analysis['seg_bsp_history_layers'] = analysis['seg_bsp_layers'];
+    }
+    ReplayAnalysisStore.saveLatestAnalysis(analysis);
   }
 
   void _recordBacktestIfNeeded(
@@ -180,6 +242,43 @@ String? _payloadString(Map<String, dynamic> payload, List<String> path) {
   }
   final text = '${cursor ?? ''}'.trim();
   return text.isEmpty || text == 'null' ? null : text;
+}
+
+String _payloadLevel(Map<String, dynamic> payload) {
+  final direct = _payloadString(payload, const ['level']) ??
+      _payloadString(payload, const ['freq']) ??
+      _payloadString(payload, const ['period']) ??
+      _payloadString(payload, const ['main_level']) ??
+      _payloadString(payload, const ['mainLevel']);
+  if (direct != null) return direct.trim().toUpperCase();
+  final levels = payload['levels'] ?? payload['lv_list'] ?? payload['level_order'];
+  if (levels is List && levels.isNotEmpty) {
+    final first = '${levels.first}'.trim();
+    if (first.isNotEmpty && first != 'null') return first.toUpperCase();
+  }
+  return 'MIN5';
+}
+
+List<String> _payloadLevels(Map<String, dynamic> payload, {required String fallback}) {
+  final levels = payload['levels'] ?? payload['lv_list'] ?? payload['level_order'];
+  if (levels is List) {
+    final rows = [
+      for (final level in levels)
+        if ('${level}'.trim().isNotEmpty && '${level}'.trim() != 'null')
+          '${level}'.trim().toUpperCase(),
+    ];
+    if (rows.isNotEmpty) return rows;
+  }
+  return [fallback];
+}
+
+Object? _levelPayload(Map levels, String level) {
+  final direct = levels[level] ?? levels[level.toUpperCase()] ?? levels[level.toLowerCase()];
+  if (direct != null) return direct;
+  for (final entry in levels.entries) {
+    if ('${entry.key}'.trim().toUpperCase() == level) return entry.value;
+  }
+  return null;
 }
 
 class _ResearchBackendMismatch implements Exception {
