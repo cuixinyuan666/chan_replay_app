@@ -80,29 +80,28 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     }
     setState(() {
       _useOtherTarget = true;
-      _status = '其它标的模式：不使用当前K线缓存，按下方标的和规则直接请求后端。';
+      _status = '其它标的模式：BSP 特征、ML、回测、Pipeline 会先自动 analyze_multi；segN 组合回测仍直接逐帧请求后端。';
     });
   }
 
-  Map<String, dynamic> _segCompositePayload() {
+  int _maxRecursiveSegLayer() {
     final allLayers = <int>{
       for (final condition in _entryConditions) condition.layer,
       for (final condition in _exitConditions) condition.layer,
     };
-    final maxLayer = allLayers.isEmpty
-        ? 2
-        : allLayers.reduce((left, right) => left > right ? left : right);
-    Map<String, dynamic> ruleOf(List<_SegRuleCondition> conditions) => {
-          'conditions': [
-            for (final condition in conditions) condition.toJson(),
-          ],
-          'dedupe': true,
-        };
+    if (allLayers.isEmpty) return 4;
+    final maxLayer = allLayers.reduce((left, right) => left > right ? left : right);
+    return maxLayer < 4 ? 4 : maxLayer;
+  }
+
+  Map<String, dynamic> _otherTargetBasePayload() {
     return {
       'symbol': _segSymbolController.text.trim(),
       'market': _segMarketController.text.trim().toUpperCase(),
       'levels': [_segLevel],
       'level': _segLevel,
+      'main_level': _segLevel,
+      'clock_level': _segLevel,
       'adjust': 'QFQ',
       if (_segStartController.text.trim().isNotEmpty)
         'start': _segStartController.text.trim(),
@@ -113,8 +112,20 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
         'bi_algo': 'fx',
         'seg_algo': 'chan',
         'zs_algo': 'normal',
-        'recursive_seg_max_level': maxLayer,
+        'recursive_seg_max_level': _maxRecursiveSegLayer(),
       },
+    };
+  }
+
+  Map<String, dynamic> _segCompositePayload() {
+    Map<String, dynamic> ruleOf(List<_SegRuleCondition> conditions) => {
+          'conditions': [
+            for (final condition in conditions) condition.toJson(),
+          ],
+          'dedupe': true,
+        };
+    return {
+      ..._otherTargetBasePayload(),
       'entry_rule': ruleOf(_entryConditions),
       if (_useExitConditions) 'exit_rule': ruleOf(_exitConditions),
       'options': {
@@ -126,6 +137,11 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     };
   }
 
+  Map<String, dynamic> _analyzeMultiPayload() => {
+        ..._otherTargetBasePayload(),
+        'mode': 'once',
+      };
+
   Map<String, dynamic>? _currentKlinePayload() {
     final latest = ReplayAnalysisStore.latestAnalysis.value;
     if (latest == null) {
@@ -135,26 +151,116 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     return latest.toPayload();
   }
 
+  ResearchBackendClient _client() {
+    final client = _backendClient;
+    if (client == null || client.baseUrl != _backendUrl) {
+      client?.close();
+      _backendClient = ResearchBackendClient(baseUrl: _backendUrl);
+    }
+    return _backendClient!;
+  }
+
+  Future<Map<String, dynamic>?> _payloadForEndpoint(
+    String endpoint,
+    ResearchBackendClient client,
+  ) async {
+    if (!_useOtherTarget) return _currentKlinePayload();
+    if (endpoint.endsWith('/seg-composite/backtest')) {
+      return _segCompositePayload();
+    }
+    final analysis = await _loadOtherTargetAnalysis(client);
+    return {'analysis': analysis};
+  }
+
+  Future<Map<String, dynamic>> _loadOtherTargetAnalysis(
+    ResearchBackendClient client,
+  ) async {
+    final symbol = _segSymbolController.text.trim();
+    final market = _segMarketController.text.trim().toUpperCase();
+    final level = _segLevel.trim().toUpperCase();
+    if (symbol.isEmpty) {
+      throw const FormatException('其它标的代码不能为空');
+    }
+    if (mounted) {
+      setState(() => _status = '其它标的：正在自动 analyze_multi $market$symbol $level ...');
+    }
+    final response = await client.post('/api/chan/analyze_multi', _analyzeMultiPayload());
+    if (response['ok'] == false) {
+      throw Exception('analyze_multi 失败：${response['error'] ?? 'unknown error'}');
+    }
+    return _analysisFromAnalyzeMultiResponse(response);
+  }
+
+  Map<String, dynamic> _analysisFromAnalyzeMultiResponse(
+      Map<String, dynamic> response) {
+    final level = _segLevel.trim().toUpperCase();
+    final rawLevels = response['levels'];
+    if (rawLevels is! Map) {
+      throw const FormatException('analyze_multi 响应缺少 levels');
+    }
+    final rawLevel = rawLevels[level] ?? rawLevels[level.toUpperCase()] ?? rawLevels[level.toLowerCase()];
+    if (rawLevel is! Map) {
+      throw FormatException('analyze_multi 响应缺少 $level 级别数据');
+    }
+    final analysis = Map<String, dynamic>.from(rawLevel);
+    final meta = analysis['meta'] is Map
+        ? Map<String, dynamic>.from(analysis['meta'] as Map)
+        : <String, dynamic>{};
+    final symbol = _segSymbolController.text.trim();
+    final market = _segMarketController.text.trim().toUpperCase();
+    meta.addAll({
+      'symbol': symbol,
+      'market': market,
+      'freq': level,
+      'period': level,
+      'adjust': 'QFQ',
+      'main_level': level,
+      'levels': [level],
+      'source': 'research_page.other_target.analyze_multi',
+      'research_other_target': true,
+      'chan_py_polluted': false,
+    });
+    analysis['meta'] = meta;
+    analysis['symbol'] = symbol;
+    analysis['market'] = market;
+    analysis['freq'] = level;
+    analysis['period'] = level;
+    analysis['adjust'] = 'QFQ';
+    if (analysis['bsp'] is! List && analysis['bsps'] is List) {
+      analysis['bsp'] = analysis['bsps'];
+    }
+    if (analysis['seg_bsp_history_layers'] == null &&
+        analysis['seg_bsp_layers'] != null) {
+      analysis['seg_bsp_history_layers'] = analysis['seg_bsp_layers'];
+    }
+    return analysis;
+  }
+
   Future<void> _call(String endpoint,
       {Map<String, dynamic>? overridePayload}) async {
     if (_running) return;
-    final payload = overridePayload ?? _currentKlinePayload();
-    if (payload == null) return;
     setState(() {
       _running = true;
-      _status = '请求 $endpoint ...';
+      _status = _useOtherTarget && overridePayload == null
+          ? '其它标的：准备自动 analyze_multi 后请求 $endpoint ...'
+          : '请求 $endpoint ...';
     });
     try {
-      final client = _backendClient;
-      if (client == null || client.baseUrl != _backendUrl) {
-        client?.close();
-        _backendClient = ResearchBackendClient(baseUrl: _backendUrl);
-      }
-      final result = await _backendClient!.post(endpoint, payload);
+      final client = _client();
+      final payload = overridePayload ?? await _payloadForEndpoint(endpoint, client);
+      if (payload == null) return;
+      final result = await client.post(endpoint, payload);
       if (endpoint.endsWith('/pipeline') && result['ok'] != false) {
-        ReplayAnalysisStore.addBacktestRecord(BacktestRecord.fromPipeline(
+        ReplayAnalysisStore.addBacktestRecord(BacktestRecord.fromResearchResult(
           result: result,
-          latestAnalysis: ReplayAnalysisStore.latestAnalysis.value,
+          latestAnalysis:
+              _useOtherTarget ? null : ReplayAnalysisStore.latestAnalysis.value,
+          source: 'pipeline',
+          symbol: _useOtherTarget ? _segSymbolController.text.trim() : null,
+          market: _useOtherTarget
+              ? _segMarketController.text.trim().toUpperCase()
+              : null,
+          period: _useOtherTarget ? _segLevel : null,
         ));
       }
       setState(() {
@@ -207,19 +313,22 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     if (result['ok'] == false) {
       return '接口返回失败：${result['error'] ?? 'unknown error'}';
     }
+    final prefix = _useOtherTarget && !endpoint.endsWith('/seg-composite/backtest')
+        ? '其它标的自动 analyze_multi + '
+        : '';
     if (endpoint.endsWith('/pipeline')) {
       final backtest = result['backtest'];
       final summary = backtest is Map ? backtest['summary'] : null;
       if (summary is Map) {
-        return 'Pipeline 完成：特征 ${_rowsFrom(result['features'], nestedKey: 'features').length}，评分 ${_rowsFrom(result['scores'], nestedKey: 'scores').length}，交易 ${summary['trade_count'] ?? 0}，胜率 ${_pct(summary['win_rate'])}，总收益 ${_pct(summary['total_return'])}';
+        return '${prefix}Pipeline 完成：特征 ${_rowsFrom(result['features'], nestedKey: 'features').length}，评分 ${_rowsFrom(result['scores'], nestedKey: 'scores').length}，交易 ${summary['trade_count'] ?? 0}，胜率 ${_pct(summary['win_rate'])}，总收益 ${_pct(summary['total_return'])}';
       }
-      return 'Pipeline 完成。';
+      return '${prefix}Pipeline 完成。';
     }
     if (endpoint.endsWith('/features')) {
-      return 'BSP 特征提取完成：${_rowsFrom(result['features'], nestedKey: 'features').length} 行。';
+      return '${prefix}BSP 特征提取完成：${_rowsFrom(result['features'], nestedKey: 'features').length} 行。';
     }
     if (endpoint.endsWith('/score')) {
-      return 'ML 打分完成：${_rowsFrom(result['scores'], nestedKey: 'scores').length} 行。';
+      return '${prefix}ML 打分完成：${_rowsFrom(result['scores'], nestedKey: 'scores').length} 行。';
     }
     if (endpoint.endsWith('/seg-composite/backtest')) {
       final summary = result['summary'];
@@ -233,9 +342,9 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     if (endpoint.endsWith('/backtest')) {
       final summary = result['summary'];
       if (summary is Map) {
-        return '回测完成：交易 ${summary['trade_count'] ?? 0}，胜率 ${_pct(summary['win_rate'])}，总收益 ${_pct(summary['total_return'])}';
+        return '${prefix}回测完成：交易 ${summary['trade_count'] ?? 0}，胜率 ${_pct(summary['win_rate'])}，总收益 ${_pct(summary['total_return'])}';
       }
-      return '回测完成。';
+      return '${prefix}回测完成。';
     }
     return '请求完成。';
   }
@@ -323,33 +432,25 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                   label: 'BSP 特征',
                   icon: Icons.table_chart,
                   running: _running,
-                  onPressed: _useOtherTarget
-                      ? null
-                      : () => _call('/api/research/bsp/features'),
+                  onPressed: () => _call('/api/research/bsp/features'),
                 ),
                 _ActionButton(
                   label: 'ML 打分',
                   icon: Icons.psychology,
                   running: _running,
-                  onPressed: _useOtherTarget
-                      ? null
-                      : () => _call('/api/research/ml/score'),
+                  onPressed: () => _call('/api/research/ml/score'),
                 ),
                 _ActionButton(
                   label: '回测',
                   icon: Icons.show_chart,
                   running: _running,
-                  onPressed: _useOtherTarget
-                      ? null
-                      : () => _call('/api/research/backtest'),
+                  onPressed: () => _call('/api/research/backtest'),
                 ),
                 _ActionButton(
                   label: '一键 Pipeline',
                   icon: Icons.account_tree,
                   running: _running,
-                  onPressed: _useOtherTarget
-                      ? null
-                      : () => _call('/api/research/pipeline'),
+                  onPressed: () => _call('/api/research/pipeline'),
                 ),
                 _ActionButton(
                   label: 'segN 组合回测',
@@ -482,7 +583,7 @@ class _CurrentKlinePanel extends StatelessWidget {
               _InfoLine('BSP数量', bsp is List ? '${bsp.length}' : '--'),
               const SizedBox(height: 14),
               const Text(
-                '本页不再手动粘贴 JSON，也不显示后端地址。\nBSP 特征、ML 打分、回测、Pipeline 默认直接使用当前K线图缓存的 analysis 数据。\n点击“其它标的”可不使用当前K线缓存，改用标的代码和规则直接运行 segN 组合回测。',
+                '本页不再手动粘贴 JSON，也不显示后端地址。\nBSP 特征、ML 打分、回测、Pipeline 默认直接使用当前K线图缓存的 analysis 数据。\n点击“其它标的”后，BSP 特征、ML、回测、Pipeline 会自动 analyze_multi；segN 组合回测仍按规则逐帧执行。',
                 style: TextStyle(color: Colors.white54, height: 1.45),
               ),
             ],
@@ -631,7 +732,7 @@ class _SegCompositeRuleEditor extends StatelessWidget {
           if (useHoldDays) _field(holdDaysController, '持有天数', 130),
           const SizedBox(height: 12),
           const Text(
-            '其它标的模式不使用当前K线缓存，当前优先支持 segN 组合回测。',
+            '其它标的模式：BSP 特征、ML、普通回测、Pipeline 会先自动 analyze_multi；segN 组合回测仍使用下方 N段规则逐帧执行。',
             style: TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ],
