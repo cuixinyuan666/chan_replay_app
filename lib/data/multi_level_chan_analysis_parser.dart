@@ -1,6 +1,7 @@
 import '../core/models/chan_snapshot.dart';
 import '../core/models/level_relation.dart';
 import '../core/models/multi_level_chan_snapshot.dart';
+import '../core/services/replay_analysis_store.dart';
 
 typedef ChanSnapshotParser = ChanSnapshot Function(Map<String, dynamic> data);
 
@@ -36,6 +37,13 @@ class MultiLevelChanAnalysisParser {
         : const <String, dynamic>{};
     final levels = _parseLevelOrder(data, meta, snapshots);
     final mainLevel = _parseMainLevel(data, meta, levels, snapshots);
+    _saveResearchAnalysisCache(
+      data: data,
+      meta: meta,
+      rawLevels: rawLevels,
+      levels: levels,
+      mainLevel: mainLevel,
+    );
     _addTiming(timing, '$timingPrefix.meta_order', metaSw.elapsedMilliseconds);
 
     final relationsSw = Stopwatch()..start();
@@ -94,6 +102,60 @@ class MultiLevelChanAnalysisParser {
   static void _addTiming(Map<String, int>? timing, String key, int elapsedMs) {
     if (timing == null) return;
     timing[key] = (timing[key] ?? 0) + elapsedMs;
+  }
+
+  static void _saveResearchAnalysisCache({
+    required Map<String, dynamic> data,
+    required Map<String, dynamic> meta,
+    required Map rawLevels,
+    required List<String> levels,
+    required String mainLevel,
+  }) {
+    // Only the top-level analyze_multi response should update the research cache.
+    // Historical step frames also pass through parseSnapshot, but they do not own
+    // the final full analysis context for the research/backtest page.
+    if (!data.containsKey('frames')) return;
+    final rawLevelPayload = rawLevels[mainLevel] ?? rawLevels[mainLevel.toUpperCase()] ?? rawLevels[mainLevel.toLowerCase()];
+    if (rawLevelPayload is! Map) return;
+    final analysis = Map<String, dynamic>.from(rawLevelPayload);
+    final levelMeta = analysis['meta'] is Map
+        ? Map<String, dynamic>.from(analysis['meta'] as Map)
+        : <String, dynamic>{};
+    final symbol = _string(meta['symbol']) ??
+        _string(data['symbol']) ??
+        _string(meta['code']) ??
+        _string(data['code']) ??
+        '';
+    final market = _string(meta['market']) ?? _string(data['market']) ?? '';
+    final adjust = _string(meta['adjust']) ?? _string(data['adjust']) ?? '';
+    final normalizedLevel = mainLevel.trim().toUpperCase();
+    levelMeta.addAll({
+      'symbol': symbol,
+      'market': market,
+      'freq': normalizedLevel,
+      'period': normalizedLevel,
+      'adjust': adjust,
+      'levels': levels,
+      'main_level': normalizedLevel,
+      'source': 'multi_level_chan_analysis_parser.top_snapshot',
+      'research_cache_from_kline': true,
+      'chan_py_polluted': false,
+    });
+    analysis['meta'] = levelMeta;
+    analysis['symbol'] = symbol;
+    analysis['market'] = market;
+    analysis['freq'] = normalizedLevel;
+    analysis['period'] = normalizedLevel;
+    analysis['adjust'] = adjust;
+    if (analysis['bsp'] is! List && analysis['bsps'] is List) {
+      analysis['bsp'] = analysis['bsps'];
+    }
+    ReplayAnalysisStore.saveLatestAnalysis(analysis);
+  }
+
+  static String? _string(Object? value) {
+    final text = '${value ?? ''}'.trim();
+    return text.isEmpty || text == 'null' ? null : text;
   }
 
   static Map<String, dynamic> _inflateCompactFrame(
