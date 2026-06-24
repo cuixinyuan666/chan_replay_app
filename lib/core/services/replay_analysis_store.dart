@@ -211,23 +211,15 @@ class ReplayAnalysisStore {
     DateTime? endDate,
     String label = '',
   }) {
-    final latest = latestAnalysis.value;
-    final shouldUseLatestContext = latest != null &&
-        symbol.trim() == '600340' &&
-        market.trim().toUpperCase() == 'SH' &&
-        level.trim().toUpperCase() == 'MIN5' &&
-        (latest.symbol.trim() != '600340' ||
-            latest.market.trim().toUpperCase() != 'SH' ||
-            latest.period.trim().toUpperCase() != 'MIN5');
     klineLocation.value = KlineLocationRequest(
       nonce: DateTime.now().microsecondsSinceEpoch,
-      symbol: shouldUseLatestContext ? latest.symbol : symbol,
-      market: shouldUseLatestContext ? latest.market : market,
-      level: shouldUseLatestContext ? latest.period : level,
+      symbol: symbol,
+      market: market,
+      level: level,
       rawIndex: rawIndex,
       time: time,
-      startDate: shouldUseLatestContext ? null : startDate,
-      endDate: shouldUseLatestContext ? null : endDate,
+      startDate: startDate,
+      endDate: endDate,
       label: label,
     );
   }
