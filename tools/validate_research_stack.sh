@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate research backend, other-target flow, native chan features, and segN presets.
+# Validate research backend, other-target flow, native chan features, segN presets, and structure-source rules.
 # Designed for Git Bash / MINGW64 on Windows and regular bash on Linux/macOS.
 
 set -u
@@ -45,10 +45,12 @@ step "python syntax check"
 PYTHONPATH=. "$PYTHON_BIN" -m py_compile \
   backend/app/a_bsp_feature_engine.py \
   backend/app/a_ml_bridge.py \
+  backend/app/a_seg_composite_strategy.py \
   tools/validate_research_api_routes_contract.py \
   tools/validate_research_other_target_flow.py \
   tools/validate_research_native_feature_columns.py \
   tools/validate_seg_composite_presets.py \
+  tools/validate_structure_source_rules.py \
   || fail "python syntax check failed"
 
 step "pick free backend port"
@@ -118,6 +120,12 @@ PYTHONPATH=. "$PYTHON_BIN" tools/validate_seg_composite_presets.py \
   --timeout "$VALIDATE_TIMEOUT" \
   --require-loose-signal \
   || fail "segN preset validation failed"
+
+step "validate structure source rules"
+PYTHONPATH=. "$PYTHON_BIN" tools/validate_structure_source_rules.py \
+  --base-url "$BASE_URL" \
+  --timeout "$VALIDATE_TIMEOUT" \
+  || fail "structure source rule validation failed"
 
 step "done"
 echo "[OK] research stack validation passed"
