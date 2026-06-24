@@ -18,27 +18,31 @@ class ResearchBacktestPage extends StatefulWidget {
 class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   static const _backendUrl = 'http://127.0.0.1:8000';
 
-  final ScrollController _resultScrollController = ScrollController();
-  final ScrollController _recordScrollController = ScrollController();
-  final TextEditingController _segSymbolController =
-      TextEditingController(text: '600340');
-  final TextEditingController _segMarketController =
-      TextEditingController(text: 'SH');
-  final TextEditingController _segStartController =
-      TextEditingController(text: '2025-09-01');
-  final TextEditingController _segEndController =
-      TextEditingController(text: '2026-06-18');
-  final TextEditingController _holdDaysController =
-      TextEditingController(text: '10');
+  final _resultScrollController = ScrollController();
+  final _segSymbolController = TextEditingController(text: '600340');
+  final _segMarketController = TextEditingController(text: 'SH');
+  final _segStartController = TextEditingController(text: '2025-09-01');
+  final _segEndController = TextEditingController(text: '2026-06-18');
+  final _holdDaysController = TextEditingController(text: '10');
 
   final List<_SegRuleCondition> _entryConditions = [
-    _SegRuleCondition(layer: 2, side: 'buy', type: '1'),
-    _SegRuleCondition(layer: 3, side: 'buy', type: '3a'),
+    _SegRuleCondition(
+      source: 'recursive_seg_endpoint_candidate',
+      layer: 2,
+      side: 'buy',
+      type: '',
+    ),
   ];
   final List<_SegRuleCondition> _exitConditions = [
-    _SegRuleCondition(layer: 2, side: 'sell', type: '1'),
+    _SegRuleCondition(
+      source: 'recursive_seg_endpoint_candidate',
+      layer: 2,
+      side: 'sell',
+      type: '',
+    ),
   ];
 
+  ResearchBackendClient? _backendClient;
   bool _running = false;
   bool _useOtherTarget = false;
   bool _useExitConditions = true;
@@ -47,13 +51,11 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   String _segPreset = 'custom';
   String _status = '默认使用当前K线图缓存的 analysis 数据。';
   Map<String, dynamic>? _lastResult;
-  ResearchBackendClient? _backendClient;
 
   @override
   void dispose() {
     _backendClient?.close();
     _resultScrollController.dispose();
-    _recordScrollController.dispose();
     _segSymbolController.dispose();
     _segMarketController.dispose();
     _segStartController.dispose();
@@ -62,12 +64,21 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     super.dispose();
   }
 
+  ResearchBackendClient _client() {
+    final client = _backendClient;
+    if (client == null || client.baseUrl != _backendUrl) {
+      client?.close();
+      _backendClient = ResearchBackendClient(baseUrl: _backendUrl);
+    }
+    return _backendClient!;
+  }
+
   void _useCurrentKlineTarget() {
+    final latest = ReplayAnalysisStore.latestAnalysis.value;
     setState(() {
       _useOtherTarget = false;
-      final latest = ReplayAnalysisStore.latestAnalysis.value;
       _status = latest == null
-          ? '暂无当前K线缓存：请先在K线/复盘页成功加载一次数据。'
+          ? '暂无当前K线缓存：请先在K线图/复盘页加载一次标的。'
           : '已切换为当前K线标的：${latest.displaySymbol} ${latest.period}。';
     });
   }
@@ -81,7 +92,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     }
     setState(() {
       _useOtherTarget = true;
-      _status = '其它标的模式：BSP 特征、ML、回测、Pipeline 会先自动 analyze_multi；segN 组合回测按预设/自定义规则逐帧请求后端。';
+      _status = '其它标的模式：非 segN 研究会先自动 analyze_multi；segN 组合回测使用下方结构源规则。';
     });
   }
 
@@ -98,28 +109,31 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     return maxLayer < 4 ? 4 : maxLayer;
   }
 
-  Map<String, dynamic> _otherTargetBasePayload() {
-    return {
-      'symbol': _segSymbolController.text.trim(),
-      'market': _segMarketController.text.trim().toUpperCase(),
-      'levels': [_segLevel],
-      'level': _segLevel,
-      'main_level': _segLevel,
-      'clock_level': _segLevel,
-      'adjust': 'QFQ',
-      if (_segStartController.text.trim().isNotEmpty)
-        'start': _segStartController.text.trim(),
-      if (_segEndController.text.trim().isNotEmpty)
-        'end': _segEndController.text.trim(),
-      'count': 50000,
-      'config': {
-        'bi_algo': 'fx',
-        'seg_algo': 'chan',
-        'zs_algo': 'normal',
-        'recursive_seg_max_level': _maxRecursiveSegLayer(),
-      },
-    };
-  }
+  Map<String, dynamic> _otherTargetBasePayload() => {
+        'symbol': _segSymbolController.text.trim(),
+        'market': _segMarketController.text.trim().toUpperCase(),
+        'levels': [_segLevel],
+        'level': _segLevel,
+        'main_level': _segLevel,
+        'clock_level': _segLevel,
+        'adjust': 'QFQ',
+        if (_segStartController.text.trim().isNotEmpty)
+          'start': _segStartController.text.trim(),
+        if (_segEndController.text.trim().isNotEmpty)
+          'end': _segEndController.text.trim(),
+        'count': 50000,
+        'config': {
+          'bi_algo': 'fx',
+          'seg_algo': 'chan',
+          'zs_algo': 'normal',
+          'recursive_seg_max_level': _maxRecursiveSegLayer(),
+        },
+      };
+
+  Map<String, dynamic> _analyzeMultiPayload() => {
+        ..._otherTargetBasePayload(),
+        'mode': 'once',
+      };
 
   Map<String, dynamic> _ruleOf(List<_SegRuleCondition> conditions) => {
         'conditions': [
@@ -139,10 +153,11 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
 
   Map<String, dynamic> _exitRulePayload() {
     final preset = _activePreset;
+    if (preset.value == 'custom') return _ruleOf(_exitConditions);
     if (preset.signalSource == 'endpoint_candidate') {
       return {
         'conditions': [
-          {'layer': 2, 'side': 'sell', 'types': <String>[]},
+          {'source': 'recursive_seg_endpoint_candidate', 'layer': 2, 'side': 'sell', 'types': <String>[]},
         ],
         'dedupe': true,
       };
@@ -150,8 +165,17 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     return _ruleOf(_exitConditions);
   }
 
+  String _effectiveSignalSource() {
+    final preset = _activePreset;
+    if (preset.value != 'custom') return preset.signalSource;
+    final hasCandidate = [..._entryConditions, ..._exitConditions]
+        .any((condition) => condition.source != 'origin_bsp');
+    return hasCandidate ? 'endpoint_candidate' : 'real_bsp';
+  }
+
   Map<String, dynamic> _segCompositePayload() {
     final preset = _activePreset;
+    final signalSource = _effectiveSignalSource();
     return {
       ..._otherTargetBasePayload(),
       'entry_rule': _entryRulePayload(),
@@ -163,34 +187,20 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
           'max_hold_days': int.tryParse(_holdDaysController.text.trim()) ?? 10,
         'fee_bps': 3,
         'slippage_bps': 2,
-        'signal_source': preset.signalSource,
+        'signal_source': signalSource,
         'preset': preset.value,
         'preset_label': preset.label,
       },
     };
   }
 
-  Map<String, dynamic> _analyzeMultiPayload() => {
-        ..._otherTargetBasePayload(),
-        'mode': 'once',
-      };
-
   Map<String, dynamic>? _currentKlinePayload() {
     final latest = ReplayAnalysisStore.latestAnalysis.value;
     if (latest == null) {
-      setState(() => _status = '暂无当前K线缓存：请先在K线/复盘页成功加载一次数据。');
+      setState(() => _status = '暂无当前K线缓存：请先在K线图/复盘页加载一次标的。');
       return null;
     }
     return latest.toPayload();
-  }
-
-  ResearchBackendClient _client() {
-    final client = _backendClient;
-    if (client == null || client.baseUrl != _backendUrl) {
-      client?.close();
-      _backendClient = ResearchBackendClient(baseUrl: _backendUrl);
-    }
-    return _backendClient!;
   }
 
   Future<Map<String, dynamic>?> _payloadForEndpoint(
@@ -198,9 +208,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     ResearchBackendClient client,
   ) async {
     if (!_useOtherTarget) return _currentKlinePayload();
-    if (endpoint.endsWith('/seg-composite/backtest')) {
-      return _segCompositePayload();
-    }
+    if (endpoint.endsWith('/seg-composite/backtest')) return _segCompositePayload();
     final analysis = await _loadOtherTargetAnalysis(client);
     return {'analysis': analysis};
   }
@@ -211,9 +219,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     final symbol = _segSymbolController.text.trim();
     final market = _segMarketController.text.trim().toUpperCase();
     final level = _segLevel.trim().toUpperCase();
-    if (symbol.isEmpty) {
-      throw const FormatException('其它标的代码不能为空');
-    }
+    if (symbol.isEmpty) throw const FormatException('其它标的代码不能为空');
     if (mounted) {
       setState(() => _status = '其它标的：正在自动 analyze_multi $market$symbol $level ...');
     }
@@ -224,17 +230,12 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     return _analysisFromAnalyzeMultiResponse(response);
   }
 
-  Map<String, dynamic> _analysisFromAnalyzeMultiResponse(
-      Map<String, dynamic> response) {
+  Map<String, dynamic> _analysisFromAnalyzeMultiResponse(Map<String, dynamic> response) {
     final level = _segLevel.trim().toUpperCase();
     final rawLevels = response['levels'];
-    if (rawLevels is! Map) {
-      throw const FormatException('analyze_multi 响应缺少 levels');
-    }
+    if (rawLevels is! Map) throw const FormatException('analyze_multi 响应缺少 levels');
     final rawLevel = rawLevels[level] ?? rawLevels[level.toUpperCase()] ?? rawLevels[level.toLowerCase()];
-    if (rawLevel is! Map) {
-      throw FormatException('analyze_multi 响应缺少 $level 级别数据');
-    }
+    if (rawLevel is! Map) throw FormatException('analyze_multi 响应缺少 $level 级别数据');
     final analysis = Map<String, dynamic>.from(rawLevel);
     final meta = analysis['meta'] is Map
         ? Map<String, dynamic>.from(analysis['meta'] as Map)
@@ -253,24 +254,23 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       'research_other_target': true,
       'chan_py_polluted': false,
     });
-    analysis['meta'] = meta;
-    analysis['symbol'] = symbol;
-    analysis['market'] = market;
-    analysis['freq'] = level;
-    analysis['period'] = level;
-    analysis['adjust'] = 'QFQ';
+    analysis
+      ..['meta'] = meta
+      ..['symbol'] = symbol
+      ..['market'] = market
+      ..['freq'] = level
+      ..['period'] = level
+      ..['adjust'] = 'QFQ';
     if (analysis['bsp'] is! List && analysis['bsps'] is List) {
       analysis['bsp'] = analysis['bsps'];
     }
-    if (analysis['seg_bsp_history_layers'] == null &&
-        analysis['seg_bsp_layers'] != null) {
+    if (analysis['seg_bsp_history_layers'] == null && analysis['seg_bsp_layers'] != null) {
       analysis['seg_bsp_history_layers'] = analysis['seg_bsp_layers'];
     }
     return analysis;
   }
 
-  Future<void> _call(String endpoint,
-      {Map<String, dynamic>? overridePayload}) async {
+  Future<void> _call(String endpoint, {Map<String, dynamic>? overridePayload}) async {
     if (_running) return;
     setState(() {
       _running = true;
@@ -286,13 +286,10 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       if (endpoint.endsWith('/pipeline') && result['ok'] != false) {
         ReplayAnalysisStore.addBacktestRecord(BacktestRecord.fromResearchResult(
           result: result,
-          latestAnalysis:
-              _useOtherTarget ? null : ReplayAnalysisStore.latestAnalysis.value,
+          latestAnalysis: _useOtherTarget ? null : ReplayAnalysisStore.latestAnalysis.value,
           source: 'pipeline',
           symbol: _useOtherTarget ? _segSymbolController.text.trim() : null,
-          market: _useOtherTarget
-              ? _segMarketController.text.trim().toUpperCase()
-              : null,
+          market: _useOtherTarget ? _segMarketController.text.trim().toUpperCase() : null,
           period: _useOtherTarget ? _segLevel : null,
         ));
       }
@@ -311,31 +308,23 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   }
 
   Future<void> _callSegComposite() async {
-    await _call('/api/research/seg-composite/backtest',
-        overridePayload: _segCompositePayload());
+    await _call('/api/research/seg-composite/backtest', overridePayload: _segCompositePayload());
   }
 
   void _locateResult(Map<String, dynamic> row, {String label = '回测结果'}) {
-    final raw = row['raw_index'] ??
-        row['entry_signal_raw_index'] ??
-        row['entry_raw_index'] ??
-        row['exit_raw_index'];
+    final raw = row['raw_index'] ?? row['entry_signal_raw_index'] ?? row['entry_raw_index'] ?? row['exit_raw_index'];
     final rawIndex = raw is num ? raw.toInt() : int.tryParse('$raw');
     if (rawIndex == null) return;
-    final timeText =
-        '${row['time'] ?? row['entry_signal_time'] ?? row['entry_time'] ?? ''}';
+    final timeText = '${row['time'] ?? row['entry_signal_time'] ?? row['entry_time'] ?? ''}';
     final latest = ReplayAnalysisStore.latestAnalysis.value;
     final useLatest = !_useOtherTarget && latest != null;
     ReplayAnalysisStore.requestKlineLocation(
       symbol: useLatest ? latest.symbol : _segSymbolController.text.trim(),
-      market: useLatest
-          ? latest.market
-          : _segMarketController.text.trim().toUpperCase(),
+      market: useLatest ? latest.market : _segMarketController.text.trim().toUpperCase(),
       level: useLatest ? latest.period : _segLevel,
       rawIndex: rawIndex,
       time: DateTime.tryParse(timeText.replaceFirst(' ', 'T')),
-      startDate:
-          useLatest ? null : DateTime.tryParse(_segStartController.text.trim()),
+      startDate: useLatest ? null : DateTime.tryParse(_segStartController.text.trim()),
       endDate: useLatest ? null : DateTime.tryParse(_segEndController.text.trim()),
       label: label,
     );
@@ -343,9 +332,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   }
 
   String _summaryOf(String endpoint, Map<String, dynamic> result) {
-    if (result['ok'] == false) {
-      return '接口返回失败：${result['error'] ?? 'unknown error'}';
-    }
+    if (result['ok'] == false) return '接口返回失败：${result['error'] ?? 'unknown error'}';
     final prefix = _useOtherTarget && !endpoint.endsWith('/seg-composite/backtest')
         ? '其它标的自动 analyze_multi + '
         : '';
@@ -369,9 +356,9 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
       if (summary is Map) {
         final frames = meta is Map ? meta['evaluated_step_frames'] : null;
         final source = meta is Map ? meta['seg_composite_signal_source'] : null;
-        return 'segN 组合回测完成：${source ?? _activePreset.signalSource}，逐帧 ${frames ?? '--'}，入场 ${_rowsFrom(result['entry_events']).length}，交易 ${summary['trade_count'] ?? 0}，胜率 ${_pct(summary['win_rate'])}，总收益 ${_pct(summary['total_return'])}';
+        return '组合回测完成：${source ?? _effectiveSignalSource()}，逐帧 ${frames ?? '--'}，入场 ${_rowsFrom(result['entry_events']).length}，交易 ${summary['trade_count'] ?? 0}，胜率 ${_pct(summary['win_rate'])}，总收益 ${_pct(summary['total_return'])}';
       }
-      return 'segN 组合回测完成。';
+      return '组合回测完成。';
     }
     if (endpoint.endsWith('/backtest')) {
       final summary = result['summary'];
@@ -389,24 +376,12 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
     return '${(number * 100).toStringAsFixed(2)}%';
   }
 
-  String _numText(Object? value, {int fractionDigits = 4}) {
-    final number = value is num ? value.toDouble() : double.tryParse('$value');
-    if (number == null) return '--';
-    return number.toStringAsFixed(fractionDigits);
-  }
-
   String _valueText(Object? value) {
     if (value == null) return '--';
-    if (value is num) return _numText(value);
+    if (value is num) return value.toStringAsFixed(4);
     if (value is bool) return value ? '是' : '否';
     final text = '$value';
-    return text.length > 36 ? '${text.substring(0, 36)}…' : text;
-  }
-
-  String get _prettyResult {
-    final result = _lastResult;
-    if (result == null) return '暂无结果';
-    return const JsonEncoder.withIndent('  ').convert(result);
+    return text.length > 42 ? '${text.substring(0, 42)}…' : text;
   }
 
   List<Map<String, dynamic>> _rowsFrom(Object? value, {String? nestedKey}) {
@@ -421,11 +396,16 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
   Map<String, dynamic> _mapFrom(Object? value) =>
       value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
 
+  String get _prettyResult {
+    final result = _lastResult;
+    if (result == null) return '暂无结果';
+    return const JsonEncoder.withIndent('  ').convert(result);
+  }
+
   Future<void> _copyResult() async {
     await Clipboard.setData(ClipboardData(text: _prettyResult));
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('研究结果已复制')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('研究结果已复制')));
   }
 
   @override
@@ -487,7 +467,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                   onPressed: () => _call('/api/research/pipeline'),
                 ),
                 _ActionButton(
-                  label: 'segN 组合回测',
+                  label: '结构源组合回测',
                   icon: Icons.layers,
                   running: _running,
                   onPressed: _callSegComposite,
@@ -501,10 +481,10 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
               child: Row(
                 children: [
                   Expanded(
-                    child: _JsonPanel(
-                      title: _useOtherTarget ? '其它标的 / segN 规则' : '当前K线缓存',
+                    child: _Panel(
+                      title: _useOtherTarget ? '其它标的 / 结构源规则' : '当前K线缓存',
                       child: _useOtherTarget
-                          ? _SegCompositeRuleEditor(
+                          ? _StructureSourceRuleEditor(
                               symbolController: _segSymbolController,
                               marketController: _segMarketController,
                               startController: _segStartController,
@@ -516,53 +496,29 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
                               exitConditions: _exitConditions,
                               useExitConditions: _useExitConditions,
                               useHoldDays: _useHoldDays,
-                              onLevelChanged: (value) =>
-                                  setState(() => _segLevel = value),
-                              onPresetChanged: (value) =>
-                                  setState(() => _segPreset = value),
-                              onUseExitConditionsChanged: (value) =>
-                                  setState(() => _useExitConditions = value),
-                              onUseHoldDaysChanged: (value) =>
-                                  setState(() => _useHoldDays = value),
+                              onLevelChanged: (value) => setState(() => _segLevel = value),
+                              onPresetChanged: (value) => setState(() => _segPreset = value),
+                              onUseExitConditionsChanged: (value) => setState(() => _useExitConditions = value),
+                              onUseHoldDaysChanged: (value) => setState(() => _useHoldDays = value),
                               onChanged: () => setState(() {}),
                             )
-                          : _CurrentKlinePanel(),
+                          : const _CurrentKlinePanel(),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: _JsonPanel(
-                            title: '结构化结果',
-                            child: _ResearchResultView(
-                              result: _lastResult,
-                              rawJson: _prettyResult,
-                              scrollController: _resultScrollController,
-                              valueText: _valueText,
-                              pctText: _pct,
-                              rowsFrom: _rowsFrom,
-                              mapFrom: _mapFrom,
-                              onLocate: _locateResult,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 230,
-                          child: _JsonPanel(
-                            title: '回测记录',
-                            child: _BacktestRecordList(
-                              scrollController: _recordScrollController,
-                              pctText: _pct,
-                              valueText: _valueText,
-                              timeText: _timeText,
-                            ),
-                          ),
-                        ),
-                      ],
+                    child: _Panel(
+                      title: '结构化结果',
+                      child: _ResearchResultView(
+                        result: _lastResult,
+                        rawJson: _prettyResult,
+                        scrollController: _resultScrollController,
+                        valueText: _valueText,
+                        pctText: _pct,
+                        rowsFrom: _rowsFrom,
+                        mapFrom: _mapFrom,
+                        onLocate: _locateResult,
+                      ),
                     ),
                   ),
                 ],
@@ -593,46 +549,36 @@ class _SegRulePreset {
   static const values = [
     _SegRulePreset(
       value: 'custom',
-      label: '自定义：使用下方 AND 条件',
-      signalSource: 'real_bsp',
+      label: '自定义：结构源 AND 条件',
+      signalSource: 'endpoint_candidate',
       maxLayer: 4,
       entryConditions: [],
     ),
     _SegRulePreset(
-      value: 'strict_nest',
-      label: '真实BSP：严格区间套 2段B1 + 3段B3a',
+      value: 'origin_bsp_any_buy',
+      label: '原级别真实BSP：任意买点',
       signalSource: 'real_bsp',
-      maxLayer: 3,
+      maxLayer: 4,
       entryConditions: [
-        {'layer': 2, 'side': 'buy', 'types': ['1']},
-        {'layer': 3, 'side': 'buy', 'types': ['3a']},
+        {'source': 'origin_bsp', 'layer': 2, 'side': 'buy', 'types': ['1', '1p', '2', '2s', '3a', '3b']},
       ],
     ),
     _SegRulePreset(
-      value: 'layer2_b1',
-      label: '真实BSP：只测2段B1',
-      signalSource: 'real_bsp',
-      maxLayer: 2,
+      value: 'bi_endpoint_buy',
+      label: '非真实BSP：笔下跌终点候选',
+      signalSource: 'endpoint_candidate',
+      maxLayer: 4,
       entryConditions: [
-        {'layer': 2, 'side': 'buy', 'types': ['1']},
+        {'source': 'bi_endpoint_candidate', 'layer': 2, 'side': 'buy', 'types': <String>[]},
       ],
     ),
     _SegRulePreset(
-      value: 'layer2_any_buy',
-      label: '真实BSP：只测2段任意买点',
-      signalSource: 'real_bsp',
-      maxLayer: 2,
+      value: 'seg_endpoint_buy',
+      label: '非真实BSP：线段下跌终点候选',
+      signalSource: 'endpoint_candidate',
+      maxLayer: 4,
       entryConditions: [
-        {'layer': 2, 'side': 'buy', 'types': ['1', '2', '3a', '3b']},
-      ],
-    ),
-    _SegRulePreset(
-      value: 'layer3_any_buy',
-      label: '真实BSP：只测3段任意买点',
-      signalSource: 'real_bsp',
-      maxLayer: 3,
-      entryConditions: [
-        {'layer': 3, 'side': 'buy', 'types': ['1', '2', '3a', '3b']},
+        {'source': 'seg_endpoint_candidate', 'layer': 2, 'side': 'buy', 'types': <String>[]},
       ],
     ),
     _SegRulePreset(
@@ -641,7 +587,7 @@ class _SegRulePreset {
       signalSource: 'endpoint_candidate',
       maxLayer: 2,
       entryConditions: [
-        {'layer': 2, 'side': 'buy', 'types': <String>[]},
+        {'source': 'recursive_seg_endpoint_candidate', 'layer': 2, 'side': 'buy', 'types': <String>[]},
       ],
     ),
     _SegRulePreset(
@@ -650,7 +596,7 @@ class _SegRulePreset {
       signalSource: 'endpoint_candidate',
       maxLayer: 3,
       entryConditions: [
-        {'layer': 3, 'side': 'buy', 'types': <String>[]},
+        {'source': 'recursive_seg_endpoint_candidate', 'layer': 3, 'side': 'buy', 'types': <String>[]},
       ],
     ),
   ];
@@ -662,98 +608,52 @@ class _SegRulePreset {
 }
 
 class _SegRuleCondition {
+  String source;
   int layer;
   String side;
   String type;
 
-  _SegRuleCondition({required this.layer, required this.side, required this.type});
+  _SegRuleCondition({
+    required this.source,
+    required this.layer,
+    required this.side,
+    required this.type,
+  });
+
+  bool get isEndpointCandidate => source != 'origin_bsp';
+  bool get usesLayer => source == 'recursive_seg_endpoint_candidate';
 
   Map<String, dynamic> toJson() => {
+        'source': source,
         'layer': layer,
         'side': side,
-        'types': [type],
+        'types': type.trim().isEmpty ? <String>[] : [type.trim()],
       };
 }
 
-class _CurrentKlinePanel extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<LatestAnalysisJson?>(
-      valueListenable: ReplayAnalysisStore.latestAnalysis,
-      builder: (context, latest, _) {
-        if (latest == null) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: Text(
-                '暂无当前K线缓存。\n请先在K线图/复盘页加载一次标的，再回到这里直接研究。',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white54),
-              ),
-            ),
-          );
-        }
-        final bars = latest.analysis['bars'];
-        final bsp = latest.analysis['bsp'];
-        return Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('默认数据源',
-                  style: TextStyle(
-                      color: Colors.white70, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              _InfoLine('标的', latest.displaySymbol),
-              _InfoLine('周期', latest.period),
-              _InfoLine('复权', latest.adjust.isEmpty ? '--' : latest.adjust),
-              _InfoLine('缓存时间', _timeText(latest.savedAt)),
-              _InfoLine('K线数量', bars is List ? '${bars.length}' : '--'),
-              _InfoLine('BSP数量', bsp is List ? '${bsp.length}' : '--'),
-              const SizedBox(height: 14),
-              const Text(
-                'BSP 特征、ML 打分、回测、Pipeline 默认使用当前K线图缓存。\n点击“其它标的”后可使用 segN 规则预设。',
-                style: TextStyle(color: Colors.white54, height: 1.45),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _InfoLine extends StatelessWidget {
-  final String label;
+class _StructureSourceOption {
   final String value;
+  final String label;
+  final bool usesLayer;
+  final bool realBsp;
 
-  const _InfoLine(this.label, this.value);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 86,
-            child: Text(label,
-                style: const TextStyle(color: Colors.white54, fontSize: 12)),
-          ),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(color: Colors.white70, fontSize: 12)),
-          ),
-        ],
-      ),
-    );
-  }
+  const _StructureSourceOption({
+    required this.value,
+    required this.label,
+    required this.usesLayer,
+    required this.realBsp,
+  });
 }
 
-class _SegCompositeRuleEditor extends StatelessWidget {
+class _StructureSourceRuleEditor extends StatelessWidget {
   static const _levels = ['MIN1', 'MIN5', 'MIN15', 'MIN30', 'MIN60', 'DAILY'];
-  static const _types = ['1', '1p', '2', '2s', '3a', '3b'];
-  static const _otherLayerValue = -1;
+  static const _bspTypes = ['1', '1p', '2', '2s', '3a', '3b'];
+  static const _sources = [
+    _StructureSourceOption(value: 'origin_bsp', label: '原级别真实BSP', usesLayer: false, realBsp: true),
+    _StructureSourceOption(value: 'bi_endpoint_candidate', label: '非真实BSP：笔端点候选', usesLayer: false, realBsp: false),
+    _StructureSourceOption(value: 'seg_endpoint_candidate', label: '非真实BSP：线段端点候选', usesLayer: false, realBsp: false),
+    _StructureSourceOption(value: 'recursive_seg_endpoint_candidate', label: '非真实BSP：递归段端点候选', usesLayer: true, realBsp: false),
+  ];
 
   final TextEditingController symbolController;
   final TextEditingController marketController;
@@ -772,7 +672,7 @@ class _SegCompositeRuleEditor extends StatelessWidget {
   final ValueChanged<bool> onUseHoldDaysChanged;
   final VoidCallback onChanged;
 
-  const _SegCompositeRuleEditor({
+  const _StructureSourceRuleEditor({
     required this.symbolController,
     required this.marketController,
     required this.startController,
@@ -812,8 +712,7 @@ class _SegCompositeRuleEditor extends StatelessWidget {
                   initialValue: level,
                   decoration: const InputDecoration(labelText: 'K线周期'),
                   items: [
-                    for (final value in _levels)
-                      DropdownMenuItem(value: value, child: Text(value)),
+                    for (final value in _levels) DropdownMenuItem(value: value, child: Text(value)),
                   ],
                   onChanged: (value) {
                     if (value != null) onLevelChanged(value);
@@ -827,46 +726,40 @@ class _SegCompositeRuleEditor extends StatelessWidget {
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
             initialValue: preset,
-            decoration: const InputDecoration(labelText: 'segN 规则预设'),
+            decoration: const InputDecoration(labelText: '规则预设'),
             items: [
-              for (final item in _SegRulePreset.values)
-                DropdownMenuItem(value: item.value, child: Text(item.label)),
+              for (final item in _SegRulePreset.values) DropdownMenuItem(value: item.value, child: Text(item.label)),
             ],
             onChanged: (value) {
               if (value != null) onPresetChanged(value);
             },
           ),
           const SizedBox(height: 8),
-          _PresetNotice(preset: activePreset),
+          _RuleNotice(preset: activePreset),
           const SizedBox(height: 14),
           _ruleSection(
             title: '入场组合',
             subtitle: isCustom
-                ? '自定义模式：每行依次选择 N段 → 买/卖 → 买卖点类型；所有行同时满足才入场。'
-                : '当前为预设模式：下方入场组合仅作保留显示，不参与本次 payload。',
+                ? '自定义模式：每行选择结构源 → 层级/N段 → 买卖方向 → 类型；所有行同时满足才入场。'
+                : '当前为预设模式：下方自定义条件仅保留显示，不参与本次 payload。',
             rows: entryConditions,
-            allowEmpty: false,
             enabled: isCustom,
+            entry: true,
           ),
           const Divider(height: 26),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
             value: useExitConditions,
             onChanged: onUseExitConditionsChanged,
-            title: const Text('启用买卖点组合出场'),
-            subtitle: activePreset.signalSource == 'endpoint_candidate'
-                ? const Text('候选预设使用 2段向上端点候选作为出场。')
-                : null,
+            title: const Text('启用组合出场'),
           ),
           if (useExitConditions)
             _ruleSection(
               title: '出场组合',
-              subtitle: activePreset.signalSource == 'endpoint_candidate'
-                  ? '候选预设：后端自动使用 endpoint_candidate 的 2段卖点候选。'
-                  : '入场后按 step 当时状态判断；与 N 天退出取先发生者。',
+              subtitle: isCustom ? '自定义出场结构源组合。' : '预设模式下，候选预设默认使用 2层递归段上涨终点作为卖出候选。',
               rows: exitConditions,
-              allowEmpty: false,
-              enabled: activePreset.signalSource != 'endpoint_candidate',
+              enabled: isCustom,
+              entry: false,
             ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
@@ -877,7 +770,7 @@ class _SegCompositeRuleEditor extends StatelessWidget {
           if (useHoldDays) _field(holdDaysController, '持有天数', 130),
           const SizedBox(height: 12),
           const Text(
-            '真实BSP预设来自 chan.py CBSPointList；候选预设来自递归段端点，仅作宽松扫描与诊断，不等同真实买卖点。',
+            '真实BSP来自 chan.py CBSPointList；笔/线段/递归段端点候选为非真实BSP，仅用于宽松扫描和诊断。',
             style: TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ],
@@ -889,36 +782,31 @@ class _SegCompositeRuleEditor extends StatelessWidget {
     required String title,
     required String subtitle,
     required List<_SegRuleCondition> rows,
-    required bool allowEmpty,
     required bool enabled,
+    required bool entry,
   }) {
     return Opacity(
       opacity: enabled ? 1 : 0.62,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w700)),
+          Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
           const SizedBox(height: 3),
-          Text(subtitle,
-              style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 12)),
           const SizedBox(height: 8),
           for (var index = 0; index < rows.length; index++)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: _conditionRow(rows, index,
-                  allowEmpty: allowEmpty, enabled: enabled),
+              child: _conditionRow(rows, index, enabled: enabled),
             ),
           OutlinedButton.icon(
             onPressed: enabled
                 ? () {
                     rows.add(_SegRuleCondition(
-                      layer: rows.isEmpty
-                          ? 2
-                          : (rows.last.layer + 1).clamp(2, 6).toInt(),
-                      side: title.contains('入场') ? 'buy' : 'sell',
-                      type: '1',
+                      source: 'recursive_seg_endpoint_candidate',
+                      layer: 2,
+                      side: entry ? 'buy' : 'sell',
+                      type: '',
                     ));
                     onChanged();
                   }
@@ -931,72 +819,68 @@ class _SegCompositeRuleEditor extends StatelessWidget {
     );
   }
 
-  Widget _conditionRow(List<_SegRuleCondition> rows, int index,
-      {required bool allowEmpty, required bool enabled}) {
+  Widget _conditionRow(List<_SegRuleCondition> rows, int index, {required bool enabled}) {
     final row = rows[index];
-    return Row(
+    final selectedSource = _sourceOf(row.source);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         SizedBox(
-          width: row.layer > 6 ? 190 : 105,
-          child: Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<int>(
-                  initialValue:
-                      row.layer >= 2 && row.layer <= 6 ? row.layer : _otherLayerValue,
-                  decoration: const InputDecoration(labelText: '结构层'),
-                  items: [
-                    for (var layer = 2; layer <= 6; layer++)
-                      DropdownMenuItem(value: layer, child: Text('$layer段')),
-                    const DropdownMenuItem(value: _otherLayerValue, child: Text('other')),
-                  ],
-                  onChanged: enabled
-                      ? (value) {
-                          if (value != null) {
-                            row.layer = value == _otherLayerValue
-                                ? (row.layer > 6 ? row.layer : 7)
-                                : value;
-                            onChanged();
-                          }
-                        }
-                      : null,
-                ),
-              ),
-              if (row.layer > 6) const SizedBox(width: 8),
-              if (row.layer > 6)
-                SizedBox(
-                  width: 72,
-                  child: TextFormField(
-                    key: ValueKey('seg-layer-${row.hashCode}-${row.layer}'),
-                    enabled: enabled,
-                    initialValue: '${row.layer}',
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(labelText: 'N段'),
-                    onChanged: (value) {
-                      final next = int.tryParse(value.trim());
-                      if (next != null && next >= 2) {
-                        row.layer = next;
-                        onChanged();
-                      }
-                    },
-                  ),
-                ),
+          width: 220,
+          child: DropdownButtonFormField<String>(
+            initialValue: row.source,
+            decoration: const InputDecoration(labelText: '结构源'),
+            items: [
+              for (final source in _sources) DropdownMenuItem(value: source.value, child: Text(source.label)),
             ],
+            onChanged: enabled
+                ? (value) {
+                    if (value == null) return;
+                    row.source = value;
+                    if (!_sourceOf(value).realBsp) row.type = '';
+                    row.layer = row.layer < 2 ? 2 : row.layer;
+                    onChanged();
+                  }
+                : null,
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 5),
-          child: Icon(Icons.chevron_right, color: Colors.white38),
-        ),
+        if (selectedSource.usesLayer)
+          SizedBox(
+            width: 105,
+            child: TextFormField(
+              key: ValueKey('layer-${row.hashCode}-${row.layer}'),
+              enabled: enabled,
+              initialValue: '${row.layer}',
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(labelText: 'N层递归段'),
+              onChanged: (value) {
+                final next = int.tryParse(value.trim());
+                if (next != null && next >= 2) {
+                  row.layer = next;
+                  onChanged();
+                }
+              },
+            ),
+          )
+        else
+          SizedBox(
+            width: 105,
+            child: InputDecorator(
+              decoration: const InputDecoration(labelText: '层级'),
+              child: Text(selectedSource.realBsp ? '原级别' : selectedSource.label.split('：').last),
+            ),
+          ),
         SizedBox(
           width: 100,
           child: DropdownButtonFormField<String>(
             initialValue: row.side,
             decoration: const InputDecoration(labelText: '方向'),
             items: const [
-              DropdownMenuItem(value: 'buy', child: Text('买点')),
-              DropdownMenuItem(value: 'sell', child: Text('卖点')),
+              DropdownMenuItem(value: 'buy', child: Text('买/低点')),
+              DropdownMenuItem(value: 'sell', child: Text('卖/高点')),
             ],
             onChanged: enabled
                 ? (value) {
@@ -1008,34 +892,33 @@ class _SegCompositeRuleEditor extends StatelessWidget {
                 : null,
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 5),
-          child: Icon(Icons.chevron_right, color: Colors.white38),
-        ),
-        Expanded(
-          child: DropdownButtonFormField<String>(
-            initialValue: row.type,
-            decoration: const InputDecoration(labelText: '类型'),
-            items: [
-              for (final type in _types)
-                DropdownMenuItem(
-                  value: type,
-                  child: Text('${row.side == 'buy' ? 'B' : 'S'}$type'),
+        SizedBox(
+          width: 150,
+          child: selectedSource.realBsp
+              ? DropdownButtonFormField<String>(
+                  initialValue: row.type.trim().isEmpty ? '1' : row.type,
+                  decoration: const InputDecoration(labelText: 'BSP类型'),
+                  items: [
+                    for (final type in _bspTypes)
+                      DropdownMenuItem(value: type, child: Text('${row.side == 'buy' ? 'B' : 'S'}$type')),
+                  ],
+                  onChanged: enabled
+                      ? (value) {
+                          if (value != null) {
+                            row.type = value;
+                            onChanged();
+                          }
+                        }
+                      : null,
+                )
+              : InputDecorator(
+                  decoration: const InputDecoration(labelText: '类型'),
+                  child: Text(row.side == 'buy' ? '下跌终点候选' : '上涨终点候选'),
                 ),
-            ],
-            onChanged: enabled
-                ? (value) {
-                    if (value != null) {
-                      row.type = value;
-                      onChanged();
-                    }
-                  }
-                : null,
-          ),
         ),
         IconButton(
           tooltip: '删除条件',
-          onPressed: !enabled || rows.length == 1 && !allowEmpty
+          onPressed: !enabled || rows.length <= 1
               ? null
               : () {
                   rows.removeAt(index);
@@ -1047,22 +930,23 @@ class _SegCompositeRuleEditor extends StatelessWidget {
     );
   }
 
-  static Widget _field(
-      TextEditingController controller, String label, double width) {
+  static _StructureSourceOption _sourceOf(String value) => _sources.firstWhere(
+        (source) => source.value == value,
+        orElse: () => _sources.last,
+      );
+
+  static Widget _field(TextEditingController controller, String label, double width) {
     return SizedBox(
       width: width,
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(labelText: label),
-      ),
+      child: TextField(controller: controller, decoration: InputDecoration(labelText: label)),
     );
   }
 }
 
-class _PresetNotice extends StatelessWidget {
+class _RuleNotice extends StatelessWidget {
   final _SegRulePreset preset;
 
-  const _PresetNotice({required this.preset});
+  const _RuleNotice({required this.preset});
 
   @override
   Widget build(BuildContext context) {
@@ -1073,16 +957,83 @@ class _PresetNotice extends StatelessWidget {
       decoration: BoxDecoration(
         color: isCandidate ? const Color(0xFF422006) : const Color(0xFF0F172A),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-            color: isCandidate ? const Color(0xFFF59E0B) : Colors.white10),
+        border: Border.all(color: isCandidate ? const Color(0xFFF59E0B) : Colors.white10),
       ),
       child: Text(
         preset.value == 'custom'
-            ? '自定义模式：使用下方入场/出场 AND 条件。'
+            ? '自定义模式：规则行会把 source/layer/side/types 直接传给后端组合引擎。'
             : isCandidate
-                ? '候选模式：${preset.label}。该信号用于宽松扫描/诊断，不等同真实 chan.py 买卖点。'
-                : '真实BSP模式：${preset.label}。若样本中真实 segN BSP 为 0，回测也会是 0。',
+                ? '候选模式：${preset.label}。该信号不等同真实 chan.py 买卖点。'
+                : '真实BSP模式：${preset.label}。',
         style: TextStyle(color: isCandidate ? Colors.amber.shade100 : Colors.white70, fontSize: 12),
+      ),
+    );
+  }
+}
+
+class _CurrentKlinePanel extends StatelessWidget {
+  const _CurrentKlinePanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<LatestAnalysisJson?>(
+      valueListenable: ReplayAnalysisStore.latestAnalysis,
+      builder: (context, latest, _) {
+        if (latest == null) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                '暂无当前K线缓存。\n请先在K线图/复盘页加载一次标的，再回到这里直接研究。',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54),
+              ),
+            ),
+          );
+        }
+        final bars = latest.analysis['bars'];
+        final bsp = latest.analysis['bsp'];
+        return Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('默认数据源', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              _InfoLine('标的', latest.displaySymbol),
+              _InfoLine('周期', latest.period),
+              _InfoLine('复权', latest.adjust.isEmpty ? '--' : latest.adjust),
+              _InfoLine('缓存时间', _timeText(latest.savedAt)),
+              _InfoLine('K线数量', bars is List ? '${bars.length}' : '--'),
+              _InfoLine('BSP数量', bsp is List ? '${bsp.length}' : '--'),
+              const SizedBox(height: 14),
+              const Text(
+                'BSP 特征、ML 打分、回测、Pipeline 默认使用当前K线图缓存。\n点击“其它标的”后可使用统一结构源规则编辑器。',
+                style: TextStyle(color: Colors.white54, height: 1.45),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _InfoLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _InfoLine(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(width: 86, child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12))),
+          Expanded(child: Text(value, style: const TextStyle(color: Colors.white70, fontSize: 12))),
+        ],
       ),
     );
   }
@@ -1094,8 +1045,7 @@ class _ResearchResultView extends StatelessWidget {
   final ScrollController scrollController;
   final String Function(Object? value) valueText;
   final String Function(Object? value) pctText;
-  final List<Map<String, dynamic>> Function(Object? value, {String? nestedKey})
-      rowsFrom;
+  final List<Map<String, dynamic>> Function(Object? value, {String? nestedKey}) rowsFrom;
   final Map<String, dynamic> Function(Object? value) mapFrom;
   final void Function(Map<String, dynamic> row, {String label}) onLocate;
 
@@ -1114,19 +1064,17 @@ class _ResearchResultView extends StatelessWidget {
   Widget build(BuildContext context) {
     final data = result;
     if (data == null) {
-      return const Center(
-        child: Text('暂无结果', style: TextStyle(color: Colors.white54)),
-      );
+      return const Center(child: Text('暂无结果', style: TextStyle(color: Colors.white54)));
     }
-    final features = rowsFrom(data['features'], nestedKey: 'features');
-    final scores = rowsFrom(data['scores'], nestedKey: 'scores');
     final backtest = data['backtest'] is Map ? mapFrom(data['backtest']) : data;
-    final trades = rowsFrom(backtest['trades'], nestedKey: 'trades');
-    final entryEvents = rowsFrom(backtest['entry_events']);
-    final exitEvents = rowsFrom(backtest['exit_events']);
-    final equityCurve = rowsFrom(backtest['equity_curve']);
     final summary = mapFrom(backtest['summary']);
     final meta = mapFrom(backtest['meta']);
+    final features = rowsFrom(data['features'], nestedKey: 'features');
+    final scores = rowsFrom(data['scores'], nestedKey: 'scores');
+    final entryEvents = rowsFrom(backtest['entry_events']);
+    final exitEvents = rowsFrom(backtest['exit_events']);
+    final trades = rowsFrom(backtest['trades']);
+    final sourceCounts = mapFrom(meta['structure_source_counts']);
 
     return Scrollbar(
       controller: scrollController,
@@ -1143,21 +1091,22 @@ class _ResearchResultView extends StatelessWidget {
               _SummaryGrid(cards: [
                 _SummaryCardData('Features', '${features.length}', Icons.table_chart),
                 _SummaryCardData('Scores', '${scores.length}', Icons.psychology),
-                _SummaryCardData('Trades',
-                    '${summary['trade_count'] ?? trades.length}', Icons.show_chart),
+                _SummaryCardData('Entry', '${entryEvents.length}', Icons.login),
+                _SummaryCardData('Exit', '${exitEvents.length}', Icons.logout),
+                _SummaryCardData('Trades', '${summary['trade_count'] ?? trades.length}', Icons.show_chart),
                 _SummaryCardData('Win rate', pctText(summary['win_rate']), Icons.percent),
-                _SummaryCardData('Total return',
-                    pctText(summary['total_return']), Icons.trending_up),
-                _SummaryCardData('Signal source',
-                    '${meta['seg_composite_signal_source'] ?? '--'}', Icons.layers),
-                _SummaryCardData('PF', valueText(summary['profit_factor']),
-                    Icons.functions),
-                _SummaryCardData('Max DD', pctText(summary['max_drawdown']),
-                    Icons.trending_down),
+                _SummaryCardData('Total return', pctText(summary['total_return']), Icons.trending_up),
+                _SummaryCardData('Signal source', '${meta['seg_composite_signal_source'] ?? '--'}', Icons.layers),
               ]),
-              const SizedBox(height: 12),
-              if (equityCurve.length > 1 || trades.isNotEmpty)
-                _BacktestCharts(equityCurve: equityCurve, trades: trades),
+              if (sourceCounts.isNotEmpty)
+                _PreviewTable(
+                  title: '结构源计数',
+                  rows: [
+                    for (final entry in sourceCounts.entries) {'source': entry.key, 'count': entry.value},
+                  ],
+                  columns: const ['source', 'count'],
+                  valueText: valueText,
+                ),
               if (entryEvents.isNotEmpty)
                 _PreviewTable(
                   title: '入场信号（点击定位K线）',
@@ -1202,24 +1151,73 @@ class _ResearchResultView extends StatelessWidget {
               tilePadding: EdgeInsets.zero,
               collapsedIconColor: Colors.white54,
               iconColor: Colors.white70,
-              title: const Text('原始 JSON',
-                  style: TextStyle(
-                      color: Colors.white70, fontWeight: FontWeight.bold)),
+              title: const Text('原始 JSON', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
               children: [
                 Align(
                   alignment: Alignment.centerLeft,
                   child: SelectableText(
                     rawJson,
-                    style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                        color: Colors.white70),
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.white70),
                   ),
                 ),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PreviewTable extends StatelessWidget {
+  final String title;
+  final List<Map<String, dynamic>> rows;
+  final List<String> columns;
+  final String Function(Object? value) valueText;
+  final ValueChanged<Map<String, dynamic>>? onRowTap;
+
+  const _PreviewTable({
+    required this.title,
+    required this.rows,
+    required this.columns,
+    required this.valueText,
+    this.onRowTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final previewRows = rows.take(30).toList(growable: false);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$title（显示 ${previewRows.length}/${rows.length}）', style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: DecoratedBox(
+              decoration: BoxDecoration(border: Border.all(color: Colors.white10)),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingRowHeight: 34,
+                  dataRowMinHeight: 32,
+                  dataRowMaxHeight: 40,
+                  columnSpacing: 18,
+                  columns: [for (final col in columns) DataColumn(label: Text(col, style: _headerStyle))],
+                  rows: [
+                    for (final row in previewRows)
+                      DataRow(
+                        onSelectChanged: onRowTap == null ? null : (_) => onRowTap!(row),
+                        cells: [for (final col in columns) DataCell(Text(valueText(row[col]), style: _cellStyle))],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1243,364 +1241,34 @@ class _SummaryGrid extends StatelessWidget {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: [for (final card in cards) _SummaryCard(card: card)],
-    );
-  }
-}
-
-class _SummaryCard extends StatelessWidget {
-  final _SummaryCardData card;
-
-  const _SummaryCard({required this.card});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 132,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        children: [
-          Icon(card.icon, size: 18, color: Colors.white60),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final card in cards)
+          Container(
+            width: 132,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F172A),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Row(
               children: [
-                Text(card.label,
-                    style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                const SizedBox(height: 3),
-                Text(card.value,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w700)),
+                Icon(card.icon, size: 18, color: Colors.white60),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(card.label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                      const SizedBox(height: 3),
+                      Text(card.value, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BacktestCharts extends StatelessWidget {
-  final List<Map<String, dynamic>> equityCurve;
-  final List<Map<String, dynamic>> trades;
-
-  const _BacktestCharts({required this.equityCurve, required this.trades});
-
-  @override
-  Widget build(BuildContext context) {
-    final equity = [
-      for (final row in equityCurve)
-        if (row['equity'] is num) (row['equity'] as num).toDouble(),
-    ];
-    final returns = [
-      for (final row in trades)
-        if (row['net_return'] is num) (row['net_return'] as num).toDouble(),
-    ];
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: [
-          _MiniSeriesChart(
-            title: '权益曲线',
-            values: equity,
-            color: const Color(0xFF4ADE80),
-          ),
-          _MiniSeriesChart(
-            title: '单笔收益',
-            values: returns,
-            color: const Color(0xFF60A5FA),
-            baseline: 0,
-            bars: true,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MiniSeriesChart extends StatelessWidget {
-  final String title;
-  final List<double> values;
-  final Color color;
-  final double? baseline;
-  final bool bars;
-
-  const _MiniSeriesChart({
-    required this.title,
-    required this.values,
-    required this.color,
-    this.baseline,
-    this.bars = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 250,
-      height: 150,
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title,
-              style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(height: 5),
-          Expanded(
-            child: values.isEmpty
-                ? const Center(
-                    child: Text('无数据',
-                        style: TextStyle(color: Colors.white38, fontSize: 11)))
-                : CustomPaint(
-                    painter: _SeriesPainter(
-                      values: values,
-                      color: color,
-                      baseline: baseline,
-                      bars: bars,
-                    ),
-                    size: Size.infinite,
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SeriesPainter extends CustomPainter {
-  final List<double> values;
-  final Color color;
-  final double? baseline;
-  final bool bars;
-
-  const _SeriesPainter({
-    required this.values,
-    required this.color,
-    required this.baseline,
-    required this.bars,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    var minValue = values.reduce((a, b) => a < b ? a : b);
-    var maxValue = values.reduce((a, b) => a > b ? a : b);
-    if (baseline != null) {
-      minValue = minValue < baseline! ? minValue : baseline!;
-      maxValue = maxValue > baseline! ? maxValue : baseline!;
-    }
-    if ((maxValue - minValue).abs() < 1e-12) maxValue = minValue + 1;
-    double yOf(double value) =>
-        size.height - (value - minValue) / (maxValue - minValue) * size.height;
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-    final step = values.length <= 1 ? size.width : size.width / (values.length - 1);
-    if (bars) {
-      final zeroY = yOf(baseline ?? 0);
-      final barPaint = Paint()
-        ..color = color.withValues(alpha: 0.75)
-        ..style = PaintingStyle.fill;
-      for (var index = 0; index < values.length; index++) {
-        final x = values.length == 1 ? size.width / 2 : index * step;
-        canvas.drawLine(Offset(x, zeroY), Offset(x, yOf(values[index])),
-            barPaint..strokeWidth = (step * 0.55).clamp(2, 10));
-      }
-      return;
-    }
-    final path = Path();
-    for (var index = 0; index < values.length; index++) {
-      final point = Offset(index * step, yOf(values[index]));
-      if (index == 0) {
-        path.moveTo(point.dx, point.dy);
-      } else {
-        path.lineTo(point.dx, point.dy);
-      }
-    }
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _SeriesPainter oldDelegate) =>
-      oldDelegate.values != values ||
-      oldDelegate.color != color ||
-      oldDelegate.baseline != baseline ||
-      oldDelegate.bars != bars;
-}
-
-class _PreviewTable extends StatelessWidget {
-  final String title;
-  final List<Map<String, dynamic>> rows;
-  final List<String> columns;
-  final String Function(Object? value) valueText;
-  final ValueChanged<Map<String, dynamic>>? onRowTap;
-
-  const _PreviewTable({
-    required this.title,
-    required this.rows,
-    required this.columns,
-    required this.valueText,
-    this.onRowTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final previewRows = rows.take(30).toList(growable: false);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('$title（显示 ${previewRows.length}/${rows.length}）',
-              style: const TextStyle(
-                  color: Colors.white70, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: DecoratedBox(
-              decoration: BoxDecoration(border: Border.all(color: Colors.white10)),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  headingRowHeight: 34,
-                  dataRowMinHeight: 32,
-                  dataRowMaxHeight: 40,
-                  columnSpacing: 18,
-                  columns: [
-                    for (final col in columns)
-                      DataColumn(label: Text(col, style: _headerStyle)),
-                  ],
-                  rows: [
-                    for (final row in previewRows)
-                      DataRow(
-                          onSelectChanged:
-                              onRowTap == null ? null : (_) => onRowTap!(row),
-                          cells: [
-                            for (final col in columns)
-                              DataCell(Text(valueText(row[col]),
-                                  style: _cellStyle)),
-                          ]),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BacktestRecordList extends StatelessWidget {
-  final ScrollController scrollController;
-  final String Function(Object? value) pctText;
-  final String Function(Object? value) valueText;
-  final String Function(DateTime value) timeText;
-
-  const _BacktestRecordList({
-    required this.scrollController,
-    required this.pctText,
-    required this.valueText,
-    required this.timeText,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<List<BacktestRecord>>(
-      valueListenable: ReplayAnalysisStore.backtestRecords,
-      builder: (context, records, _) {
-        if (records.isEmpty) {
-          return const Center(
-            child: Text('暂无回测记录', style: TextStyle(color: Colors.white54)),
-          );
-        }
-        return Scrollbar(
-          controller: scrollController,
-          thumbVisibility: true,
-          child: SingleChildScrollView(
-            controller: scrollController,
-            padding: const EdgeInsets.all(10),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowHeight: 34,
-                dataRowMinHeight: 32,
-                dataRowMaxHeight: 40,
-                columnSpacing: 18,
-                columns: const [
-                  DataColumn(label: Text('时间', style: _headerStyle)),
-                  DataColumn(label: Text('来源', style: _headerStyle)),
-                  DataColumn(label: Text('标的', style: _headerStyle)),
-                  DataColumn(label: Text('周期', style: _headerStyle)),
-                  DataColumn(label: Text('交易数', style: _headerStyle)),
-                  DataColumn(label: Text('胜率', style: _headerStyle)),
-                  DataColumn(label: Text('最大回撤', style: _headerStyle)),
-                  DataColumn(label: Text('PF', style: _headerStyle)),
-                  DataColumn(label: Text('总收益', style: _headerStyle)),
-                  DataColumn(label: Text('最终权益', style: _headerStyle)),
-                ],
-                rows: [
-                  for (final record in records)
-                    DataRow(cells: [
-                      DataCell(Text(timeText(record.createdAt),
-                          style: _cellStyle)),
-                      DataCell(Text(record.source, style: _cellStyle)),
-                      DataCell(Text(record.symbol, style: _cellStyle)),
-                      DataCell(Text(record.period, style: _cellStyle)),
-                      DataCell(Text('${record.tradeCount}', style: _cellStyle)),
-                      DataCell(Text(pctText(record.winRate), style: _cellStyle)),
-                      DataCell(Text(pctText(record.maxDrawdown), style: _cellStyle)),
-                      DataCell(Text(valueText(record.profitFactor),
-                          style: _cellStyle)),
-                      DataCell(Text(pctText(record.totalReturn), style: _cellStyle)),
-                      DataCell(Text(valueText(record.finalEquity), style: _cellStyle)),
-                    ]),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-const _headerStyle = TextStyle(color: Colors.white70, fontSize: 12);
-const _cellStyle = TextStyle(color: Colors.white60, fontSize: 12);
-
-class _ErrorBanner extends StatelessWidget {
-  final String message;
-
-  const _ErrorBanner({required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF7F1D1D).withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(10),
-        border:
-            Border.all(color: const Color(0xFFFCA5A5).withValues(alpha: 0.32)),
-      ),
-      child: Text(message, style: const TextStyle(color: Colors.white)),
+      ],
     );
   }
 }
@@ -1623,21 +1291,18 @@ class _ActionButton extends StatelessWidget {
     return FilledButton.icon(
       onPressed: running ? null : onPressed,
       icon: running
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2))
+          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
           : Icon(icon, size: 18),
       label: Text(label),
     );
   }
 }
 
-class _JsonPanel extends StatelessWidget {
+class _Panel extends StatelessWidget {
   final String title;
   final Widget child;
 
-  const _JsonPanel({required this.title, required this.child});
+  const _Panel({required this.title, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -1652,8 +1317,7 @@ class _JsonPanel extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-            child: Text(title,
-                style: const TextStyle(fontWeight: FontWeight.bold)),
+            child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
           const Divider(height: 1),
           Expanded(child: child),
@@ -1662,6 +1326,29 @@ class _JsonPanel extends StatelessWidget {
     );
   }
 }
+
+class _ErrorBanner extends StatelessWidget {
+  final String message;
+
+  const _ErrorBanner({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF7F1D1D).withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFFCA5A5).withValues(alpha: 0.32)),
+      ),
+      child: Text(message, style: const TextStyle(color: Colors.white)),
+    );
+  }
+}
+
+const _headerStyle = TextStyle(color: Colors.white70, fontSize: 12);
+const _cellStyle = TextStyle(color: Colors.white60, fontSize: 12);
 
 String _timeText(DateTime value) {
   String two(int n) => n.toString().padLeft(2, '0');
