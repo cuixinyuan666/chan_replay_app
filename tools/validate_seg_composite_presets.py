@@ -68,7 +68,7 @@ _PRESETS: dict[str, dict[str, Any]] = {
         },
     },
     'endpoint_layer2_buy': {
-        'label': '候选：2段向下段结束买点',
+        'label': '非真实BSP：2层递归段下跌终点候选',
         'signal_source': 'endpoint_candidate',
         'entry_rule': {
             'conditions': [
@@ -78,7 +78,7 @@ _PRESETS: dict[str, dict[str, Any]] = {
         },
     },
     'endpoint_layer3_buy': {
-        'label': '候选：3段向下段结束买点',
+        'label': '非真实BSP：3层递归段下跌终点候选',
         'signal_source': 'endpoint_candidate',
         'entry_rule': {
             'conditions': [
