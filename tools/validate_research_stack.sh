@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate research backend, other-target flow, and native chan feature columns.
+# Validate research backend, other-target flow, native chan features, and segN presets.
 # Designed for Git Bash / MINGW64 on Windows and regular bash on Linux/macOS.
 
 set -u
@@ -48,6 +48,7 @@ PYTHONPATH=. "$PYTHON_BIN" -m py_compile \
   tools/validate_research_api_routes_contract.py \
   tools/validate_research_other_target_flow.py \
   tools/validate_research_native_feature_columns.py \
+  tools/validate_seg_composite_presets.py \
   || fail "python syntax check failed"
 
 step "pick free backend port"
@@ -110,6 +111,13 @@ PYTHONPATH=. "$PYTHON_BIN" tools/validate_research_native_feature_columns.py \
   --base-url "$BASE_URL" \
   --timeout "$VALIDATE_TIMEOUT" \
   || fail "native chan feature column validation failed"
+
+step "validate segN preset rules"
+PYTHONPATH=. "$PYTHON_BIN" tools/validate_seg_composite_presets.py \
+  --base-url "$BASE_URL" \
+  --timeout "$VALIDATE_TIMEOUT" \
+  --require-loose-signal \
+  || fail "segN preset validation failed"
 
 step "done"
 echo "[OK] research stack validation passed"
