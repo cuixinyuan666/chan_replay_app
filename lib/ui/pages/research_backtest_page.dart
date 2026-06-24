@@ -132,7 +132,7 @@ class _ResearchBacktestPageState extends State<ResearchBacktestPage> {
 
   String _effectiveSignalSource() {
     final rows = [..._entryConditions, if (_useExitConditions) ..._exitConditions];
-    final needsRealBsp = rows.any((condition) => condition.isRealNsegBsp);
+    final needsRealBsp = rows.any((condition) => condition.isRealBsp);
     final needsCandidate = rows.any((condition) => condition.isEndpointCandidate);
     if (needsRealBsp && needsCandidate) return 'auto';
     if (needsCandidate) return 'endpoint_candidate';
@@ -511,31 +511,54 @@ class _RuleCondition {
     required this.type,
   });
 
-  bool get isEndpointCandidate => structure == 'bi' || structure == 'seg' || type == 'endpoint';
-  bool get isRealNsegBsp => structure == 'nseg' && type != 'endpoint';
+  bool get isEndpointCandidate => type == 'endpoint';
+  bool get isRealBsp => type != 'endpoint';
 
   Map<String, dynamic> toJson() {
-    if (structure == 'bi') {
+    if (type == 'endpoint') {
+      if (structure == 'bi') {
+        return {
+          'source': 'bi_endpoint_candidate',
+          'structure': 'bi',
+          'layer': 2,
+          'side': side,
+          'types': <String>[],
+        };
+      }
+      if (structure == 'seg') {
+        return {
+          'source': 'seg_endpoint_candidate',
+          'structure': 'seg',
+          'layer': 2,
+          'side': side,
+          'types': <String>[],
+        };
+      }
       return {
-        'source': 'bi_endpoint_candidate',
-        'layer': 2,
+        'source': 'recursive_seg_endpoint_candidate',
+        'structure': 'nseg',
+        'layer': layer,
         'side': side,
         'types': <String>[],
       };
     }
-    if (structure == 'seg') {
+
+    if (structure == 'nseg') {
       return {
-        'source': 'seg_endpoint_candidate',
-        'layer': 2,
+        'source': 'recursive_seg_bsp',
+        'structure': 'nseg',
+        'layer': layer,
         'side': side,
-        'types': <String>[],
+        'types': [type],
       };
     }
+
     return {
-      'source': type == 'endpoint' ? 'recursive_seg_endpoint_candidate' : 'recursive_seg_bsp',
-      'layer': layer,
+      'source': 'origin_bsp',
+      'structure': structure,
+      'layer': 2,
       'side': side,
-      'types': type == 'endpoint' ? <String>[] : [type],
+      'types': [type],
     };
   }
 }
@@ -697,7 +720,7 @@ class _SimpleRuleEditor extends StatelessWidget {
   Widget _conditionRow(List<_RuleCondition> rows, int index) {
     final row = rows[index];
     final isNseg = row.structure == 'nseg';
-    final types = isNseg ? _bspTypes : const ['endpoint'];
+    final types = _bspTypes;
     if (!types.contains(row.type)) row.type = 'endpoint';
     return Wrap(
       spacing: 8,
@@ -713,10 +736,7 @@ class _SimpleRuleEditor extends StatelessWidget {
             onChanged: (value) {
               if (value == null) return;
               row.structure = value;
-              if (value != 'nseg') {
-                row.layer = 2;
-                row.type = 'endpoint';
-              }
+              if (value != 'nseg') row.layer = 2;
               onChanged();
             },
           ),
@@ -818,7 +838,7 @@ class _RuleHelp extends StatelessWidget {
         border: Border.all(color: Colors.white10),
       ),
       child: const Text(
-        '只保留三轴：执行模式 once/step；结构 笔/线段/N段；买卖点类型。笔和线段目前对应端点候选；N段支持 B/S1、B/S1p、B/S2、B/S2s、B/S3a、B/S3b 和端点候选。',
+        '只保留三轴：执行模式 once/step；结构 笔/线段/N段；买卖点类型。三种结构都会显示完整买卖点类型下拉；笔/线段选择终点候选时走端点候选，选择 B/S 类型时走已验证的真实 BSP 事件源；N段走递归段真实 BSP 或递归段端点候选。',
         style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
     );
