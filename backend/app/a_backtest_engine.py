@@ -48,6 +48,11 @@ def _time(row: dict[str, Any]) -> Any:
     return _get(row, 'time', 'dt', 'datetime', 'date')
 
 
+def _bar_raw_index(row: dict[str, Any], fallback: int) -> int:
+    value = _int(_get(row, 'raw_index', 'rawIndex', 'index'))
+    return fallback if value is None else value
+
+
 def _is_buy(row: dict[str, Any]) -> bool:
     if 'is_buy' in row:
         return bool(row.get('is_buy'))
@@ -119,10 +124,9 @@ def _score_signals_from_analysis(analysis: dict[str, Any], opts: dict[str, Any])
     if isinstance(raw_signals, list) and raw_signals:
         return [row for row in raw_signals if isinstance(row, dict)], 'analysis_scores_or_features'
 
-    # The current /api/research/pipeline route invokes run_bsp_backtest with the
-    # original analysis object after computing feature and score payloads.  Keep
-    # the engine route-safe by deriving a transparent baseline score internally
-    # when no scored rows are embedded in the input yet.
+    # Route-safe fallback for older clients that call /backtest with only raw
+    # chan.py analysis JSON.  The explicit /pipeline route injects scores into
+    # analysis before calling this function, so it does not rely on this branch.
     try:
         from .a_bsp_feature_engine import extract_bsp_features
         from .a_ml_bridge import score_bsp_features
@@ -141,6 +145,51 @@ def _score_signals_from_analysis(analysis: dict[str, Any], opts: dict[str, Any])
 
     raw_bsp = analysis.get('bsp') or []
     return [row for row in raw_bsp if isinstance(row, dict)], 'analysis_bsp_fallback'
+
+
+def _add_drawdown(equity_curve: list[dict[str, Any]]) -> float:
+    peak = 1.0
+    max_drawdown = 0.0
+    for point in equity_curve:
+        equity = float(point.get('equity') or 1.0)
+        peak = max(peak, equity)
+        drawdown = equity / peak - 1.0
+        point['drawdown'] = drawdown
+        point['peak_equity'] = peak
+        max_drawdown = min(max_drawdown, drawdown)
+    return max_drawdown
+
+
+def _summary(trades: list[dict[str, Any]], equity_curve: list[dict[str, Any]]) -> dict[str, Any]:
+    returns = [float(row['net_return']) for row in trades]
+    wins = [value for value in returns if value > 0]
+    losses = [value for value in returns if value <= 0]
+    gross_profit = sum(wins)
+    gross_loss = abs(sum(losses))
+    avg_win = sum(wins) / len(wins) if wins else 0.0
+    avg_loss = sum(losses) / len(losses) if losses else 0.0
+    avg_return = sum(returns) / len(returns) if returns else 0.0
+    max_drawdown = _add_drawdown(equity_curve)
+    final_equity = float(equity_curve[-1]['equity']) if equity_curve else 1.0
+    profit_factor = None if gross_loss == 0 else gross_profit / gross_loss
+    return {
+        'trade_count': len(trades),
+        'win_count': len(wins),
+        'loss_count': len(losses),
+        'win_rate': len(wins) / len(trades) if trades else None,
+        'avg_return': avg_return,
+        'avg_win': avg_win,
+        'avg_loss': avg_loss,
+        'payoff_ratio': None if avg_loss == 0 else abs(avg_win / avg_loss),
+        'gross_profit': gross_profit,
+        'gross_loss': gross_loss,
+        'profit_factor': profit_factor,
+        'profit_factor_status': 'undefined_no_losses' if gross_loss == 0 and gross_profit > 0 else 'ok',
+        'expectancy': avg_return,
+        'max_drawdown': max_drawdown,
+        'total_return': final_equity - 1.0,
+        'final_equity': final_equity,
+    }
 
 
 def run_bsp_backtest(
@@ -187,6 +236,15 @@ def run_bsp_backtest(
         key=lambda s: _int(_get(s, 'raw_index', 'rawIndex')) or -1,
     )
     trades: list[dict[str, Any]] = []
+    equity_curve: list[dict[str, Any]] = [
+        {
+            'raw_index': _bar_raw_index(bars[0], 0) if bars else 0,
+            'time': _time(bars[0]) if bars else None,
+            'equity': 1.0,
+            'drawdown': 0.0,
+            'event': 'start',
+        }
+    ]
     cursor = -1
     equity = 1.0
     for signal in buy_signals:
@@ -217,15 +275,16 @@ def run_bsp_backtest(
         net_return = gross_return - fee * 2.0
         equity *= 1.0 + net_return
         cursor = exit_idx
-        trades.append({
+        trade = {
             'entry_signal_index': raw_index,
             'entry_signal_raw_index': raw_index,
+            'entry_signal_time': _get(signal, 'time', 'dt', 'datetime', 'date'),
             'entry_index': entry_idx,
-            'entry_raw_index': entry_idx,
+            'entry_raw_index': _bar_raw_index(bars[entry_idx], entry_idx),
             'entry_time': _time(bars[entry_idx]),
             'entry_price': entry,
             'exit_index': exit_idx,
-            'exit_raw_index': exit_idx,
+            'exit_raw_index': _bar_raw_index(bars[exit_idx], exit_idx),
             'exit_time': _time(bars[exit_idx]),
             'exit_price': exit_,
             'exit_reason': reason,
@@ -236,36 +295,31 @@ def run_bsp_backtest(
             'ml_signal': signal.get('ml_signal'),
             'type': signal.get('type'),
             'level': signal.get('level'),
+            'equity': equity,
+        }
+        trades.append(trade)
+        equity_curve.append({
+            'raw_index': trade['exit_raw_index'],
+            'time': trade['exit_time'],
+            'equity': equity,
+            'drawdown': None,
+            'event': 'trade_exit',
+            'trade_index': len(trades) - 1,
+            'net_return': net_return,
         })
 
-    wins = [t for t in trades if t['net_return'] > 0]
-    losses = [t for t in trades if t['net_return'] <= 0]
-    total_return = equity - 1.0
-    avg_win = sum(t['net_return'] for t in wins) / len(wins) if wins else 0.0
-    avg_loss = sum(t['net_return'] for t in losses) / len(losses) if losses else 0.0
-    gross_profit = sum(t['net_return'] for t in wins)
-    gross_loss = abs(sum(t['net_return'] for t in losses))
+    summary = _summary(trades, equity_curve)
     return {
         'ok': True,
         'trades': trades,
-        'summary': {
-            'trade_count': len(trades),
-            'win_count': len(wins),
-            'loss_count': len(losses),
-            'win_rate': len(wins) / len(trades) if trades else None,
-            'avg_win': avg_win,
-            'avg_loss': avg_loss,
-            'payoff_ratio': None if avg_loss == 0 else abs(avg_win / avg_loss),
-            'profit_factor': None if gross_loss == 0 else gross_profit / gross_loss,
-            'max_drawdown': None,
-            'total_return': total_return,
-            'final_equity': equity,
-        },
+        'equity_curve': equity_curve,
+        'summary': summary,
         'meta': {
             'source': 'origin_vespa_tdx.backend.a_backtest_engine',
             'signal_source': signal_source,
             'execution': 'next_bar_open_or_close_fallback',
             'same_bar_lookahead': False,
+            'equity_curve_points': len(equity_curve),
             'chan_py_polluted': False,
             'options': {
                 'fee_bps': fee * 10000.0,
