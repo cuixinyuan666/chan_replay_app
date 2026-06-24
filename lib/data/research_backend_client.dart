@@ -246,7 +246,7 @@ class _ResearchLocalPythonProcess {
         dir = parent;
       }
     }
-    throw FileSystemException('Cannot locate backend/app_engine.py');
+    throw const FileSystemException('Cannot locate backend/app_engine.py');
   }
 
   static Iterable<File> _appEngineCandidatesFrom(Directory dir) sync* {
@@ -260,8 +260,8 @@ class _ResearchLocalPythonProcess {
     final localVenv = File('$repoRoot/.venv/Scripts/python.exe');
     return [
       _PythonCandidate(localVenv.path),
-      _PythonCandidate('python'),
-      _PythonCandidate('py'),
+      const _PythonCandidate('python'),
+      const _PythonCandidate('py'),
     ];
   }
 
