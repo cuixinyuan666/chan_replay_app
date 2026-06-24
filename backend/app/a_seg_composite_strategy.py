@@ -93,6 +93,178 @@ def _signal_source_mode(options: dict[str, Any] | None) -> str:
     return 'real_bsp'
 
 
+def _obj_attr(obj: Any, names: tuple[str, ...], default: Any = None) -> Any:
+    for name in names:
+        try:
+            if hasattr(obj, name):
+                return getattr(obj, name)
+        except Exception:  # noqa: BLE001 - defensive object introspection only
+            continue
+    return default
+
+
+def _obj_call(obj: Any, names: tuple[str, ...], default: Any = None) -> Any:
+    for name in names:
+        try:
+            value = getattr(obj, name, None)
+        except Exception:  # noqa: BLE001
+            continue
+        if callable(value):
+            try:
+                return value()
+            except TypeError:
+                continue
+            except Exception:  # noqa: BLE001
+                continue
+        if value is not None:
+            return value
+    return default
+
+
+def _obj_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    rows = _obj_attr(value, ('lst', 'items'), None)
+    if rows is not None and rows is not value:
+        try:
+            return list(rows)
+        except TypeError:
+            pass
+    try:
+        return list(value)
+    except TypeError:
+        return []
+
+
+def _obj_idx(obj: Any) -> int | None:
+    return _int(_obj_attr(obj, ('idx', 'index', 'klu_idx', 'id'), None))
+
+
+def _obj_time(obj: Any) -> str | None:
+    value = _obj_attr(obj, ('time', 'dt', 'date', 'datetime', 'time_begin'), None)
+    return None if value is None else str(value)
+
+
+def _looks_like_klu(obj: Any) -> bool:
+    if obj is None or _obj_idx(obj) is None:
+        return False
+    return any(
+        _obj_attr(obj, (name,), None) is not None
+        for name in ('low', 'high', 'close', 'open', 'time', 'dt', 'date')
+    )
+
+
+def _trace_endpoint_klu(obj: Any, *, end: bool, depth: int = 0) -> Any:
+    if obj is None or depth > 20:
+        return None
+    if _looks_like_klu(obj):
+        return obj
+    direct = _obj_call(obj, ('get_end_klu',) if end else ('get_begin_klu',), None)
+    if direct is not None:
+        traced = _trace_endpoint_klu(direct, end=end, depth=depth + 1)
+        if traced is not None:
+            return traced
+    attrs = (
+        ('end_klu', 'end_klc', 'end_bi', 'end_seg', 'end')
+        if end
+        else ('begin_klu', 'begin_klc', 'start_klu', 'start_klc', 'begin_bi', 'start_bi', 'begin_seg', 'start_seg', 'begin', 'start')
+    )
+    for name in attrs:
+        child = _obj_attr(obj, (name,), None)
+        if child is None or child is obj:
+            continue
+        traced = _trace_endpoint_klu(child, end=end, depth=depth + 1)
+        if traced is not None:
+            return traced
+    return None
+
+
+def _line_direction_obj(line: Any) -> str:
+    text = str(_obj_attr(line, ('dir', 'direction', 'bi_dir'), '') or '').lower()
+    if 'down' in text:
+        return 'down'
+    if 'up' in text:
+        return 'up'
+    for name, result in (('is_down', 'down'), ('is_up', 'up')):
+        value = _obj_call(line, (name,), None)
+        if isinstance(value, bool) and value:
+            return result
+    begin = _num(_obj_call(line, ('get_begin_val',), None))
+    finish = _num(_obj_call(line, ('get_end_val',), None))
+    if begin is not None and finish is not None:
+        return 'up' if finish >= begin else 'down'
+    return text
+
+
+def _line_endpoint_value(line: Any, klu: Any, *, end: bool, is_buy: bool) -> float | None:
+    value = _num(_obj_call(line, ('get_end_val',) if end else ('get_begin_val',), None))
+    if value is not None:
+        return value
+    priority = ('low', 'close', 'open', 'high') if is_buy else ('high', 'close', 'open', 'low')
+    for name in priority:
+        value = _num(_obj_attr(klu, (name,), None))
+        if value is not None:
+            return value
+    return None
+
+
+def _candidate_type_for_direction(layer: int, direction: str) -> tuple[str, bool]:
+    text = str(direction or '').lower()
+    if 'down' in text:
+        return f'SEG{layer}_B', True
+    if 'up' in text:
+        return f'SEG{layer}_S', False
+    return f'SEG{layer}_BSP', True
+
+
+def _endpoint_candidate_rows_from_lines(layer: int, line_objects: Any) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[int, str, int]] = set()
+    for fallback, line in enumerate(_obj_list(line_objects)):
+        direction = _line_direction_obj(line)
+        type_text, is_buy = _candidate_type_for_direction(layer, direction)
+        end_klu = _trace_endpoint_klu(line, end=True)
+        raw_index = _obj_idx(end_klu)
+        if raw_index is None:
+            continue
+        price = _line_endpoint_value(line, end_klu, end=True, is_buy=is_buy)
+        if price is None:
+            continue
+        segment_index = _obj_idx(line)
+        if segment_index is None:
+            segment_index = fallback
+        key = (raw_index, type_text, segment_index)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({
+            'index': len(rows),
+            'raw_index': raw_index,
+            'recognized_raw_index': raw_index,
+            'time': _obj_time(end_klu),
+            'recognized_time': _obj_time(end_klu),
+            'price': price,
+            'type': type_text,
+            'level': 'segseg' if int(layer) == 2 else f'seg{int(layer)}',
+            'seg_index': segment_index,
+            'recursive_seg_layer': int(layer),
+            'recursive_seg_index': segment_index,
+            'confirmed': True,
+            'source': 'recursive_seg_endpoint_candidate_runtime',
+            'derived': True,
+            'candidate_only': True,
+            'direction': direction,
+            'is_buy': is_buy,
+            'evidence_key': f'seg{layer}#{segment_index}@raw={raw_index}',
+            'candidate_policy': 'runtime segment endpoint candidate; not chan.py CBSPointList BSP',
+        })
+    return _sort_signal_rows(rows)
+
+
 def _sort_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(
         (dict(row) for row in rows if isinstance(row, dict)),
@@ -435,11 +607,7 @@ def run_seg_composite_stream_backtest(
         _advance_step_histories_light,
         _latest_level_position,
     )
-    from .a_recursive_seg_manager import (
-        RecursiveSegRuntimeState,
-        _export_line_list,
-        _export_seg_layer_endpoint_bsp,
-    )
+    from .a_recursive_seg_manager import RecursiveSegRuntimeState
     from .easy_tdx_provider import infer_market, normalize_symbol
 
     signal_source = _signal_source_mode(options)
@@ -487,6 +655,7 @@ def run_seg_composite_stream_backtest(
     base_bsp_histories: dict[str, dict[tuple[str, int, bool], dict[str, Any]]] = {}
     timing: dict[str, Any] = {}
     total_frames = 0
+    endpoint_candidate_counts: dict[str, int] = {}
 
     for frame_index, cur_chan in enumerate(step_iter()):
         _advance_step_histories_light(
@@ -520,17 +689,15 @@ def run_seg_composite_stream_backtest(
                 history = signal_state.bsp_history.get(layer, {})
                 rows.extend(dict(row) for row in history.values())
             if include_endpoint_candidate:
-                line_rows = _export_line_list(
+                candidates = _endpoint_candidate_rows_from_lines(
+                    layer,
                     signal_state.line_objects.get(layer),
-                    layer=layer,
-                    input_layer=layer - 1,
                 )
-                for row in _export_seg_layer_endpoint_bsp(layer, line_rows):
-                    candidate = dict(row)
-                    candidate.setdefault('recognized_raw_index', candidate.get('raw_index'))
-                    candidate.setdefault('recognized_time', candidate.get('time'))
-                    candidate['candidate_only'] = True
-                    rows.append(candidate)
+                endpoint_candidate_counts[str(layer)] = max(
+                    endpoint_candidate_counts.get(str(layer), 0),
+                    len(candidates),
+                )
+                rows.extend(candidates)
             grouped[str(layer)] = _sort_signal_rows(rows)
         frame = {
             'levels': {
@@ -594,5 +761,6 @@ def run_seg_composite_stream_backtest(
         'seg_composite_signal_source': signal_source,
         'real_bsp_source_used': include_real_bsp,
         'endpoint_candidate_source_used': include_endpoint_candidate,
+        'endpoint_candidate_layer_counts': endpoint_candidate_counts,
     })
     return result
