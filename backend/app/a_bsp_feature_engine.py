@@ -62,6 +62,19 @@ def _int(value: Any) -> int | None:
         return None
 
 
+def _bool_value(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in {'1', 'true', 'yes', 'y', 'up'}:
+        return True
+    if text in {'0', 'false', 'no', 'n', 'down'}:
+        return False
+    return None
+
+
 def _get(row: dict[str, Any], *keys: str, default: Any = None) -> Any:
     for key in keys:
         if key in row:
@@ -99,6 +112,12 @@ def _safe_pct(numerator: float | None, denominator: float | None) -> float | Non
     return numerator / denominator
 
 
+def _safe_div(numerator: float | None, denominator: float | None) -> float | None:
+    if numerator is None or denominator is None or abs(denominator) < 1e-12:
+        return None
+    return numerator / denominator
+
+
 def _rolling(values: list[float | None], end: int, window: int) -> list[float]:
     start = max(0, end - window + 1)
     return [v for v in values[start:end + 1] if v is not None]
@@ -128,6 +147,201 @@ def _ma_by_index(indicators: dict[str, Any], raw_index: int) -> dict[str, float 
     for period, rows in ma.items():
         result[f'ma_{period}'] = _indicator_by_index(rows, raw_index, 'value')
     return result
+
+
+def _row_start(row: dict[str, Any]) -> int | None:
+    return _int(_get(row, 'start_raw_index', 'startRawIndex', 'begin_raw_index', 'beginRawIndex'))
+
+
+def _row_end(row: dict[str, Any]) -> int | None:
+    return _int(_get(row, 'end_raw_index', 'endRawIndex', 'finish_raw_index', 'finishRawIndex'))
+
+
+def _row_index(row: dict[str, Any]) -> int | None:
+    return _int(_get(row, 'index', 'idx'))
+
+
+def _line_extreme_from_bars(
+    bars: list[dict[str, Any]],
+    start: int | None,
+    end: int | None,
+) -> tuple[float | None, float | None]:
+    if start is None or end is None or not bars:
+        return None, None
+    left = max(0, min(start, end))
+    right = min(len(bars) - 1, max(start, end))
+    if left > right:
+        return None, None
+    highs = [_high(bar) for bar in bars[left:right + 1]]
+    lows = [_low(bar) for bar in bars[left:right + 1]]
+    valid_highs = [value for value in highs if value is not None]
+    valid_lows = [value for value in lows if value is not None]
+    return (max(valid_highs) if valid_highs else None, min(valid_lows) if valid_lows else None)
+
+
+def _line_direction(row: dict[str, Any], start_price: float | None, end_price: float | None) -> bool | None:
+    explicit = _bool_value(_get(row, 'is_up', 'isUp', 'direction_up', 'up'))
+    if explicit is not None:
+        return explicit
+    direction = str(_get(row, 'direction', 'dir', default='')).strip().lower()
+    if direction in {'up', 'rise', 'bull', 'bullish', '向上', '上'}:
+        return True
+    if direction in {'down', 'fall', 'bear', 'bearish', '向下', '下'}:
+        return False
+    if start_price is not None and end_price is not None:
+        return end_price >= start_price
+    return None
+
+
+def _line_missing_context(prefix: str) -> dict[str, Any]:
+    keys = [
+        'index', 'is_up', 'direction', 'is_sure', 'start_raw_index', 'end_raw_index',
+        'start_time', 'end_time', 'start_price', 'end_price', 'high', 'low',
+        'mid_price', 'length_bars', 'price_change', 'price_change_pct',
+        'amplitude_abs', 'amplitude_pct', 'slope_pct_per_bar', 'progress_bars',
+        'progress_ratio', 'age_bars', 'bars_since_end', 'is_active',
+        'close_position_in_range', 'price_to_start_pct', 'price_to_end_pct',
+        'price_to_high_pct', 'price_to_low_pct', 'same_direction_as_bsp',
+        'raw_power', 'raw_slope', 'macd_area', 'volume_sum', 'prev_index',
+        'prev_is_up', 'prev_length_bars', 'prev_amplitude_pct',
+        'length_vs_prev_ratio', 'amplitude_vs_prev_ratio',
+    ]
+    return {f'{prefix}_{key}': None for key in keys}
+
+
+def _line_context(
+    rows: list[Any],
+    raw_index: int,
+    prefix: str,
+    *,
+    bars: list[dict[str, Any]],
+    price: float | None,
+    signal_is_buy: bool,
+) -> dict[str, Any]:
+    candidates: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        start = _row_start(row)
+        end = _row_end(row)
+        if start is None or end is None or start > raw_index:
+            continue
+        if start <= raw_index <= end or end <= raw_index:
+            candidates.append(row)
+    if not candidates:
+        return _line_missing_context(prefix)
+
+    selected = max(
+        candidates,
+        key=lambda row: (
+            _row_end(row) if _row_end(row) is not None else -1,
+            _row_index(row) if _row_index(row) is not None else -1,
+        ),
+    )
+    selected_start = _row_start(selected)
+    selected_end = _row_end(selected)
+    selected_index = _row_index(selected)
+    start_price = _num(_get(selected, 'start_price', 'startPrice', 'begin_price', 'beginPrice'))
+    end_price = _num(_get(selected, 'end_price', 'endPrice', 'finish_price', 'finishPrice'))
+    high = _num(_get(selected, 'high', 'hi', 'max_price', 'maxPrice', 'peak_price', 'peakPrice'))
+    low = _num(_get(selected, 'low', 'lo', 'min_price', 'minPrice', 'valley_price', 'valleyPrice'))
+    if high is None or low is None:
+        bar_high, bar_low = _line_extreme_from_bars(bars, selected_start, selected_end)
+        high = high if high is not None else bar_high
+        low = low if low is not None else bar_low
+    mid_price = (high + low) / 2.0 if high is not None and low is not None else None
+    is_up = _line_direction(selected, start_price, end_price)
+    is_sure = _bool_value(_get(selected, 'is_sure', 'isSure', 'confirmed'))
+    if is_sure is None:
+        is_sure = True
+    length_bars = None if selected_start is None or selected_end is None else max(0, selected_end - selected_start + 1)
+    price_change = None if start_price is None or end_price is None else end_price - start_price
+    price_change_pct = _safe_pct(price_change, start_price)
+    amplitude_abs = None if high is None or low is None else high - low
+    amplitude_pct = _safe_pct(amplitude_abs, mid_price or start_price or end_price)
+    slope_pct_per_bar = _safe_div(price_change_pct, float(length_bars or 0))
+    is_active = bool(selected_start is not None and selected_end is not None and selected_start <= raw_index <= selected_end)
+    progress_bars = None if selected_start is None else max(0, raw_index - selected_start)
+    progress_ratio = _safe_div(
+        None if progress_bars is None else float(progress_bars),
+        None if length_bars is None or length_bars <= 1 else float(length_bars - 1),
+    )
+    if progress_ratio is not None:
+        progress_ratio = max(0.0, min(1.0, progress_ratio))
+    bars_since_end = None if selected_end is None else max(0, raw_index - selected_end)
+    age_bars = 0 if is_active else bars_since_end
+
+    previous: dict[str, Any] | None = None
+    for row in rows:
+        if not isinstance(row, dict) or row is selected:
+            continue
+        row_end = _row_end(row)
+        row_idx = _row_index(row)
+        if row_end is None or selected_start is None or row_end > selected_start:
+            continue
+        if selected_index is not None and row_idx is not None and row_idx >= selected_index:
+            continue
+        if previous is None or (row_end, row_idx or -1) > (_row_end(previous) or -1, _row_index(previous) or -1):
+            previous = row
+    prev_start = _row_start(previous) if previous is not None else None
+    prev_end = _row_end(previous) if previous is not None else None
+    prev_start_price = _num(_get(previous or {}, 'start_price', 'startPrice', 'begin_price', 'beginPrice'))
+    prev_end_price = _num(_get(previous or {}, 'end_price', 'endPrice', 'finish_price', 'finishPrice'))
+    prev_high = _num(_get(previous or {}, 'high', 'hi', 'max_price', 'maxPrice', 'peak_price', 'peakPrice'))
+    prev_low = _num(_get(previous or {}, 'low', 'lo', 'min_price', 'minPrice', 'valley_price', 'valleyPrice'))
+    if previous is not None and (prev_high is None or prev_low is None):
+        bar_high, bar_low = _line_extreme_from_bars(bars, prev_start, prev_end)
+        prev_high = prev_high if prev_high is not None else bar_high
+        prev_low = prev_low if prev_low is not None else bar_low
+    prev_length = None if prev_start is None or prev_end is None else max(0, prev_end - prev_start + 1)
+    prev_mid = (prev_high + prev_low) / 2.0 if prev_high is not None and prev_low is not None else None
+    prev_amplitude = None if prev_high is None or prev_low is None else prev_high - prev_low
+    prev_amplitude_pct = _safe_pct(prev_amplitude, prev_mid or prev_start_price or prev_end_price)
+    prev_is_up = _line_direction(previous or {}, prev_start_price, prev_end_price) if previous is not None else None
+
+    row = {
+        f'{prefix}_index': selected_index,
+        f'{prefix}_is_up': is_up,
+        f'{prefix}_direction': 'up' if is_up is True else ('down' if is_up is False else None),
+        f'{prefix}_is_sure': is_sure,
+        f'{prefix}_start_raw_index': selected_start,
+        f'{prefix}_end_raw_index': selected_end,
+        f'{prefix}_start_time': _get(selected, 'start_time', 'startTime', 'begin_time', 'beginTime'),
+        f'{prefix}_end_time': _get(selected, 'end_time', 'endTime', 'finish_time', 'finishTime'),
+        f'{prefix}_start_price': start_price,
+        f'{prefix}_end_price': end_price,
+        f'{prefix}_high': high,
+        f'{prefix}_low': low,
+        f'{prefix}_mid_price': mid_price,
+        f'{prefix}_length_bars': length_bars,
+        f'{prefix}_price_change': price_change,
+        f'{prefix}_price_change_pct': price_change_pct,
+        f'{prefix}_amplitude_abs': amplitude_abs,
+        f'{prefix}_amplitude_pct': amplitude_pct,
+        f'{prefix}_slope_pct_per_bar': slope_pct_per_bar,
+        f'{prefix}_progress_bars': progress_bars,
+        f'{prefix}_progress_ratio': progress_ratio,
+        f'{prefix}_age_bars': age_bars,
+        f'{prefix}_bars_since_end': bars_since_end,
+        f'{prefix}_is_active': is_active,
+        f'{prefix}_close_position_in_range': _safe_div(None if price is None or low is None else price - low, amplitude_abs),
+        f'{prefix}_price_to_start_pct': _safe_pct(None if price is None or start_price is None else price - start_price, start_price),
+        f'{prefix}_price_to_end_pct': _safe_pct(None if price is None or end_price is None else price - end_price, end_price),
+        f'{prefix}_price_to_high_pct': _safe_pct(None if price is None or high is None else price - high, high),
+        f'{prefix}_price_to_low_pct': _safe_pct(None if price is None or low is None else price - low, low),
+        f'{prefix}_same_direction_as_bsp': None if is_up is None else is_up == signal_is_buy,
+        f'{prefix}_raw_power': _num(_get(selected, 'power', 'strength', 'force')),
+        f'{prefix}_raw_slope': _num(_get(selected, 'slope', 'slope_pct', 'slopePct')),
+        f'{prefix}_macd_area': _num(_get(selected, 'macd_area', 'macdArea', 'macd_power', 'macdPower')),
+        f'{prefix}_volume_sum': _num(_get(selected, 'volume_sum', 'volumeSum', 'vol_sum', 'volSum', 'volume', 'vol')),
+        f'{prefix}_prev_index': _row_index(previous) if previous is not None else None,
+        f'{prefix}_prev_is_up': prev_is_up,
+        f'{prefix}_prev_length_bars': prev_length,
+        f'{prefix}_prev_amplitude_pct': prev_amplitude_pct,
+        f'{prefix}_length_vs_prev_ratio': _safe_div(None if length_bars is None else float(length_bars), None if prev_length is None else float(prev_length)),
+        f'{prefix}_amplitude_vs_prev_ratio': _safe_div(amplitude_pct, prev_amplitude_pct),
+    }
+    return row
 
 
 def _last_zs_distance(zss: list[Any], raw_index: int, price: float | None) -> dict[str, Any]:
@@ -162,39 +376,6 @@ def _last_zs_distance(zss: list[Any], raw_index: int, price: float | None) -> di
         'zs_distance_bars': None,
         'zs_width_pct': None,
         'price_to_zs_center_pct': None,
-    }
-
-
-def _line_context(rows: list[Any], raw_index: int, prefix: str) -> dict[str, Any]:
-    selected: dict[str, Any] | None = None
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        start = _int(_get(row, 'start_raw_index', 'startRawIndex'))
-        end = _int(_get(row, 'end_raw_index', 'endRawIndex'))
-        if start is None or end is None:
-            continue
-        if start <= raw_index <= end or end <= raw_index:
-            if selected is None or (_int(_get(row, 'index')) or -1) > (_int(_get(selected, 'index')) or -1):
-                selected = row
-    if selected is None:
-        return {
-            f'{prefix}_index': None,
-            f'{prefix}_is_up': None,
-            f'{prefix}_is_sure': None,
-            f'{prefix}_length_bars': None,
-            f'{prefix}_amplitude_pct': None,
-        }
-    start = _int(_get(selected, 'start_raw_index', 'startRawIndex'))
-    end = _int(_get(selected, 'end_raw_index', 'endRawIndex'))
-    start_price = _num(_get(selected, 'start_price', 'startPrice'))
-    end_price = _num(_get(selected, 'end_price', 'endPrice'))
-    return {
-        f'{prefix}_index': _int(_get(selected, 'index')),
-        f'{prefix}_is_up': bool(_get(selected, 'is_up', 'isUp', default=False)),
-        f'{prefix}_is_sure': bool(_get(selected, 'is_sure', 'isSure', 'confirmed', default=True)),
-        f'{prefix}_length_bars': None if start is None or end is None else max(0, end - start + 1),
-        f'{prefix}_amplitude_pct': _safe_pct(None if start_price is None or end_price is None else end_price - start_price, start_price),
     }
 
 
@@ -378,9 +559,10 @@ def _feature_technical_indicators(ctx: BspFeatureContext, bsp: dict[str, Any], r
 @register_bsp_feature_extractor('chan_native_bi_seg_zs')
 def _feature_chan_native_context(ctx: BspFeatureContext, bsp: dict[str, Any], raw_index: int) -> FeatureRow:
     price = _num(_get(bsp, 'price', 'value')) or _close(ctx.bars[raw_index])
+    is_buy = bool(_get(bsp, 'is_buy', 'isBuy', default=str(_get(bsp, 'type', '')).upper().startswith('B')))
     return {
-        **_line_context(ctx.bi_rows, raw_index, 'bi'),
-        **_line_context(ctx.seg_rows, raw_index, 'seg'),
+        **_line_context(ctx.bi_rows, raw_index, 'bi', bars=ctx.bars, price=price, signal_is_buy=is_buy),
+        **_line_context(ctx.seg_rows, raw_index, 'seg', bars=ctx.bars, price=price, signal_is_buy=is_buy),
         **_last_zs_distance(ctx.zs_rows, raw_index, price),
     }
 
@@ -511,7 +693,8 @@ def extract_bsp_features(analysis: dict[str, Any], *, label_horizon: int = 5, in
             'bsp_count': len(bsp_rows),
             'feature_count': len(rows),
             'feature_registry': registered_bsp_feature_extractors(),
-            'feature_registry_version': 1,
+            'feature_registry_version': 2,
+            'native_chan_feature_profile': 'bi_seg_zs_expanded_v2',
             'segn_feature_source': 'seg_bsp_history_layers|seg_bsp_layers',
             'label_horizon': label_horizon if include_labels else None,
             'labels_use_future_data': include_labels,
