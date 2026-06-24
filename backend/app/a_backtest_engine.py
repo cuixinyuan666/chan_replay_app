@@ -94,19 +94,85 @@ def _find_exit(
     return max_exit, 'max_hold'
 
 
-def run_bsp_backtest(analysis: dict[str, Any], *, options: dict[str, Any] | None = None) -> dict[str, Any]:
+def _options_from_legacy_kwargs(
+    options: dict[str, Any] | None,
+    *,
+    horizon: int | None,
+    fee_rate: float | None,
+    slippage: float | None,
+    initial_cash: float | None,
+) -> dict[str, Any]:
+    opts = dict(options or {})
+    if horizon is not None and 'max_hold_bars' not in opts:
+        opts['max_hold_bars'] = horizon
+    if fee_rate is not None and 'fee_bps' not in opts:
+        opts['fee_bps'] = float(fee_rate) * 10000.0
+    if slippage is not None and 'slippage_bps' not in opts:
+        opts['slippage_bps'] = float(slippage) * 10000.0
+    if initial_cash is not None:
+        opts['initial_cash'] = float(initial_cash)
+    return opts
+
+
+def _score_signals_from_analysis(analysis: dict[str, Any], opts: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    raw_signals = analysis.get('scores') or analysis.get('features')
+    if isinstance(raw_signals, list) and raw_signals:
+        return [row for row in raw_signals if isinstance(row, dict)], 'analysis_scores_or_features'
+
+    # The current /api/research/pipeline route invokes run_bsp_backtest with the
+    # original analysis object after computing feature and score payloads.  Keep
+    # the engine route-safe by deriving a transparent baseline score internally
+    # when no scored rows are embedded in the input yet.
+    try:
+        from .a_bsp_feature_engine import extract_bsp_features
+        from .a_ml_bridge import score_bsp_features
+
+        features_payload = extract_bsp_features(
+            analysis,
+            label_horizon=max(1, int(opts.get('label_horizon') or opts.get('max_hold_bars') or 5)),
+            include_labels=False,
+        )
+        scored_payload = score_bsp_features(features_payload.get('features', []), model=opts.get('model'))
+        scored = scored_payload.get('scores')
+        if isinstance(scored, list) and scored:
+            return [row for row in scored if isinstance(row, dict)], 'auto_scored_features'
+    except Exception:  # noqa: BLE001 - fall back to raw BSP contract below
+        pass
+
+    raw_bsp = analysis.get('bsp') or []
+    return [row for row in raw_bsp if isinstance(row, dict)], 'analysis_bsp_fallback'
+
+
+def run_bsp_backtest(
+    analysis: dict[str, Any],
+    *,
+    options: dict[str, Any] | None = None,
+    horizon: int | None = None,
+    fee_rate: float | None = None,
+    slippage: float | None = None,
+    initial_cash: float | None = None,
+) -> dict[str, Any]:
     """Run a simple long-only BSP backtest from exported analysis JSON.
 
     The engine buys on the next bar after an accepted buy BSP and exits on the
     next sell BSP, stop/take-profit, or max_hold_bars.  This avoids same-bar
     lookahead and keeps the backtest outside chan.py.
+
+    The FastAPI route historically called this function with legacy keyword
+    arguments.  Accept and normalize those arguments so HTTP API, direct Python
+    contract checks, and older clients execute the same logic.
     """
-    opts = options or {}
+    opts = _options_from_legacy_kwargs(
+        options,
+        horizon=horizon,
+        fee_rate=fee_rate,
+        slippage=slippage,
+        initial_cash=initial_cash,
+    )
     bars = [row for row in analysis.get('bars', []) if isinstance(row, dict)]
-    raw_signals = analysis.get('scores') or analysis.get('features') or analysis.get('bsp') or []
-    signals = [row for row in raw_signals if isinstance(row, dict)]
+    signals, signal_source = _score_signals_from_analysis(analysis, opts)
     fee = float(opts.get('fee_bps', 3.0)) / 10000.0
-    slippage = float(opts.get('slippage_bps', 2.0)) / 10000.0
+    slippage_value = float(opts.get('slippage_bps', 2.0)) / 10000.0
     max_hold_bars = max(1, int(opts.get('max_hold_bars', 20)))
     min_score = opts.get('min_score')
     min_score_value = None if min_score is None else float(min_score)
@@ -132,7 +198,7 @@ def run_bsp_backtest(analysis: dict[str, Any], *, options: dict[str, Any] | None
         score = _num(signal.get('ml_score'))
         if min_score_value is not None and (score is None or score < min_score_value):
             continue
-        entry_idx, entry = _entry_price(bars, raw_index, slippage)
+        entry_idx, entry = _entry_price(bars, raw_index, slippage_value)
         if entry is None or entry_idx >= len(bars):
             continue
         exit_idx, reason = _find_exit(
@@ -144,7 +210,7 @@ def run_bsp_backtest(analysis: dict[str, Any], *, options: dict[str, Any] | None
             stop_loss_pct=stop_loss_value,
             take_profit_pct=take_profit_value,
         )
-        exit_ = _exit_price(bars[exit_idx], slippage)
+        exit_ = _exit_price(bars[exit_idx], slippage_value)
         if exit_ is None:
             continue
         gross_return = (exit_ - entry) / entry
@@ -153,10 +219,13 @@ def run_bsp_backtest(analysis: dict[str, Any], *, options: dict[str, Any] | None
         cursor = exit_idx
         trades.append({
             'entry_signal_index': raw_index,
+            'entry_signal_raw_index': raw_index,
             'entry_index': entry_idx,
+            'entry_raw_index': entry_idx,
             'entry_time': _time(bars[entry_idx]),
             'entry_price': entry,
             'exit_index': exit_idx,
+            'exit_raw_index': exit_idx,
             'exit_time': _time(bars[exit_idx]),
             'exit_price': exit_,
             'exit_reason': reason,
@@ -164,6 +233,7 @@ def run_bsp_backtest(analysis: dict[str, Any], *, options: dict[str, Any] | None
             'net_return': net_return,
             'hold_bars': exit_idx - entry_idx,
             'ml_score': score,
+            'ml_signal': signal.get('ml_signal'),
             'type': signal.get('type'),
             'level': signal.get('level'),
         })
@@ -173,6 +243,8 @@ def run_bsp_backtest(analysis: dict[str, Any], *, options: dict[str, Any] | None
     total_return = equity - 1.0
     avg_win = sum(t['net_return'] for t in wins) / len(wins) if wins else 0.0
     avg_loss = sum(t['net_return'] for t in losses) / len(losses) if losses else 0.0
+    gross_profit = sum(t['net_return'] for t in wins)
+    gross_loss = abs(sum(t['net_return'] for t in losses))
     return {
         'ok': True,
         'trades': trades,
@@ -184,22 +256,26 @@ def run_bsp_backtest(analysis: dict[str, Any], *, options: dict[str, Any] | None
             'avg_win': avg_win,
             'avg_loss': avg_loss,
             'payoff_ratio': None if avg_loss == 0 else abs(avg_win / avg_loss),
+            'profit_factor': None if gross_loss == 0 else gross_profit / gross_loss,
+            'max_drawdown': None,
             'total_return': total_return,
             'final_equity': equity,
         },
         'meta': {
             'source': 'origin_vespa_tdx.backend.a_backtest_engine',
+            'signal_source': signal_source,
             'execution': 'next_bar_open_or_close_fallback',
             'same_bar_lookahead': False,
             'chan_py_polluted': False,
             'options': {
                 'fee_bps': fee * 10000.0,
-                'slippage_bps': slippage * 10000.0,
+                'slippage_bps': slippage_value * 10000.0,
                 'max_hold_bars': max_hold_bars,
                 'min_score': min_score_value,
                 'allow_unsure': allow_unsure,
                 'stop_loss_pct': stop_loss_value,
                 'take_profit_pct': take_profit_value,
+                'initial_cash': opts.get('initial_cash'),
             },
         },
     }
