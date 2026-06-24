@@ -47,6 +47,10 @@ def _normalize_model(model: Any, model_name: str | None = None) -> dict[str, Any
     return normalized
 
 
+def _bounded(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+
 def _heuristic_score(row: dict[str, Any]) -> tuple[float, dict[str, float]]:
     contributions: dict[str, float] = {}
     score = 0.0
@@ -60,19 +64,19 @@ def _heuristic_score(row: dict[str, Any]) -> tuple[float, dict[str, float]]:
 
     ret_5 = _num(row.get('ret_5'))
     if ret_5 is not None:
-        value = max(-0.15, min(0.15, -ret_5 if row.get('is_buy') else ret_5))
+        value = _bounded(-ret_5 if row.get('is_buy') else ret_5, -0.15, 0.15)
         contributions['ret_5_reversal'] = value * 1.8
         score += contributions['ret_5_reversal']
 
     hist = _num(row.get('macd_hist'))
     if hist is not None:
-        value = max(-0.2, min(0.2, hist))
+        value = _bounded(hist, -0.2, 0.2)
         contributions['macd_hist'] = value * (1.0 if row.get('is_buy') else -1.0)
         score += contributions['macd_hist']
 
     close_to_ma20 = _num(row.get('close_to_ma20_pct'))
     if close_to_ma20 is not None:
-        value = max(-0.2, min(0.2, close_to_ma20))
+        value = _bounded(close_to_ma20, -0.2, 0.2)
         contributions['ma20_position'] = (-value if row.get('is_buy') else value) * 0.8
         score += contributions['ma20_position']
 
@@ -80,6 +84,35 @@ def _heuristic_score(row: dict[str, Any]) -> tuple[float, dict[str, float]]:
     if zs_distance is not None:
         value = max(0.0, 0.12 - min(zs_distance, 24.0) / 240.0)
         contributions['near_zs'] = value
+        score += value
+
+    seg_layer_count = _num(row.get('segn_context_layer_count'))
+    if seg_layer_count is not None and seg_layer_count > 0:
+        value = min(seg_layer_count, 5.0) * 0.015
+        contributions['segn_layer_coverage'] = value
+        score += value
+
+    same_side = _num(row.get('segn_same_side_signal_count'))
+    opposite_side = _num(row.get('segn_opposite_side_signal_count'))
+    if same_side is not None or opposite_side is not None:
+        same = same_side or 0.0
+        opposite = opposite_side or 0.0
+        value = _bounded((same - opposite) * 0.035, -0.14, 0.14)
+        contributions['segn_side_alignment'] = value
+        score += value
+
+    confirmed = _num(row.get('segn_confirmed_signal_count'))
+    if confirmed is not None and confirmed > 0:
+        value = min(confirmed, 4.0) * 0.012
+        contributions['segn_confirmed_layers'] = value
+        score += value
+
+    nearest_age = _num(row.get('segn_nearest_age_bars'))
+    nearest_same_side = row.get('segn_nearest_is_buy') == row.get('is_buy')
+    if nearest_age is not None:
+        freshness = max(0.0, 0.10 - min(nearest_age, 20.0) / 250.0)
+        value = freshness if nearest_same_side else -freshness * 0.6
+        contributions['segn_nearest_freshness'] = value
         score += value
 
     probability = _sigmoid(score)
@@ -102,6 +135,13 @@ def _linear_score(row: dict[str, Any], model: dict[str, Any]) -> tuple[float, di
     return _sigmoid(raw_score), contributions
 
 
+def _feature_columns(rows: list[dict[str, Any]]) -> list[str]:
+    keys: set[str] = set()
+    for row in rows:
+        keys.update(str(key) for key in row.keys())
+    return sorted(keys)
+
+
 def score_bsp_features(
     features: Any,
     model: dict[str, Any] | None = None,
@@ -115,9 +155,10 @@ def score_bsp_features(
     to keep the interface compatible with later external model files without
     importing sklearn/xgboost/lightgbm into the app backend by default.
 
-    The public API route historically passed a full feature payload and a
-    ``model_name`` keyword.  Keep this function tolerant so route-level calls,
-    direct tool validation, and older clients all share one contract.
+    Registered feature groups such as chan.py native BI/SEG/ZS context and
+    recursive segN context are ordinary feature columns.  The heuristic baseline
+    consumes a conservative subset of ``segn_*`` fields, while a linear model can
+    use any numeric registered feature via ``weights``.
     """
     rows_in, source_shape = _normalize_feature_rows(features)
     normalized_model = _normalize_model(model, model_name=model_name)
@@ -143,6 +184,8 @@ def score_bsp_features(
             'model_name': normalized_model.get('name'),
             'feature_source_shape': source_shape,
             'count': len(rows),
+            'feature_columns': _feature_columns(rows_in),
+            'segn_features_supported': True,
             'default_model_is_research_baseline': model_type != 'linear',
             'chan_py_polluted': False,
         },
