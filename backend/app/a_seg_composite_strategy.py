@@ -80,7 +80,7 @@ def _bar_raw_index(bar: dict[str, Any], fallback: int) -> int:
     return _int(bar.get('index'), fallback) or fallback
 
 
-def _rule_conditions(rule: dict[str, Any]) -> list[dict[str, Any]]:
+def _rule_conditions(rule: dict[str, Any] | None) -> list[dict[str, Any]]:
     rows = rule.get('conditions') if isinstance(rule, dict) else None
     return [dict(row) for row in rows or [] if isinstance(row, dict)]
 
@@ -351,6 +351,23 @@ def _condition_source_key(condition: dict[str, Any], layer: int) -> str:
     }:
         return str(max(2, layer))
     return str(max(2, layer))
+
+
+def _required_structure_sources(
+    entry_rule: dict[str, Any],
+    exit_rule: dict[str, Any] | None,
+    *,
+    collect_counts: bool = False,
+    max_layer: int = 4,
+) -> set[str]:
+    required: set[str] = set()
+    for condition in [*_rule_conditions(entry_rule), *_rule_conditions(exit_rule or {})]:
+        layer = max(2, _int(condition.get('layer'), 2) or 2)
+        required.add(_condition_source_key(condition, layer))
+    if collect_counts:
+        required.update({'origin_bsp', 'bi_endpoint_candidate', 'seg_endpoint_candidate'})
+        required.update(str(layer) for layer in range(2, max(2, int(max_layer)) + 1))
+    return required
 
 
 def _match_condition(
@@ -687,9 +704,11 @@ def run_seg_composite_stream_backtest(
     from .a_recursive_seg_manager import RecursiveSegRuntimeState
     from .easy_tdx_provider import infer_market, normalize_symbol
 
-    signal_source = _signal_source_mode(options)
+    opts = options or {}
+    signal_source = _signal_source_mode(opts)
     include_real_bsp = signal_source in {'real_bsp', 'auto'}
     include_endpoint_candidate = signal_source in {'endpoint_candidate', 'auto'}
+    collect_structure_source_counts = bool(opts.get('collect_structure_source_counts', False))
 
     code = normalize_symbol(symbol)
     market_name = (market or infer_market(code)).upper()
@@ -734,6 +753,7 @@ def run_seg_composite_stream_backtest(
     total_frames = 0
     endpoint_candidate_counts: dict[str, int] = {}
     source_counts: dict[str, int] = {}
+    required_sources: set[str] | None = None
 
     for frame_index, cur_chan in enumerate(step_iter()):
         _advance_step_histories_light(
@@ -752,6 +772,13 @@ def run_seg_composite_stream_backtest(
                     f'level {level_name}: {state.errors}'
                 )
         signal_state = runtime_states[signal_level]
+        if required_sources is None:
+            required_sources = _required_structure_sources(
+                entry_rule,
+                exit_rule,
+                collect_counts=collect_structure_source_counts,
+                max_layer=signal_state.max_level,
+            )
         signal_obj = exporter.get_level(
             cur_chan,
             kl_types[level_order.index(signal_level)],
@@ -762,33 +789,42 @@ def run_seg_composite_stream_backtest(
             continue
         grouped: dict[str, list[dict[str, Any]]] = {}
 
-        origin_rows = _sort_signal_rows(list(base_bsp_histories.get(signal_level, {}).values()))
-        grouped['origin_bsp'] = origin_rows
-        source_counts['origin_bsp'] = max(source_counts.get('origin_bsp', 0), len(origin_rows))
+        if 'origin_bsp' in required_sources:
+            origin_rows = _sort_signal_rows(list(base_bsp_histories.get(signal_level, {}).values()))
+            grouped['origin_bsp'] = origin_rows
+            if collect_structure_source_counts:
+                source_counts['origin_bsp'] = max(source_counts.get('origin_bsp', 0), len(origin_rows))
 
-        bi_candidates = _endpoint_candidate_rows_from_lines(
-            None,
-            _native_line_container(signal_obj, source='bi_endpoint_candidate'),
-            source='bi_endpoint_candidate',
-        )
-        grouped['bi_endpoint_candidate'] = bi_candidates
-        source_counts['bi_endpoint_candidate'] = max(
-            source_counts.get('bi_endpoint_candidate', 0),
-            len(bi_candidates),
-        )
+        if 'bi_endpoint_candidate' in required_sources:
+            bi_candidates = _endpoint_candidate_rows_from_lines(
+                None,
+                _native_line_container(signal_obj, source='bi_endpoint_candidate'),
+                source='bi_endpoint_candidate',
+            )
+            grouped['bi_endpoint_candidate'] = bi_candidates
+            if collect_structure_source_counts:
+                source_counts['bi_endpoint_candidate'] = max(
+                    source_counts.get('bi_endpoint_candidate', 0),
+                    len(bi_candidates),
+                )
 
-        seg_candidates = _endpoint_candidate_rows_from_lines(
-            None,
-            _native_line_container(signal_obj, source='seg_endpoint_candidate'),
-            source='seg_endpoint_candidate',
-        )
-        grouped['seg_endpoint_candidate'] = seg_candidates
-        source_counts['seg_endpoint_candidate'] = max(
-            source_counts.get('seg_endpoint_candidate', 0),
-            len(seg_candidates),
-        )
+        if 'seg_endpoint_candidate' in required_sources:
+            seg_candidates = _endpoint_candidate_rows_from_lines(
+                None,
+                _native_line_container(signal_obj, source='seg_endpoint_candidate'),
+                source='seg_endpoint_candidate',
+            )
+            grouped['seg_endpoint_candidate'] = seg_candidates
+            if collect_structure_source_counts:
+                source_counts['seg_endpoint_candidate'] = max(
+                    source_counts.get('seg_endpoint_candidate', 0),
+                    len(seg_candidates),
+                )
 
         for layer in range(2, signal_state.max_level + 1):
+            layer_key = str(layer)
+            if layer_key not in required_sources:
+                continue
             rows: list[dict[str, Any]] = []
             if include_real_bsp:
                 history = signal_state.bsp_history.get(layer, {})
@@ -804,11 +840,12 @@ def run_seg_composite_stream_backtest(
                     len(candidates),
                 )
                 rows.extend(candidates)
-            grouped[str(layer)] = _sort_signal_rows(rows)
-            source_counts[f'recursive_seg_{layer}'] = max(
-                source_counts.get(f'recursive_seg_{layer}', 0),
-                len(rows),
-            )
+            grouped[layer_key] = _sort_signal_rows(rows)
+            if collect_structure_source_counts:
+                source_counts[f'recursive_seg_{layer}'] = max(
+                    source_counts.get(f'recursive_seg_{layer}', 0),
+                    len(rows),
+                )
         frame = {
             'levels': {
                 signal_level: {
@@ -873,5 +910,7 @@ def run_seg_composite_stream_backtest(
         'endpoint_candidate_source_used': include_endpoint_candidate,
         'endpoint_candidate_layer_counts': endpoint_candidate_counts,
         'structure_source_counts': source_counts,
+        'required_structure_sources': sorted(required_sources or []),
+        'collect_structure_source_counts': collect_structure_source_counts,
     })
     return result
