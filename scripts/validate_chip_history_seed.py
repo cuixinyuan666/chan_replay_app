@@ -124,8 +124,9 @@ def validate_tick_min1_uses_prior_daily_baseline() -> None:
     bars = patched['levels']['TICK_MIN1']['bars']
     assert len(bars) == len(visible), 'TICK_MIN1 visible c-d bar count changed'
     assert bars[0].get('chip_history_seed') is True, 'TICK_MIN1 first visible bar lacks seed'
-    assert bars[0]['chip_tick_bins']['source'] == 'backend_chip_history_seed'
-    assert bars[1]['chip_tick_bins']['source'] != 'backend_chip_history_seed', 'later exact tick bins should stay untouched'
+    assert bars[0]['chip_tick_bins'].get('source') == 'backend_chip_history_seed'
+    assert bars[1].get('chip_history_seed') is not True, 'later bar should not be marked as history seed'
+    assert bars[1]['chip_tick_bins'].get('source') != 'backend_chip_history_seed', 'later exact tick bins should stay untouched'
     total = sum(float(v) for v in bars[0]['chip_tick_bins']['w'])
     assert abs(total - 3645.0) < 1e-6, f'TICK_MIN1 expected prior daily baseline+first tick volume=3645, got {total}'
     meta = patched['meta']['chip_history_baseline_levels']['TICK_MIN1']
