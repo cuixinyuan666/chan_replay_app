@@ -4,7 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGET = ROOT / 'lib' / 'ui' / 'pages' / 's13_single_stock_replay_page.dart'
+S13_PAGE = ROOT / 'lib' / 'ui' / 'pages' / 's13_single_stock_replay_page.dart'
+PARSER = ROOT / 'lib' / 'data' / 'chan_snapshot_json_parser.dart'
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
@@ -14,12 +15,47 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-def main() -> int:
-    text = TARGET.read_text(encoding='utf-8')
+def patch_parser() -> bool:
+    text = PARSER.read_text(encoding='utf-8')
+    if "final levelMeta = data['meta'] is Map" in text:
+        print('OK parser meta patch already applied')
+        return False
+
+    anchor = """    _addTiming(timing, '$timingPrefix.total', totalSw.elapsedMilliseconds);
+    return ChanSnapshot(
+"""
+    block = """    final levelMeta = data['meta'] is Map
+        ? Map<String, Object?>.unmodifiable(<String, Object?>{
+            for (final entry in (data['meta'] as Map).entries)
+              '${entry.key}': entry.value,
+          })
+        : const <String, Object?>{};
+
+    _addTiming(timing, '$timingPrefix.total', totalSw.elapsedMilliseconds);
+    return ChanSnapshot(
+"""
+    text = replace_once(text, anchor, block, 'insert parsed level meta')
+
+    anchor = """      rhythmHits: rhythmHits,
+    );
+"""
+    block = """      rhythmHits: rhythmHits,
+      meta: levelMeta,
+    );
+"""
+    text = replace_once(text, anchor, block, 'pass level meta to ChanSnapshot')
+
+    PARSER.write_text(text, encoding='utf-8')
+    print('OK patched parser level meta passthrough')
+    return True
+
+
+def patch_s13_page() -> bool:
+    text = S13_PAGE.read_text(encoding='utf-8')
 
     if 'chip_history_seed_status=' in text:
         print('OK S13 chip history evidence patch already applied')
-        return 0
+        return False
 
     helper_anchor = """  String _chipTargetSource(ChanSnapshot snapshot, int targetIndex) {
     if (_hasStepFrames) {
@@ -136,8 +172,15 @@ def main() -> int:
 """
     text = replace_once(text, output_anchor, output_block, 'output seed evidence lines')
 
-    TARGET.write_text(text, encoding='utf-8')
+    S13_PAGE.write_text(text, encoding='utf-8')
     print('OK patched S13 chip history evidence fields')
+    return True
+
+
+def main() -> int:
+    changed = patch_parser()
+    changed = patch_s13_page() or changed
+    print('OK S13 chip history evidence patch complete' if changed else 'OK no changes needed')
     return 0
 
 
