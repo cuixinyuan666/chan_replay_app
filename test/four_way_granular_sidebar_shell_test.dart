@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:chan_replay_app/ui/widgets/four_way_granular_sidebar_shell.dart';
@@ -49,18 +49,22 @@ void main() {
     });
   }
 
-  testWidgets('edge button opens its connected frame panel', (tester) async {
+  testWidgets('rails do not render redundant edge arrow buttons',
+      (tester) async {
     tester.view.physicalSize = const Size(800, 600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(subject());
 
-    await tester.tap(find.byKey(const ValueKey<String>('sidebar-edge-left')));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const ValueKey<String>('sidebar-open-panel')),
-        findsOneWidget);
+    expect(
+        find.byKey(const ValueKey<String>('sidebar-edge-left')), findsNothing);
+    expect(
+        find.byKey(const ValueKey<String>('sidebar-edge-right')), findsNothing);
+    expect(
+        find.byKey(const ValueKey<String>('sidebar-edge-top')), findsNothing);
+    expect(find.byKey(const ValueKey<String>('sidebar-edge-bottom')),
+        findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -145,29 +149,7 @@ void main() {
 
   testWidgets('registered panels are mutually exclusive and push content',
       (tester) async {
-    final custom = MaterialApp(
-      home: Scaffold(
-        body: FourWayGranularSidebarShell(
-          selectedRouteIndex: 5,
-          onOpenRoute: (_) {},
-          additionalRegistrations: <SidebarRegistration>[
-            SidebarRegistration(
-              id: 'custom-system',
-              label: '系统设置',
-              category: '系统',
-              icon: Icons.settings,
-              edge: SidebarEdge.left,
-              panelBuilder: (_) => const Text('registered system panel'),
-            ),
-          ],
-          child: const ColoredBox(
-            key: ValueKey<String>('chart-content'),
-            color: Colors.black,
-          ),
-        ),
-      ),
-    );
-    await tester.pumpWidget(custom);
+    await tester.pumpWidget(subject());
     await tester.tap(
       find.byKey(const ValueKey<String>('sidebar-entry-appearance')),
     );
@@ -175,17 +157,14 @@ void main() {
     expect(find.byKey(const ValueKey<String>('sidebar-open-panel')),
         findsOneWidget);
 
-    await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('sidebar-entry-custom-system')),
-    );
     await tester.tap(
-      find.byKey(const ValueKey<String>('sidebar-entry-custom-system')),
+      find.byKey(const ValueKey<String>('sidebar-entry-chips')),
     );
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey<String>('sidebar-open-panel')),
         findsOneWidget);
-    expect(find.text('registered system panel'), findsOneWidget);
+    expect(find.text('价格桶数'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }

@@ -47,6 +47,7 @@ void main() {
       for (final entry in fourWaySidebarRegistry.entries.value) entry.id,
     };
     for (final id in <String>[
+      's13-symbol-input',
       's13-level-TICK',
       's13-level-TICK_MIN1',
       's13-level-DAILY',

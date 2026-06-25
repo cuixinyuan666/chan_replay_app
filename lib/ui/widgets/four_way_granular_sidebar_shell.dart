@@ -1,7 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../core/settings/chan_config_store.dart';
 import '../../core/settings/chip_distribution_settings.dart';
 import '../settings/kline_appearance_controller.dart';
 import 's13_chip_distribution_panel.dart';
@@ -147,6 +149,7 @@ class _FourWayGranularSidebarShellState
   int _pendingRailRotationDelta = 0;
   bool _railRotationScheduled = false;
   double _railScrollRemainder = 0;
+  List<_RailDisplayItem>? _perimeterItemsCache;
 
   List<SidebarRegistration> get _registrations => <SidebarRegistration>[
         ..._defaultRegistrations,
@@ -234,6 +237,20 @@ class _FourWayGranularSidebarShellState
           edge: SidebarEdge.bottom,
           panelBuilder: _RuntimePathPanel.new,
         ),
+        for (final group in ChanConfigStore.groups)
+          for (final key in group.keys)
+            SidebarRegistration(
+              id: 'chan-setting-$key',
+              label: key,
+              category: '系统设置/${group.title}',
+              icon: Icons.tune,
+              edge: SidebarEdge.top,
+              compact: true,
+              panelBuilder: (context) => _ChanSettingKeyPanel(
+                settingKey: key,
+                groupTitle: group.title,
+              ),
+            ),
       ];
 
   List<SidebarCornerRegistration> get _defaultCornerRegistrations =>
@@ -282,7 +299,23 @@ class _FourWayGranularSidebarShellState
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant FourWayGranularSidebarShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(
+          oldWidget.additionalRegistrations,
+          widget.additionalRegistrations,
+        ) ||
+        !identical(
+          oldWidget.additionalCornerRegistrations,
+          widget.additionalCornerRegistrations,
+        )) {
+      _perimeterItemsCache = null;
+    }
+  }
+
   void _handleRegistryChanged() {
+    _perimeterItemsCache = null;
     if (mounted) setState(() {});
   }
 
@@ -305,47 +338,45 @@ class _FourWayGranularSidebarShellState
     });
   }
 
-  void _toggleEdge(SidebarEdge edge) {
-    setState(() {
-      if (_openEdge == edge) {
-        _openEdge = null;
-        _activeItem = null;
-      } else {
-        _openEdge = edge;
-        _activeItem = _firstForEdge(edge);
-      }
-    });
-  }
-
-  SidebarRegistration? _firstForEdge(SidebarEdge edge) {
-    for (final item in _itemsForEdge(edge)) {
-      if (item.registration != null) return item.registration;
-    }
-    return null;
-  }
-
   List<_RailDisplayItem> _itemsForEdge(SidebarEdge edge) {
     final edgeIndex = _edgeIndex(edge);
     final items = _perimeterItems;
     if (items.isEmpty) return const <_RailDisplayItem>[];
     final total = items.length;
     final offset = _railRotationOffset % total;
-    final rotated = <_RailDisplayItem>[
-      ...items.skip(offset),
-      ...items.take(offset),
-    ];
-    final base = total ~/ 4;
-    final remainder = total % 4;
+    final sizes = _edgeChunkSizes(total);
     var start = 0;
     for (var i = 0; i < edgeIndex; i++) {
-      start += base + (i < remainder ? 1 : 0);
+      start += sizes[i];
     }
-    final count = base + (edgeIndex < remainder ? 1 : 0);
+    final count = sizes[edgeIndex];
     if (count <= 0) return const <_RailDisplayItem>[];
-    return rotated.sublist(start, (start + count).clamp(0, total).toInt());
+    return <_RailDisplayItem>[
+      for (var i = 0; i < count; i++) items[(offset + start + i) % total],
+    ];
+  }
+
+  List<int> _edgeChunkSizes(int total) {
+    if (total <= 0) return const <int>[0, 0, 0, 0];
+    const weights = <int>[1, 1, 1, 2]; // left, bottom, right, top.
+    final sizes = <int>[];
+    var used = 0;
+    for (var i = 0; i < weights.length; i++) {
+      final remaining = total - used;
+      final remainingWeight =
+          weights.skip(i).fold<int>(0, (sum, weight) => sum + weight);
+      final count = i == weights.length - 1
+          ? remaining
+          : (remaining * weights[i] / remainingWeight).round();
+      sizes.add(count);
+      used += count;
+    }
+    return sizes;
   }
 
   List<_RailDisplayItem> get _perimeterItems {
+    final cached = _perimeterItemsCache;
+    if (cached != null) return cached;
     final rows = <_RailDisplayItem>[];
     String? lastCategory;
     for (final item in _registrations) {
@@ -355,14 +386,14 @@ class _FourWayGranularSidebarShellState
       rows.add(_RailDisplayItem.entry(item));
       lastCategory = item.category;
     }
-    return rows;
+    return _perimeterItemsCache = rows;
   }
 
   int _edgeIndex(SidebarEdge edge) => switch (edge) {
-        SidebarEdge.top => 0,
-        SidebarEdge.right => 1,
-        SidebarEdge.bottom => 2,
-        SidebarEdge.left => 3,
+        SidebarEdge.left => 0,
+        SidebarEdge.bottom => 1,
+        SidebarEdge.right => 2,
+        SidebarEdge.top => 3,
       };
 
   void _handleRailPointerSignal(SidebarEdge edge, PointerSignalEvent event) {
@@ -373,15 +404,16 @@ class _FourWayGranularSidebarShellState
             ? event.scrollDelta.dy
             : event.scrollDelta.dx)
         : event.scrollDelta.dy;
-    if (delta == 0 || _perimeterItems.isEmpty) return;
+    final itemCount = _perimeterItems.length;
+    if (delta == 0 || itemCount == 0) return;
     _railScrollRemainder += delta / 72;
     final steps = _railScrollRemainder.truncate();
     if (steps == 0) return;
     _railScrollRemainder -= steps;
-    _scheduleRailRotation(steps);
+    _scheduleRailRotation(steps, itemCount);
   }
 
-  void _scheduleRailRotation(int steps) {
+  void _scheduleRailRotation(int steps, int itemCount) {
     _pendingRailRotationDelta += steps;
     if (_railRotationScheduled) return;
     _railRotationScheduled = true;
@@ -391,7 +423,7 @@ class _FourWayGranularSidebarShellState
       _pendingRailRotationDelta = 0;
       _railRotationScheduled = false;
       if (delta == 0) return;
-      final total = _perimeterItems.length;
+      final total = itemCount;
       if (total == 0) return;
       setState(() {
         _railRotationOffset = (_railRotationOffset + delta) % total;
@@ -490,27 +522,52 @@ class _FourWayGranularSidebarShellState
       right: isLeft ? null : 0,
       width: _railSize,
       child: _RailSurface(
-        child: Column(
-          children: <Widget>[
-            _edgeButton(edge),
-            const Divider(color: Colors.white12, height: 1),
-            Expanded(
-              child: Listener(
-                onPointerSignal: (event) =>
-                    _handleRailPointerSignal(edge, event),
-                child: ListView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  children: <Widget>[
-                    for (final item in items)
-                      _railDisplayItem(item, edge: edge, vertical: true),
-                  ],
-                ),
-              ),
-            ),
-          ],
+        child: Listener(
+          onPointerSignal: (event) => _handleRailPointerSignal(edge, event),
+          child: ListView(
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            children: <Widget>[
+              for (final item in items)
+                _railDisplayItem(item, edge: edge, vertical: true),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _topStackRail(List<_RailDisplayItem> items) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final count = items.isEmpty ? 1 : items.length;
+        final step = (constraints.maxWidth - 16) / count;
+        final overlapStep = step.clamp(28.0, 58.0);
+        final visibleCount =
+            ((constraints.maxWidth - 6) / overlapStep).ceil() + 1;
+        final cappedCount = visibleCount.clamp(0, items.length).toInt();
+        return Listener(
+          onPointerSignal: (event) =>
+              _handleRailPointerSignal(SidebarEdge.top, event),
+          child: ClipRect(
+            child: Stack(
+              children: <Widget>[
+                for (var i = 0; i < cappedCount; i++)
+                  Positioned(
+                    left: 6 + i * overlapStep,
+                    top: 0,
+                    bottom: 0,
+                    child: _railDisplayItem(
+                      items[i],
+                      edge: SidebarEdge.top,
+                      vertical: false,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -525,12 +582,9 @@ class _FourWayGranularSidebarShellState
       bottom: isTop ? null : 0,
       height: _horizontalRailSize,
       child: _RailSurface(
-        child: Row(
-          children: <Widget>[
-            _edgeButton(edge),
-            const VerticalDivider(color: Colors.white12, width: 1),
-            Expanded(
-              child: Listener(
+        child: isTop
+            ? _topStackRail(items)
+            : Listener(
                 onPointerSignal: (event) =>
                     _handleRailPointerSignal(edge, event),
                 child: ListView(
@@ -543,27 +597,7 @@ class _FourWayGranularSidebarShellState
                   ],
                 ),
               ),
-            ),
-          ],
-        ),
       ),
-    );
-  }
-
-  Widget _edgeButton(SidebarEdge edge) {
-    final selected = _openEdge == edge;
-    final icon = switch (edge) {
-      SidebarEdge.left => Icons.keyboard_arrow_right,
-      SidebarEdge.right => Icons.keyboard_arrow_left,
-      SidebarEdge.top => Icons.keyboard_arrow_down,
-      SidebarEdge.bottom => Icons.keyboard_arrow_up,
-    };
-    return IconButton(
-      key: ValueKey<String>('sidebar-edge-${edge.name}'),
-      tooltip: selected ? '收起' : '展开',
-      icon: Icon(icon, size: 18),
-      color: selected ? Colors.lightBlueAccent : Colors.white70,
-      onPressed: () => _toggleEdge(edge),
     );
   }
 
@@ -624,7 +658,7 @@ class _FourWayGranularSidebarShellState
     final accent = item.accentColor ?? _categoryAccent(item.category);
     final content = Tooltip(
       message: '${item.category} / ${item.label}',
-      waitDuration: const Duration(milliseconds: 250),
+      waitDuration: const Duration(seconds: 9),
       child: InkWell(
         key: ValueKey<String>('sidebar-entry-${item.id}'),
         borderRadius: BorderRadius.circular(12),
@@ -777,21 +811,24 @@ class _AppCloseCorner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      key: const ValueKey<String>('app-close-corner'),
-      tooltip: '关闭',
-      icon: const Icon(Icons.close, size: 18),
-      color: const Color(0xFFFF8A80),
-      onPressed: () async {
-        try {
-          await windowManager.close();
-        } catch (error) {
-          assert(() {
-            debugPrint('Window close is unavailable in this host: $error');
-            return true;
-          }());
-        }
-      },
+    return Tooltip(
+      message: '关闭',
+      waitDuration: const Duration(seconds: 9),
+      child: IconButton(
+        key: const ValueKey<String>('app-close-corner'),
+        icon: const Icon(Icons.close, size: 18),
+        color: const Color(0xFFFF8A80),
+        onPressed: () async {
+          try {
+            await windowManager.close();
+          } catch (error) {
+            assert(() {
+              debugPrint('Window close is unavailable in this host: $error');
+              return true;
+            }());
+          }
+        },
+      ),
     );
   }
 }
@@ -807,12 +844,15 @@ class _KlineCorner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      key: const ValueKey<String>('sidebar-corner-kline'),
-      tooltip: 'K线图',
-      icon: const Icon(Icons.candlestick_chart, size: 18),
-      color: selected ? Colors.white : Colors.white70,
-      onPressed: onPressed,
+    return Tooltip(
+      message: 'K线图',
+      waitDuration: const Duration(seconds: 9),
+      child: IconButton(
+        key: const ValueKey<String>('sidebar-corner-kline'),
+        icon: const Icon(Icons.candlestick_chart, size: 18),
+        color: selected ? Colors.white : Colors.white70,
+        onPressed: onPressed,
+      ),
     );
   }
 }
@@ -861,6 +901,172 @@ class _PriceBucketCountPanel extends StatelessWidget {
             Text(
               settings.toEvidenceText(),
               style: const TextStyle(color: Colors.white38, fontSize: 11),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ChanSettingKeyPanel extends StatefulWidget {
+  final String settingKey;
+  final String groupTitle;
+
+  const _ChanSettingKeyPanel({
+    required this.settingKey,
+    required this.groupTitle,
+  });
+
+  @override
+  State<_ChanSettingKeyPanel> createState() => _ChanSettingKeyPanelState();
+}
+
+class _ChanSettingKeyPanelState extends State<_ChanSettingKeyPanel> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _valueText);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChanSettingKeyPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.settingKey != widget.settingKey) {
+      _controller.text = _valueText;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String get _valueText => '${ChanConfigStore.values[widget.settingKey] ?? ''}';
+
+  Object? _parseValue(String raw) {
+    final defaultValue = ChanConfigStore.defaultValues[widget.settingKey];
+    if (defaultValue is int) return int.tryParse(raw.trim());
+    return raw.trim();
+  }
+
+  void _saveTextValue() {
+    final parsed = _parseValue(_controller.text);
+    if (!ChanConfigStore.isValidValue(widget.settingKey, parsed)) return;
+    ChanConfigStore.setValue(widget.settingKey, parsed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Map<String, Object?>>(
+      valueListenable: ChanConfigStore.notifier,
+      builder: (context, values, _) {
+        final value = values[widget.settingKey];
+        final defaultValue = ChanConfigStore.defaultValues[widget.settingKey];
+        final options = ChanConfigStore.options[widget.settingKey];
+        final valid = ChanConfigStore.isValidValue(widget.settingKey, value);
+        if (_controller.text != '$value') {
+          _controller.text = '$value';
+        }
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+          children: <Widget>[
+            Text(
+              widget.groupTitle,
+              style: const TextStyle(
+                color: Color(0xFFFFD54F),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.settingKey,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (defaultValue is bool)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  value == true ? '开启' : '关闭',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                value: value == true,
+                onChanged: (next) =>
+                    ChanConfigStore.setValue(widget.settingKey, next),
+              )
+            else if (options != null)
+              DropdownButtonFormField<String>(
+                value: '$value',
+                dropdownColor: const Color(0xFF111722),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: '选项',
+                ),
+                items: <DropdownMenuItem<String>>[
+                  for (final option in options)
+                    DropdownMenuItem<String>(
+                      value: option,
+                      child: Text(option),
+                    ),
+                ],
+                onChanged: (next) {
+                  if (next != null) {
+                    ChanConfigStore.setValue(widget.settingKey, next);
+                  }
+                },
+              )
+            else
+              TextField(
+                controller: _controller,
+                minLines: widget.settingKey == 'bsp_advanced' ? 4 : 1,
+                maxLines: widget.settingKey == 'bsp_advanced' ? 8 : 1,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: '值',
+                  errorText: valid ? null : '当前值不合法',
+                ),
+                onSubmitted: (_) => _saveTextValue(),
+              ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                if (defaultValue is! bool && options == null)
+                  FilledButton.icon(
+                    onPressed: () {
+                      _saveTextValue();
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.save, size: 16),
+                    label: const Text('保存'),
+                  ),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    ChanConfigStore.setValue(widget.settingKey, defaultValue);
+                  },
+                  icon: const Icon(Icons.restore, size: 16),
+                  label: const Text('默认'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(
+                        ClipboardData(text: '${values[widget.settingKey]}'));
+                  },
+                  icon: const Icon(Icons.copy, size: 16),
+                  label: const Text('复制'),
+                ),
+              ],
             ),
           ],
         );
@@ -948,12 +1154,16 @@ class _RailToggle extends StatelessWidget {
     return Material(
       color: Colors.black.withValues(alpha: 0.50),
       borderRadius: BorderRadius.circular(10),
-      child: IconButton(
-        tooltip: visible ? '隐藏四向侧边栏' : '显示四向侧边栏',
-        key: const ValueKey<String>('sidebar-visibility-toggle'),
-        icon: Icon(visible ? Icons.visibility_off : Icons.visibility, size: 18),
-        color: Colors.white70,
-        onPressed: onPressed,
+      child: Tooltip(
+        message: visible ? '隐藏四向侧边栏' : '显示四向侧边栏',
+        waitDuration: const Duration(seconds: 9),
+        child: IconButton(
+          key: const ValueKey<String>('sidebar-visibility-toggle'),
+          icon:
+              Icon(visible ? Icons.visibility_off : Icons.visibility, size: 18),
+          color: Colors.white70,
+          onPressed: onPressed,
+        ),
       ),
     );
   }

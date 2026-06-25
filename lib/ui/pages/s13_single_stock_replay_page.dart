@@ -218,18 +218,21 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         SidebarCornerRegistration(
           id: 's13-load-replay-corner',
           corner: SidebarCorner.bottomRight,
-          builder: (_) => IconButton(
-            key: const ValueKey<String>('sidebar-corner-load-replay'),
-            tooltip: '加载数据',
-            icon: _loading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.play_arrow, size: 19),
-            color: Colors.white70,
-            onPressed: _loading ? null : _loadReplay,
+          builder: (_) => Tooltip(
+            message: '加载数据',
+            waitDuration: const Duration(seconds: 9),
+            child: IconButton(
+              key: const ValueKey<String>('sidebar-corner-load-replay'),
+              icon: _loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.play_arrow, size: 19),
+              color: Colors.white70,
+              onPressed: _loading ? null : _loadReplay,
+            ),
           ),
         ),
       ];
@@ -260,10 +263,23 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     const cycleColor = Color(0xFF4DD0E1);
     const indicatorColor = Color(0xFFB388FF);
     const targetColor = Color(0xFFFFD54F);
-    const modeColor = Color(0xFF81C784);
     const layerColor = Color(0xFF64B5F6);
     const toolColor = Color(0xFFFF8A80);
     return <SidebarRegistration>[
+      SidebarRegistration(
+        id: 's13-symbol-input',
+        label: '标的',
+        category: '标的数据',
+        icon: Icons.query_stats,
+        edge: SidebarEdge.right,
+        accentColor: targetColor,
+        panelBuilder: (_) => _SidebarSymbolInputPanel(
+          symbolController: _symbolController,
+          marketController: _marketController,
+          loading: _loading,
+          onLoad: _loadReplay,
+        ),
+      ),
       action(
         id: 's13-start-date',
         label: 'start',
@@ -281,6 +297,28 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         edge: SidebarEdge.right,
         accentColor: targetColor,
         onActivate: () => _pickDate(isStart: false),
+      ),
+      action(
+        id: 's13-mode-once',
+        label: 'once',
+        category: '标的数据',
+        icon: Icons.looks_one,
+        edge: SidebarEdge.top,
+        compact: true,
+        accentColor: targetColor,
+        selectedBuilder: () => _mode == 'once',
+        onActivate: () => _setReplayMode('once'),
+      ),
+      action(
+        id: 's13-mode-step',
+        label: 'step',
+        category: '标的数据',
+        icon: Icons.skip_next,
+        edge: SidebarEdge.top,
+        compact: true,
+        accentColor: targetColor,
+        selectedBuilder: () => _mode == 'step',
+        onActivate: () => _setReplayMode('step'),
       ),
       action(
         id: 's13-runtime-fast',
@@ -339,28 +377,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           selectedBuilder: () => _activeLevel == level,
           onActivate: () => _activateLoadedLevelFromSidebar(level),
         ),
-      action(
-        id: 's13-mode-once',
-        label: 'once',
-        category: '复盘模式',
-        icon: Icons.looks_one,
-        edge: SidebarEdge.top,
-        compact: true,
-        accentColor: modeColor,
-        selectedBuilder: () => _mode == 'once',
-        onActivate: () => _setReplayMode('once'),
-      ),
-      action(
-        id: 's13-mode-step',
-        label: 'step',
-        category: '复盘模式',
-        icon: Icons.skip_next,
-        edge: SidebarEdge.top,
-        compact: true,
-        accentColor: modeColor,
-        selectedBuilder: () => _mode == 'step',
-        onActivate: () => _setReplayMode('step'),
-      ),
       for (final name in _easyTdxIndicatorOptions)
         action(
           id: 's13-indicator-$name',
@@ -3784,6 +3800,72 @@ class _NestedBspMarkerRow {
     required this.triggerState,
     required this.anchorKind,
   });
+}
+
+class _SidebarSymbolInputPanel extends StatelessWidget {
+  final TextEditingController symbolController;
+  final TextEditingController marketController;
+  final bool loading;
+  final VoidCallback onLoad;
+
+  const _SidebarSymbolInputPanel({
+    required this.symbolController,
+    required this.marketController,
+    required this.loading,
+    required this.onLoad,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+      children: <Widget>[
+        const Text(
+          '标的输入',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: symbolController,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: '股票代码',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: marketController,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: '市场',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: loading ? null : onLoad,
+          icon: loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.play_arrow, size: 16),
+          label: const Text('加载数据'),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '选择周期、指标或修改标的后不会自动刷新；点击加载数据后才更新。',
+          style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.35),
+        ),
+      ],
+    );
+  }
 }
 
 class _S13RegisteredSectionPanel extends StatelessWidget {
