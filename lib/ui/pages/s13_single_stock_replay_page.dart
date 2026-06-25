@@ -2048,7 +2048,14 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
 
   Map<String, String> _chipHistorySeedEvidence(ChanSnapshot snapshot) {
     final seed = snapshot.meta['chip_history_seed'];
-    if (seed is! Map) {
+    final fallbackLevels = _analysis?.meta['chip_history_baseline_levels'];
+    final fallbackSeed = fallbackLevels is Map
+        ? fallbackLevels[_activeLevel] ??
+            fallbackLevels[_activeLevel.toUpperCase()] ??
+            fallbackLevels[_activeLevel.toLowerCase()]
+        : null;
+    final rawSeed = seed is Map ? seed : fallbackSeed;
+    if (rawSeed is! Map) {
       return const <String, String>{
         'history_seed_status': 'none',
         'history_seed_level': 'none',
@@ -2063,7 +2070,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         'history_seed_includes_first_visible_bar': 'false',
       };
     }
-    final meta = Map<String, dynamic>.from(seed);
+    final meta = Map<String, dynamic>.from(rawSeed);
     return <String, String>{
       'history_seed_status': _chipMetaText(meta, 'status'),
       'history_seed_level': _chipMetaText(meta, 'level'),
