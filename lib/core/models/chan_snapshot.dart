@@ -28,6 +28,7 @@ class ChanSnapshot {
   final EasyTdxIndicators indicators;
   final List<RhythmLine> rhythmLines;
   final List<RhythmHit> rhythmHits;
+  final Map<String, Object?> meta;
 
   const ChanSnapshot({
     required this.rawBars,
@@ -47,6 +48,7 @@ class ChanSnapshot {
     this.indicators = const EasyTdxIndicators(),
     this.rhythmLines = const [],
     this.rhythmHits = const [],
+    this.meta = const <String, Object?>{},
   });
 
   factory ChanSnapshot.empty() => const ChanSnapshot(
@@ -67,5 +69,6 @@ class ChanSnapshot {
         indicators: EasyTdxIndicators(),
         rhythmLines: [],
         rhythmHits: [],
+        meta: <String, Object?>{},
       );
 }
