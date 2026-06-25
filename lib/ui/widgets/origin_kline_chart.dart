@@ -1018,19 +1018,6 @@ class _OriginChartPainter extends CustomPainter {
     double rawToX(int rawIndex) => rect.left + (rawIndex - start + 0.5) * step;
 
     final chartLabels = <ChartLabel>[];
-    final trimmedSymbolLabel = symbolLabel.trim();
-    if (trimmedSymbolLabel.isNotEmpty) {
-      chartLabels.add(ChartLabel(
-        text: trimmedSymbolLabel,
-        anchor: Offset(rect.left + 12, rect.top + 18),
-        side: ChartLabelSide.inside,
-        priority: ChartLabelPriority.grid,
-        color: Colors.white70,
-        fontSize: 12,
-        forceVisible: true,
-      ));
-    }
-
     _drawGrid(canvas, rect, minPrice, maxPrice, visible);
     _drawCandles(canvas, rect, visible, rawToX, priceToY, step);
     if (showEasyTdxIndicators) {
@@ -1066,14 +1053,7 @@ class _OriginChartPainter extends CustomPainter {
       _drawCrosshair(
           canvas, rect, bars[cross], rawToX, priceToY, crosshairPrice);
     } else {
-      final biBspCnt = snapshot.bsps.where(_isBiBsp).length;
-      final segBspCnt = snapshot.bsps.where(_isSegBsp).length;
-      _drawText(
-          canvas,
-          'chan.py ${_fmtDate(visible.last.time)} | K:${bars.length} MB:${snapshot.mergedBars.length} FX:${snapshot.fxs.length} BI:${snapshot.bis.length} SEG:${snapshot.segs.length} ZS:${snapshot.zss.length} BSP:${snapshot.bsps.length} 笔BSP:$biBspCnt 段BSP:$segBspCnt',
-          const Offset(8, 4),
-          11,
-          Colors.white70);
+      _drawChartInfo(canvas, rect, visible.last);
     }
     if (showEasyTdxIndicators) {
       _drawEasyTdxSubPanels(canvas, layout.subRects, start, end, rawToX);
@@ -1797,16 +1777,26 @@ class _OriginChartPainter extends CustomPainter {
       ..strokeWidth = 0.8;
     canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), paint);
     canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
-    _drawText(canvas, _fmtDate(bar.time), Offset(rect.left + 6, rect.top + 6),
-        12, Colors.white);
-    _drawText(
-        canvas,
-        'O:${bar.open.toStringAsFixed(2)} H:${bar.high.toStringAsFixed(2)} L:${bar.low.toStringAsFixed(2)} C:${bar.close.toStringAsFixed(2)} 光标:${price.toStringAsFixed(2)} V:${bar.volume.toStringAsFixed(0)}',
-        Offset(rect.left + 6, rect.top - 20),
-        11,
-        Colors.white);
     _drawText(canvas, price.toStringAsFixed(2), Offset(rect.right + 5, y - 7),
         10, Colors.white);
+    _drawChartInfo(canvas, rect, bar);
+  }
+
+  void _drawChartInfo(Canvas canvas, Rect rect, RawBar bar) {
+    final time = _fmtDate(bar.time);
+    final trimmedLabel = symbolLabel.trim();
+    final label = trimmedLabel.isEmpty
+        ? '时间:$time'
+        : trimmedLabel.contains('{time}')
+            ? trimmedLabel.replaceAll('{time}', time)
+            : '$trimmedLabel 时间:$time';
+    _drawText(
+      canvas,
+      label,
+      Offset(rect.left + 6, rect.top + 6),
+      12,
+      Colors.white70,
+    );
   }
 
   void _drawText(

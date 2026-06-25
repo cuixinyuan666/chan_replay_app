@@ -1,82 +1,105 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:chan_replay_app/app.dart';
+import 'package:chan_replay_app/ui/widgets/four_way_granular_sidebar_shell.dart';
 
 void main() {
-  testWidgets('migrated display and indicator controls remain functional',
-      (tester) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+  Future<void> pumpApp(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(const ChanReplayApp());
     await tester.pumpAndSettle();
+    if (fourWaySidebarRegistry.entries.value.isEmpty) {
+      final klineRoute =
+          find.byKey(const ValueKey<String>('sidebar-corner-kline'));
+      await tester.ensureVisible(klineRoute);
+      await tester.tap(klineRoute);
+      await tester.pumpAndSettle();
+    }
+  }
+
+  testWidgets('S13 granular controls are registered directly on the frame',
+      (tester) async {
+    await pumpApp(tester);
 
     expect(
       find.byKey(const ValueKey<String>('side-toolbar-toggle')),
       findsNothing,
     );
-
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>('sidebar-entry-s13-display-indicators'),
-      ),
+    expect(
+      find.byKey(const ValueKey<String>('sidebar-entry-s13-levels')),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('sidebar-entry-s13-replay-marker')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+          const ValueKey<String>('sidebar-entry-s13-display-indicators')),
+      findsNothing,
+    );
 
-    final ma = find.widgetWithText(FilterChip, 'MA');
-    expect(ma, findsOneWidget);
-    expect(tester.widget<FilterChip>(ma).selected, isFalse);
+    final registeredIds = {
+      for (final entry in fourWaySidebarRegistry.entries.value) entry.id,
+    };
+    for (final id in <String>[
+      's13-level-TICK',
+      's13-level-TICK_MIN1',
+      's13-level-DAILY',
+      's13-level-MIN60',
+      's13-level-MIN30',
+      's13-level-MIN15',
+      's13-level-MIN5',
+      's13-level-MIN1',
+      's13-mode-once',
+      's13-mode-step',
+      's13-indicator-MA',
+      's13-show-interval-nest',
+      's13-show-chip-distribution',
+      's13-drawing',
+    ]) {
+      expect(registeredIds, contains(id),
+          reason: '$id should be registered as a sidebar entry');
+    }
+    expect(
+      find.byKey(const ValueKey<String>('sidebar-corner-load-replay')),
+      findsOneWidget,
+    );
 
-    await tester.tap(ma);
-    await tester.pumpAndSettle();
-
-    expect(tester.widget<FilterChip>(ma).selected, isTrue);
-    expect(find.text('节奏线设置'), findsOneWidget);
+    expect(find.text('校验'), findsNothing);
+    expect(find.text('当前'), findsNothing);
+    expect(find.text('导出BSP JSON'), findsNothing);
+    expect(find.text('检查当前买卖点'), findsNothing);
+    expect(find.text('BSP统计'), findsNothing);
+    expect(find.text('BSP分组'), findsNothing);
+    expect(find.text('复制BSP报告'), findsNothing);
     expect(tester.takeException(), isNull);
-    debugDefaultTargetPlatformOverride = null;
   });
 
-  testWidgets('every legacy toolbar section is registered on the frame',
+  testWidgets('direct sidebar controls can be activated without panels',
       (tester) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
-    tester.view.physicalSize = const Size(1440, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(const ChanReplayApp());
+    await pumpApp(tester);
+
+    fourWaySidebarRegistry.entries.value
+        .firstWhere((entry) => entry.id == 's13-indicator-MA')
+        .onActivate
+        ?.call();
     await tester.pumpAndSettle();
 
-    final cases = <String, String>{
-      's13-stock': '状态 / 一键复制',
-      's13-levels': 'DAILY',
-      's13-replay-marker': '载入复盘',
-      's13-display-indicators': '节奏线设置',
-    };
-    for (final entry in cases.entries) {
-      final button = find.byKey(
-        ValueKey<String>('sidebar-entry-${entry.key}'),
-      );
-      await tester.ensureVisible(button);
-      await tester.tap(button);
-      await tester.pumpAndSettle();
-      expect(find.text(entry.value), findsWidgets,
-          reason: '${entry.key} should expose its original controls');
-    }
-
-    final drawingButton = find.byKey(
-      const ValueKey<String>('sidebar-entry-s13-drawing'),
-    );
-    await tester.ensureVisible(drawingButton);
-    await tester.tap(drawingButton);
+    fourWaySidebarRegistry.entries.value
+        .firstWhere((entry) => entry.id == 's13-mode-step')
+        .onActivate
+        ?.call();
     await tester.pumpAndSettle();
-    expect(find.text('已打开画线工具：趋势线，请在K线图上点击锚点。'), findsNothing);
-    expect(find.text('打开画线工具'), findsNothing);
 
+    expect(find.byKey(const ValueKey<String>('right-settings-panel')),
+        findsNothing);
+    expect(find.byKey(const ValueKey<String>('left-category-panel')),
+        findsNothing);
     expect(tester.takeException(), isNull);
-    debugDefaultTargetPlatformOverride = null;
   });
 }

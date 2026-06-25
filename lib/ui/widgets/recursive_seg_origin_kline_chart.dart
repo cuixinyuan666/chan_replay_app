@@ -506,10 +506,7 @@ class _RecursiveSegOriginKlineChartState
         ...widget.drawingObjects,
       ],
       drawingStorageKey: widget.drawingStorageKey,
-      symbolLabel: widget._symbolLabelWithRecursiveSegSummary(
-        widget.symbolLabel,
-        widget.snapshot,
-      ),
+      symbolLabel: widget.symbolLabel,
       isChanOverlayVisible: _standardOverlayVisible,
       onChanOverlayToggled: _toggleStandardOverlay,
       additionalChanOverlays: recursiveEntries,

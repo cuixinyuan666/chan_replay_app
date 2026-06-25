@@ -16,6 +16,7 @@ import '../../core/models/bsp_step_review.dart';
 import '../../core/models/chan_snapshot.dart';
 import '../../core/models/level_relation.dart';
 import '../../core/models/multi_level_chan_snapshot.dart';
+import '../../core/models/raw_bar.dart';
 import '../../core/models/rhythm.dart';
 import '../../core/runtime/runtime_path.dart';
 import '../../core/services/replay_analysis_store.dart';
@@ -146,6 +147,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   DateTime? _startDate = _defaultStartDate, _endDate = _defaultEndDateValue;
   Timer? _playTimer;
   bool _windowMaximized = false;
+  int? _researchOverlayNonce;
+  final List<Map<String, dynamic>> _researchOverlayMarkers =
+      <Map<String, dynamic>>[];
   final Map<String, Offset> _replayControlOffsets = <String, Offset>{};
   final Map<String, BspStepReviewItem> _bspStepReviewItems =
       <String, BspStepReviewItem>{};
@@ -173,6 +177,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         fourWaySidebarRegistry.register(this, _sidebarRegistrations());
+        fourWayCornerRegistry.register(this, _sidebarCornerRegistrations());
       }
       _syncWindowMaximizedState();
     });
@@ -181,6 +186,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   @override
   void dispose() {
     fourWaySidebarRegistry.unregister(this);
+    fourWayCornerRegistry.unregister(this);
     ChanConfigStore.notifier.removeListener(_handleGlobalChanConfigChanged);
     LevelPromoterSettings.maxLayer
         .removeListener(_handleGlobalChanConfigChanged);
@@ -201,16 +207,44 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   void setState(VoidCallback fn) {
     super.setState(fn);
     _sidebarRevision.value++;
+    if (mounted) {
+      fourWaySidebarRegistry.register(this, _sidebarRegistrations());
+      fourWayCornerRegistry.register(this, _sidebarCornerRegistrations());
+    }
   }
 
+  List<SidebarCornerRegistration> _sidebarCornerRegistrations() =>
+      <SidebarCornerRegistration>[
+        SidebarCornerRegistration(
+          id: 's13-load-replay-corner',
+          corner: SidebarCorner.bottomRight,
+          builder: (_) => IconButton(
+            key: const ValueKey<String>('sidebar-corner-load-replay'),
+            tooltip: '加载数据',
+            icon: _loading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.play_arrow, size: 19),
+            color: Colors.white70,
+            onPressed: _loading ? null : _loadReplay,
+          ),
+        ),
+      ];
+
   List<SidebarRegistration> _sidebarRegistrations() {
-    SidebarRegistration section({
+    SidebarRegistration action({
       required String id,
       required String label,
       required String category,
       required IconData icon,
       required SidebarEdge edge,
-      required int index,
+      required VoidCallback onActivate,
+      bool compact = false,
+      required Color accentColor,
+      bool Function()? selectedBuilder,
     }) =>
         SidebarRegistration(
           id: id,
@@ -218,47 +252,244 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           category: category,
           icon: icon,
           edge: edge,
-          panelBuilder: (_) => _S13RegisteredSectionPanel(
-            revision: _sidebarRevision,
-            sectionBuilder: () => _s13ToolbarSections()[index],
-          ),
+          onActivate: onActivate,
+          compact: compact,
+          accentColor: accentColor,
+          selectedBuilder: selectedBuilder,
         );
-
+    const cycleColor = Color(0xFF4DD0E1);
+    const indicatorColor = Color(0xFFB388FF);
+    const targetColor = Color(0xFFFFD54F);
+    const modeColor = Color(0xFF81C784);
+    const layerColor = Color(0xFF64B5F6);
+    const toolColor = Color(0xFFFF8A80);
     return <SidebarRegistration>[
-      section(
-          id: 's13-stock',
-          label: '股票与数据',
-          category: '数据',
-          icon: Icons.query_stats,
-          edge: SidebarEdge.right,
-          index: 0),
-      section(
-          id: 's13-levels',
-          label: '级别',
-          category: '数据',
+      action(
+        id: 's13-start-date',
+        label: 'start',
+        category: '标的数据',
+        icon: Icons.date_range,
+        edge: SidebarEdge.right,
+        accentColor: targetColor,
+        onActivate: () => _pickDate(isStart: true),
+      ),
+      action(
+        id: 's13-end-date',
+        label: 'end',
+        category: '标的数据',
+        icon: Icons.event,
+        edge: SidebarEdge.right,
+        accentColor: targetColor,
+        onActivate: () => _pickDate(isStart: false),
+      ),
+      action(
+        id: 's13-runtime-fast',
+        label: '高速',
+        category: '标的数据',
+        icon: Icons.speed,
+        edge: SidebarEdge.right,
+        accentColor: targetColor,
+        selectedBuilder: () =>
+            RuntimePathController.current == RuntimePath.highSpeed,
+        onActivate: () =>
+            setState(() => RuntimePathController.set(RuntimePath.highSpeed)),
+      ),
+      action(
+        id: 's13-runtime-compat',
+        label: '慢速',
+        category: '标的数据',
+        icon: Icons.route,
+        edge: SidebarEdge.right,
+        accentColor: targetColor,
+        selectedBuilder: () =>
+            RuntimePathController.current == RuntimePath.slowPath,
+        onActivate: () =>
+            setState(() => RuntimePathController.set(RuntimePath.slowPath)),
+      ),
+      action(
+        id: 's13-copy-settings',
+        label: '复制状态',
+        category: '标的数据',
+        icon: Icons.copy_all,
+        edge: SidebarEdge.right,
+        accentColor: targetColor,
+        onActivate: _copyCurrentS13Settings,
+      ),
+      for (final level in _levelOptions)
+        action(
+          id: 's13-level-$level',
+          label: level,
+          category: '周期',
           icon: Icons.tune,
           edge: SidebarEdge.top,
-          index: 1),
-      section(
-          id: 's13-replay-marker',
-          label: '复盘与标记',
-          category: '复盘',
-          icon: Icons.play_circle_outline,
+          compact: true,
+          accentColor: cycleColor,
+          selectedBuilder: () => _selectedLevels.contains(level),
+          onActivate: () => _toggleLevelFromSidebar(level),
+        ),
+      for (final level in _loadedLevels)
+        action(
+          id: 's13-active-level-$level',
+          label: level,
+          category: '周期',
+          icon: Icons.adjust,
           edge: SidebarEdge.top,
-          index: 2),
-      section(
-          id: 's13-display-indicators',
-          label: '显示 / 指标',
-          category: '显示',
+          compact: true,
+          accentColor: cycleColor,
+          selectedBuilder: () => _activeLevel == level,
+          onActivate: () => _activateLoadedLevelFromSidebar(level),
+        ),
+      action(
+        id: 's13-mode-once',
+        label: 'once',
+        category: '复盘模式',
+        icon: Icons.looks_one,
+        edge: SidebarEdge.top,
+        compact: true,
+        accentColor: modeColor,
+        selectedBuilder: () => _mode == 'once',
+        onActivate: () => _setReplayMode('once'),
+      ),
+      action(
+        id: 's13-mode-step',
+        label: 'step',
+        category: '复盘模式',
+        icon: Icons.skip_next,
+        edge: SidebarEdge.top,
+        compact: true,
+        accentColor: modeColor,
+        selectedBuilder: () => _mode == 'step',
+        onActivate: () => _setReplayMode('step'),
+      ),
+      for (final name in _easyTdxIndicatorOptions)
+        action(
+          id: 's13-indicator-$name',
+          label: name,
+          category: '指标',
           icon: Icons.analytics_outlined,
           edge: SidebarEdge.right,
-          index: 3),
-      SidebarRegistration(
+          compact: true,
+          accentColor: indicatorColor,
+          selectedBuilder: () => _enabledEasyTdxIndicators.contains(name),
+          onActivate: () => _toggleEasyTdxIndicator(name),
+        ),
+      action(
+        id: 's13-show-interval-nest',
+        label: '区间套',
+        category: '图层',
+        icon: Icons.account_tree,
+        edge: SidebarEdge.right,
+        accentColor: layerColor,
+        selectedBuilder: () => _showIntervalNest,
+        onActivate: () =>
+            setState(() => _showIntervalNest = !_showIntervalNest),
+      ),
+      action(
+        id: 's13-show-native-zs',
+        label: '段中枢',
+        category: '图层',
+        icon: Icons.crop_square,
+        edge: SidebarEdge.right,
+        accentColor: layerColor,
+        selectedBuilder: () => _showNativeZs,
+        onActivate: () => setState(() => _showNativeZs = !_showNativeZs),
+      ),
+      action(
+        id: 's13-show-seg2-zs',
+        label: '2段中枢',
+        category: '图层',
+        icon: Icons.filter_2,
+        edge: SidebarEdge.right,
+        accentColor: layerColor,
+        selectedBuilder: () => _showSeg2Zs,
+        onActivate: () => setState(() => _showSeg2Zs = !_showSeg2Zs),
+      ),
+      action(
+        id: 's13-show-segn-zs',
+        label: 'N段中枢',
+        category: '图层',
+        icon: Icons.layers,
+        edge: SidebarEdge.right,
+        accentColor: layerColor,
+        selectedBuilder: () => _showSegNZs,
+        onActivate: () => setState(() => _showSegNZs = !_showSegNZs),
+      ),
+      action(
+        id: 's13-show-rhythm-lines',
+        label: '节奏线',
+        category: '图层',
+        icon: Icons.timeline,
+        edge: SidebarEdge.right,
+        accentColor: layerColor,
+        selectedBuilder: () => _showRhythmLines,
+        onActivate: () => setState(() => _showRhythmLines = !_showRhythmLines),
+      ),
+      action(
+        id: 's13-show-1382-hits',
+        label: '1.382',
+        category: '图层',
+        icon: Icons.my_location,
+        edge: SidebarEdge.right,
+        accentColor: layerColor,
+        selectedBuilder: () => _show1382Hits,
+        onActivate: () => setState(() => _show1382Hits = !_show1382Hits),
+      ),
+      action(
+        id: 's13-show-chip-distribution',
+        label: '筹码分布',
+        category: '图层',
+        icon: Icons.stacked_bar_chart,
+        edge: SidebarEdge.right,
+        accentColor: layerColor,
+        selectedBuilder: () => _showChipDistribution,
+        onActivate: () =>
+            setState(() => _showChipDistribution = !_showChipDistribution),
+      ),
+      action(
+        id: 's13-rhythm-settings',
+        label: '节奏设置',
+        category: '工具',
+        icon: Icons.tune,
+        edge: SidebarEdge.right,
+        accentColor: toolColor,
+        onActivate: () {
+          if (!_loading) _openRhythmDisplaySettings();
+        },
+      ),
+      action(
+        id: 's13-auto-bsp-review',
+        label: '自动BSP',
+        category: '工具',
+        icon: Icons.fact_check,
+        edge: SidebarEdge.right,
+        accentColor: toolColor,
+        selectedBuilder: () => _autoJudgeBspStepReview,
+        onActivate: () {
+          if (_loading) return;
+          setState(() => _autoJudgeBspStepReview = !_autoJudgeBspStepReview);
+          if (_autoJudgeBspStepReview) {
+            _updateCurrentBspStepReviews(notify: false);
+          }
+        },
+      ),
+      action(
+        id: 's13-bsp-candidate-trail',
+        label: 'BSP轨迹',
+        category: '工具',
+        icon: Icons.route,
+        edge: SidebarEdge.right,
+        accentColor: toolColor,
+        selectedBuilder: () => _showBspCandidateTrail,
+        onActivate: () =>
+            setState(() => _showBspCandidateTrail = !_showBspCandidateTrail),
+      ),
+      action(
         id: 's13-drawing',
         label: '画线工具',
         category: '工具',
         icon: Icons.architecture,
         edge: SidebarEdge.right,
+        accentColor: toolColor,
         onActivate: _openDrawingToolbox,
       ),
     ];
@@ -274,12 +505,19 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
 
   Future<void> _applyKlineLocationRequest(KlineLocationRequest request) async {
     final requestedLevel = request.level.trim().toUpperCase();
+    final overlayMarkers = _researchMarkersFromRequest(request);
     final loadedSymbol = _symbolController.text.trim().toUpperCase();
     final loadedMarket = _marketController.text.trim().toUpperCase();
     final hasRequestedData = _analysis != null &&
         loadedSymbol == request.symbol.trim().toUpperCase() &&
         loadedMarket == request.market.trim().toUpperCase() &&
         (_analysis?.snapshot.snapshots.containsKey(requestedLevel) ?? false);
+    setState(() {
+      _researchOverlayNonce = request.nonce;
+      _researchOverlayMarkers
+        ..clear()
+        ..addAll(overlayMarkers);
+    });
     if (!hasRequestedData) {
       setState(() {
         _symbolController.text = request.symbol;
@@ -310,8 +548,19 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     final max = snapshot.rawBars.length - 1;
     setState(() {
       _activeLevel = requestedLevel;
-      _windowSize = math.min(180, snapshot.rawBars.length);
-      _viewEndIndex = (index + _windowSize ~/ 3).clamp(0, max).toInt();
+      final requestedSpan = request.visibleStartRawIndex != null &&
+              request.visibleEndRawIndex != null
+          ? (request.visibleEndRawIndex! - request.visibleStartRawIndex!)
+                  .abs() +
+              1
+          : 0;
+      _windowSize = math
+          .min(
+            math.max(90, requestedSpan + 24),
+            snapshot.rawBars.length,
+          )
+          .toInt();
+      _viewEndIndex = (index + _windowSize ~/ 2).clamp(0, max).toInt();
       _crosshairIndex = index;
       _priceScale = 1.0;
       _priceOffset = 0.0;
@@ -319,6 +568,44 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     });
     _showMessage(
         '${request.label.isEmpty ? '回测结果' : request.label}：已定位到 $requestedLevel raw=${request.rawIndex}');
+  }
+
+  List<Map<String, dynamic>> _researchMarkersFromRequest(
+      KlineLocationRequest request) {
+    final payload = request.analysisPayload;
+    final rawMarkers =
+        payload == null ? null : payload['_research_overlay_markers'];
+    final rows = <Map<String, dynamic>>[];
+    if (rawMarkers is List) {
+      for (final marker in rawMarkers) {
+        if (marker is Map) rows.add(Map<String, dynamic>.from(marker));
+      }
+    }
+    if (rows.isEmpty) {
+      rows.add(<String, dynamic>{
+        'raw_index': request.rawIndex,
+        'kind': request.label.contains('出') ? 'exit' : 'entry',
+        'label': request.label.isEmpty ? 'research' : request.label,
+        'ordinal': 1,
+      });
+    }
+    final start = request.visibleStartRawIndex;
+    final end = request.visibleEndRawIndex;
+    if (start != null && end != null && start != end) {
+      rows.addAll(<Map<String, dynamic>>[
+        <String, dynamic>{
+          'raw_index': start < end ? start : end,
+          'kind': 'range_start',
+          'label': 'range',
+        },
+        <String, dynamic>{
+          'raw_index': start < end ? end : start,
+          'kind': 'range_end',
+          'label': 'range',
+        },
+      ]);
+    }
+    return rows;
   }
 
   bool get _supportsWindowManager =>
@@ -2026,11 +2313,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
               for (final level in _loadedLevels) _activeLevelChip(level),
             ]),
-            const SizedBox(height: 8),
-            Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
-              _infoButton('校验', _lastLevelValidation),
-              _infoButton('当前', _loadedLevels.join(',')),
-            ]),
           ],
         ),
         SideToolbarSection(
@@ -2049,26 +2331,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                       )
                     : const Icon(Icons.play_arrow, size: 16),
                 label: const Text('载入复盘'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _hasStepFrames ? _judgeCurrentBspStepReviews : null,
-                icon: const Icon(Icons.fact_check, size: 16),
-                label: const Text('检查当前买卖点'),
-              ),
-              _infoButton('BSP统计', _bspReviewStatsText()),
-              _infoButton('BSP分组', _bspReviewBucketStatsText()),
-              OutlinedButton.icon(
-                onPressed:
-                    _bspStepReviewItems.isEmpty ? null : _copyBspReviewReport,
-                icon: const Icon(Icons.copy_all, size: 16),
-                label: const Text('复制BSP报告'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _bspStepReviewItems.isEmpty
-                    ? null
-                    : _exportBspReviewReportJson,
-                icon: const Icon(Icons.save_alt, size: 16),
-                label: const Text('导出BSP JSON'),
               ),
             ]),
           ],
@@ -2286,11 +2548,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
             Wrap(spacing: 6, runSpacing: 6, children: <Widget>[
               for (final level in _loadedLevels) _activeLevelChip(level),
             ]),
-            const SizedBox(height: 8),
-            Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
-              _infoButton('校验', _lastLevelValidation),
-              _infoButton('当前', _loadedLevels.join(',')),
-            ]),
             _sectionGap(),
             _sectionTitle('复盘 / marker'),
             Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
@@ -2306,26 +2563,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                       )
                     : const Icon(Icons.play_arrow, size: 16),
                 label: const Text('载入复盘'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _hasStepFrames ? _judgeCurrentBspStepReviews : null,
-                icon: const Icon(Icons.fact_check, size: 16),
-                label: const Text('检查当前买卖点'),
-              ),
-              _infoButton('BSP统计', _bspReviewStatsText()),
-              _infoButton('BSP分组', _bspReviewBucketStatsText()),
-              OutlinedButton.icon(
-                onPressed:
-                    _bspStepReviewItems.isEmpty ? null : _copyBspReviewReport,
-                icon: const Icon(Icons.copy_all, size: 16),
-                label: const Text('复制BSP报告'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _bspStepReviewItems.isEmpty
-                    ? null
-                    : _exportBspReviewReportJson,
-                icon: const Icon(Icons.save_alt, size: 16),
-                label: const Text('导出BSP JSON'),
               ),
               OutlinedButton.icon(
                 onPressed: _copyS13IntervalNestMarkerEvidence,
@@ -2408,11 +2645,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           ]);
   Widget _chartPanel(ChanSnapshot? s) {
     if (s == null || s.rawBars.isEmpty)
-      return _panelBox(
-          'Chart',
-          const Center(
-              child: Text('Load replay to show chart.',
-                  style: TextStyle(color: Colors.white54))));
+      return const Center(
+          child: Text('Load replay to show chart.',
+              style: TextStyle(color: Colors.white54)));
     return Stack(children: <Widget>[
       Positioned.fill(
           child: RecursiveSegOriginKlineChart(
@@ -2435,9 +2670,10 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
               onEasyTdxIndicatorToggled: _toggleEasyTdxIndicator,
               toolboxOpenSignal: _toolboxOpenSignal,
               toolboxSelectedToolSignal: _toolboxSelectedToolSignal,
-              drawingObjects: _rhythmDrawingObjects(s),
+              drawingObjects: _chartDrawingObjects(s),
               drawingStorageKey: 's13_${_symbolController.text}_$_activeLevel',
-              symbolLabel: '${_symbolController.text.trim()} $_activeLevel',
+              symbolLabel:
+                  '模式:$_mode 时间:{time} 股票代码:${_symbolController.text.trim()}',
               windowSize: _windowSize,
               priceScale: _priceScale,
               priceOffset: _priceOffset,
@@ -2800,9 +3036,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
                   if (!_selectedLevels.contains(level)) {
                     _selectedLevels.add(level);
                   }
-                } else if (_selectedLevels.length > 1) {
+                } else {
                   _selectedLevels.remove(level);
-                  if (_selectedLevels.length == 1 && _mode == 'step') {
+                  if (_selectedLevels.length <= 1 && _mode == 'step') {
                     _mode = 'once';
                   }
                   if (_activeLevel == level && _selectedLevels.isNotEmpty) {
@@ -2818,6 +3054,35 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         fontSize: 12,
       ),
     );
+  }
+
+  void _toggleLevelFromSidebar(String level) {
+    if (_loading) return;
+    setState(() {
+      if (_selectedLevels.contains(level)) {
+        _selectedLevels.remove(level);
+        if (_selectedLevels.length <= 1 && _mode == 'step') {
+          _mode = 'once';
+        }
+        if (_activeLevel == level && _selectedLevels.isNotEmpty) {
+          _activeLevel = _normalizedLevels.first;
+        }
+      } else {
+        _selectedLevels.add(level);
+      }
+      _lastLevelValidation = _validateSelectedLevels().message;
+    });
+  }
+
+  void _activateLoadedLevelFromSidebar(String level) {
+    if (_currentSnapshot?.snapshots.containsKey(level) != true) return;
+    setState(() {
+      _activeLevel = level;
+      _viewEndIndex = null;
+      _crosshairIndex = null;
+      _priceScale = 1.0;
+      _priceOffset = 0.0;
+    });
   }
 
   Widget _activeLevelChip(String level) {
@@ -2872,6 +3137,112 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         fontSize: 12,
       ),
     );
+  }
+
+  List<DrawingObject> _chartDrawingObjects(ChanSnapshot snapshot) =>
+      <DrawingObject>[
+        ..._rhythmDrawingObjects(snapshot),
+        ..._researchOverlayDrawingObjects(snapshot),
+      ];
+
+  List<DrawingObject> _researchOverlayDrawingObjects(ChanSnapshot snapshot) {
+    if (_researchOverlayMarkers.isEmpty || snapshot.rawBars.isEmpty) {
+      return const <DrawingObject>[];
+    }
+    final now = DateTime.fromMillisecondsSinceEpoch(0);
+    final nonce = _researchOverlayNonce ?? 0;
+    final objects = <DrawingObject>[];
+    for (var index = 0; index < _researchOverlayMarkers.length; index++) {
+      final marker = _researchOverlayMarkers[index];
+      final rawIndex = _intValue(marker['raw_index']);
+      if (rawIndex == null) continue;
+      final barIndex = _barListIndexForRawIndex(snapshot, rawIndex);
+      if (barIndex < 0 || barIndex >= snapshot.rawBars.length) continue;
+      final bar = snapshot.rawBars[barIndex];
+      final kind = '${marker['kind'] ?? ''}';
+      final isRange = kind == 'range_start' || kind == 'range_end';
+      final low = bar.low;
+      final high = bar.high;
+      final price = _researchMarkerPrice(bar, kind);
+      objects.add(DrawingObject(
+        id: 's13_research_overlay_${nonce}_${index}_$rawIndex',
+        tool: isRange
+            ? TradingViewDrawingTool.verticalLine
+            : TradingViewDrawingTool.iconFlag,
+        anchors: isRange
+            ? <DrawingAnchor>[
+                DrawingAnchor.chart(rawIndex: bar.index, price: low),
+                DrawingAnchor.chart(rawIndex: bar.index, price: high),
+              ]
+            : <DrawingAnchor>[
+                DrawingAnchor.chart(rawIndex: bar.index, price: price),
+              ],
+        style: DrawingStyle(
+          colorValue: _researchMarkerColor(kind),
+          strokeWidth: isRange ? 1.7 : 2.0,
+          opacity: isRange ? 0.72 : 0.96,
+          dashed: isRange,
+          fontSize: 12,
+        ),
+        text: _researchMarkerLabel(marker, kind),
+        locked: true,
+        createdAt: now,
+        updatedAt: now,
+      ));
+    }
+    return objects;
+  }
+
+  String _researchMarkerLabel(Map<String, dynamic> marker, String kind) {
+    final ordinal = marker['ordinal'];
+    final no = ordinal == null ? '' : '#$ordinal';
+    switch (kind) {
+      case 'entry':
+      case 'trade_entry':
+        return '入$no';
+      case 'exit':
+      case 'trade_exit':
+        return '出$no';
+      case 'range_start':
+        return '区间起';
+      case 'range_end':
+        return '区间止';
+    }
+    final label = '${marker['label'] ?? ''}'.trim();
+    return label.isEmpty ? '研究$no' : '$label$no';
+  }
+
+  double _researchMarkerPrice(RawBar bar, String kind) {
+    switch (kind) {
+      case 'entry':
+      case 'trade_entry':
+        return bar.low;
+      case 'exit':
+      case 'trade_exit':
+        return bar.high;
+    }
+    return bar.close;
+  }
+
+  int _researchMarkerColor(String kind) {
+    switch (kind) {
+      case 'entry':
+      case 'trade_entry':
+        return 0xFF26A69A;
+      case 'exit':
+      case 'trade_exit':
+        return 0xFFEF5350;
+      case 'range_start':
+      case 'range_end':
+        return 0xFFFFD54F;
+    }
+    return 0xFF64B5F6;
+  }
+
+  int? _intValue(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('${value ?? ''}');
   }
 
   List<DrawingObject> _rhythmDrawingObjects(ChanSnapshot snapshot) {

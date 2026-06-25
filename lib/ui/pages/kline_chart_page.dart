@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/services/replay_analysis_store.dart';
 import '../settings/kline_appearance_controller.dart';
-import 'research_jump_kline_chart_page.dart';
 import 's13_single_stock_replay_page.dart';
 
 /// Unified K-line chart entry.
@@ -42,18 +41,15 @@ class KlineChartPage extends StatelessWidget {
           child: ValueListenableBuilder<KlineLocationRequest?>(
             valueListenable: ReplayAnalysisStore.klineLocation,
             builder: (context, location, _) {
-              final cachedJump = location?.analysisPayload != null;
               return Stack(
                 children: <Widget>[
                   Positioned.fill(
                     child: ColoredBox(
                       color: appearance.chartBackgroundColor,
-                      child: cachedJump
-                          ? ResearchJumpKlineChartPage(request: location!)
-                          : S13SingleStockReplayPage(
-                              currentRouteIndex: currentRouteIndex,
-                              onOpenRoute: onOpenRoute,
-                            ),
+                      child: S13SingleStockReplayPage(
+                        currentRouteIndex: currentRouteIndex,
+                        onOpenRoute: onOpenRoute,
+                      ),
                     ),
                   ),
                   if (appearance.klineOpacity > 0)

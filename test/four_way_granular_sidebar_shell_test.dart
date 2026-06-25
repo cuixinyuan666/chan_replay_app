@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:chan_replay_app/ui/widgets/four_way_granular_sidebar_shell.dart';
@@ -48,26 +49,18 @@ void main() {
     });
   }
 
-  testWidgets('swiping a rail moves the connected frame and opens its panel',
-      (tester) async {
+  testWidgets('edge button opens its connected frame panel', (tester) async {
     tester.view.physicalSize = const Size(800, 600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(subject());
 
-    final topRail = find.byKey(const ValueKey<String>('top-icon-rail'));
-    final initialLeft = tester.getTopLeft(topRail).dx;
-    await tester.flingFrom(
-      const Offset(24, 100),
-      const Offset(240, 0),
-      1000,
-    );
+    await tester.tap(find.byKey(const ValueKey<String>('sidebar-edge-left')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey<String>('left-category-panel')),
+    expect(find.byKey(const ValueKey<String>('sidebar-open-panel')),
         findsOneWidget);
-    expect(tester.getTopLeft(topRail).dx, greaterThan(initialLeft));
     expect(tester.takeException(), isNull);
   });
 
@@ -77,9 +70,45 @@ void main() {
     await tester.tap(find.byIcon(Icons.palette_outlined));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey<String>('right-settings-panel')),
+    expect(find.byKey(const ValueKey<String>('sidebar-open-panel')),
         findsOneWidget);
     expect(find.text('K图外观'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('price bucket count opens as a sidebar panel', (tester) async {
+    await tester.pumpWidget(subject());
+    await tester.tap(find.byKey(const ValueKey<String>('sidebar-entry-chips')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey<String>('sidebar-open-panel')),
+        findsOneWidget);
+    expect(find.text('价格桶数'), findsWidgets);
+    expect(find.textContaining('chip_bin_count_source'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mouse wheel rotates rails without pointer exceptions',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(subject());
+
+    final topRail = find.byKey(const ValueKey<String>('top-icon-rail'));
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: tester.getCenter(topRail),
+        scrollDelta: const Offset(0, 240),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(topRail, findsOneWidget);
+    expect(
+        find.byKey(const ValueKey<String>('right-icon-rail')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -103,10 +132,14 @@ void main() {
     expect(
         find.byKey(const ValueKey<String>('bottom-icon-rail')), findsNothing);
     expect(
+        find.byKey(const ValueKey<String>('app-close-corner')), findsNothing);
+    expect(find.byKey(const ValueKey<String>('sidebar-corner-kline')),
+        findsNothing);
+    expect(
       tester.getSize(find.byKey(const ValueKey<String>('chart-content'))),
       const Size(800, 600),
     );
-    expect(find.text('>'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -139,7 +172,7 @@ void main() {
       find.byKey(const ValueKey<String>('sidebar-entry-appearance')),
     );
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey<String>('right-settings-panel')),
+    expect(find.byKey(const ValueKey<String>('sidebar-open-panel')),
         findsOneWidget);
 
     await tester.ensureVisible(
@@ -150,9 +183,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey<String>('right-settings-panel')),
-        findsNothing);
-    expect(find.byKey(const ValueKey<String>('left-category-panel')),
+    expect(find.byKey(const ValueKey<String>('sidebar-open-panel')),
         findsOneWidget);
     expect(find.text('registered system panel'), findsOneWidget);
     expect(tester.takeException(), isNull);

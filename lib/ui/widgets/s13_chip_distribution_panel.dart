@@ -60,7 +60,6 @@ class S13ChipDistributionPanel extends StatelessWidget {
       child: Stack(
         children: <Widget>[
           if (enabled) _chipDistributionLayer(snapshot, effectiveBinCount),
-          _PriceBucketCountOverlay(value: effectiveBinCount),
         ],
       ),
     );
@@ -141,10 +140,15 @@ class S13ChipDistributionPanel extends StatelessWidget {
   }
 }
 
-class _PriceBucketCountOverlay extends StatelessWidget {
+class PriceBucketCountControl extends StatelessWidget {
   final int value;
+  final bool overlayChrome;
 
-  const _PriceBucketCountOverlay({required this.value});
+  const PriceBucketCountControl({
+    super.key,
+    required this.value,
+    this.overlayChrome = true,
+  });
 
   static const String _tooltip =
       '价格桶数：把当前价格区间切成多少个价格层来统计筹码。只在这个小界面内响应鼠标，K线图主体仍可正常拖拽和缩放。';
@@ -157,95 +161,91 @@ class _PriceBucketCountOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      top: 42,
-      right: 64,
-      width: 188,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (_) {},
-        onPointerMove: (_) {},
-        onPointerSignal: (_) {},
-        child: Material(
-          color: Colors.black.withValues(alpha: 0.64),
-          borderRadius: BorderRadius.circular(12),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white24),
+    final content = Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (_) {},
+      onPointerMove: (_) {},
+      onPointerSignal: (_) {},
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                const Tooltip(
+                  message: _tooltip,
+                  waitDuration: Duration(milliseconds: 250),
+                  child: Text(
+                    '价格桶数',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '$value',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Row(
-                    children: <Widget>[
-                      const Tooltip(
-                        message: _tooltip,
-                        waitDuration: Duration(milliseconds: 250),
-                        child: Text(
-                          '价格桶数',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '$value',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 3,
-                      thumbShape:
-                          const RoundSliderThumbShape(enabledThumbRadius: 5.5),
-                      overlayShape:
-                          const RoundSliderOverlayShape(overlayRadius: 11),
-                    ),
-                    child: Slider(
-                      value: value.toDouble(),
-                      min: 24,
-                      max: 160,
-                      divisions: 136,
-                      label: '$value',
-                      onChanged: (next) => _setValue(next.round()),
-                    ),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: <Widget>[
-                      _BucketStepButton(
-                        tooltip: '减少价格桶数',
-                        icon: Icons.remove,
-                        onPressed: () => _setValue(value - 1),
-                      ),
-                      const Text(
-                        '仅此控件响应操作',
-                        style: TextStyle(color: Colors.white38, fontSize: 10),
-                      ),
-                      _BucketStepButton(
-                        tooltip: '增加价格桶数',
-                        icon: Icons.add,
-                        onPressed: () => _setValue(value + 1),
-                      ),
-                    ],
-                  ),
-                ],
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 3,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 5.5),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 11),
+              ),
+              child: Slider(
+                value: value.toDouble(),
+                min: 24,
+                max: 160,
+                divisions: 136,
+                label: '$value',
+                onChanged: (next) => _setValue(next.round()),
               ),
             ),
-          ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: <Widget>[
+                _BucketStepButton(
+                  tooltip: '减少价格桶数',
+                  icon: Icons.remove,
+                  onPressed: () => _setValue(value - 1),
+                ),
+                const Text(
+                  '仅此控件响应操作',
+                  style: TextStyle(color: Colors.white38, fontSize: 10),
+                ),
+                _BucketStepButton(
+                  tooltip: '增加价格桶数',
+                  icon: Icons.add,
+                  onPressed: () => _setValue(value + 1),
+                ),
+              ],
+            ),
+          ],
         ),
+      ),
+    );
+    if (!overlayChrome) return content;
+    return Material(
+      color: Colors.black.withValues(alpha: 0.64),
+      borderRadius: BorderRadius.circular(12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: content,
       ),
     );
   }
