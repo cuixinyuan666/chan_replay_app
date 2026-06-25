@@ -22,7 +22,7 @@ ChipDistributionBar _bar(
     );
 
 void main() {
-  test('chip target resolver clamps crosshair in step mode', () {
+  test('chip target resolver lets crosshair drive step mode', () {
     expect(
       ChipOnlineReplayAdapter.resolveTargetIndex(
         total: 100,
@@ -31,7 +31,7 @@ void main() {
         crosshairIndex: 80,
         viewEndIndex: 90,
       ),
-      20,
+      80,
     );
 
     expect(
