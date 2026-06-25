@@ -48,9 +48,11 @@ class MultiLevelChanAnalysisParser {
 
     final relationsSw = Stopwatch()..start();
     final relations = parseRelations(data['relations']);
-    _addTiming(timing, '$timingPrefix.relations', relationsSw.elapsedMilliseconds);
+    _addTiming(
+        timing, '$timingPrefix.relations', relationsSw.elapsedMilliseconds);
 
-    _addTiming(timing, '$timingPrefix.total_inner', totalSw.elapsedMilliseconds);
+    _addTiming(
+        timing, '$timingPrefix.total_inner', totalSw.elapsedMilliseconds);
     return MultiLevelChanSnapshot(
       mainLevel: mainLevel,
       levels: levels,
@@ -65,7 +67,9 @@ class MultiLevelChanAnalysisParser {
     required ChanSnapshotParser parseSingleLevelSnapshot,
     Object? baseLevels,
   }) {
-    final base = baseLevels is Map ? Map<String, dynamic>.from(baseLevels) : const <String, dynamic>{};
+    final base = baseLevels is Map
+        ? Map<String, dynamic>.from(baseLevels)
+        : const <String, dynamic>{};
     if (rawFrame is Map<String, dynamic>) {
       return parseSnapshot(
         _inflateCompactFrame(rawFrame, base),
@@ -115,7 +119,9 @@ class MultiLevelChanAnalysisParser {
     // Historical step frames also pass through parseSnapshot, but they do not own
     // the final full analysis context for the research/backtest page.
     if (!data.containsKey('frames')) return;
-    final rawLevelPayload = rawLevels[mainLevel] ?? rawLevels[mainLevel.toUpperCase()] ?? rawLevels[mainLevel.toLowerCase()];
+    final rawLevelPayload = rawLevels[mainLevel] ??
+        rawLevels[mainLevel.toUpperCase()] ??
+        rawLevels[mainLevel.toLowerCase()];
     if (rawLevelPayload is! Map) return;
     final analysis = Map<String, dynamic>.from(rawLevelPayload);
     final levelMeta = analysis['meta'] is Map
@@ -190,14 +196,16 @@ class MultiLevelChanAnalysisParser {
       if (frameBars is! List && visibleCount != null) {
         final baseBars = basePayload['bars'];
         if (baseBars is List) {
-          levelPayload['bars'] = baseBars.take(visibleCount).toList(growable: false);
+          levelPayload['bars'] =
+              baseBars.take(visibleCount).toList(growable: false);
         }
       }
       final frameIndicators = levelPayload['indicators'];
       if (frameIndicators is! Map && visibleCount != null) {
         final baseIndicators = basePayload['indicators'];
         if (baseIndicators is Map) {
-          levelPayload['indicators'] = _clipIndicators(baseIndicators, visibleCount);
+          levelPayload['indicators'] =
+              _clipIndicators(baseIndicators, visibleCount);
         }
       }
       nextLevels[entry.key] = levelPayload;
@@ -240,7 +248,8 @@ class MultiLevelChanAnalysisParser {
     final result = <dynamic>[];
     for (var i = 0; i < rows.length; i++) {
       final row = rows[i];
-      final rawIndex = row is Map ? _int(row['raw_index'] ?? row['rawIndex']) ?? i : i;
+      final rawIndex =
+          row is Map ? _int(row['raw_index'] ?? row['rawIndex']) ?? i : i;
       if (rawIndex < visibleCount) result.add(row);
     }
     return result;
@@ -264,7 +273,8 @@ class MultiLevelChanAnalysisParser {
     Map<String, dynamic> meta,
     Map<String, ChanSnapshot> snapshots,
   ) {
-    final rawLevels = meta['levels'] ?? data['level_order'] ?? data['levelOrder'];
+    final rawLevels =
+        meta['levels'] ?? data['level_order'] ?? data['levelOrder'];
     if (rawLevels is List) {
       final parsed = [
         for (final item in rawLevels)
@@ -281,9 +291,10 @@ class MultiLevelChanAnalysisParser {
     List<String> levels,
     Map<String, ChanSnapshot> snapshots,
   ) {
-    final raw = '${data['main_level'] ?? data['mainLevel'] ?? meta['main_level'] ?? meta['mainLevel'] ?? ''}'
-        .trim()
-        .toUpperCase();
+    final raw =
+        '${data['main_level'] ?? data['mainLevel'] ?? meta['main_level'] ?? meta['mainLevel'] ?? ''}'
+            .trim()
+            .toUpperCase();
     if (raw.isNotEmpty && snapshots.containsKey(raw)) return raw;
     return levels.isNotEmpty ? levels.first : snapshots.keys.first;
   }
