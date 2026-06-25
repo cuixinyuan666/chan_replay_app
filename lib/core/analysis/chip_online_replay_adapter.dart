@@ -44,7 +44,9 @@ class ChipOnlineReplayAdapter {
   /// 统一筹码分布目标 K 选择。
   ///
   /// once 模式：crosshairIndex > viewEndIndex > lastBarIndex。
-  /// step 模式：优先十字线，但不能超过当前 stepIndex；超过则 clamp 到 stepIndex。
+  /// step 模式：crosshairIndex > stepIndex。只要用户移动十字线，右侧筹码
+  /// 就展示十字线对应 K 的筹码状态；没有十字线时才回到当前 stepIndex。
+  /// 筹码引擎仍只计算 targetIndex 及其之前的 bars，不使用目标 K 之后数据。
   static int resolveTargetIndex({
     required int total,
     required bool isStepMode,
@@ -55,9 +57,8 @@ class ChipOnlineReplayAdapter {
     if (total <= 0) return 0;
     final last = total - 1;
     if (isStepMode) {
-      final maxAllowed = stepIndex.clamp(0, last).toInt();
-      final requested = crosshairIndex ?? maxAllowed;
-      return requested.clamp(0, maxAllowed).toInt();
+      final requested = crosshairIndex ?? stepIndex;
+      return requested.clamp(0, last).toInt();
     }
     final requested = crosshairIndex ?? viewEndIndex ?? last;
     return requested.clamp(0, last).toInt();
