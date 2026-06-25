@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Any, Callable
 
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_market, normalize_symbol
@@ -26,7 +26,7 @@ def attach_chip_history(
     start_hint = _first_present(payload, cfg, 'listing_date', 'listed_at', 'ipo_date', 'chip_listing_date')
     history_count = _int(cfg.get('chip_history_count', payload.get('history_count', 500000)), 500000, 1, 500000)
     bucket_count = _int(cfg.get('chip_history_seed_bucket_count', 160), 160, 24, 4096)
-    history_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    history_cache: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     seed_cache: dict[tuple[str, str, str], tuple[dict[str, Any] | None, dict[str, Any]]] = {}
     level_meta: dict[str, dict[str, Any]] = {}
 
@@ -61,7 +61,7 @@ def _patch_levels(
     levels: dict[Any, Any], symbol: str, market: str, adjust: str, replay_end: Any,
     start_hint: str | None, history_count: int, bucket_count: int,
     load_bars: Callable[..., list[dict[str, Any]]],
-    history_cache: dict[tuple[str, str], list[dict[str, Any]]],
+    history_cache: dict[tuple[str, str, str], list[dict[str, Any]]],
     seed_cache: dict[tuple[str, str, str], tuple[dict[str, Any] | None, dict[str, Any]]],
     level_meta: dict[str, dict[str, Any]],
 ) -> dict[Any, Any]:
@@ -108,41 +108,89 @@ def _build_seed(
     symbol: str, market: str, adjust: str, replay_end: Any, start_hint: str | None,
     history_count: int, bucket_count: int,
     load_bars: Callable[..., list[dict[str, Any]]],
-    history_cache: dict[tuple[str, str], list[dict[str, Any]]],
+    history_cache: dict[tuple[str, str, str], list[dict[str, Any]]],
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-    history_end = str(replay_end or visible_end or '') or None
-    hkey = (level, str(history_end or ''))
+    history_period = _baseline_history_period(level)
+    history_end = _baseline_history_end(history_period, visible_start) or str(replay_end or visible_end or '') or None
+    hkey = (history_period, str(start_hint or ''), str(history_end or ''))
     errors: list[str] = []
     if hkey not in history_cache:
         try:
-            rows = load_bars(symbol=symbol, market=market, period=level, adjust=adjust,
+            rows = load_bars(symbol=symbol, market=market, period=history_period, adjust=adjust,
                              count=history_count, start=start_hint, end=history_end)
             history_cache[hkey] = _sort_rows(rows if isinstance(rows, list) else [])
         except Exception as exc:  # pragma: no cover
             history_cache[hkey] = []
             errors.append(f'provider_error:{type(exc).__name__}')
     history = history_cache[hkey]
-    before = [row for row in history if _time_text(row) and _cmp_time(_time_text(row), visible_start) < 0]
+    before = _baseline_rows_before_visible(history, visible_start, history_period)
     listing_date = start_hint or (_time_text(history[0]) if history else None)
     if not before:
         return None, {
-            'status': 'no_baseline_rows', 'level': level, 'listing_date': listing_date,
-            'visible_start': visible_start, 'visible_end': visible_end,
-            'baseline_bar_count': 0, 'history_bar_count': len(history),
-            'seed_includes_first_visible_bar': False, 'errors': errors,
+            'status': 'no_baseline_rows', 'level': level, 'baseline_source_level': history_period,
+            'listing_date': listing_date, 'visible_start': visible_start, 'visible_end': visible_end,
+            'baseline_history_end': history_end, 'baseline_bar_count': 0,
+            'history_bar_count': len(history), 'seed_includes_first_visible_bar': False,
+            'errors': errors,
         }
     seed_rows = [*before, first_bar]
     seed = _fold(seed_rows, bucket_count)
     return seed, {
-        'status': 'ok', 'level': level, 'listing_date': listing_date,
-        'chip_calc_start': _time_text(seed_rows[0]),
+        'status': 'ok', 'level': level, 'baseline_source_level': history_period,
+        'listing_date': listing_date, 'chip_calc_start': _time_text(seed_rows[0]),
         'visible_start': visible_start, 'visible_end': visible_end,
-        'baseline_policy': 'listing_to_visible_start_exclusive_plus_first_visible_bar',
+        'baseline_history_end': history_end,
+        'baseline_policy': 'listing_or_earliest_to_visible_start_exclusive_plus_first_visible_bar',
         'baseline_bar_count': len(before), 'seed_bar_count': len(seed_rows),
         'history_bar_count': len(history), 'seed_bucket_count': len(seed.get('p', [])),
         'seed_total_weight': sum(float(v) for v in seed.get('w', [])),
         'seed_includes_first_visible_bar': True, 'errors': errors,
     }
+
+
+def _baseline_history_period(level: str) -> str:
+    text = level.upper().strip().replace('-', '_')
+    compact = text.replace('_', '')
+    if text in {'TICK', 'TRANSACTION', 'TRANSACTIONS', 'TICK_MIN1', 'TICK_1MIN', 'TICK_MIN_1', 'TXN_MIN1', 'TRANSACTION_MIN1', 'TRANSACTIONS_MIN1'}:
+        return 'DAILY'
+    if compact in {'TICK', 'TRANSACTION', 'TRANSACTIONS', 'TICKMIN1', 'TICK1MIN', 'TXNMIN1', 'TRANSACTIONMIN1', 'TRANSACTIONSMIN1'}:
+        return 'DAILY'
+    return level
+
+
+def _baseline_history_end(history_period: str, visible_start: str) -> str | None:
+    visible_dt = _parse_dt(visible_start)
+    if visible_dt is None:
+        return visible_start or None
+    if _is_daily_period(history_period):
+        # A daily row dated the same day as an intraday visible_start would contain
+        # future intraday volume. End at the previous calendar day and filter by
+        # row date again below to keep the baseline future-free.
+        return (visible_dt.date() - timedelta(days=1)).isoformat()
+    return visible_start
+
+
+def _baseline_rows_before_visible(rows: list[dict[str, Any]], visible_start: str, history_period: str) -> list[dict[str, Any]]:
+    visible_dt = _parse_dt(visible_start)
+    before: list[dict[str, Any]] = []
+    for row in rows:
+        row_dt = _parse_dt(_time_text(row))
+        if row_dt is None:
+            continue
+        if _is_daily_period(history_period) and visible_dt is not None:
+            if row_dt.date() < visible_dt.date():
+                before.append(row)
+            continue
+        if visible_dt is not None:
+            if row_dt < visible_dt:
+                before.append(row)
+        elif _cmp_time(_time_text(row), visible_start) < 0:
+            before.append(row)
+    return before
+
+
+def _is_daily_period(period: str) -> bool:
+    return period.upper().strip().replace('-', '_') in {'D', 'DAY', 'DAILY', 'K_DAY', 'KDAY'}
 
 
 def _fold(rows: list[dict[str, Any]], bucket_count: int) -> dict[str, Any]:
