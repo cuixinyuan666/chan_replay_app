@@ -175,7 +175,16 @@ class MultiLevelChanAnalysisParser {
       }
       final levelPayload = Map<String, dynamic>.from(rawLevelPayload);
       final basePayloadRaw = baseLevels[level] ?? baseLevels[entry.key];
-      final basePayload = basePayloadRaw is Map ? Map<String, dynamic>.from(basePayloadRaw) : const <String, dynamic>{};
+      final basePayload = basePayloadRaw is Map
+          ? Map<String, dynamic>.from(basePayloadRaw)
+          : const <String, dynamic>{};
+      final frameMeta = levelPayload['meta'];
+      if (frameMeta is! Map) {
+        final baseMeta = basePayload['meta'];
+        if (baseMeta is Map) {
+          levelPayload['meta'] = Map<String, dynamic>.from(baseMeta);
+        }
+      }
       final visibleCount = _parseVisibleCount(levelPayload);
       final frameBars = levelPayload['bars'];
       if (frameBars is! List && visibleCount != null) {
