@@ -2039,6 +2039,51 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     return 'last_bar';
   }
 
+  String _chipMetaText(Map<String, dynamic>? meta, String key) {
+    if (meta == null) return 'none';
+    final value = meta[key];
+    final text = '${value ?? ''}'.trim();
+    return text.isEmpty || text == 'null' ? 'none' : text;
+  }
+
+  Map<String, String> _chipHistorySeedEvidence(ChanSnapshot snapshot) {
+    final seed = snapshot.meta['chip_history_seed'];
+    if (seed is! Map) {
+      return const <String, String>{
+        'history_seed_status': 'none',
+        'history_seed_level': 'none',
+        'history_seed_baseline_source_level': 'none',
+        'history_seed_listing_date': 'none',
+        'history_seed_calc_start': 'none',
+        'history_seed_visible_start': 'none',
+        'history_seed_baseline_history_end': 'none',
+        'history_seed_baseline_bar_count': '0',
+        'history_seed_history_bar_count': '0',
+        'history_seed_total_weight': '0',
+        'history_seed_includes_first_visible_bar': 'false',
+      };
+    }
+    final meta = Map<String, dynamic>.from(seed);
+    return <String, String>{
+      'history_seed_status': _chipMetaText(meta, 'status'),
+      'history_seed_level': _chipMetaText(meta, 'level'),
+      'history_seed_baseline_source_level':
+          _chipMetaText(meta, 'baseline_source_level'),
+      'history_seed_listing_date': _chipMetaText(meta, 'listing_date'),
+      'history_seed_calc_start': _chipMetaText(meta, 'chip_calc_start'),
+      'history_seed_visible_start': _chipMetaText(meta, 'visible_start'),
+      'history_seed_baseline_history_end':
+          _chipMetaText(meta, 'baseline_history_end'),
+      'history_seed_baseline_bar_count':
+          _chipMetaText(meta, 'baseline_bar_count'),
+      'history_seed_history_bar_count':
+          _chipMetaText(meta, 'history_bar_count'),
+      'history_seed_total_weight': _chipMetaText(meta, 'seed_total_weight'),
+      'history_seed_includes_first_visible_bar':
+          _chipMetaText(meta, 'seed_includes_first_visible_bar'),
+    };
+  }
+
   Map<String, String> _chipDistributionEvidence(ChanSnapshot? snapshot) {
     final chipSettings = ChipDistributionSettingsController.current;
     final binCount = chipSettings.priceBucketCount;
@@ -2063,6 +2108,17 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         'average_cost': '0',
         'profit_ratio': '0',
         'step_no_future': 'true',
+        'history_seed_status': 'none',
+        'history_seed_level': 'none',
+        'history_seed_baseline_source_level': 'none',
+        'history_seed_listing_date': 'none',
+        'history_seed_calc_start': 'none',
+        'history_seed_visible_start': 'none',
+        'history_seed_baseline_history_end': 'none',
+        'history_seed_baseline_bar_count': '0',
+        'history_seed_history_bar_count': '0',
+        'history_seed_total_weight': '0',
+        'history_seed_includes_first_visible_bar': 'false',
       };
     }
 
@@ -2075,6 +2131,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       viewEndIndex: _viewEndIndex,
     );
     final targetBar = snapshot.rawBars[targetIndex];
+    final seedEvidence = _chipHistorySeedEvidence(snapshot);
     final scopedBars = bars.take(targetIndex + 1).toList(growable: false);
     final hasExact = scopedBars.any((bar) => bar.hasExactChipBins);
     final hasFallback = scopedBars.any((bar) => !bar.hasExactChipBins);
@@ -2112,6 +2169,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       'average_cost': _chipNumber(result.averageCost),
       'profit_ratio': _chipNumber(result.profitRatio),
       'step_no_future': '$stepNoFuture',
+      ...seedEvidence,
     };
   }
 
@@ -2230,6 +2288,27 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       ..writeln("chip_average_cost=${chipEvidence['average_cost']}")
       ..writeln("chip_profit_ratio=${chipEvidence['profit_ratio']}")
       ..writeln("chip_step_no_future=${chipEvidence['step_no_future']}")
+      ..writeln(
+          "chip_history_seed_status=${chipEvidence['history_seed_status']}")
+      ..writeln("chip_history_seed_level=${chipEvidence['history_seed_level']}")
+      ..writeln(
+          "chip_history_seed_baseline_source_level=${chipEvidence['history_seed_baseline_source_level']}")
+      ..writeln(
+          "chip_history_seed_listing_date=${chipEvidence['history_seed_listing_date']}")
+      ..writeln(
+          "chip_history_seed_calc_start=${chipEvidence['history_seed_calc_start']}")
+      ..writeln(
+          "chip_history_seed_visible_start=${chipEvidence['history_seed_visible_start']}")
+      ..writeln(
+          "chip_history_seed_baseline_history_end=${chipEvidence['history_seed_baseline_history_end']}")
+      ..writeln(
+          "chip_history_seed_baseline_bar_count=${chipEvidence['history_seed_baseline_bar_count']}")
+      ..writeln(
+          "chip_history_seed_history_bar_count=${chipEvidence['history_seed_history_bar_count']}")
+      ..writeln(
+          "chip_history_seed_total_weight=${chipEvidence['history_seed_total_weight']}")
+      ..writeln(
+          "chip_history_seed_includes_first_visible_bar=${chipEvidence['history_seed_includes_first_visible_bar']}")
       ..writeln()
       ..writeln('[节奏线设置]')
       ..writeln('loaded_rhythm_enabled=${_loadedRhythmEnabled ?? 'not_loaded'}')

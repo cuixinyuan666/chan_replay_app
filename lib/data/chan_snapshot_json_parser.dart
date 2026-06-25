@@ -161,6 +161,13 @@ class ChanSnapshotJsonParser {
     _addTiming(
         timing, '$timingPrefix.indicators', indicatorSw.elapsedMilliseconds);
 
+    final levelMeta = data['meta'] is Map
+        ? Map<String, Object?>.unmodifiable(<String, Object?>{
+            for (final entry in (data['meta'] as Map).entries)
+              '${entry.key}': entry.value,
+          })
+        : const <String, Object?>{};
+
     _addTiming(timing, '$timingPrefix.total', totalSw.elapsedMilliseconds);
     return ChanSnapshot(
       rawBars: bars,
@@ -178,6 +185,7 @@ class ChanSnapshotJsonParser {
       indicators: indicators,
       rhythmLines: rhythmLines,
       rhythmHits: rhythmHits,
+      meta: levelMeta,
     );
   }
 
