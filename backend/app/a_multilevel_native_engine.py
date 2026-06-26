@@ -14,6 +14,7 @@ from .chanpy_engine import (
     _load_exporter,
     _safe_code,
 )
+from .a_offline_tick_chips import load_offline_tick_transaction_bars
 from .easy_tdx_provider import infer_market, load_easy_tdx_bars, normalize_market, normalize_symbol
 
 
@@ -162,6 +163,165 @@ def _level_intraday_bars_per_day(level: str) -> int:
 
 def _is_intraday_level(level: str) -> bool:
     return _level_intraday_bars_per_day(level) > 1
+
+
+def _data_source_mode(config: dict[str, Any] | None) -> str:
+    raw = str((config or {}).get('data_source') or '').strip().lower()
+    if raw in {'local', 'offline', 'a_data', 'adata'}:
+        return 'local'
+    return 'network'
+
+
+def _level_minutes(level: str) -> int | None:
+    if _is_tick_agg_min1_level(level):
+        return 1
+    text = level.upper().strip().replace('K_', '').replace('-', '').replace('_', '')
+    aliases = {
+        'MIN1': 1,
+        '1MIN': 1,
+        'M1': 1,
+        '1M': 1,
+        'MIN5': 5,
+        '5MIN': 5,
+        'M5': 5,
+        '5M': 5,
+        'MIN15': 15,
+        '15MIN': 15,
+        'M15': 15,
+        '15M': 15,
+        'MIN30': 30,
+        '30MIN': 30,
+        'M30': 30,
+        '30M': 30,
+        'MIN60': 60,
+        '60MIN': 60,
+        'M60': 60,
+        '60M': 60,
+    }
+    return aliases.get(text)
+
+
+def _offline_bucket_dt(dt: datetime, level: str) -> datetime:
+    minutes = _level_minutes(level)
+    if minutes is None:
+        return datetime.combine(dt.date(), time(23, 59))
+    total = dt.hour * 60 + dt.minute
+    bucket = (total // minutes) * minutes
+    return dt.replace(hour=bucket // 60, minute=bucket % 60, second=0, microsecond=0)
+
+
+def _merge_chip_bins(rows: list[dict[str, Any]], level: str, bucket: datetime) -> dict[str, Any]:
+    sell: dict[float, float] = {}
+    buy: dict[float, float] = {}
+    total: dict[float, float] = {}
+    for row in rows:
+        price = float(row.get('close') or row.get('open') or 0)
+        volume = float(row.get('volume') or row.get('vol') or 0)
+        if price <= 0 or volume <= 0:
+            continue
+        total[price] = total.get(price, 0.0) + volume
+        side = str(row.get('transaction_side') or '').lower()
+        target = sell if side == 'sell' else buy
+        target[price] = target.get(price, 0.0) + volume
+    prices = sorted(total)
+    return {
+        'p': prices,
+        's': [sell.get(price, 0.0) for price in prices],
+        'b': [buy.get(price, 0.0) for price in prices],
+        'w': [total.get(price, 0.0) for price in prices],
+        'source': 'offline_a_Data',
+        'source_period': 'TICK',
+        'agg_period': level,
+        'trade_date': bucket.strftime('%Y%m%d'),
+        'transaction_count': len(rows),
+    }
+
+
+def _aggregate_offline_bars(
+    *,
+    ticks: list[dict[str, Any]],
+    level: str,
+    code: str,
+    market_name: str,
+    adjust: str,
+) -> list[dict[str, Any]]:
+    if _is_tick_level(level):
+        return ticks
+    buckets: dict[datetime, list[dict[str, Any]]] = {}
+    for row in ticks:
+        dt = _parse_bar_dt(row)
+        if dt is None:
+            continue
+        buckets.setdefault(_offline_bucket_dt(dt, level), []).append(row)
+    out: list[dict[str, Any]] = []
+    for raw_index, bucket in enumerate(sorted(buckets)):
+        rows = sorted(buckets[bucket], key=lambda item: _parse_bar_dt(item) or datetime.min)
+        prices = [float(row.get('close') or row.get('open') or 0) for row in rows]
+        volumes = [float(row.get('volume') or row.get('vol') or 0) for row in rows]
+        if not prices:
+            continue
+        out.append({
+            'id': raw_index,
+            'raw_index': raw_index,
+            'dt': bucket.isoformat(sep=' '),
+            'time': bucket.isoformat(sep=' '),
+            'open': prices[0],
+            'high': max(prices),
+            'low': min(prices),
+            'close': prices[-1],
+            'vol': sum(volumes),
+            'volume': sum(volumes),
+            'amount': None,
+            'turnover': None,
+            'symbol': f'{code}.{market_name}' if market_name else code,
+            'market': market_name,
+            'code': code,
+            'period': level,
+            'adjust': adjust.upper(),
+            'offline_tick_source': 'a_Data',
+            'chip_tick_bins': _merge_chip_bins(rows, level, bucket),
+        })
+    return out
+
+
+def _load_source_bars(
+    *,
+    data_source: str,
+    code: str,
+    market_name: str,
+    level: str,
+    adjust: str,
+    count: int,
+    start: str | None,
+    end: str | None,
+) -> list[dict[str, Any]]:
+    if data_source == 'local':
+        ticks = load_offline_tick_transaction_bars(
+            symbol=code,
+            market=market_name,
+            period='TICK',
+            adjust=adjust,
+            count=None,
+            start=start,
+            end=end,
+        )
+        bars = _aggregate_offline_bars(
+            ticks=ticks,
+            level=level,
+            code=code,
+            market_name=market_name,
+            adjust=adjust,
+        )
+        return bars[-count:] if count > 0 and len(bars) > count else bars
+    return load_easy_tdx_bars(
+        symbol=code,
+        market=market_name,
+        period=level,
+        adjust=adjust,
+        count=count,
+        start=start,
+        end=end,
+    )
 
 
 def _effective_csv_dt(level: str, row: dict[str, Any]) -> datetime | None:
@@ -316,8 +476,10 @@ def _load_aligned_bars_by_level(
     count: int,
     start: str | None,
     end: str | None,
+    config: dict[str, Any] | None = None,
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
     top_level = level_order[0]
+    data_source = _data_source_mode(config)
     requested_start_dt = _parse_request_window_bound(start, is_end=False)
     requested_end_dt = _parse_request_window_bound(end, is_end=True)
     if requested_start_dt is not None and requested_end_dt is not None and requested_start_dt > requested_end_dt:
@@ -329,10 +491,11 @@ def _load_aligned_bars_by_level(
         prefetch_count_basis[top_level] = _count_expansion_basis(top_level, int(count), requested_start_dt, requested_end_dt)
         top_count = int(prefetch_count_basis[top_level]['expanded_count'])
 
-    top_bars = load_easy_tdx_bars(
-        symbol=code,
-        market=market_name,
-        period=top_level,
+    top_bars = _load_source_bars(
+        data_source=data_source,
+        code=code,
+        market_name=market_name,
+        level=top_level,
         adjust=adjust,
         count=top_count,
         start=start,
@@ -369,10 +532,11 @@ def _load_aligned_bars_by_level(
         level_count = int(basis['expanded_count'])
         count_expansion_basis[level] = basis
         requested_counts[level] = level_count
-        bars = load_easy_tdx_bars(
-            symbol=code,
-            market=market_name,
-            period=level,
+        bars = _load_source_bars(
+            data_source=data_source,
+            code=code,
+            market_name=market_name,
+            level=level,
             adjust=adjust,
             count=level_count,
             start=data_start,
@@ -396,6 +560,7 @@ def _load_aligned_bars_by_level(
 
     meta = {
         'top_level': top_level,
+        'data_source': data_source,
         'requested_window': {
             'start': data_start,
             'end': data_end,

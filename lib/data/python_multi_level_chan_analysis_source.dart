@@ -211,6 +211,7 @@ class PythonMultiLevelChanAnalysisSource {
     DateTime? startDate,
     DateTime? endDate,
     RuntimePath? runtimePath,
+    String? dataSource,
   }) async {
     final traceId = 'ml-${DateTime.now().microsecondsSinceEpoch}';
     final totalSw = Stopwatch()..start();
@@ -225,6 +226,10 @@ class PythonMultiLevelChanAnalysisSource {
         if (level.trim().isNotEmpty) level.trim().toUpperCase(),
     ];
     final effectiveConfig = ChanConfigStore.backendConfig(base: config);
+    final normalizedDataSource = (dataSource ?? '').trim().toLowerCase();
+    if (normalizedDataSource.isNotEmpty) {
+      effectiveConfig['data_source'] = normalizedDataSource;
+    }
     final payload = <String, dynamic>{
       'mode': mode,
       'symbol': code.trim(),
@@ -233,6 +238,7 @@ class PythonMultiLevelChanAnalysisSource {
       'adjust': adjust.trim().toUpperCase(),
       'config': effectiveConfig,
       'runtime_path': selectedRuntimePath.wireName,
+      if (normalizedDataSource.isNotEmpty) 'data_source': normalizedDataSource,
       if (mainLevel != null && mainLevel.trim().isNotEmpty)
         'main_level': mainLevel.trim().toUpperCase(),
       if (clockLevel != null && clockLevel.trim().isNotEmpty)

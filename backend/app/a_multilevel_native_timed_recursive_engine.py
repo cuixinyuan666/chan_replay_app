@@ -613,6 +613,7 @@ def analyze_multi_native_timed_recursive(
             count=count,
             start=start,
             end=end,
+            config=config,
         )
         timing['backend_native_data_load_ms'] = _elapsed_ms(data_start)
         timing.update(_cache_timing_meta())

@@ -404,6 +404,9 @@ def chan_analyze_bars(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
 def chan_analyze_multi(payload: dict[str, Any] = Body(...)) -> dict[str, object]:
     route_start = perf_counter()
     config = payload.get('config') if isinstance(payload.get('config'), dict) else {}
+    if payload.get('data_source') is not None:
+        config = dict(config)
+        config['data_source'] = payload.get('data_source')
     levels = payload.get('lv_list') or payload.get('levels') or payload.get('level_order')
 
     analyze_start = perf_counter()

@@ -74,8 +74,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     'MIN1',
   };
   static const _evidenceHeader = 'S13_INTERVAL_NEST_MARKER_EVIDENCE';
-  static final _defaultStartDate = DateTime(2026, 1, 1);
-  static final _defaultEndDateValue = DateTime(2026, 6, 18);
+  static final _defaultStartDate = DateTime(2004, 6, 25);
+  static final _defaultEndDateValue = DateTime(2004, 6, 25);
   static const String _rhythmPolicy =
       'backend exports rhythm_lines/rhythm_hits; Dart only parses and renders DrawingObject overlays';
   static const List<String> _easyTdxIndicatorOptions = <String>[
@@ -114,8 +114,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   ];
   final _backendUrlController =
           TextEditingController(text: 'app-managed bundled Python'),
-      _symbolController = TextEditingController(text: '600340'),
-      _marketController = TextEditingController(text: 'SH');
+      _symbolController = TextEditingController(text: '002003'),
+      _marketController = TextEditingController();
   final _selectedLevels = <String>['MIN5'];
   final _enabledEasyTdxIndicators = <String>{};
   final ValueNotifier<int> _toolboxOpenSignal = ValueNotifier<int>(0);
@@ -125,7 +125,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   final _nestedNumberingPolicy = const S13NestedMarkerNumberingPolicy();
 
   PythonMultiLevelChanAnalysis? _analysis;
-  String _mode = 'once',
+  String _mode = 'step',
+      _dataSource = 'local',
       _activeLevel = 'MIN5',
       _status = '未加载',
       _lastLevelValidation = '级别组合待校验';
@@ -133,8 +134,8 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
       _showBspCandidateTrail = true,
       _showRhythmLines = true,
       _show1382Hits = false,
-      _showChipDistribution = false,
-      _showIntervalNest = true,
+      _showChipDistribution = true,
+      _showIntervalNest = false,
       _showNativeZs = true,
       _showSeg2Zs = true,
       _showSegNZs = true,
@@ -170,6 +171,7 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
   @override
   void initState() {
     super.initState();
+    RuntimePathController.set(RuntimePath.highSpeed);
     _loadedChanConfigFingerprint = _chanConfigFingerprint();
     ChanConfigStore.notifier.addListener(_handleGlobalChanConfigChanged);
     LevelPromoterSettings.maxLayer.addListener(_handleGlobalChanConfigChanged);
@@ -267,6 +269,19 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
     const toolColor = Color(0xFFFF8A80);
     return <SidebarRegistration>[
       SidebarRegistration(
+        id: 's13-data-source',
+        label: '数据源',
+        category: '标的数据',
+        icon: Icons.storage,
+        edge: SidebarEdge.right,
+        accentColor: targetColor,
+        panelBuilder: (_) => _SidebarDataSourcePanel(
+          value: _dataSource,
+          loading: _loading,
+          onChanged: _setDataSource,
+        ),
+      ),
+      SidebarRegistration(
         id: 's13-symbol-input',
         label: '标的',
         category: '标的数据',
@@ -275,9 +290,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         accentColor: targetColor,
         panelBuilder: (_) => _SidebarSymbolInputPanel(
           symbolController: _symbolController,
-          marketController: _marketController,
-          loading: _loading,
-          onLoad: _loadReplay,
         ),
       ),
       action(
@@ -319,30 +331,6 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
         accentColor: targetColor,
         selectedBuilder: () => _mode == 'step',
         onActivate: () => _setReplayMode('step'),
-      ),
-      action(
-        id: 's13-runtime-fast',
-        label: '高速',
-        category: '标的数据',
-        icon: Icons.speed,
-        edge: SidebarEdge.right,
-        accentColor: targetColor,
-        selectedBuilder: () =>
-            RuntimePathController.current == RuntimePath.highSpeed,
-        onActivate: () =>
-            setState(() => RuntimePathController.set(RuntimePath.highSpeed)),
-      ),
-      action(
-        id: 's13-runtime-compat',
-        label: '慢速',
-        category: '标的数据',
-        icon: Icons.route,
-        edge: SidebarEdge.right,
-        accentColor: targetColor,
-        selectedBuilder: () =>
-            RuntimePathController.current == RuntimePath.slowPath,
-        onActivate: () =>
-            setState(() => RuntimePathController.set(RuntimePath.slowPath)),
       ),
       action(
         id: 's13-copy-settings',
@@ -1570,6 +1558,13 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
 
   String _requestModeFor(_LevelValidationResult lv) => _mode;
 
+  void _setDataSource(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (_loading || (normalized != 'local' && normalized != 'network')) return;
+    if (_dataSource == normalized) return;
+    setState(() => _dataSource = normalized);
+  }
+
   Future<void> _loadReplay() async {
     if (_loading) return;
     _stopPlay();
@@ -1609,7 +1604,9 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
           startDate: startDate,
           endDate: endDate,
           runtimePath: RuntimePathController.current,
+          dataSource: _dataSource,
           config: <String, dynamic>{
+            'data_source': _dataSource,
             'bi_algo': 'normal',
             'seg_algo': 'chan',
             'zs_algo': 'normal',
@@ -3890,15 +3887,9 @@ class _NestedBspMarkerRow {
 
 class _SidebarSymbolInputPanel extends StatelessWidget {
   final TextEditingController symbolController;
-  final TextEditingController marketController;
-  final bool loading;
-  final VoidCallback onLoad;
 
   const _SidebarSymbolInputPanel({
     required this.symbolController,
-    required this.marketController,
-    required this.loading,
-    required this.onLoad,
   });
 
   @override
@@ -3923,31 +3914,49 @@ class _SidebarSymbolInputPanel extends StatelessWidget {
             border: OutlineInputBorder(),
           ),
         ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: marketController,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            labelText: '市场',
-            border: OutlineInputBorder(),
+      ],
+    );
+  }
+}
+
+class _SidebarDataSourcePanel extends StatelessWidget {
+  final String value;
+  final bool loading;
+  final ValueChanged<String> onChanged;
+
+  const _SidebarDataSourcePanel({
+    required this.value,
+    required this.loading,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+      children: <Widget>[
+        const Text(
+          '数据源',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: loading ? null : onLoad,
-          icon: loading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.play_arrow, size: 16),
-          label: const Text('加载数据'),
+        RadioListTile<String>(
+          value: 'network',
+          groupValue: value,
+          onChanged: loading ? null : (v) => onChanged(v ?? 'network'),
+          title: const Text('网络', style: TextStyle(color: Colors.white70)),
+          dense: true,
         ),
-        const SizedBox(height: 8),
-        const Text(
-          '选择周期、指标或修改标的后不会自动刷新；点击加载数据后才更新。',
-          style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.35),
+        RadioListTile<String>(
+          value: 'local',
+          groupValue: value,
+          onChanged: loading ? null : (v) => onChanged(v ?? 'local'),
+          title: const Text('本地', style: TextStyle(color: Colors.white70)),
+          dense: true,
         ),
       ],
     );
