@@ -4,6 +4,7 @@ from typing import Any
 
 from .a_chip_history_seed import attach_chip_history
 from .a_multilevel_native_timed_recursive_engine import analyze_multi_native_timed_recursive
+from .a_offline_tick_chips import attach_offline_tick_bins
 from .a_replay_contract_hardening import apply_analyze_multi_contracts
 
 
@@ -54,5 +55,6 @@ def analyze_multi(
         count=count,
         config=cfg,
     )
+    result = attach_offline_tick_bins(result, payload=payload, config=cfg)
     result = attach_chip_history(result, payload=payload, config=cfg)
     return apply_analyze_multi_contracts(result, payload, cfg)
