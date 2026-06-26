@@ -2024,13 +2024,13 @@ class _S13SingleStockReplayPageState extends State<S13SingleStockReplayPage> {
 
   String _chipTargetSource(ChanSnapshot snapshot, int targetIndex) {
     if (_hasStepFrames) {
-      final maxAllowed =
-          _safeFrameIndex.clamp(0, snapshot.rawBars.length - 1).toInt();
-      if (_crosshairIndex != null && _crosshairIndex! <= maxAllowed) {
-        return 'step_crosshair';
-      }
-      if (_crosshairIndex != null && _crosshairIndex! > maxAllowed) {
-        return 'step_clamped';
+      final crosshair = _crosshairIndex;
+      if (crosshair != null) {
+        final clampedCrosshair =
+            crosshair.clamp(0, snapshot.rawBars.length - 1).toInt();
+        return targetIndex == clampedCrosshair
+            ? 'step_crosshair'
+            : 'step_crosshair_clamped';
       }
       return 'step_frame';
     }

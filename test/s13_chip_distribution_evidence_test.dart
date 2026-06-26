@@ -125,4 +125,12 @@ void main() {
     expect(source, contains('chip_step_no_future='));
     expect(source, contains('Map<String, String> _chipDistributionEvidence'));
   });
+
+  test('S13 embedded chip panel exposes crosshair-driven dynamic overlay', () {
+    final source = _read('lib/ui/widgets/s13_chip_distribution_panel.dart');
+
+    expect(source, contains('_calculateIncrementalResult'));
+    expect(source, contains('backend_chip_history_seed'));
+    expect(source, contains('incrementalResult'));
+  });
 }

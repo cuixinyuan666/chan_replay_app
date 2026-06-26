@@ -83,6 +83,12 @@ class S13ChipDistributionPanel extends StatelessWidget {
         ageDecay: ageDecay,
       ),
     );
+    final incrementalResult = _calculateIncrementalResult(
+      bars: bars,
+      rawBars: snapshot.rawBars,
+      targetIndex: targetIndex,
+      binCount: effectiveBinCount,
+    );
 
     return IgnorePointer(
       ignoring: true,
@@ -105,6 +111,20 @@ class S13ChipDistributionPanel extends StatelessWidget {
         final rawRange = math.max(high - low, high.abs() * 0.002);
         final scaledRange = rawRange / priceScale.clamp(0.35, 5.0);
         final padding = math.max(scaledRange * 0.08, high.abs() * 0.001);
+        final chartMin = center - scaledRange / 2 - padding;
+        final chartMax = center + scaledRange / 2 + padding;
+        final chipPrices = result.bins
+            .where((bin) => bin.weight > 0 && bin.price.isFinite)
+            .map((bin) => bin.price)
+            .toList(growable: false);
+        final chipMin =
+            chipPrices.isEmpty ? chartMin : chipPrices.reduce(math.min);
+        final chipMax =
+            chipPrices.isEmpty ? chartMax : chipPrices.reduce(math.max);
+        final plotMin = math.min(chartMin, chipMin);
+        final plotMax = math.max(chartMax, chipMax);
+        final plotPadding =
+            math.max((plotMax - plotMin).abs() * 0.025, high.abs() * 0.001);
 
         return Stack(children: <Widget>[
           Positioned(
@@ -119,24 +139,54 @@ class S13ChipDistributionPanel extends StatelessWidget {
               child: CustomPaint(
                 painter: _EmbeddedChipPainter(
                   result,
-                  minPrice: center - scaledRange / 2 - padding,
-                  maxPrice: center + scaledRange / 2 + padding,
+                  incrementalResult: incrementalResult,
+                  minPrice: plotMin - plotPadding,
+                  maxPrice: plotMax + plotPadding,
                 ),
-                child: Stack(children: <Widget>[
-                  Positioned(
-                    top: 5,
-                    left: 7,
-                    child: Text('筹码分布 · $effectiveBinCount桶',
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 10.5)),
-                  ),
-                ]),
+                child: SizedBox.expand(
+                  child: Stack(children: <Widget>[
+                    Positioned(
+                      top: 5,
+                      left: 7,
+                      child: Text('筹码分布 · $effectiveBinCount桶',
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 10.5)),
+                    ),
+                  ]),
+                ),
               ),
             ),
           ),
         ]);
       }),
     );
+  }
+
+  ChipDistributionResult? _calculateIncrementalResult({
+    required List<ChipDistributionBar> bars,
+    required List rawBars,
+    required int targetIndex,
+    required int binCount,
+  }) {
+    if (bars.length < 2 || targetIndex <= 0 || rawBars.isEmpty) return null;
+    final first = rawBars.first;
+    final chipTickBins = first.chipTickBins;
+    if (chipTickBins is! Map ||
+        chipTickBins['source'] != 'backend_chip_history_seed') {
+      return null;
+    }
+    final scoped = bars.sublist(1, targetIndex + 1);
+    if (scoped.isEmpty) return null;
+    final result = const ChipDistributionEngine().calculate(
+      scoped,
+      targetIndex: scoped.length - 1,
+      options: ChipDistributionOptions(
+        binCount: binCount,
+        lookback: 1000000,
+        ageDecay: 0,
+      ),
+    );
+    return result.isEmpty ? null : result;
   }
 }
 
@@ -288,11 +338,16 @@ class _BucketStepButton extends StatelessWidget {
 
 class _EmbeddedChipPainter extends CustomPainter {
   final ChipDistributionResult result;
+  final ChipDistributionResult? incrementalResult;
   final double minPrice;
   final double maxPrice;
 
-  const _EmbeddedChipPainter(this.result,
-      {required this.minPrice, required this.maxPrice});
+  const _EmbeddedChipPainter(
+    this.result, {
+    this.incrementalResult,
+    required this.minPrice,
+    required this.maxPrice,
+  });
 
   double _priceToY(double price, Size size) {
     if ((maxPrice - minPrice).abs() < 1e-9) return size.height / 2;
@@ -335,19 +390,67 @@ class _EmbeddedChipPainter extends CustomPainter {
           Rect.fromLTWH(size.width - buyWidth, y - h / 2, buyWidth, h),
           isPoc ? pocPaint : buyPaint);
     }
+    _paintIncremental(canvas, size);
     final currentY = _priceToY(result.currentPrice, size);
     canvas.drawLine(
         Offset(0, currentY),
         Offset(size.width, currentY),
         Paint()
-          ..color = const Color(0xFF66BB6A)
-          ..strokeWidth = 1.1);
+          ..color = const Color(0xFFE8F5E9)
+          ..strokeWidth = 1.4);
+    final label = result.currentPrice.toStringAsFixed(2);
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: const TextStyle(
+          color: Color(0xFFE8F5E9),
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final labelY = (currentY - textPainter.height - 2)
+        .clamp(1.0, math.max(1.0, size.height - textPainter.height - 1))
+        .toDouble();
+    textPainter.paint(
+        canvas, Offset(size.width - textPainter.width - 4, labelY));
     canvas.restore();
+  }
+
+  void _paintIncremental(Canvas canvas, Size size) {
+    final dynamicResult = incrementalResult;
+    if (dynamicResult == null || dynamicResult.isEmpty) return;
+    final dynamicBins =
+        dynamicResult.bins.where((bin) => bin.weight > 0).toList();
+    if (dynamicBins.isEmpty) return;
+    final maxRatio = dynamicBins.map((bin) => bin.ratio).reduce(math.max);
+    if (maxRatio <= 0) return;
+    final step = dynamicResult.bins.length < 2
+        ? 0.01
+        : (dynamicResult.bins.last.price - dynamicResult.bins.first.price) /
+            (dynamicResult.bins.length - 1);
+    final paint = Paint()..color = const Color(0xCC42A5F5);
+    for (final bin in dynamicBins) {
+      final y = _priceToY(bin.price, size);
+      final h = math.max(
+          1.25,
+          (_priceToY(bin.price - step / 2, size) -
+                      _priceToY(bin.price + step / 2, size))
+                  .abs() *
+              .9);
+      final totalWidth = size.width * 0.44 * bin.ratio / maxRatio;
+      canvas.drawRect(
+        Rect.fromLTWH(size.width - totalWidth, y - h / 2, totalWidth, h),
+        paint,
+      );
+    }
   }
 
   @override
   bool shouldRepaint(covariant _EmbeddedChipPainter oldDelegate) =>
       oldDelegate.result != result ||
+      oldDelegate.incrementalResult != incrementalResult ||
       oldDelegate.minPrice != minPrice ||
       oldDelegate.maxPrice != maxPrice;
 }

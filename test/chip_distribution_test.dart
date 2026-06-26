@@ -178,7 +178,7 @@ void main() {
     );
   });
 
-  test('online replay adapter maps snapshot bars and guards non-step targets',
+  test('online replay adapter maps snapshot bars and follows crosshair targets',
       () {
     final snapshot = ChanSnapshot(
       rawBars: <RawBar>[
@@ -219,7 +219,7 @@ void main() {
         crosshairIndex: 0,
         viewEndIndex: 0,
       ),
-      1,
+      0,
     );
     expect(
       ChipOnlineReplayAdapter.resolveTargetIndex(
